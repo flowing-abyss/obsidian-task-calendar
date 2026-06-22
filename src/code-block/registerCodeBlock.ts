@@ -21,7 +21,7 @@ function parseCodeBlockYaml(source: string): CodeBlockParams {
   return params;
 }
 
-function resolveConfig(settings: CalendarSettings, params: CodeBlockParams): ResolvedConfig {
+export function resolveConfig(settings: CalendarSettings, params: CodeBlockParams): ResolvedConfig {
   const platformConfig = Platform.isMobile ? settings.mobile : settings.desktop;
   const merged = { ...DEFAULT_VIEW_CONFIG, ...platformConfig };
   // Apply code block overrides

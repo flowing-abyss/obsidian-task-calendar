@@ -1,9 +1,10 @@
 import { Plugin } from 'obsidian';
-import { registerCodeBlock } from './code-block/registerCodeBlock';
+import { registerCodeBlock, resolveConfig } from './code-block/registerCodeBlock';
 import { DEFAULT_SETTINGS } from './settings/defaults';
 import { CalendarSettingsTab } from './settings/SettingsTab';
-import type { CalendarSettings } from './settings/types';
+import type { CalendarSettings, CodeBlockParams } from './settings/types';
 import { TaskStore } from './store/TaskStore';
+import { CalendarRenderer } from './ui/CalendarRenderer';
 import { PANEL_VIEW_TYPE, PanelView } from './views/PanelView';
 
 export default class TaskCalendarPlugin extends Plugin {
@@ -31,10 +32,31 @@ export default class TaskCalendarPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       void this.store.initialize();
     });
+
+    // Legacy Dataview shim — remove after users migrate to native `task-calendar` code blocks
+    (window as unknown as Record<string, unknown>).renderCalendar = (
+      dv: unknown,
+      params: CodeBlockParams,
+    ) => {
+      const container =
+        (dv as { container?: HTMLElement } | null)?.container ?? null
+      if (!container) {
+        console.warn('[task-calendar] renderCalendar: no Dataview container found')
+        return
+      }
+      const renderer = new CalendarRenderer(
+        container,
+        this.store,
+        resolveConfig(this.settings, params),
+        this.app,
+      )
+      renderer.mount()
+    }
   }
 
   onunload(): void {
     this.store.destroy();
+    delete (window as unknown as Record<string, unknown>).renderCalendar
   }
 
   async loadSettings(): Promise<void> {
