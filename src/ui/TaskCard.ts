@@ -93,9 +93,13 @@ export function createTaskCard(
   link.className = 'internal-link';
   link.setAttribute('href', filePathNoExt);
 
+  // Note label: placed directly on .task (before .inner) so <a> has only
+  // inline children, keeping .inner a single text line in modern Chromium
+  // (display:-webkit-box no longer establishes a block for line-clamp).
   const noteEl = document.createElement('div');
   noteEl.className = 'note';
   noteEl.textContent = noteDisplay;
+  div.appendChild(noteEl);
 
   const iconEl = document.createElement('div');
   iconEl.className = 'icon';
@@ -106,7 +110,6 @@ export function createTaskCard(
   descEl.dataset['relative'] = relative;
   descEl.textContent = task.text;
 
-  link.appendChild(noteEl);
   link.appendChild(iconEl);
   link.appendChild(descEl);
   inner.appendChild(link);
