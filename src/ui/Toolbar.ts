@@ -53,11 +53,12 @@ export class Toolbar {
   private statBtn: HTMLButtonElement
   private statPopup: HTMLElement
   private statEls: Record<string, HTMLElement> = {}
+  private activeCloseHandler: ((e: MouseEvent) => void) | null = null
 
   constructor(
     container: HTMLElement,
     views: ViewEntry[],
-    private callbacks: ToolbarCallbacks,
+    callbacks: ToolbarCallbacks,
   ) {
     this.el = container.createDiv('buttons')
     this.filterBtn = this.makeBtn('filter', FILTER_ICON, '', () => callbacks.onFilterToggle())
@@ -87,20 +88,18 @@ export class Toolbar {
     ]
     for (const [group, icon, label] of statDefs) {
       const li = this.statPopup.createEl('li', { attr: { 'data-group': group } })
-      const span = li.createEl('span', { cls: 'stat-label', text: label })
-      const countSpan = li.createEl('span', { cls: 'stat-count', text: '0' })
+      li.createEl('span', { cls: 'stat-label', text: label })
+      const countSpanEl = li.createEl('span', { cls: 'stat-count', text: '0' })
       const iconSpan = document.createElement('span')
       iconSpan.textContent = icon + ' '
       li.prepend(iconSpan)
-      this.statEls[group] = countSpan
+      this.statEls[group] = countSpanEl
       li.addEventListener('click', () => {
         const isActive = li.classList.contains('active')
         this.statPopup.querySelectorAll('li').forEach(el => el.classList.remove('active'))
         if (!isActive) { li.classList.add('active'); callbacks.onStatFilter(group) }
         else { callbacks.onStatFilter(null) }
       })
-      void span // used for label display
-      void countSpan
     }
   }
 
@@ -121,14 +120,16 @@ export class Toolbar {
           this.statPopup.classList.remove('active')
           this.statBtn.classList.remove('active')
           document.removeEventListener('mousedown', closePopup)
+          this.activeCloseHandler = null
         }
       }
+      this.activeCloseHandler = closePopup
       setTimeout(() => document.addEventListener('mousedown', closePopup), 0)
     }
   }
 
   update(state: ToolbarState): void {
-    this.currentBtn.innerHTML = state.currentTitle
+    this.currentBtn.textContent = state.currentTitle
     this.filterBtn.classList.toggle('active', state.filterActive)
     this.overdueBtn.classList.toggle('active', state.overdueHighlightActive)
     for (const [id, btn] of this.viewButtons) {
@@ -140,9 +141,20 @@ export class Toolbar {
     if (this.statEls['scheduled']) this.statEls['scheduled'].textContent = String(state.stats.scheduled)
     if (this.statEls['recurrence']) this.statEls['recurrence'].textContent = String(state.stats.recurrence)
     if (this.statEls['dailyNote']) this.statEls['dailyNote'].textContent = String(state.stats.dailyNote)
+
+    // Reconcile active stat group highlight
+    this.statPopup.querySelectorAll('li').forEach(li => li.classList.remove('active'))
+    if (state.activeStatGroup !== null) {
+      const activeLi = this.statPopup.querySelector(`li[data-group="${state.activeStatGroup}"]`)
+      activeLi?.classList.add('active')
+    }
   }
 
   destroy(): void {
+    if (this.activeCloseHandler !== null) {
+      document.removeEventListener('mousedown', this.activeCloseHandler)
+      this.activeCloseHandler = null
+    }
     this.el.remove()
   }
 }
