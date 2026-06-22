@@ -1,11 +1,11 @@
 {
-	"id": "task-calendar",
-	"name": "Task Calendar",
-	"version": "1.2.0",
-	"minAppVersion": "0.15.0",
-	"description": "Flexible Task Calendar",
-	"author": "flowing-abyss",
-	"authorUrl": "https://github.com/flowing-abyss",
-	"fundingUrl": "https://www.donationalerts.com/r/flowing_abyss",
-	"isDesktopOnly": false
+  "id": "task-calendar",
+  "name": "Task Calendar",
+  "version": "1.2.0",
+  "minAppVersion": "1.7.2",
+  "description": "Flexible Task Calendar",
+  "author": "flowing-abyss",
+  "authorUrl": "https://github.com/flowing-abyss",
+  "fundingUrl": "https://www.donationalerts.com/r/flowing_abyss",
+  "isDesktopOnly": false
 }

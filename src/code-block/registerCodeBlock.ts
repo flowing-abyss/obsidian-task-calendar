@@ -1,56 +1,63 @@
-import { MarkdownRenderChild, Platform, type Plugin } from 'obsidian'
-import { CalendarRenderer } from '../ui/CalendarRenderer'
-import type { CalendarSettings, CodeBlockParams, ResolvedConfig } from '../settings/types'
-import type { TaskStore } from '../store/TaskStore'
-import { DEFAULT_VIEW_CONFIG } from '../settings/defaults'
+import { MarkdownRenderChild, Platform, type Plugin } from 'obsidian';
+import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
+import type { CalendarSettings, CodeBlockParams, ResolvedConfig } from '../settings/types';
+import type { TaskStore } from '../store/TaskStore';
+import { CalendarRenderer } from '../ui/CalendarRenderer';
 
 // Note: if 'yaml' is not available as a dependency, use a simple key:value line parser
 function parseCodeBlockYaml(source: string): CodeBlockParams {
   // Use JSON.parse-safe subset: only parse simple key: value lines
-  const params: Record<string, unknown> = {}
+  const params: Record<string, unknown> = {};
   for (const line of source.split('\n')) {
-    const m = /^(\w+)\s*:\s*(.+)$/.exec(line.trim())
-    if (m?.[1] != null && m[2] != null) params[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
+    // eslint-disable-next-line sonarjs/super-linear-regex
+    const m = /^(\w+)\s*:\s*(.+)$/.exec(line.trim());
+    if (m?.[1] != null && m[2] != null) params[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
   }
   // Coerce numeric fields
-  if (params['firstDayOfWeek'] !== undefined) params['firstDayOfWeek'] = parseInt(String(params['firstDayOfWeek']))
-  if (params['upcomingDays'] !== undefined) params['upcomingDays'] = parseInt(String(params['upcomingDays']))
-  return params as CodeBlockParams
+  if (params['firstDayOfWeek'] !== undefined)
+    params['firstDayOfWeek'] = parseInt(params['firstDayOfWeek'] as string);
+  if (params['upcomingDays'] !== undefined)
+    params['upcomingDays'] = parseInt(params['upcomingDays'] as string);
+  return params;
 }
 
 function resolveConfig(settings: CalendarSettings, params: CodeBlockParams): ResolvedConfig {
-  const platformConfig = Platform.isMobile ? settings.mobile : settings.desktop
-  const merged = { ...DEFAULT_VIEW_CONFIG, ...platformConfig }
+  const platformConfig = Platform.isMobile ? settings.mobile : settings.desktop;
+  const merged = { ...DEFAULT_VIEW_CONFIG, ...platformConfig };
   // Apply code block overrides
-  if (params.view !== undefined) merged.defaultView = params.view
+  if (params.view !== undefined) merged.defaultView = params.view;
   if (params.firstDayOfWeek !== undefined) {
-    const fw = Math.min(6, Math.max(0, params.firstDayOfWeek))
-    merged.firstDayOfWeek = fw as ResolvedConfig['firstDayOfWeek']
+    const fw = Math.min(6, Math.max(0, params.firstDayOfWeek));
+    merged.firstDayOfWeek = fw as ResolvedConfig['firstDayOfWeek'];
   }
-  if (params.upcomingDays !== undefined) merged.upcomingDays = params.upcomingDays
-  if (params.dailyNoteFolder !== undefined) merged.dailyNoteFolder = params.dailyNoteFolder
-  if (params.dailyNoteFormat !== undefined) merged.dailyNoteFormat = params.dailyNoteFormat
-  if (params.style !== undefined) merged.style = params.style
-  if (params.globalTaskFilter !== undefined) merged.globalTaskFilter = params.globalTaskFilter
-  if (params.startPosition !== undefined) merged.startPosition = params.startPosition
-  if (params.tag !== undefined) merged.tag = params.tag
-  if (params.folder !== undefined) merged.folder = params.folder
-  return { ...merged, isMobile: Platform.isMobile }
+  if (params.upcomingDays !== undefined) merged.upcomingDays = params.upcomingDays;
+  if (params.dailyNoteFolder !== undefined) merged.dailyNoteFolder = params.dailyNoteFolder;
+  if (params.dailyNoteFormat !== undefined) merged.dailyNoteFormat = params.dailyNoteFormat;
+  if (params.style !== undefined) merged.style = params.style;
+  if (params.globalTaskFilter !== undefined) merged.globalTaskFilter = params.globalTaskFilter;
+  if (params.startPosition !== undefined) merged.startPosition = params.startPosition;
+  if (params.tag !== undefined) merged.tag = params.tag;
+  if (params.folder !== undefined) merged.folder = params.folder;
+  return { ...merged, isMobile: Platform.isMobile };
 }
 
-export function registerCodeBlock(plugin: Plugin, store: TaskStore, settings: CalendarSettings): void {
+export function registerCodeBlock(
+  plugin: Plugin,
+  store: TaskStore,
+  settings: CalendarSettings,
+): void {
   plugin.registerMarkdownCodeBlockProcessor('task-calendar', (source, el, ctx) => {
-    let params: CodeBlockParams
+    let params: CodeBlockParams;
     try {
-      params = parseCodeBlockYaml(source)
+      params = parseCodeBlockYaml(source);
     } catch {
-      const err = el.createDiv({ cls: 'callout' })
-      err.createEl('p', { text: 'task-calendar: invalid YAML in code block.' })
-      return
+      const err = el.createDiv({ cls: 'callout' });
+      err.createEl('p', { text: 'Task-calendar: invalid YAML in code block.' });
+      return;
     }
 
-    const config = resolveConfig(settings, params)
-    const tid = String(Date.now())
+    const config = resolveConfig(settings, params);
+    const tid = String(Date.now());
     const rootEl = el.createDiv({
       cls: `tasksCalendar ${config.style}`,
       attr: {
@@ -58,15 +65,15 @@ export function registerCodeBlock(plugin: Plugin, store: TaskStore, settings: Ca
         view: config.defaultView,
         style: 'position:relative;-webkit-user-select:none!important',
       },
-    })
+    });
 
-    const renderer = new CalendarRenderer(rootEl, store, config, plugin.app)
+    const renderer = new CalendarRenderer(rootEl, store, config, plugin.app);
 
     // MarkdownRenderChild ensures cleanup when the block leaves the DOM
-    const child = new MarkdownRenderChild(el)
-    child.onunload = () => renderer.destroy()
-    ctx.addChild(child)
+    const child = new MarkdownRenderChild(el);
+    child.onunload = () => renderer.destroy();
+    ctx.addChild(child);
 
-    renderer.mount()
-  })
+    renderer.mount();
+  });
 }
