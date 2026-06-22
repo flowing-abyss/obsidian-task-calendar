@@ -10,7 +10,8 @@ const COMPLETION_RE = /✅\s*(\d{4}-\d{2}-\d{2})/u
 const CANCELLED_EMOJI_RE = /❌\s*(\d{4}-\d{2}-\d{2})/u
 const TIME_RE = /⏰\s*(\d{1,2}:\d{2})/u
 // Recurrence: capture text after 🔁 to end of string (trim in code)
-const RECURRENCE_RE = /🔁\s*([\w\s]+)/u
+// eslint-disable-next-line sonarjs/no-misleading-character-class, sonarjs/super-linear-regex
+const RECURRENCE_RE = /🔁\s*([^📅⏳🛫✅❌⏰⏫🔼🔽\n]*)/u
 
 const WIKILINK_ALIAS_RE = /\[\[([^|[\]]+)\|[^[\]]+\]\]/gu
 const WIKILINK_RE = /\[\[([^[\]]+)\]\]/gu
