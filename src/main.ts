@@ -21,7 +21,7 @@ export default class TaskCalendarPlugin extends Plugin {
 
     this.addCommand({
       id: 'open-panel',
-      name: 'Open calendar panel',
+      name: 'Open view',
       callback: () => {
         void this.openPanel();
       },

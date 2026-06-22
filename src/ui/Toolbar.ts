@@ -62,6 +62,8 @@ export class Toolbar {
 
   constructor(container: HTMLElement, views: ViewEntry[], callbacks: ToolbarCallbacks) {
     this.el = container.createDiv('buttons');
+    // eslint-disable-next-line obsidianmd/no-static-styles-assignment
+    this.el.style.position = 'relative';
     this.filterBtn = this.makeBtn('filter', FILTER_ICON, '', () => callbacks.onFilterToggle());
     for (const v of views) {
       const icon = DEFAULT_VIEW_ICONS[v.id] ?? v.icon;
@@ -152,6 +154,7 @@ export class Toolbar {
     const isActive = !this.stylePopup.classList.contains('active');
     if (isActive) {
       this.stylePopup.style.left = btn.offsetLeft + 'px';
+      this.stylePopup.style.top = this.el.offsetHeight + 'px';
       this.stylePopup.classList.add('active');
       const closeHandler = (e: MouseEvent) => {
         if (!this.stylePopup.contains(e.target as Node)) {
