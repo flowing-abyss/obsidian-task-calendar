@@ -2,7 +2,7 @@ import type { Task } from '../parser/types'
 import type { ResolvedConfig } from '../settings/types'
 import { createTaskCard } from '../ui/TaskCard'
 import { BaseView } from './BaseView'
-import { getTasksForDate, sortTasks } from './taskGrouping'
+import { getTasksForDate, renderTaskGroup } from './taskGrouping'
 
 export interface MonthViewCallbacks {
   onToggle: (task: Task) => void
@@ -127,22 +127,9 @@ export class MonthView extends BaseView {
     today: string,
   ): void {
     const groups = getTasksForDate(tasks, date, today)
-
-    const show = (group: Task[], cls: string) => {
-      for (const t of sortTasks(group)) {
-        container.appendChild(createTaskCard(t, cls, { onToggle: this.callbacks.onToggle }))
-      }
-    }
-
-    if (date === today) show(groups.overdue, 'overdue')
-    show(groups.due, 'due')
-    show(groups.recurrence, 'recurrence')
-    show(groups.start, 'start')
-    show(groups.scheduled, 'scheduled')
-    show(groups.process, 'process')
-    show(groups.dailyNote, 'dailyNote')
-    show(groups.allDone, 'done')
-    show(groups.cancelled, 'cancelled')
+    renderTaskGroup(container, groups, date, today, (task, cls) =>
+      createTaskCard(task, cls, { onToggle: this.callbacks.onToggle }),
+    )
   }
 
   destroy(): void {

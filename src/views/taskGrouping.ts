@@ -38,3 +38,24 @@ export function sortTasks(tasks: Task[]): Task[] {
     return a.text.localeCompare(b.text)
   })
 }
+
+export function renderTaskGroup(
+  container: HTMLElement,
+  groups: TaskGroup,
+  date: string,
+  today: string,
+  renderCard: (task: Task, cls: string) => HTMLElement,
+): void {
+  const show = (group: Task[], cls: string) => {
+    for (const t of sortTasks(group)) container.appendChild(renderCard(t, cls))
+  }
+  if (date === today) show(groups.overdue, 'overdue')
+  show(groups.due, 'due')
+  show(groups.recurrence, 'recurrence')
+  show(groups.start, 'start')
+  show(groups.scheduled, 'scheduled')
+  show(groups.process, 'process')
+  show(groups.dailyNote, 'dailyNote')
+  show(groups.allDone, 'done')
+  show(groups.cancelled, 'cancelled')
+}
