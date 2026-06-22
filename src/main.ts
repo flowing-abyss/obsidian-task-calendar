@@ -38,25 +38,24 @@ export default class TaskCalendarPlugin extends Plugin {
       dv: unknown,
       params: CodeBlockParams,
     ) => {
-      const container =
-        (dv as { container?: HTMLElement } | null)?.container ?? null
+      const container = (dv as { container?: HTMLElement } | null)?.container ?? null;
       if (!container) {
-        console.warn('[task-calendar] renderCalendar: no Dataview container found')
-        return
+        console.warn('[task-calendar] renderCalendar: no Dataview container found');
+        return;
       }
       const renderer = new CalendarRenderer(
         container,
         this.store,
         resolveConfig(this.settings, params),
         this.app,
-      )
-      renderer.mount()
-    }
+      );
+      renderer.mount();
+    };
   }
 
   onunload(): void {
     this.store.destroy();
-    delete (window as unknown as Record<string, unknown>).renderCalendar
+    delete (window as unknown as Record<string, unknown>).renderCalendar;
   }
 
   async loadSettings(): Promise<void> {
@@ -73,10 +72,8 @@ export default class TaskCalendarPlugin extends Plugin {
       void this.app.workspace.revealLeaf(existing[0]);
       return;
     }
-    const leaf = this.app.workspace.getRightLeaf(false);
-    if (leaf) {
-      await leaf.setViewState({ type: PANEL_VIEW_TYPE, active: true });
-      void this.app.workspace.revealLeaf(leaf);
-    }
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({ type: PANEL_VIEW_TYPE, active: true });
+    void this.app.workspace.revealLeaf(leaf);
   }
 }
