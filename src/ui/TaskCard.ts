@@ -55,10 +55,6 @@ export function createTaskCard(
 
   const taskIcon = TASK_ICONS[taskClass] ?? '';
   const relative = task.due ? window.moment(task.due).fromNow() : '';
-  const noteFilename = task.filePath.replace(/^.*\//, '').replace(/\.[^.]*$/, '');
-  const noteDisplay = task.noteIcon
-    ? task.noteIcon + ' ' + noteFilename
-    : taskIcon + ' ' + noteFilename;
   const cls = task.noteIcon ? taskClass : taskClass + ' noNoteIcon';
   const filePathNoExt = task.filePath.replace(/\.md$/, '');
 
@@ -92,14 +88,6 @@ export function createTaskCard(
   const link = document.createElement('a');
   link.className = 'internal-link';
   link.setAttribute('href', filePathNoExt);
-
-  // Note label: placed directly on .task (before .inner) so <a> has only
-  // inline children, keeping .inner a single text line in modern Chromium
-  // (display:-webkit-box no longer establishes a block for line-clamp).
-  const noteEl = document.createElement('div');
-  noteEl.className = 'note';
-  noteEl.textContent = noteDisplay;
-  div.appendChild(noteEl);
 
   const iconEl = document.createElement('div');
   iconEl.className = 'icon';

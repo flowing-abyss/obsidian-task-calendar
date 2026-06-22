@@ -20,6 +20,7 @@ export interface ViewEntry {
 export interface ToolbarState {
   currentView: string;
   currentTitle: string;
+  currentStyle: string;
   filterActive: boolean;
   overdueHighlightActive: boolean;
   stats: {
@@ -42,6 +43,7 @@ export interface ToolbarCallbacks {
   onFilterToggle(): void;
   onOverdueHighlight(): void;
   onStatFilter(group: string | null): void;
+  onStyleChange(style: string): void;
 }
 
 export class Toolbar {
@@ -54,14 +56,39 @@ export class Toolbar {
   private statPopup: HTMLElement;
   private statEls: Record<string, HTMLElement> = {};
   private activeCloseHandler: ((e: MouseEvent) => void) | null = null;
+  private stylePopup: HTMLElement;
+  private styleCloseHandler: ((e: MouseEvent) => void) | null = null;
+  private currentView = '';
 
   constructor(container: HTMLElement, views: ViewEntry[], callbacks: ToolbarCallbacks) {
     this.el = container.createDiv('buttons');
     this.filterBtn = this.makeBtn('filter', FILTER_ICON, '', () => callbacks.onFilterToggle());
     for (const v of views) {
       const icon = DEFAULT_VIEW_ICONS[v.id] ?? v.icon;
-      const btn = this.makeBtn(v.id + 'View', icon, v.label, () => callbacks.onViewSwitch(v.id));
+      const btn = this.makeBtn(v.id + 'View', icon, v.label, () => {
+        if (this.currentView === v.id) {
+          this.toggleStylePopup(btn);
+        } else {
+          callbacks.onViewSwitch(v.id);
+        }
+      });
       this.viewButtons.set(v.id, btn);
+    }
+
+    // Style picker popup (weekViewContext) — triggered by clicking active view button
+    this.stylePopup = this.el.createEl('ul', { cls: 'weekViewContext' });
+    for (let i = 1; i <= 11; i++) {
+      const style = `style${i}`;
+      const li = this.stylePopup.createEl('li', { attr: { 'data-style': style } });
+      const liIcon = li.createDiv({ cls: `liIcon iconStyle${i}` });
+      for (let j = 0; j < 7; j++) liIcon.createDiv('box');
+      li.createEl('span', { text: `Style ${i}` });
+      li.addEventListener('click', () => {
+        this.stylePopup.querySelectorAll('li').forEach((el) => el.classList.remove('active'));
+        li.classList.add('active');
+        callbacks.onStyleChange(style);
+        this.closeStylePopup();
+      });
     }
     this.currentBtn = this.makeBtn('current', '', '', () => callbacks.onToday());
     this.makeBtn('previous', ARROW_LEFT, '', () => callbacks.onPrev());
@@ -121,6 +148,31 @@ export class Toolbar {
     return btn;
   }
 
+  private toggleStylePopup(btn: HTMLButtonElement): void {
+    const isActive = !this.stylePopup.classList.contains('active');
+    if (isActive) {
+      this.stylePopup.style.left = btn.offsetLeft + 'px';
+      this.stylePopup.classList.add('active');
+      const closeHandler = (e: MouseEvent) => {
+        if (!this.stylePopup.contains(e.target as Node)) {
+          this.closeStylePopup();
+        }
+      };
+      this.styleCloseHandler = closeHandler;
+      window.setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
+    } else {
+      this.closeStylePopup();
+    }
+  }
+
+  private closeStylePopup(): void {
+    this.stylePopup.classList.remove('active');
+    if (this.styleCloseHandler) {
+      document.removeEventListener('mousedown', this.styleCloseHandler);
+      this.styleCloseHandler = null;
+    }
+  }
+
   private toggleStatPopup(): void {
     const isActive = this.statBtn.classList.toggle('active');
     this.statPopup.classList.toggle('active', isActive);
@@ -139,12 +191,17 @@ export class Toolbar {
   }
 
   update(state: ToolbarState): void {
+    this.currentView = state.currentView;
     this.currentBtn.textContent = state.currentTitle;
     this.filterBtn.classList.toggle('active', state.filterActive);
     this.overdueBtn.classList.toggle('active', state.overdueHighlightActive);
     for (const [id, btn] of this.viewButtons) {
       btn.classList.toggle('active', id === state.currentView);
     }
+    // Sync active style in picker
+    this.stylePopup.querySelectorAll('li').forEach((li) => {
+      li.classList.toggle('active', li.getAttribute('data-style') === state.currentStyle);
+    });
     if (this.statEls['done']) this.statEls['done'].textContent = String(state.stats.done);
     if (this.statEls['due']) this.statEls['due'].textContent = String(state.stats.due);
     if (this.statEls['start']) this.statEls['start'].textContent = String(state.stats.start);
@@ -168,6 +225,7 @@ export class Toolbar {
       document.removeEventListener('mousedown', this.activeCloseHandler);
       this.activeCloseHandler = null;
     }
+    this.closeStylePopup();
     this.el.remove();
   }
 }

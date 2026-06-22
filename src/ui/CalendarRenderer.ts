@@ -68,6 +68,12 @@ export class CalendarRenderer {
         this.activeStatGroup = group;
         this.applyStatFilter(group);
       },
+      onStyleChange: (style) => {
+        if (this.config.style) this.rootEl.removeClass(this.config.style);
+        this.config = { ...this.config, style };
+        this.rootEl.addClass(style);
+        this.updateToolbar();
+      },
     });
 
     this.viewContainer = span.createDiv();
@@ -182,6 +188,7 @@ export class CalendarRenderer {
     this.toolbar.update({
       currentView: this.activeViewType,
       currentTitle: this.currentTitle(),
+      currentStyle: this.config.style ?? 'style1',
       filterActive: this.filterActive,
       overdueHighlightActive: this.overdueHighlightActive,
       activeStatGroup: this.activeStatGroup,
