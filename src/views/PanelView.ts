@@ -22,6 +22,7 @@ export class PanelView extends ItemView {
   getIcon(): string { return 'calendar-days' }
 
   async onOpen(): Promise<void> {
+    this.renderer?.destroy()
     const platformConfig = Platform.isMobile ? this.settings.mobile : this.settings.desktop
     const config: ResolvedConfig = { ...DEFAULT_VIEW_CONFIG, ...platformConfig, isMobile: Platform.isMobile }
     const rootEl = this.contentEl.createDiv({

@@ -6,38 +6,35 @@ import { DEFAULT_VIEW_CONFIG } from '../settings/defaults'
 
 // Note: if 'yaml' is not available as a dependency, use a simple key:value line parser
 function parseCodeBlockYaml(source: string): CodeBlockParams {
-  try {
-    // Use JSON.parse-safe subset: only parse simple key: value lines
-    const params: Record<string, unknown> = {}
-    for (const line of source.split('\n')) {
-      const m = /^(\w+)\s*:\s*(.+)$/.exec(line.trim())
-      if (m?.[1] != null && m[2] != null) params[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
-    }
-    // Coerce numeric fields
-    if (params['firstDayOfWeek'] !== undefined) params['firstDayOfWeek'] = parseInt(String(params['firstDayOfWeek']))
-    if (params['upcomingDays'] !== undefined) params['upcomingDays'] = parseInt(String(params['upcomingDays']))
-    return params as CodeBlockParams
-  } catch {
-    return {}
+  // Use JSON.parse-safe subset: only parse simple key: value lines
+  const params: Record<string, unknown> = {}
+  for (const line of source.split('\n')) {
+    const m = /^(\w+)\s*:\s*(.+)$/.exec(line.trim())
+    if (m?.[1] != null && m[2] != null) params[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
   }
+  // Coerce numeric fields
+  if (params['firstDayOfWeek'] !== undefined) params['firstDayOfWeek'] = parseInt(String(params['firstDayOfWeek']))
+  if (params['upcomingDays'] !== undefined) params['upcomingDays'] = parseInt(String(params['upcomingDays']))
+  return params as CodeBlockParams
 }
 
 function resolveConfig(settings: CalendarSettings, params: CodeBlockParams): ResolvedConfig {
   const platformConfig = Platform.isMobile ? settings.mobile : settings.desktop
   const merged = { ...DEFAULT_VIEW_CONFIG, ...platformConfig }
   // Apply code block overrides
-  if (params.view) merged.defaultView = params.view
+  if (params.view !== undefined) merged.defaultView = params.view
   if (params.firstDayOfWeek !== undefined) {
     const fw = Math.min(6, Math.max(0, params.firstDayOfWeek))
     merged.firstDayOfWeek = fw as ResolvedConfig['firstDayOfWeek']
   }
-  if (params.dailyNoteFolder) merged.dailyNoteFolder = params.dailyNoteFolder
-  if (params.dailyNoteFormat) merged.dailyNoteFormat = params.dailyNoteFormat
-  if (params.style) merged.style = params.style
-  if (params.globalTaskFilter) merged.globalTaskFilter = params.globalTaskFilter
-  if (params.startPosition) merged.startPosition = params.startPosition
-  if (params.tag) merged.tag = params.tag
-  if (params.folder) merged.folder = params.folder
+  if (params.upcomingDays !== undefined) merged.upcomingDays = params.upcomingDays
+  if (params.dailyNoteFolder !== undefined) merged.dailyNoteFolder = params.dailyNoteFolder
+  if (params.dailyNoteFormat !== undefined) merged.dailyNoteFormat = params.dailyNoteFormat
+  if (params.style !== undefined) merged.style = params.style
+  if (params.globalTaskFilter !== undefined) merged.globalTaskFilter = params.globalTaskFilter
+  if (params.startPosition !== undefined) merged.startPosition = params.startPosition
+  if (params.tag !== undefined) merged.tag = params.tag
+  if (params.folder !== undefined) merged.folder = params.folder
   return { ...merged, isMobile: Platform.isMobile }
 }
 

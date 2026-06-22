@@ -102,5 +102,19 @@ export class CalendarSettingsTab extends PluginSettingTab {
         .setValue(cfg.globalTaskFilter)
         .onChange(async v => { cfg.globalTaskFilter = v; await this.plugin.saveSettings() }),
       )
+
+    new Setting(container)
+      .setName('Upcoming days')
+      .setDesc('Number of days shown in list view.')
+      .addText(text => text
+        .setValue(String(cfg.upcomingDays))
+        .onChange(async value => {
+          const n = parseInt(value, 10)
+          if (!isNaN(n) && n > 0) {
+            cfg.upcomingDays = n
+            await this.plugin.saveSettings()
+          }
+        }),
+      )
   }
 }
