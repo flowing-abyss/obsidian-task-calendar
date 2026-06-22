@@ -74,7 +74,7 @@ export class CalendarRenderer {
     this.renderView()
 
     this.unsubscribe = this.store.onUpdate(() => {
-      this.activeView?.patch(this.viewContainer!, this.store.getTasks(), this.config)
+      this.activeView?.patch(this.viewContainer!, this.store.getTasks(), this.buildConfig())
       this.updateToolbar()
     })
   }
@@ -117,8 +117,8 @@ export class CalendarRenderer {
       onWeekClick: (weekNr: string, year: string) => {
         this.selectedDate = window
           .moment()
-          .isoWeekYear(parseInt(year))
-          .isoWeek(parseInt(weekNr))
+          .isoWeekYear(parseInt(year, 10))
+          .isoWeek(parseInt(weekNr, 10))
           .startOf('isoWeek')
         this.switchView('week')
       },
@@ -142,7 +142,7 @@ export class CalendarRenderer {
     const cb = this.buildCallbacks()
 
     // Instantiate new view when type changes (callbacks are baked into constructor)
-    if (!this.activeView || this.activeView.constructor.name !== this.viewClass()) {
+    if (!this.activeView || !this.isSameViewType()) {
       this.activeView?.destroy()
       if (this.activeViewType === 'month') {
         this.activeView = new MonthView({
@@ -167,8 +167,11 @@ export class CalendarRenderer {
     this.updateToolbar()
   }
 
-  private viewClass(): string {
-    return { month: 'MonthView', week: 'WeekView', list: 'ListView' }[this.activeViewType]
+  private isSameViewType(): boolean {
+    if (!this.activeView) return false
+    if (this.activeViewType === 'month') return this.activeView instanceof MonthView
+    if (this.activeViewType === 'week') return this.activeView instanceof WeekView
+    return this.activeView instanceof ListView
   }
 
   private updateToolbar(): void {
@@ -197,9 +200,9 @@ export class CalendarRenderer {
 
   private currentTitle(): string {
     if (this.activeViewType === 'week') {
-      return `<span>${this.selectedDate.format('YYYY')}</span><span> ${this.selectedDate.format('[W]w')}</span>`
+      return `Week ${this.selectedDate.format('w')} · ${this.selectedDate.format('YYYY')}`
     }
-    return `<span>${this.selectedDate.format('MMMM')}</span><span> ${this.selectedDate.format('YYYY')}</span>`
+    return `${this.selectedDate.format('MMMM')} ${this.selectedDate.format('YYYY')}`
   }
 
   private applyStatFilter(group: string | null): void {
