@@ -7,6 +7,7 @@ import type { TaskStore } from '../store/TaskStore';
 export class LeftPanel {
   private el!: HTMLElement;
   private offs: Array<() => void> = [];
+  private expandedGroups = new Set<string>();
 
   constructor(
     private state: AppState,
@@ -96,18 +97,21 @@ export class LeftPanel {
     const isGroupActive =
       typeof sel === 'object' && sel.type === 'group' && sel.groupId === group.id;
 
+    const tags = this.resolveGroupTags(group, allTasks);
+
+    // Auto-expand when a child tag of this group is currently selected
+    const hasActiveChild = tags.some((t) => {
+      const s = this.state.get('selectedList');
+      return typeof s === 'object' && s.type === 'tag' && s.tag === t;
+    });
+    if (hasActiveChild) this.expandedGroups.add(group.id);
+
+    const isExpanded = this.expandedGroups.has(group.id);
+
     const container = parent.createDiv({ cls: 'tc-tag-group' });
     const header = container.createDiv({
       cls: `tc-tag-group-header${isGroupActive ? ' is-active' : ''}`,
     });
-
-    const tags = this.resolveGroupTags(group, allTasks);
-    const isExpanded =
-      isGroupActive ||
-      tags.some((t) => {
-        const s = this.state.get('selectedList');
-        return typeof s === 'object' && s.type === 'tag' && s.tag === t;
-      });
 
     header.createEl('span', {
       cls: `tc-left-icon tc-group-arrow${isExpanded ? ' is-open' : ''}`,
@@ -119,25 +123,38 @@ export class LeftPanel {
     }
     header.createEl('span', { cls: 'tc-left-label', text: group.name });
 
-    const groupCount = allTasks.filter((t) =>
-      tags.some((tag) => t.rawText.includes(tag) && t.status === 'open'),
+    // Count all tasks matching any tag in this group (including root prefix tag)
+    const rootTag = group.mode === 'prefix' && group.prefix ? `#${group.prefix}` : null;
+    const allGroupTags = rootTag ? [rootTag, ...tags] : tags;
+    const groupCount = allTasks.filter(
+      (t) => t.status === 'open' && allGroupTags.some((tag) => t.rawText.includes(tag)),
     ).length;
     if (groupCount > 0) {
       header.createEl('span', { cls: 'tc-left-count', text: String(groupCount) });
     }
 
     header.addEventListener('click', () => {
-      this.state.set('selectedList', { type: 'group', groupId: group.id });
-      this.state.set('mode', 'tasks');
+      if (isExpanded) {
+        // Collapse — keep selection but close the tree
+        this.expandedGroups.delete(group.id);
+      } else {
+        // Expand + select the group
+        this.expandedGroups.add(group.id);
+        this.state.set('selectedList', { type: 'group', groupId: group.id });
+        this.state.set('mode', 'tasks');
+      }
+      this.render();
     });
 
     if (isExpanded) {
       const children = container.createDiv({ cls: 'tc-tag-group-children' });
       for (const tag of tags) {
+        // Strip the group prefix from display label: #work/dev → dev
         const label =
           group.mode === 'prefix' && group.prefix
-            ? tag.replace(`#${group.prefix}/`, '').replace(`#${group.prefix}`, '(root)')
+            ? tag.replace(`#${group.prefix}/`, '')
             : tag;
+
         const tagSel = this.state.get('selectedList');
         const isTagActive =
           typeof tagSel === 'object' && tagSel.type === 'tag' && tagSel.tag === tag;
@@ -168,7 +185,8 @@ export class LeftPanel {
       for (const task of allTasks) {
         const matches = task.rawText.match(/#[\w/-]+/gu) ?? [];
         for (const tag of matches) {
-          if (tag === `#${prefix}` || tag.startsWith(`#${prefix}/`)) {
+          // Only include subtags (e.g. #work/dev), not the root tag (#work) itself
+          if (tag.startsWith(`#${prefix}/`)) {
             found.add(tag);
           }
         }
