@@ -59,7 +59,7 @@ export function createTaskCard(
   const filePathNoExt = task.filePath.replace(/\.md$/, '');
 
   // Root div
-  const div = document.createElement('div');
+  const div = activeDocument.createElement('div');
   div.className = `task ${cls}`;
   div.setAttribute('style', style);
   div.setAttribute('data-task-text', task.text);
@@ -67,12 +67,12 @@ export function createTaskCard(
   if (task.due) div.setAttribute('data-due', task.due);
 
   // Inner wrapper
-  const inner = document.createElement('div');
+  const inner = activeDocument.createElement('div');
   inner.className = 'inner';
 
   // Checkbox
   if (mode === 'default') {
-    const checkbox = document.createElement('input');
+    const checkbox = activeDocument.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'calendar-task-checkbox';
     checkbox.checked = task.status === 'done';
@@ -85,15 +85,15 @@ export function createTaskCard(
   }
 
   // Link wrapping note + description
-  const link = document.createElement('a');
+  const link = activeDocument.createElement('a');
   link.className = 'internal-link';
   link.setAttribute('href', filePathNoExt);
 
-  const iconEl = document.createElement('div');
+  const iconEl = activeDocument.createElement('div');
   iconEl.className = 'icon';
   iconEl.textContent = taskIcon;
 
-  const descEl = document.createElement('div');
+  const descEl = activeDocument.createElement('div');
   descEl.className = 'description';
   descEl.dataset['relative'] = relative;
   descEl.textContent = task.text;

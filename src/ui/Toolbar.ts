@@ -115,7 +115,7 @@ export class Toolbar {
       const li = this.statPopup.createEl('li', { attr: { 'data-group': group } });
       li.createEl('span', { cls: 'stat-label', text: label });
       const countSpanEl = li.createEl('span', { cls: 'stat-count', text: '0' });
-      const iconSpan = document.createElement('span');
+      const iconSpan = activeDocument.createElement('span');
       iconSpan.textContent = icon + ' ';
       li.prepend(iconSpan);
       this.statEls[group] = countSpanEl;
@@ -162,7 +162,7 @@ export class Toolbar {
         }
       };
       this.styleCloseHandler = closeHandler;
-      window.setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
+      window.setTimeout(() => activeDocument.addEventListener('mousedown', closeHandler), 0);
     } else {
       this.closeStylePopup();
     }
@@ -171,7 +171,7 @@ export class Toolbar {
   private closeStylePopup(): void {
     this.stylePopup.classList.remove('active');
     if (this.styleCloseHandler) {
-      document.removeEventListener('mousedown', this.styleCloseHandler);
+      activeDocument.removeEventListener('mousedown', this.styleCloseHandler);
       this.styleCloseHandler = null;
     }
   }
@@ -184,12 +184,12 @@ export class Toolbar {
         if (!this.statPopup.contains(e.target as Node) && e.target !== this.statBtn) {
           this.statPopup.classList.remove('active');
           this.statBtn.classList.remove('active');
-          document.removeEventListener('mousedown', closePopup);
+          activeDocument.removeEventListener('mousedown', closePopup);
           this.activeCloseHandler = null;
         }
       };
       this.activeCloseHandler = closePopup;
-      window.setTimeout(() => document.addEventListener('mousedown', closePopup), 0);
+      window.setTimeout(() => activeDocument.addEventListener('mousedown', closePopup), 0);
     }
   }
 
@@ -225,7 +225,7 @@ export class Toolbar {
 
   destroy(): void {
     if (this.activeCloseHandler !== null) {
-      document.removeEventListener('mousedown', this.activeCloseHandler);
+      activeDocument.removeEventListener('mousedown', this.activeCloseHandler);
       this.activeCloseHandler = null;
     }
     this.closeStylePopup();
