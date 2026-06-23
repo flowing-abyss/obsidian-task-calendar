@@ -27,3 +27,6 @@ coverage/
 AGENTS.md
 
 .opencode/
+
+# Dev vault for local testing (not for repo)
+dev-vault/
