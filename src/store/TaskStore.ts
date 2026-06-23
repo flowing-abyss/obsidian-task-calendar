@@ -102,7 +102,7 @@ export class TaskStore {
     for (const item of cache.listItems) {
       if (item.task === undefined) continue;
       // Skip child items — they are parsed as sub-tasks by parseSubItems.
-      // Root-level list items have parent === -1 in Obsidian's cache.
+      // Root-level items have a negative parent (negated line of list start); children have parent ≥ 0
       if (item.parent >= 0) continue;
       const lineIdx = item.position.start.line;
       const rawText = lines[lineIdx] ?? '';

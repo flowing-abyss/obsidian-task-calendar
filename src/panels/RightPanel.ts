@@ -355,10 +355,15 @@ export class RightPanel {
     if (!(file instanceof TFile)) return;
     await this.app.vault.process(file, (data) => {
       const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
-      // Replace text portion only — keep checkbox and metadata
-      lines[task.line] = line.replace(task.text, newText);
+      const taskLine = lines[task.line];
+      if (!taskLine) return data;
+      // Replace text portion only — keep checkbox prefix and trailing metadata
+      const newLine = taskLine.replace(
+        // eslint-disable-next-line sonarjs/super-linear-regex
+        /([-*]\s+\[[ xX]\]\s+)(.+?)(\s+(?:📅|⏰|🔁|#|⏫|🔼|🔽|⬇️|✅|❌).*)?$/,
+        `$1${newText}$3`,
+      );
+      lines[task.line] = newLine;
       return lines.join('\n');
     });
   }
