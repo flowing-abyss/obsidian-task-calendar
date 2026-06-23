@@ -1,23 +1,474 @@
+import { TFile } from 'obsidian';
 import type { App } from 'obsidian';
 import type { AppState } from '../app/AppState';
+import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { TaskStore } from '../store/TaskStore';
+
+type TaskLike = Task | SubTask;
 
 export class RightPanel {
   private el!: HTMLElement;
+  private off?: () => void;
+
   constructor(
     private state: AppState,
     private store: TaskStore,
     private app: App,
   ) {}
+
   mount(container: HTMLElement): void {
     this.el = container;
+    this.off = this.state.on('taskStack', () => this.render());
     this.render();
   }
+
   destroy(): void {
+    this.off?.();
     this.el?.empty();
   }
+
   private render(): void {
     this.el.empty();
-    this.el.createEl('span', { text: 'Right' });
+    const stack = this.state.get('taskStack');
+    if (stack.length === 0) {
+      this.renderEmpty();
+      return;
+    }
+    const task = stack[stack.length - 1]!;
+    this.renderTask(task, stack);
+  }
+
+  private renderEmpty(): void {
+    const empty = this.el.createDiv({ cls: 'tc-right-empty' });
+    empty.createEl('span', { text: 'Select a task to view details' });
+  }
+
+  private renderTask(task: TaskLike, stack: TaskLike[]): void {
+    // Breadcrumb
+    if (stack.length > 1) {
+      const breadcrumb = this.el.createDiv({ cls: 'tc-breadcrumb' });
+      stack.forEach((item, idx) => {
+        if (idx > 0) breadcrumb.createEl('span', { cls: 'tc-breadcrumb-sep', text: ' › ' });
+        const crumb = breadcrumb.createEl('span', {
+          cls: `tc-breadcrumb-item${idx === stack.length - 1 ? ' is-current' : ''}`,
+          text: item.text,
+        });
+        if (idx < stack.length - 1) {
+          crumb.addEventListener('click', () => {
+            this.state.set('taskStack', stack.slice(0, idx + 1));
+          });
+        }
+      });
+    }
+
+    // Header
+    const header = this.el.createDiv({ cls: 'tc-right-header' });
+    const titleInput = header.createEl('input', {
+      cls: 'tc-right-title',
+      attr: { type: 'text', value: task.text },
+    });
+    titleInput.addEventListener('blur', () => {
+      if (titleInput.value !== task.text) {
+        void this.updateTaskTitle(task, titleInput.value);
+      }
+    });
+    titleInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') titleInput.blur();
+      if (e.key === 'Escape') { titleInput.value = task.text; titleInput.blur(); }
+    });
+
+    const headerActions = header.createDiv({ cls: 'tc-right-header-actions' });
+
+    // Open in file button
+    const openBtn = headerActions.createEl('button', {
+      cls: 'tc-right-action-btn',
+      attr: { title: 'Open in file', 'aria-label': 'Open in file' },
+      text: '↗',
+    });
+    openBtn.addEventListener('click', () => { void this.openInFile(task); });
+
+    // Metadata chips
+    if ('due' in task || 'priority' in task) {
+      const t = task;
+      const chips = this.el.createDiv({ cls: 'tc-chips-row' });
+
+      // Date chip
+      this.renderDateChip(chips, t);
+      // Priority chip
+      this.renderPriorityChip(chips, t);
+      // Tag chips
+      const tags = t.rawText.match(/#[\w/-]+/gu) ?? [];
+      for (const tag of tags) {
+        this.renderTagChip(chips, t, tag);
+      }
+      // Add tag
+      const addTagBtn = chips.createEl('button', { cls: 'tc-chip tc-chip-add', text: '+ tag' });
+      addTagBtn.addEventListener('click', () => this.showTagInput(chips, t, addTagBtn));
+    }
+
+    // Divider
+    this.el.createDiv({ cls: 'tc-right-divider' });
+
+    // Description
+    const descSection = this.el.createDiv({ cls: 'tc-right-section' });
+    descSection.createEl('div', { cls: 'tc-right-section-label', text: 'Description' });
+    const descArea = descSection.createEl('textarea', {
+      cls: 'tc-right-desc',
+      attr: { placeholder: 'Add a description…', rows: '3' },
+    });
+    descArea.value = task.description ?? '';
+    descArea.addEventListener('blur', () => {
+      void this.updateDescription(task, descArea.value);
+    });
+
+    // Sub-tasks
+    const subSection = this.el.createDiv({ cls: 'tc-right-section' });
+    const subHeader = subSection.createDiv({ cls: 'tc-right-section-header' });
+    subHeader.createEl('span', { cls: 'tc-right-section-label', text: 'Sub-tasks' });
+    const addSubBtn = subHeader.createEl('button', { cls: 'tc-right-add-btn', text: '+ add' });
+
+    const subList = subSection.createDiv({ cls: 'tc-subtask-list' });
+    for (const sub of task.subtasks ?? []) {
+      this.renderSubTask(subList, sub);
+    }
+
+    addSubBtn.addEventListener('click', () => {
+      const input = subSection.createEl('input', {
+        cls: 'tc-subtask-new-input',
+        attr: { type: 'text', placeholder: 'New sub-task…' },
+      });
+      input.focus();
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && input.value.trim()) {
+          void this.addSubTask(task, input.value.trim());
+        }
+        if (e.key === 'Escape') input.remove();
+      });
+      input.addEventListener('blur', () => {
+        if (input.value.trim()) void this.addSubTask(task, input.value.trim());
+        else input.remove();
+      });
+    });
+
+    // Comments
+    const commentSection = this.el.createDiv({ cls: 'tc-right-section' });
+    commentSection.createEl('div', { cls: 'tc-right-section-label', text: 'Comments' });
+
+    const commentList = commentSection.createDiv({ cls: 'tc-comment-list' });
+    for (const comment of task.comments ?? []) {
+      this.renderComment(commentList, comment);
+    }
+
+    const commentInput = commentSection.createEl('textarea', {
+      cls: 'tc-comment-input',
+      attr: { placeholder: 'Write a comment…', rows: '2' },
+    });
+    const sendBtn = commentSection.createEl('button', { cls: 'tc-comment-send', text: 'Add comment' });
+    sendBtn.addEventListener('click', () => {
+      if (commentInput.value.trim()) {
+        void this.addComment(task, commentInput.value.trim());
+        commentInput.value = '';
+      }
+    });
+  }
+
+  private renderSubTask(container: HTMLElement, sub: SubTask): void {
+    const row = container.createDiv({ cls: 'tc-subtask-row' });
+    const cb = row.createEl('input', {
+      cls: 'tc-task-checkbox',
+      attr: { type: 'checkbox' },
+    });
+    cb.checked = sub.status === 'done';
+    cb.addEventListener('change', (e) => {
+      e.stopPropagation();
+      void this.toggleSubTask(sub);
+    });
+    const label = row.createEl('span', {
+      cls: `tc-subtask-label${sub.status === 'done' ? ' is-done' : ''}`,
+      text: sub.text,
+    });
+    label.addEventListener('click', () => {
+      const stack = this.state.get('taskStack');
+      this.state.set('taskStack', [...stack, sub]);
+    });
+
+    if ((sub.subtasks?.length ?? 0) > 0) {
+      const done = sub.subtasks!.filter((s) => s.status === 'done').length;
+      row.createEl('span', { cls: 'tc-subtask-progress', text: `${done}/${sub.subtasks!.length}` });
+    }
+  }
+
+  private renderComment(container: HTMLElement, comment: TaskComment): void {
+    const row = container.createDiv({ cls: 'tc-comment-row' });
+    row.createEl('span', { cls: 'tc-comment-text', text: comment.text });
+    if (comment.date) {
+      row.createEl('span', { cls: 'tc-comment-date', text: comment.date });
+    }
+  }
+
+  private renderDateChip(container: HTMLElement, task: Task): void {
+    const d = task.due ?? task.scheduled;
+    const chip = container.createEl('button', {
+      cls: `tc-chip${d ? '' : ' tc-chip-empty'}`,
+      text: d ? `📅 ${this.formatDate(d)}` : '📅 Date',
+    });
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.showDatePopover(chip, task);
+    });
+  }
+
+  private renderPriorityChip(container: HTMLElement, task: Task): void {
+    const labels: Record<string, string> = { A: '⏫ High', B: '🔼 Medium', C: 'Priority', D: '🔽 Low' };
+    const chip = container.createEl('button', {
+      cls: `tc-chip${task.priority === 'C' ? ' tc-chip-empty' : ''}`,
+      text: labels[task.priority] ?? 'Priority',
+    });
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.showPriorityPopover(chip, task);
+    });
+  }
+
+  private renderTagChip(container: HTMLElement, task: Task, tag: string): void {
+    const chip = container.createEl('span', { cls: 'tc-chip tc-chip-tag' });
+    chip.createEl('span', { text: tag });
+    const x = chip.createEl('button', { cls: 'tc-chip-remove', text: '×' });
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void this.removeTag(task, tag);
+    });
+  }
+
+  private showDatePopover(anchor: HTMLElement, task: Task): void {
+    const existing = this.el.querySelector('.tc-popover');
+    if (existing) { existing.remove(); return; }
+    const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover' });
+    const input = pop.createEl('input', {
+      cls: 'tc-date-input',
+      attr: { type: 'date', value: task.due ?? task.scheduled ?? '' },
+    });
+    input.addEventListener('change', () => {
+      void this.updateDate(task, input.value);
+      pop.remove();
+    });
+    input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
+    window.setTimeout(() => input.focus(), 0);
+  }
+
+  private showPriorityPopover(anchor: HTMLElement, task: Task): void {
+    const existing = this.el.querySelector('.tc-popover');
+    if (existing) { existing.remove(); return; }
+    const pop = this.el.createDiv({ cls: 'tc-popover tc-priority-popover' });
+    const options: Array<{ value: string; label: string }> = [
+      { value: 'A', label: '⏫ High' },
+      { value: 'B', label: '🔼 Medium' },
+      { value: 'C', label: 'None' },
+      { value: 'D', label: '🔽 Low' },
+    ];
+    for (const opt of options) {
+      const btn = pop.createEl('button', {
+        cls: `tc-priority-option${task.priority === opt.value ? ' is-active' : ''}`,
+        text: opt.label,
+      });
+      btn.addEventListener('click', () => {
+        void this.updatePriority(task, opt.value);
+        pop.remove();
+      });
+    }
+    // Dismiss popover on next click outside — use container element to avoid
+    // direct `document` usage (Obsidian lint rule)
+    window.setTimeout(() => {
+      this.el.addEventListener('click', () => pop.remove(), { once: true });
+    }, 0);
+  }
+
+  private showTagInput(container: HTMLElement, task: Task, _anchor: HTMLElement): void {
+    const input = container.createEl('input', {
+      cls: 'tc-tag-input',
+      attr: { type: 'text', placeholder: '#Tag' },
+    });
+    input.focus();
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && input.value.trim()) {
+        void this.addTag(task, input.value.trim());
+        input.remove();
+      }
+      if (e.key === 'Escape') input.remove();
+    });
+    input.addEventListener('blur', () => window.setTimeout(() => input.remove(), 200));
+  }
+
+  // ---- Write-back helpers ----
+
+  private async openInFile(task: TaskLike): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.openFile(file);
+    const view = leaf.view as { editor?: { setCursor?: (pos: { line: number; ch: number }) => void } };
+    view.editor?.setCursor?.({ line: task.line, ch: 0 });
+  }
+
+  private async updateTaskTitle(task: TaskLike, newText: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      // Replace text portion only — keep checkbox and metadata
+      lines[task.line] = line.replace(task.text, newText);
+      return lines.join('\n');
+    });
+  }
+
+  private async updateDescription(task: TaskLike, newDesc: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const taskLine = lines[task.line];
+      if (!taskLine) return data;
+      const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
+
+      const keepLines: string[] = [];
+      if (task.subtaskRange) {
+        for (let i = 0; i < lines.length; i++) {
+          if (i >= task.subtaskRange.from && i <= task.subtaskRange.to && /^\s*- > /.test(lines[i] ?? '')) {
+            continue;
+          }
+          keepLines.push(lines[i] ?? '');
+        }
+      } else {
+        keepLines.push(...lines);
+      }
+
+      const descLines = newDesc
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => `${indent}- > ${l}`);
+
+      const insertIdx = task.subtaskRange
+        ? task.subtaskRange.from
+        : task.line + 1;
+      keepLines.splice(insertIdx, 0, ...descLines);
+
+      return keepLines.join('\n');
+    });
+  }
+
+  private async addSubTask(task: TaskLike, text: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const taskLine = lines[task.line];
+      if (!taskLine) return data;
+      const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
+      const newLine = `${indent}- [ ] ${text}`;
+      const insertAt = task.subtaskRange ? task.subtaskRange.to + 1 : task.line + 1;
+      lines.splice(insertAt, 0, newLine);
+      return lines.join('\n');
+    });
+  }
+
+  private async toggleSubTask(sub: SubTask): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(sub.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[sub.line];
+      if (!line) return data;
+      if (sub.status === 'open') {
+        lines[sub.line] = line.replace(/- \[ \]/, '- [x]');
+      } else {
+        lines[sub.line] = line.replace(/- \[x\]/i, '- [ ]');
+      }
+      return lines.join('\n');
+    });
+  }
+
+  private async addComment(task: TaskLike, text: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    const today = window.moment().format('YYYY-MM-DD');
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const taskLine = lines[task.line];
+      if (!taskLine) return data;
+      const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
+      const commentLine = `${indent}- ${today}: ${text}`;
+      const insertAt = task.subtaskRange ? task.subtaskRange.to + 1 : task.line + 1;
+      lines.splice(insertAt, 0, commentLine);
+      return lines.join('\n');
+    });
+  }
+
+  private async updateDate(task: Task, date: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      if (task.due) {
+        lines[task.line] = line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${date}`);
+      } else {
+        lines[task.line] = line.trimEnd() + ` 📅 ${date}`;
+      }
+      return lines.join('\n');
+    });
+  }
+
+  private async updatePriority(task: Task, priority: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    const PRIORITY_EMOJIS = ['⏫', '🔼', '🔽'];
+    const PRIORITY_MAP: Record<string, string> = { A: '⏫', B: '🔼', D: '🔽' };
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      let updated = line;
+      for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
+      updated = updated.trimEnd();
+      if (priority !== 'C' && PRIORITY_MAP[priority]) updated += ` ${PRIORITY_MAP[priority]}`;
+      lines[task.line] = updated;
+      return lines.join('\n');
+    });
+  }
+
+  private async removeTag(task: Task, tag: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      lines[task.line] = line.replace(tag, '').replace(/\s{2,}/gu, ' ').trimEnd();
+      return lines.join('\n');
+    });
+  }
+
+  private async addTag(task: Task, tag: string): Promise<void> {
+    const tagStr = tag.startsWith('#') ? tag : `#${tag}`;
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      lines[task.line] = line.trimEnd() + ` ${tagStr}`;
+      return lines.join('\n');
+    });
+  }
+
+  private formatDate(d: string): string {
+    const today = window.moment().format('YYYY-MM-DD');
+    const tomorrow = window.moment().add(1, 'day').format('YYYY-MM-DD');
+    if (d === today) return 'Today';
+    if (d === tomorrow) return 'Tomorrow';
+    return window.moment(d, 'YYYY-MM-DD').format('D MMM');
   }
 }
