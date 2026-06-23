@@ -65,6 +65,142 @@ export class CalendarSettingsTab extends PluginSettingTab {
 
     new Setting(containerEl).setName('Mobile defaults').setHeading();
     this.renderViewConfigSettings(containerEl, 'mobile');
+
+    this.renderTagGroupSettings(containerEl);
+  }
+
+  private renderTagGroupSettings(containerEl: HTMLElement): void {
+    new Setting(containerEl).setName('Tag groups').setHeading();
+
+    new Setting(containerEl)
+      .setName('Inbox source')
+      .setDesc('Show tasks with a specific tag, or all tasks with no tags.')
+      .addDropdown((d) =>
+        d
+          .addOptions({ tag: 'Tag', untagged: 'Untagged tasks' })
+          .setValue(this.plugin.settings.inboxMode)
+          .onChange(async (v) => {
+            this.plugin.settings.inboxMode = v as 'tag' | 'untagged';
+            await this.plugin.saveSettings();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            this.display();
+          }),
+      );
+
+    if (this.plugin.settings.inboxMode === 'tag') {
+      new Setting(containerEl)
+        .setName('Inbox tag')
+        .setDesc('Tasks with this tag appear in inbox.')
+        .addText((t) =>
+          t
+            // eslint-disable-next-line obsidianmd/ui/sentence-case
+            .setPlaceholder('#inbox')
+            .setValue(this.plugin.settings.inboxTag)
+            .onChange(async (v) => {
+              this.plugin.settings.inboxTag = v.trim();
+              await this.plugin.saveSettings();
+            }),
+        );
+    }
+
+    // Render existing groups
+    const groups = this.plugin.settings.tagGroups;
+    for (let idx = 0; idx < groups.length; idx++) {
+      this.renderTagGroupCard(containerEl, idx);
+    }
+
+    new Setting(containerEl).addButton((b) =>
+      b
+        // eslint-disable-next-line obsidianmd/ui/sentence-case
+        .setButtonText('+ Add group')
+        .setCta()
+        .onClick(async () => {
+          this.plugin.settings.tagGroups.push({
+            id: `group-${Date.now()}`,
+            name: 'New group',
+            mode: 'prefix',
+            prefix: '',
+          });
+          await this.plugin.saveSettings();
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
+          this.display();
+        }),
+    );
+  }
+
+  private renderTagGroupCard(containerEl: HTMLElement, idx: number): void {
+    const groups = this.plugin.settings.tagGroups;
+    const group = groups[idx];
+    if (!group) return;
+
+    const card = containerEl.createDiv({ cls: 'tc-settings-group-card' });
+
+    new Setting(card)
+      .setName('Group name')
+      .addText((t) =>
+        t.setValue(group.name).onChange(async (v) => {
+          group.name = v;
+          await this.plugin.saveSettings();
+        }),
+      )
+      .addButton((b) =>
+        b
+          .setIcon('trash')
+          .setTooltip('Delete group')
+          .onClick(async () => {
+            groups.splice(idx, 1);
+            await this.plugin.saveSettings();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            this.display();
+          }),
+      );
+
+    new Setting(card).setName('Mode').addDropdown((d) =>
+      d
+        .addOptions({ prefix: 'Prefix', manual: 'Manual' })
+        .setValue(group.mode)
+        .onChange(async (v) => {
+          group.mode = v as 'prefix' | 'manual';
+          await this.plugin.saveSettings();
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
+          this.display();
+        }),
+    );
+
+    if (group.mode === 'prefix') {
+      new Setting(card)
+        .setName('Prefix')
+        // eslint-disable-next-line obsidianmd/ui/sentence-case
+        .setDesc('e.g. "work" matches #work and #work/dev')
+        .addText((t) =>
+          t
+            // eslint-disable-next-line obsidianmd/ui/sentence-case
+            .setPlaceholder('work')
+            .setValue(group.prefix ?? '')
+            .onChange(async (v) => {
+              group.prefix = v.trim();
+              await this.plugin.saveSettings();
+            }),
+        );
+    } else {
+      new Setting(card)
+        .setName('Tags')
+        // eslint-disable-next-line obsidianmd/ui/sentence-case
+        .setDesc('Comma-separated, e.g. #work, #side-project')
+        .addText((t) =>
+          t
+            // eslint-disable-next-line obsidianmd/ui/sentence-case
+            .setPlaceholder('#work, #side-project')
+            .setValue((group.tags ?? []).join(', '))
+            .onChange(async (v) => {
+              group.tags = v
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
+              await this.plugin.saveSettings();
+            }),
+        );
+    }
   }
 
   private renderViewConfigSettings(container: HTMLElement, platform: 'desktop' | 'mobile'): void {

@@ -1,4 +1,4 @@
-import type { CalendarSettings, ViewConfig } from './types'
+import type { CalendarSettings, ViewConfig } from './types';
 
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   defaultView: 'month',
@@ -11,7 +11,7 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   startPosition: '',
   tag: '',
   folder: '',
-}
+};
 
 export const DEFAULT_SETTINGS: CalendarSettings = {
   desktop: { ...DEFAULT_VIEW_CONFIG },
@@ -19,4 +19,7 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
   taskPrefix: '#task/one-off',
   addToToday: true,
   customFilePath: '',
-}
+  inboxMode: 'untagged',
+  inboxTag: '#inbox',
+  tagGroups: [],
+};
