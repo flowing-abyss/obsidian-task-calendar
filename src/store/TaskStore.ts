@@ -6,8 +6,8 @@ import {
   type EventRef,
   type TAbstractFile,
 } from 'obsidian';
-import { parseTask } from '../parser/TaskParser';
 import { parseSubItems } from '../parser/SubItemParser';
+import { parseTask } from '../parser/TaskParser';
 import type { Task, TaskFilter } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
 
@@ -101,6 +101,9 @@ export class TaskStore {
     const fm = this.frontmatterMap.get(filePath);
     for (const item of cache.listItems) {
       if (item.task === undefined) continue;
+      // Skip child items — they are parsed as sub-tasks by parseSubItems.
+      // Root-level list items have parent === -1 in Obsidian's cache.
+      if (item.parent >= 0) continue;
       const lineIdx = item.position.start.line;
       const rawText = lines[lineIdx] ?? '';
       const task = parseTask(rawText, {

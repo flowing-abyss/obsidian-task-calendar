@@ -1,3 +1,4 @@
+import { setIcon } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import type { Task } from '../parser/types';
 import type { CalendarSettings, TagGroup } from '../settings/types';
@@ -42,7 +43,13 @@ export class LeftPanel {
     this.el.createDiv({ cls: 'tc-left-section' }, (section) => {
       this.renderSmartList(section, 'inbox', 'Inbox', 'inbox', this.countInbox(allTasks));
       this.renderSmartList(section, 'today', 'Today', 'calendar', this.countToday(allTasks, today));
-      this.renderSmartList(section, 'upcoming', 'Upcoming', 'arrow-up-right', this.countUpcoming(allTasks, today));
+      this.renderSmartList(
+        section,
+        'upcoming',
+        'Upcoming',
+        'arrow-up-right',
+        this.countUpcoming(allTasks, today),
+      );
     });
 
     const groups = this.settings.tagGroups;
@@ -68,7 +75,8 @@ export class LeftPanel {
     const row = parent.createDiv({ cls: `tc-left-item${isActive ? ' is-active' : ''}` });
 
     const left = row.createDiv({ cls: 'tc-left-item-left' });
-    left.createEl('span', { cls: `tc-left-icon lucide-${icon}` });
+    const iconEl = left.createEl('span', { cls: 'tc-left-icon' });
+    setIcon(iconEl, icon);
     left.createEl('span', { cls: 'tc-left-label', text: label });
 
     if (count > 0) {
@@ -87,13 +95,17 @@ export class LeftPanel {
       typeof sel === 'object' && sel.type === 'group' && sel.groupId === group.id;
 
     const container = parent.createDiv({ cls: 'tc-tag-group' });
-    const header = container.createDiv({ cls: `tc-tag-group-header${isGroupActive ? ' is-active' : ''}` });
+    const header = container.createDiv({
+      cls: `tc-tag-group-header${isGroupActive ? ' is-active' : ''}`,
+    });
 
     const tags = this.resolveGroupTags(group, allTasks);
-    const isExpanded = isGroupActive || tags.some((t) => {
-      const s = this.state.get('selectedList');
-      return typeof s === 'object' && s.type === 'tag' && s.tag === t;
-    });
+    const isExpanded =
+      isGroupActive ||
+      tags.some((t) => {
+        const s = this.state.get('selectedList');
+        return typeof s === 'object' && s.type === 'tag' && s.tag === t;
+      });
 
     header.createEl('span', {
       cls: `tc-left-icon tc-group-arrow${isExpanded ? ' is-open' : ''}`,
@@ -125,10 +137,15 @@ export class LeftPanel {
             ? tag.replace(`#${group.prefix}/`, '').replace(`#${group.prefix}`, '(root)')
             : tag;
         const tagSel = this.state.get('selectedList');
-        const isTagActive = typeof tagSel === 'object' && tagSel.type === 'tag' && tagSel.tag === tag;
-        const tagCount = allTasks.filter((t) => t.rawText.includes(tag) && t.status === 'open').length;
+        const isTagActive =
+          typeof tagSel === 'object' && tagSel.type === 'tag' && tagSel.tag === tag;
+        const tagCount = allTasks.filter(
+          (t) => t.rawText.includes(tag) && t.status === 'open',
+        ).length;
 
-        const child = children.createDiv({ cls: `tc-left-item tc-tag-child${isTagActive ? ' is-active' : ''}` });
+        const child = children.createDiv({
+          cls: `tc-left-item tc-tag-child${isTagActive ? ' is-active' : ''}`,
+        });
         child.createDiv({ cls: 'tc-left-item-left' }, (l) => {
           l.createEl('span', { cls: 'tc-left-label', text: label });
         });

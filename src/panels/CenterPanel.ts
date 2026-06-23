@@ -221,7 +221,7 @@ export class CenterPanel {
       const done = task.subtasks.filter((s) => s.status === 'done').length;
       pills.createEl('span', {
         cls: 'tc-task-progress',
-        text: `[${done}/${task.subtasks.length}]`,
+        text: `${done}/${task.subtasks.length}`,
       });
     }
 
