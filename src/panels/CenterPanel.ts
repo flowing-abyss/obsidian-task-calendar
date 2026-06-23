@@ -153,12 +153,12 @@ export class CenterPanel {
       }
     }
 
+    let firstGroup = true;
     for (const group of groups) {
       if (group.tasks.length === 0) continue;
-      container.createDiv({
-        cls: 'tc-group-header',
-        text: `${group.label}  ${group.tasks.length}`,
-      });
+      const cls = firstGroup ? 'tc-group-header tc-group-header--first' : 'tc-group-header';
+      container.createDiv({ cls, text: `${group.label}  ${group.tasks.length}` });
+      firstGroup = false;
       for (const task of group.tasks) this.renderTaskCard(container, task);
     }
   }
@@ -212,7 +212,10 @@ export class CenterPanel {
 
     const pills = meta.createDiv({ cls: 'tc-task-pills' });
     const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
-    if (d) {
+    const today = window.moment().format('YYYY-MM-DD');
+    const sel = this.state.get('selectedList');
+    const suppressToday = sel === 'today' && d === today;
+    if (d && !suppressToday) {
       pills.createEl('span', {
         cls: `tc-task-date${this.isOverdue(d) ? ' is-overdue' : ''}`,
         text: this.formatDate(d),
