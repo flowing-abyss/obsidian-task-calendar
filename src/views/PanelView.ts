@@ -48,7 +48,7 @@ export class PanelView extends ItemView {
     const centerEl = layout.createDiv({ cls: 'tc-center' });
     const rightEl = layout.createDiv({ cls: 'tc-right' });
 
-    this.rail = new RailPanel(this.state);
+    this.rail = new RailPanel(this.state, this.app as never);
     this.left = new LeftPanel(this.state, this.store, this.settings);
     this.center = new CenterPanel(this.state, this.store, this.app);
     this.right = new RightPanel(this.state, this.store, this.app);
