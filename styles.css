@@ -1244,8 +1244,17 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 
 /* ---- Left Panel ---- */
+.tc-left-section-header {
+  padding: 12px 16px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  user-select: none;
+}
 .tc-left-section {
-  padding: 8px 0;
+  padding: 4px 0;
 }
 .tc-left-divider {
   height: 1px;
@@ -1402,15 +1411,16 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   font-size: 14px;
 }
 .tc-group-header {
-  padding: 12px 16px 6px;
-  font-size: 11px;
+  padding: 14px 16px 4px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
+  letter-spacing: 0.09em;
+  color: var(--text-faint);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  user-select: none;
 }
 
 /* Task card */
@@ -1419,17 +1429,20 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 8px 16px;
-  border-radius: 6px;
-  margin: 1px 8px;
+  padding: 8px 16px 8px 12px;
   cursor: pointer;
   transition: background 0.1s;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.tc-task-card:last-of-type {
+  border-bottom: none;
 }
 .tc-task-card:hover {
   background: var(--background-modifier-hover);
 }
 .tc-task-card.is-selected {
-  background: var(--background-modifier-active-hover);
+  background: var(--nav-item-background-active, var(--background-modifier-active-hover));
+  border-bottom-color: transparent;
 }
 .tc-task-checkbox {
   margin-top: 2px;
@@ -1479,38 +1492,44 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   font-size: 11px;
   color: var(--text-accent);
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 .tc-task-date.is-overdue {
   color: var(--text-error);
 }
 .tc-task-tag {
   font-size: 11px;
-  color: var(--text-muted);
-  background: var(--background-modifier-hover);
-  padding: 1px 5px;
-  border-radius: 3px;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  padding: 0 5px;
+  border-radius: 10px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
 }
 .tc-task-progress {
   font-size: 11px;
-  color: var(--text-accent);
-  background: hsla(var(--interactive-accent-hsl), 0.1);
-  padding: 1px 6px;
-  border-radius: 8px;
-  font-weight: 500;
+  color: var(--interactive-accent);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 /* Task time badge */
 .tc-task-time {
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: 10.5px;
+  color: var(--text-faint);
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: 600;
   flex-shrink: 0;
-  background: var(--background-secondary);
-  padding: 1px 5px;
-  border-radius: 3px;
-  margin-right: 2px;
+  font-family: var(--font-monospace, monospace);
+  margin-right: 4px;
+  opacity: 0.7;
 }
 
 /* Delete button on task card */
@@ -1546,31 +1565,31 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* Add task bar */
 .tc-add-task-bar {
-  padding: 2px 8px 10px;
+  padding: 0 8px 8px;
   flex-shrink: 0;
+  border-top: 1px solid var(--background-modifier-border);
 }
 .tc-add-task-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border-radius: 0;
   cursor: pointer;
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 13px;
   transition:
     background 0.1s,
     color 0.1s;
 }
 .tc-add-task-trigger:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-muted);
+  color: var(--text-normal);
 }
 .tc-add-task-plus {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
   color: var(--interactive-accent);
-  font-weight: 300;
+  font-weight: 400;
 }
 .tc-quick-capture {
   padding: 4px 4px 6px;
@@ -1617,14 +1636,14 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   user-select: none;
 }
 .tc-right-empty-icon {
-  width: 40px;
-  height: 40px;
-  opacity: 0.25;
-  margin-bottom: 4px;
+  width: 56px;
+  height: 56px;
+  opacity: 0.2;
+  margin-bottom: 8px;
 }
 .tc-right-empty-icon svg {
-  width: 40px;
-  height: 40px;
+  width: 56px;
+  height: 56px;
 }
 .tc-right-empty-title {
   font-size: 14px;

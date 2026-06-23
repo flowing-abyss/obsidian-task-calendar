@@ -41,6 +41,7 @@ export class LeftPanel {
     const today = window.moment().format('YYYY-MM-DD');
 
     this.el.createDiv({ cls: 'tc-left-section' }, (section) => {
+      section.createEl('div', { cls: 'tc-left-section-header', text: 'Lists' });
       this.renderSmartList(section, 'inbox', 'Inbox', 'inbox', this.countInbox(allTasks));
       this.renderSmartList(section, 'today', 'Today', 'calendar', this.countToday(allTasks, today));
       this.renderSmartList(
@@ -56,6 +57,7 @@ export class LeftPanel {
     if (groups.length > 0) {
       this.el.createDiv({ cls: 'tc-left-divider' });
       this.el.createDiv({ cls: 'tc-left-section' }, (section) => {
+        section.createEl('div', { cls: 'tc-left-section-header', text: 'Tags' });
         for (const group of groups) {
           this.renderTagGroup(section, group, allTasks);
         }
