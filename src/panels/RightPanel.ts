@@ -266,8 +266,8 @@ export class RightPanel {
       void this.updateDate(task, input.value);
       pop.remove();
     });
-    input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
-    window.setTimeout(() => input.focus(), 0);
+    input.addEventListener('blur', () => activeWindow.setTimeout(() => pop.remove(), 200));
+    activeWindow.setTimeout(() => input.focus(), 0);
   }
 
   private showPriorityPopover(anchor: HTMLElement, task: Task): void {
@@ -295,7 +295,7 @@ export class RightPanel {
     }
     // Dismiss popover on next click outside — use container element to avoid
     // direct `document` usage (Obsidian lint rule)
-    window.setTimeout(() => {
+    activeWindow.setTimeout(() => {
       this.el.addEventListener('click', () => pop.remove(), { once: true });
     }, 0);
   }
@@ -330,7 +330,7 @@ export class RightPanel {
       }
     });
     input.addEventListener('blur', () =>
-      window.setTimeout(() => {
+      activeWindow.setTimeout(() => {
         input.remove();
         datalist.remove();
       }, 200),
@@ -355,15 +355,12 @@ export class RightPanel {
     if (!(file instanceof TFile)) return;
     await this.app.vault.process(file, (data) => {
       const lines = data.split('\n');
-      const taskLine = lines[task.line];
-      if (!taskLine) return data;
-      // Replace text portion only — keep checkbox prefix and trailing metadata
-      const newLine = taskLine.replace(
-        // eslint-disable-next-line sonarjs/super-linear-regex
-        /([-*]\s+\[[ xX]\]\s+)(.+?)(\s+(?:📅|⏰|🔁|#|⏫|🔼|🔽|⬇️|✅|❌).*)?$/,
-        `$1${newText}$3`,
-      );
-      lines[task.line] = newLine;
+      const line = lines[task.line];
+      if (!line) return data;
+      // Replace only the first occurrence of the exact task.text in the line
+      // task.text is set from the parsed display text, safe to use as literal
+      const escaped = task.text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      lines[task.line] = line.replace(new RegExp(escaped, 'u'), newText);
       return lines.join('\n');
     });
   }
@@ -377,24 +374,22 @@ export class RightPanel {
       if (!taskLine) return data;
       const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
 
-      // Remove existing description lines
       const rangeStart = task.subtaskRange?.from ?? task.line + 1;
       const rangeEnd = task.subtaskRange?.to ?? lines.length - 1;
-      for (let i = rangeStart; i <= rangeEnd; i++) {
-        if (/^\s*- > /.test(lines[i] ?? '')) {
-          lines[i] = '\x00'; // mark for removal
-        }
-      }
 
-      const descLines = newDesc
-        .split('\n')
-        .filter(Boolean)
-        .map((l) => `${indent}- > ${l}`);
+      // Remove existing description lines, keeping track of insertion point
+      const before = lines.slice(0, rangeStart);
+      const inside = lines.slice(rangeStart, rangeEnd + 1).filter((l) => !/^\s*- > /.test(l));
+      const after = lines.slice(rangeEnd + 1);
 
-      // Insert description at beginning of sub-item range
-      lines.splice(rangeStart, 0, ...descLines);
+      const descLines = newDesc.trim()
+        ? newDesc
+            .split('\n')
+            .filter(Boolean)
+            .map((l) => `${indent}- > ${l}`)
+        : [];
 
-      return lines.filter((l) => l !== '\x00').join('\n');
+      return [...before, ...descLines, ...inside, ...after].join('\n');
     });
   }
 
@@ -486,8 +481,11 @@ export class RightPanel {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
+      // Escape the tag for regex use; match the tag not followed by word chars or subtag separator
+      const escaped = tag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      // eslint-disable-next-line sonarjs/super-linear-regex
       lines[task.line] = line
-        .replace(tag, '')
+        .replace(new RegExp(`${escaped}(?![\\w/-])`, 'gu'), '')
         .replace(/\s{2,}/gu, ' ')
         .trimEnd();
       return lines.join('\n');
