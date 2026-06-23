@@ -2169,3 +2169,17 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-modal-body {
   width: 100%;
 }
+
+/* ── Drag-and-drop states ────────────────────────────────── */
+
+.is-dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.is-drag-over {
+  background: var(--background-modifier-hover);
+  outline: 2px dashed var(--color-accent, var(--interactive-accent));
+  outline-offset: -2px;
+  border-radius: 4px;
+}

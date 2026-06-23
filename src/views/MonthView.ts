@@ -8,6 +8,8 @@ export interface MonthViewCallbacks {
   onToggle: (task: Task) => void;
   onCellClick: (date: string) => void;
   onWeekClick: (weekNr: string, year: string) => void;
+  onTaskClick: (task: Task) => void;
+  onDrop: (dragData: string, targetDate: string) => void;
 }
 
 export class MonthView extends BaseView {
@@ -127,9 +129,45 @@ export class MonthView extends BaseView {
     today: string,
   ): void {
     const groups = getTasksForDate(tasks, date, today);
-    renderTaskGroup(container, groups, date, today, (task, cls) =>
-      createTaskCard(task, cls, { onToggle: this.callbacks.onToggle }),
-    );
+    renderTaskGroup(container, groups, date, today, (task, cls) => {
+      const card = createTaskCard(task, cls, { onToggle: this.callbacks.onToggle });
+
+      // Drag source
+      card.setAttribute('draggable', 'true');
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer?.setData('text/plain', `${task.filePath}:::${task.line}`);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+        card.addClass('is-dragging');
+      });
+      card.addEventListener('dragend', () => card.removeClass('is-dragging'));
+
+      // Open modal on click (stop propagation so cell click doesn't fire)
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.callbacks.onTaskClick(task);
+      });
+
+      return card;
+    });
+
+    // Drop target on cellContent
+    container.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      container.addClass('is-drag-over');
+    });
+    container.addEventListener('dragleave', (e) => {
+      // Only remove if leaving the container entirely (not entering a child)
+      if (!container.contains(e.relatedTarget as Node)) {
+        container.removeClass('is-drag-over');
+      }
+    });
+    container.addEventListener('drop', (e) => {
+      e.preventDefault();
+      container.removeClass('is-drag-over');
+      const dragData = e.dataTransfer?.getData('text/plain');
+      if (dragData) this.callbacks.onDrop(dragData, date);
+    });
   }
 
   destroy(): void {

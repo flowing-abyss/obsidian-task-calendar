@@ -1,6 +1,7 @@
 import { Notice, TFile, setIcon, type App } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import type { Task } from '../parser/types';
+import { TaskModal } from '../ui/TaskModal';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { CalendarSettings, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
@@ -17,6 +18,7 @@ export class CenterPanel {
   private calDate = window.moment().date(1);
   private calViewInstance: MonthView | WeekView | ListView | null = null;
   private calUnsubscribe: (() => void) | null = null;
+  private taskModal: TaskModal | null = null;
 
   constructor(
     private state: AppState,
@@ -27,6 +29,7 @@ export class CenterPanel {
 
   mount(container: HTMLElement): void {
     this.el = container;
+    this.taskModal = new TaskModal(this.app);
     this.offs.push(
       this.state.on('selectedList', () => this.render()),
       this.state.on('mode', () => this.render()),
@@ -41,6 +44,7 @@ export class CenterPanel {
   }
 
   destroy(): void {
+    this.taskModal?.close();
     this.offs.forEach((f) => f());
     this.destroyCalendarView();
     this.el?.empty();
@@ -106,12 +110,18 @@ export class CenterPanel {
   private renderCalendarMode(): void {
     const nav = this.el.createDiv({ cls: 'tc-cal-nav' });
 
-    const prevBtn = nav.createEl('button', { cls: 'tc-cal-nav-btn', attr: { 'aria-label': 'Previous' } });
+    const prevBtn = nav.createEl('button', {
+      cls: 'tc-cal-nav-btn',
+      attr: { 'aria-label': 'Previous' },
+    });
     setIcon(prevBtn, 'chevron-left');
 
     const titleEl = nav.createEl('span', { cls: 'tc-cal-nav-title' });
 
-    const nextBtn = nav.createEl('button', { cls: 'tc-cal-nav-btn', attr: { 'aria-label': 'Next' } });
+    const nextBtn = nav.createEl('button', {
+      cls: 'tc-cal-nav-btn',
+      attr: { 'aria-label': 'Next' },
+    });
     setIcon(nextBtn, 'chevron-right');
 
     const todayBtn = nav.createEl('button', { cls: 'tc-cal-nav-today', text: 'Today' });
@@ -150,6 +160,14 @@ export class CenterPanel {
     };
     updateTitle();
 
+    const handleTaskClick = (t: Task): void => {
+      this.taskModal?.open(t);
+    };
+
+    const handleDrop = (dragData: string, targetDate: string): void => {
+      void this.rescheduleTask(dragData, targetDate);
+    };
+
     const mountView = (): void => {
       this.calViewInstance?.destroy();
       viewContainer.setAttribute('view', this.calViewType);
@@ -160,22 +178,36 @@ export class CenterPanel {
       };
       if (this.calViewType === 'month') {
         this.calViewInstance = new MonthView({
-          onToggle: (t) => { void this.store.toggleTask(t); },
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
           onCellClick: () => {},
           onWeekClick: (wk, yr) => {
             this.calViewType = 'week';
-            this.calDate = window.moment().isoWeekYear(parseInt(yr, 10)).isoWeek(parseInt(wk, 10)).startOf('isoWeek');
+            this.calDate = window
+              .moment()
+              .isoWeekYear(parseInt(yr, 10))
+              .isoWeek(parseInt(wk, 10))
+              .startOf('isoWeek');
             this.render();
           },
+          onTaskClick: handleTaskClick,
+          onDrop: handleDrop,
         });
       } else if (this.calViewType === 'week') {
         this.calViewInstance = new WeekView({
-          onToggle: (t) => { void this.store.toggleTask(t); },
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
           onCellClick: () => {},
+          onTaskClick: handleTaskClick,
+          onDrop: handleDrop,
         });
       } else {
         this.calViewInstance = new ListView({
-          onToggle: (t) => { void this.store.toggleTask(t); },
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
           onDateClick: () => {},
         });
       }
@@ -205,9 +237,8 @@ export class CenterPanel {
     });
 
     todayBtn.addEventListener('click', () => {
-      this.calDate = this.calViewType === 'week'
-        ? window.moment().startOf('isoWeek')
-        : window.moment().date(1);
+      this.calDate =
+        this.calViewType === 'week' ? window.moment().startOf('isoWeek') : window.moment().date(1);
       updateTitle();
       mountView();
     });
@@ -573,5 +604,34 @@ export class CenterPanel {
 
   private isOverdue(d: string): boolean {
     return d < window.moment().format('YYYY-MM-DD');
+  }
+
+  private async rescheduleTask(dragData: string, targetDate: string): Promise<void> {
+    const parts = dragData.split(':::');
+    if (parts.length < 2) return;
+    const [filePath, lineStr] = parts;
+    const line = parseInt(lineStr ?? '0', 10);
+    if (!filePath || isNaN(line)) return;
+
+    const task = this.store.getTasks().find((t) => t.filePath === filePath && t.line === line);
+    if (!task) return;
+
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!(file instanceof TFile)) return;
+
+    await this.app.vault.process(file, (content) => {
+      const lines = content.split('\n');
+      const taskLine = lines[line];
+      if (!taskLine) return content;
+
+      if (task.due) {
+        lines[line] = taskLine.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${targetDate}`);
+      } else if (task.scheduled) {
+        lines[line] = taskLine.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${targetDate}`);
+      } else {
+        lines[line] = taskLine.trimEnd() + ` 📅 ${targetDate}`;
+      }
+      return lines.join('\n');
+    });
   }
 }

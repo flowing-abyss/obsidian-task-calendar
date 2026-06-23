@@ -156,11 +156,15 @@ export class CalendarRenderer {
           onToggle: cb.onToggle,
           onCellClick: cb.onCellClick,
           onWeekClick: cb.onWeekClick,
+          onTaskClick: () => {},
+          onDrop: () => {},
         });
       } else if (this.activeViewType === 'week') {
         this.activeView = new WeekView({
           onToggle: cb.onToggle,
           onCellClick: cb.onCellClick,
+          onTaskClick: () => {},
+          onDrop: () => {},
         });
       } else {
         this.activeView = new ListView({

@@ -7,6 +7,8 @@ import { getTasksForDate, renderTaskGroup } from './taskGrouping';
 export interface WeekViewCallbacks {
   onToggle: (task: Task) => void;
   onCellClick: (date: string) => void;
+  onTaskClick: (task: Task) => void;
+  onDrop: (dragData: string, targetDate: string) => void;
 }
 
 export class WeekView extends BaseView {
@@ -50,9 +52,41 @@ export class WeekView extends BaseView {
 
       const cellContent = cell.createDiv('cellContent');
       const groups = getTasksForDate(tasks, currentDate, today);
-      renderTaskGroup(cellContent, groups, currentDate, today, (task, cls) =>
-        createTaskCard(task, cls, { onToggle: this.callbacks.onToggle }),
-      );
+      renderTaskGroup(cellContent, groups, currentDate, today, (task, cls) => {
+        const card = createTaskCard(task, cls, { onToggle: this.callbacks.onToggle });
+
+        card.setAttribute('draggable', 'true');
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer?.setData('text/plain', `${task.filePath}:::${task.line}`);
+          if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+          card.addClass('is-dragging');
+        });
+        card.addEventListener('dragend', () => card.removeClass('is-dragging'));
+
+        card.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.callbacks.onTaskClick(task);
+        });
+
+        return card;
+      });
+
+      cellContent.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        cellContent.addClass('is-drag-over');
+      });
+      cellContent.addEventListener('dragleave', (e) => {
+        if (!cellContent.contains(e.relatedTarget as Node)) {
+          cellContent.removeClass('is-drag-over');
+        }
+      });
+      cellContent.addEventListener('drop', (e) => {
+        e.preventDefault();
+        cellContent.removeClass('is-drag-over');
+        const dragData = e.dataTransfer?.getData('text/plain');
+        if (dragData) this.callbacks.onDrop(dragData, currentDate);
+      });
 
       cell.addEventListener('click', (e) => {
         if ((e.target as HTMLElement).closest('.task')) return;
