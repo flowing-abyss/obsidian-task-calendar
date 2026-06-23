@@ -1,10 +1,10 @@
 import { Notice, TFile, setIcon, type App } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import type { Task } from '../parser/types';
-import { TaskModal } from '../ui/TaskModal';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { CalendarSettings, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
+import { TaskModal } from '../ui/TaskModal';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
@@ -624,13 +624,21 @@ export class CenterPanel {
       const taskLine = lines[line];
       if (!taskLine) return content;
 
+      let updated: string;
       if (task.due) {
-        lines[line] = taskLine.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${targetDate}`);
+        updated = taskLine.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${targetDate}`);
       } else if (task.scheduled) {
-        lines[line] = taskLine.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${targetDate}`);
+        updated = taskLine.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${targetDate}`);
       } else {
-        lines[line] = taskLine.trimEnd() + ` 📅 ${targetDate}`;
+        updated = taskLine.trimEnd() + ` 📅 ${targetDate}`;
       }
+
+      if (updated === taskLine && (task.due || task.scheduled)) {
+        // Regex didn't match — task likely shifted lines; abort silently with no-op
+        return content;
+      }
+
+      lines[line] = updated;
       return lines.join('\n');
     });
   }

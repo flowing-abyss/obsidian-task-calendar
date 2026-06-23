@@ -8,6 +8,7 @@ export class LeftPanel {
   private el!: HTMLElement;
   private offs: Array<() => void> = [];
   private expandedGroups = new Set<string>();
+  private explicitlyCollapsed = new Set<string>();
 
   constructor(
     private state: AppState,
@@ -100,11 +101,13 @@ export class LeftPanel {
     const tags = this.resolveGroupTags(group, allTasks);
 
     // Auto-expand when a child tag of this group is currently selected
-    const hasActiveChild = tags.some((t) => {
-      const s = this.state.get('selectedList');
-      return typeof s === 'object' && s.type === 'tag' && s.tag === t;
-    });
-    if (hasActiveChild) this.expandedGroups.add(group.id);
+    const hasActiveChild = tags.some(
+      (t) => typeof sel === 'object' && sel.type === 'tag' && sel.tag === t,
+    );
+    // Auto-expand when a child is active, UNLESS the user explicitly collapsed this group
+    if (hasActiveChild && !this.explicitlyCollapsed.has(group.id)) {
+      this.expandedGroups.add(group.id);
+    }
 
     const isExpanded = this.expandedGroups.has(group.id);
 
@@ -137,8 +140,10 @@ export class LeftPanel {
       if (isExpanded) {
         // Collapse — keep selection but close the tree
         this.expandedGroups.delete(group.id);
+        this.explicitlyCollapsed.add(group.id);
       } else {
         // Expand + select the group
+        this.explicitlyCollapsed.delete(group.id); // remove explicit-collapse when user re-expands
         this.expandedGroups.add(group.id);
         this.state.set('selectedList', { type: 'group', groupId: group.id });
         this.state.set('mode', 'tasks');
@@ -151,9 +156,7 @@ export class LeftPanel {
       for (const tag of tags) {
         // Strip the group prefix from display label: #work/dev → dev
         const label =
-          group.mode === 'prefix' && group.prefix
-            ? tag.replace(`#${group.prefix}/`, '')
-            : tag;
+          group.mode === 'prefix' && group.prefix ? tag.replace(`#${group.prefix}/`, '') : tag;
 
         const tagSel = this.state.get('selectedList');
         const isTagActive =

@@ -172,7 +172,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
     colorRow.createEl('span', { text: 'Color', cls: 'tc-setting-label' });
     const colorInput = colorRow.createEl('input', {
       attr: { type: 'color', value: group.color ?? '#888888' },
-    }) as HTMLInputElement;
+    });
     colorInput.addEventListener('change', () => {
       group.color = colorInput.value;
       void this.plugin.saveSettings();

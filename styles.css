@@ -1249,7 +1249,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--icon-color);
   cursor: pointer;
   padding: 0;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 .tc-rail-btn:hover {
   background: var(--background-modifier-hover);
@@ -2156,7 +2158,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--modal-scrim-background, rgba(0, 0, 0, 0.45));
   z-index: 1000;
   display: flex;
   align-items: center;

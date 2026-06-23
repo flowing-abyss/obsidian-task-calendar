@@ -16,6 +16,7 @@ export class PanelView extends ItemView {
   private center!: CenterPanel;
   private right!: RightPanel;
   private storeUnsub?: () => void;
+  private modeUnsub?: () => void;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -59,7 +60,7 @@ export class PanelView extends ItemView {
     this.right.mount(rightEl);
 
     // Update layout class whenever mode changes
-    this.state.on('mode', (mode) => {
+    this.modeUnsub = this.state.on('mode', (mode) => {
       layout.className = `tc-layout tc-layout--${mode}`;
     });
 
@@ -71,6 +72,7 @@ export class PanelView extends ItemView {
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async onClose(): Promise<void> {
+    this.modeUnsub?.();
     this.storeUnsub?.();
     this.rail?.destroy();
     this.left?.destroy();
