@@ -235,7 +235,10 @@ export class RightPanel {
   private renderComment(container: HTMLElement, comment: TaskComment): void {
     const row = container.createDiv({ cls: 'tc-comment-row' });
     if (comment.date) {
-      row.createEl('span', { cls: 'tc-comment-date', text: comment.date });
+      const m = window.moment(comment.date, 'YYYY-MM-DD');
+      const diff = m.diff(window.moment(), 'days');
+      const label = Math.abs(diff) < 7 ? m.fromNow() : m.format('D MMM YYYY');
+      row.createEl('span', { cls: 'tc-comment-date', text: label });
     }
     row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
   }
