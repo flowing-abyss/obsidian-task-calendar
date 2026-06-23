@@ -273,12 +273,15 @@ export class RightPanel {
     });
   }
 
+  private clearPopovers(): void {
+    this.el.querySelectorAll('.tc-popover').forEach((el) => el.remove());
+  }
+
   private showDatePopover(anchor: HTMLElement, task: Task): void {
-    const existing = this.el.querySelector('.tc-popover');
-    if (existing) {
-      existing.remove();
-      return;
-    }
+    const already = this.el.querySelector('.tc-date-popover');
+    this.clearPopovers();
+    if (already) return;
+
     const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover' });
     const input = pop.createEl('input', {
       cls: 'tc-date-input',
@@ -293,11 +296,10 @@ export class RightPanel {
   }
 
   private showPriorityPopover(anchor: HTMLElement, task: Task): void {
-    const existing = this.el.querySelector('.tc-popover');
-    if (existing) {
-      existing.remove();
-      return;
-    }
+    const already = this.el.querySelector('.tc-priority-popover');
+    this.clearPopovers();
+    if (already) return;
+
     const pop = this.el.createDiv({ cls: 'tc-popover tc-priority-popover' });
     const options: Array<{ value: string; label: string }> = [
       { value: 'A', label: '⏫ High' },
@@ -397,7 +399,7 @@ export class RightPanel {
       const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
 
       const rangeStart = task.subtaskRange?.from ?? task.line + 1;
-      const rangeEnd = task.subtaskRange?.to ?? lines.length - 1;
+      const rangeEnd = task.subtaskRange?.to ?? task.line; // clamp: no children = empty range
 
       // Remove existing description lines, keeping track of insertion point
       const before = lines.slice(0, rangeStart);
@@ -528,21 +530,19 @@ export class RightPanel {
   }
 
   private showTimePopover(anchor: HTMLElement, task: Task): void {
-    const existing = this.el.querySelector('.tc-time-popover');
-    if (existing) {
-      existing.remove();
-      return;
-    }
+    const already = this.el.querySelector('.tc-time-popover');
+    this.clearPopovers();
+    if (already) return;
 
     const pop = this.el.createEl('div', { cls: 'tc-popover tc-time-popover' });
     const input = pop.createEl('input', {
       attr: { type: 'time', value: task.time ?? '' },
-    }) as HTMLInputElement;
+    });
     input.focus();
     input.addEventListener('change', () => {
       void this.updateTime(task, input.value).then(() => pop.remove());
     });
-    input.addEventListener('blur', () => activeWindow.setTimeout(() => pop.remove(), 200));
+    input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
     anchor.after(pop);
   }
 
@@ -553,7 +553,7 @@ export class RightPanel {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
-      // eslint-disable-next-line sonarjs/super-linear-regex
+
       const cleaned = line.replace(/⏰\s*\d{1,2}:\d{2}/gu, '').replace(/\s{2,}/gu, ' ');
       lines[task.line] = time ? `${cleaned.trimEnd()} ⏰ ${time}` : cleaned.trim();
       return lines.join('\n');
