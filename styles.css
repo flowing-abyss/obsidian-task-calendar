@@ -354,15 +354,21 @@ body:not(.is-mobile) .tasksCalendar .cellName:hover {
   opacity: 1;
 }
 .tasksCalendar .task {
-  overflow: hidden;
-  padding: 1px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 4px;
   background: var(--task-background);
   border-radius: 3px;
-  overflow: hidden;
   margin: 1px 1px 2px 1px;
-  font-size: 14px;
+  font-size: var(--font-smallest, 11px);
+  line-height: 1.4;
   opacity: 0.8;
-  display: block;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 body.theme-dark .tasksCalendar .task {
   color: var(--light-task-text-color);
@@ -378,6 +384,13 @@ body.theme-light .tasksCalendar .task .note {
 }
 body:not(.is-mobile) .tasksCalendar .task:hover {
   opacity: 1;
+  background: var(--background-modifier-hover);
+}
+.tasksCalendar .task[draggable='true'] {
+  cursor: grab;
+}
+.tasksCalendar .task.overdue {
+  color: var(--color-red, #e74c3c);
 }
 .tasksCalendar .task.hide {
   opacity: 0.2;
@@ -1236,15 +1249,15 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--icon-color);
   cursor: pointer;
   padding: 0;
-  transition: background 0.1s;
+  transition: background 0.1s, color 0.1s;
 }
 .tc-rail-btn:hover {
   background: var(--background-modifier-hover);
-  color: var(--icon-color-hover);
+  color: var(--icon-color-active);
 }
 .tc-rail-btn.is-active {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
+  background: var(--background-modifier-active-hover);
+  color: var(--icon-color-active);
 }
 .tc-rail-btn svg {
   width: 18px;
@@ -1277,6 +1290,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   border-radius: 6px;
   margin: 1px 6px;
   cursor: pointer;
+  transition: background 0.1s;
   user-select: none;
   color: var(--nav-item-color);
   font-size: 13.5px;
@@ -1333,6 +1347,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   padding: 5px 12px 5px 12px;
   border-radius: 6px;
   cursor: pointer;
+  transition: background 0.1s;
   user-select: none;
   color: var(--nav-item-color);
   font-size: 13.5px;
@@ -1343,6 +1358,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-tag-group-header.is-active {
   background: var(--nav-item-background-active);
+  font-weight: 600;
 }
 .tc-group-arrow {
   font-size: 10px;
