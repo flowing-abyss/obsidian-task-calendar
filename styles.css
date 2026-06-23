@@ -17,6 +17,14 @@
   font-family: var(--font-interface);
 }
 
+/* Layout mode modifiers — hide panels depending on active mode */
+.tc-layout--calendar .tc-left,
+.tc-layout--calendar .tc-right,
+.tc-layout--search .tc-left,
+.tc-layout--search .tc-right {
+  display: none;
+}
+
 /* Rail */
 .tc-rail {
   width: 48px;

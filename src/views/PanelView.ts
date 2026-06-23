@@ -42,7 +42,7 @@ export class PanelView extends ItemView {
 
     this.state = new AppState();
 
-    const layout = this.contentEl.createDiv({ cls: 'tc-layout' });
+    const layout = this.contentEl.createDiv({ cls: 'tc-layout tc-layout--tasks' });
     const railEl = layout.createDiv({ cls: 'tc-rail' });
     const leftEl = layout.createDiv({ cls: 'tc-left' });
     const centerEl = layout.createDiv({ cls: 'tc-center' });
@@ -57,6 +57,11 @@ export class PanelView extends ItemView {
     this.left.mount(leftEl);
     this.center.mount(centerEl);
     this.right.mount(rightEl);
+
+    // Update layout class whenever mode changes
+    this.state.on('mode', (mode) => {
+      layout.className = `tc-layout tc-layout--${mode}`;
+    });
 
     this.storeUnsub = this.store.onUpdate(() => {
       this.left.refresh();
