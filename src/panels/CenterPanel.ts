@@ -1,15 +1,22 @@
-import { Notice, TFile, type App } from 'obsidian';
+import { Notice, TFile, setIcon, type App } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import type { Task } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { CalendarSettings, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
-import { CalendarRenderer } from '../ui/CalendarRenderer';
+import { ListView } from '../views/ListView';
+import { MonthView } from '../views/MonthView';
+import { WeekView } from '../views/WeekView';
+
+type CalViewType = 'month' | 'week' | 'list';
 
 export class CenterPanel {
   private el!: HTMLElement;
   private offs: Array<() => void> = [];
-  private calendarRenderer: CalendarRenderer | null = null;
+  private calViewType: CalViewType = 'month';
+  private calDate = window.moment().date(1);
+  private calViewInstance: MonthView | WeekView | ListView | null = null;
+  private calUnsubscribe: (() => void) | null = null;
 
   constructor(
     private state: AppState,
@@ -35,36 +42,30 @@ export class CenterPanel {
 
   destroy(): void {
     this.offs.forEach((f) => f());
-    this.destroyCalendar();
+    this.destroyCalendarView();
     this.el?.empty();
   }
 
-  private destroyCalendar(): void {
-    if (this.calendarRenderer) {
-      this.calendarRenderer.destroy();
-      this.calendarRenderer = null;
-    }
+  private destroyCalendarView(): void {
+    this.calUnsubscribe?.();
+    this.calUnsubscribe = null;
+    this.calViewInstance?.destroy();
+    this.calViewInstance = null;
   }
 
   private render(): void {
     const mode = this.state.get('mode');
 
     if (mode === 'calendar') {
-      this.destroyCalendar();
       this.el.empty();
       this.el.addClass('tc-center--calendar');
-      const config: ResolvedConfig = {
-        ...DEFAULT_VIEW_CONFIG,
-        ...this.settings.desktop,
-        isMobile: false,
-      };
-      this.calendarRenderer = new CalendarRenderer(this.el, this.store, config, this.app);
-      this.calendarRenderer.mount();
+      this.destroyCalendarView();
+      this.renderCalendarMode();
       return;
     }
 
     this.el.removeClass('tc-center--calendar');
-    this.destroyCalendar();
+    this.destroyCalendarView();
     this.el.empty();
 
     if (mode === 'search') {
@@ -100,6 +101,118 @@ export class CenterPanel {
     }
 
     this.renderAddTaskBar();
+  }
+
+  private renderCalendarMode(): void {
+    const nav = this.el.createDiv({ cls: 'tc-cal-nav' });
+
+    const prevBtn = nav.createEl('button', { cls: 'tc-cal-nav-btn', attr: { 'aria-label': 'Previous' } });
+    setIcon(prevBtn, 'chevron-left');
+
+    const titleEl = nav.createEl('span', { cls: 'tc-cal-nav-title' });
+
+    const nextBtn = nav.createEl('button', { cls: 'tc-cal-nav-btn', attr: { 'aria-label': 'Next' } });
+    setIcon(nextBtn, 'chevron-right');
+
+    const todayBtn = nav.createEl('button', { cls: 'tc-cal-nav-today', text: 'Today' });
+
+    const viewSwitcher = nav.createDiv({ cls: 'tc-cal-view-switcher' });
+    for (const v of ['month', 'week', 'list'] as CalViewType[]) {
+      const btn = viewSwitcher.createEl('button', {
+        cls: `tc-cal-view-btn${this.calViewType === v ? ' is-active' : ''}`,
+        text: v.charAt(0).toUpperCase() + v.slice(1),
+      });
+      btn.addEventListener('click', () => {
+        this.calViewType = v;
+        if (v === 'week') this.calDate = window.moment().startOf('isoWeek');
+        else this.calDate = window.moment().date(1);
+        this.render();
+      });
+    }
+
+    const calStyle = this.settings.desktop.style ?? 'style1';
+    const viewContainer = this.el.createDiv({ cls: `tc-cal-body tasksCalendar ${calStyle}` });
+    viewContainer.setAttribute('view', this.calViewType);
+
+    const config: ResolvedConfig = {
+      ...DEFAULT_VIEW_CONFIG,
+      ...this.settings.desktop,
+      isMobile: false,
+      startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
+    };
+
+    const updateTitle = (): void => {
+      if (this.calViewType === 'week') {
+        titleEl.textContent = `Week ${this.calDate.format('w')} · ${this.calDate.format('YYYY')}`;
+      } else {
+        titleEl.textContent = this.calDate.format('MMMM YYYY');
+      }
+    };
+    updateTitle();
+
+    const mountView = (): void => {
+      this.calViewInstance?.destroy();
+      viewContainer.setAttribute('view', this.calViewType);
+      const tasks = this.store.getTasks();
+      const cfg: ResolvedConfig = {
+        ...config,
+        startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
+      };
+      if (this.calViewType === 'month') {
+        this.calViewInstance = new MonthView({
+          onToggle: (t) => { void this.store.toggleTask(t); },
+          onCellClick: () => {},
+          onWeekClick: (wk, yr) => {
+            this.calViewType = 'week';
+            this.calDate = window.moment().isoWeekYear(parseInt(yr, 10)).isoWeek(parseInt(wk, 10)).startOf('isoWeek');
+            this.render();
+          },
+        });
+      } else if (this.calViewType === 'week') {
+        this.calViewInstance = new WeekView({
+          onToggle: (t) => { void this.store.toggleTask(t); },
+          onCellClick: () => {},
+        });
+      } else {
+        this.calViewInstance = new ListView({
+          onToggle: (t) => { void this.store.toggleTask(t); },
+          onDateClick: () => {},
+        });
+      }
+      this.calViewInstance.render(viewContainer, tasks, cfg);
+    };
+
+    mountView();
+
+    prevBtn.addEventListener('click', () => {
+      if (this.calViewType === 'week') {
+        this.calDate = window.moment(this.calDate).subtract(7, 'days').startOf('isoWeek');
+      } else {
+        this.calDate = window.moment(this.calDate).subtract(1, 'months').date(1);
+      }
+      updateTitle();
+      mountView();
+    });
+
+    nextBtn.addEventListener('click', () => {
+      if (this.calViewType === 'week') {
+        this.calDate = window.moment(this.calDate).add(7, 'days').startOf('isoWeek');
+      } else {
+        this.calDate = window.moment(this.calDate).add(1, 'months').date(1);
+      }
+      updateTitle();
+      mountView();
+    });
+
+    todayBtn.addEventListener('click', () => {
+      this.calDate = this.calViewType === 'week'
+        ? window.moment().startOf('isoWeek')
+        : window.moment().date(1);
+      updateTitle();
+      mountView();
+    });
+
+    this.calUnsubscribe = this.store.onUpdate(() => mountView());
   }
 
   private renderSearch(): void {

@@ -1633,13 +1633,80 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 /* Calendar mode */
 .tc-center--calendar {
   overflow: hidden;
-}
-.tc-center--calendar > span {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+}
+
+/* Panel calendar nav bar */
+.tc-cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.tc-cal-nav-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--icon-color);
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tc-cal-nav-btn:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-cal-nav-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+  flex: 1;
+  text-align: center;
+}
+.tc-cal-nav-today {
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.tc-cal-nav-today:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+.tc-cal-view-switcher {
+  display: flex;
+  gap: 2px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 2px;
+}
+.tc-cal-view-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.tc-cal-view-btn.is-active {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-weight: 500;
+}
+.tc-cal-body {
+  flex: 1;
   overflow: auto;
+  min-height: 0;
+  padding: 8px 0;
 }
 
 /* ---- Right Panel ---- */
