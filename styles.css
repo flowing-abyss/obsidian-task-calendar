@@ -2134,3 +2134,38 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   left: 0;
   z-index: 50;
 }
+
+/* ── Task Modal ──────────────────────────────────────────── */
+
+.tc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tc-modal {
+  position: relative;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l, 8px);
+  width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-l);
+}
+
+.tc-modal-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+}
+
+/* Modal body reuses tc-right panel styles — no extra CSS needed */
+.tc-modal-body {
+  width: 100%;
+}
