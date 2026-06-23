@@ -266,8 +266,8 @@ export class RightPanel {
       void this.updateDate(task, input.value);
       pop.remove();
     });
-    input.addEventListener('blur', () => activeWindow.setTimeout(() => pop.remove(), 200));
-    activeWindow.setTimeout(() => input.focus(), 0);
+    input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
+    window.setTimeout(() => input.focus(), 0);
   }
 
   private showPriorityPopover(anchor: HTMLElement, task: Task): void {
@@ -295,7 +295,7 @@ export class RightPanel {
     }
     // Dismiss popover on next click outside — use container element to avoid
     // direct `document` usage (Obsidian lint rule)
-    activeWindow.setTimeout(() => {
+    window.setTimeout(() => {
       this.el.addEventListener('click', () => pop.remove(), { once: true });
     }, 0);
   }
@@ -330,7 +330,7 @@ export class RightPanel {
       }
     });
     input.addEventListener('blur', () =>
-      activeWindow.setTimeout(() => {
+      window.setTimeout(() => {
         input.remove();
         datalist.remove();
       }, 200),
@@ -483,7 +483,7 @@ export class RightPanel {
       if (!line) return data;
       // Escape the tag for regex use; match the tag not followed by word chars or subtag separator
       const escaped = tag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-      // eslint-disable-next-line sonarjs/super-linear-regex
+
       lines[task.line] = line
         .replace(new RegExp(`${escaped}(?![\\w/-])`, 'gu'), '')
         .replace(/\s{2,}/gu, ' ')

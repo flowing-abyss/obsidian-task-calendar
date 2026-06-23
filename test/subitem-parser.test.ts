@@ -77,11 +77,7 @@ describe('parseSubItems', () => {
   });
 
   it('parses nested sub-tasks recursively', () => {
-    const lines = [
-      '- [ ] Root',
-      '  - [ ] Child',
-      '    - [ ] Grandchild',
-    ];
+    const lines = ['- [ ] Root', '  - [ ] Child', '    - [ ] Grandchild'];
     const r = parseSubItems(lines, 0, FILE);
     expect(r.subtasks).toHaveLength(1);
     expect(r.subtasks[0]?.subtasks).toHaveLength(1);

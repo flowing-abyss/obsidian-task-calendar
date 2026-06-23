@@ -44,7 +44,8 @@ describe('AppState', () => {
 
   it('multiple listeners on same key all fire', () => {
     const s = new AppState();
-    const a = vi.fn(); const b = vi.fn();
+    const a = vi.fn();
+    const b = vi.fn();
     s.on('centerFilter', a);
     s.on('centerFilter', b);
     s.set('centerFilter', 'hello');

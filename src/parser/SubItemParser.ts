@@ -63,7 +63,10 @@ export function parseSubItems(
   while (i < lines.length) {
     const line = lines[i];
     if (line === undefined) break;
-    if (line.trim() === '') { i++; continue; }
+    if (line.trim() === '') {
+      i++;
+      continue;
+    }
 
     const lineIndent = getIndent(line);
     if (lineIndent <= taskIndent) break;
@@ -89,7 +92,11 @@ export function parseSubItems(
 
     const commentDateMatch = COMMENT_DATE_RE.exec(line);
     if (commentDateMatch) {
-      comments.push({ line: i, date: commentDateMatch[2], text: (commentDateMatch[3] ?? '').trim() });
+      comments.push({
+        line: i,
+        date: commentDateMatch[2],
+        text: (commentDateMatch[3] ?? '').trim(),
+      });
       i++;
       continue;
     }

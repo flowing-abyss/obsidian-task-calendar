@@ -1,5 +1,4 @@
-import type { Task } from '../parser/types';
-import type { SubTask } from '../parser/types';
+import type { SubTask, Task } from '../parser/types';
 
 export type ViewMode = 'tasks' | 'calendar' | 'search';
 
@@ -41,7 +40,7 @@ export class AppState {
     this.data[key] = value;
     const bucket = this.listeners.get(key);
     if (bucket) {
-      for (const cb of bucket) cb(value as unknown, prev as unknown);
+      for (const cb of bucket) cb(value, prev);
     }
   }
 
@@ -49,6 +48,8 @@ export class AppState {
     if (!this.listeners.has(key)) this.listeners.set(key, new Set());
     const bucket = this.listeners.get(key)!;
     bucket.add(listener as Listener<unknown>);
-    return () => { bucket.delete(listener as Listener<unknown>); };
+    return () => {
+      bucket.delete(listener as Listener<unknown>);
+    };
   }
 }
