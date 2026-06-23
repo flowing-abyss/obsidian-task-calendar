@@ -1,5 +1,5 @@
 import type { App } from 'obsidian';
-import { TFile } from 'obsidian';
+import { TFile, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 
@@ -38,7 +38,13 @@ export class RightPanel {
 
   private renderEmpty(): void {
     const empty = this.el.createDiv({ cls: 'tc-right-empty' });
-    empty.createEl('span', { text: 'Select a task to view details' });
+    const icon = empty.createDiv({ cls: 'tc-right-empty-icon' });
+    setIcon(icon, 'mouse-pointer-click');
+    empty.createEl('p', { cls: 'tc-right-empty-title', text: 'No task selected' });
+    empty.createEl('p', {
+      cls: 'tc-right-empty-hint',
+      text: 'Click a task to view and edit details',
+    });
   }
 
   private renderTask(task: TaskLike, stack: TaskLike[]): void {
@@ -228,10 +234,10 @@ export class RightPanel {
 
   private renderComment(container: HTMLElement, comment: TaskComment): void {
     const row = container.createDiv({ cls: 'tc-comment-row' });
-    row.createEl('span', { cls: 'tc-comment-text', text: comment.text });
     if (comment.date) {
       row.createEl('span', { cls: 'tc-comment-date', text: comment.date });
     }
+    row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
   }
 
   private renderDateChip(container: HTMLElement, task: Task): void {

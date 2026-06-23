@@ -1415,6 +1415,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* Task card */
 .tc-task-card {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -1499,6 +1500,109 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   font-variant-numeric: tabular-nums;
 }
 
+/* Task time badge */
+.tc-task-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  flex-shrink: 0;
+  background: var(--background-secondary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 2px;
+}
+
+/* Delete button on task card */
+.tc-task-delete-btn {
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+  align-self: center;
+  transition:
+    opacity 0.1s,
+    color 0.1s,
+    background 0.1s;
+  padding: 0;
+  line-height: 1;
+}
+.tc-task-card:hover .tc-task-delete-btn {
+  opacity: 1;
+}
+.tc-task-delete-btn:hover {
+  color: var(--text-error);
+  background: hsla(0, 70%, 50%, 0.1);
+}
+
+/* Add task bar */
+.tc-add-task-bar {
+  padding: 2px 8px 10px;
+  flex-shrink: 0;
+}
+.tc-add-task-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 13px;
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+.tc-add-task-trigger:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+.tc-add-task-plus {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--interactive-accent);
+  font-weight: 300;
+}
+.tc-quick-capture {
+  padding: 4px 4px 6px;
+}
+.tc-quick-capture-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1.5px solid var(--interactive-accent);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 14px;
+  outline: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+}
+.tc-quick-capture-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* Calendar mode */
+.tc-center--calendar {
+  overflow: hidden;
+}
+.tc-center--calendar > span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
 /* ---- Right Panel ---- */
 .tc-right-empty {
   display: flex;
@@ -1507,11 +1611,53 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   justify-content: center;
   height: 100%;
   color: var(--text-faint);
-  font-size: 13px;
   padding: 20px;
   text-align: center;
-  gap: 8px;
+  gap: 6px;
   user-select: none;
+}
+.tc-right-empty-icon {
+  width: 40px;
+  height: 40px;
+  opacity: 0.25;
+  margin-bottom: 4px;
+}
+.tc-right-empty-icon svg {
+  width: 40px;
+  height: 40px;
+}
+.tc-right-empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 0;
+}
+.tc-right-empty-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+/* Comment rows */
+.tc-comment-row {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.tc-comment-row:last-child {
+  border-bottom: none;
+}
+.tc-comment-date {
+  font-size: 10px;
+  color: var(--text-faint);
+  display: block;
+  margin-bottom: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.tc-comment-text {
+  font-size: 13px;
+  color: var(--text-normal);
+  margin: 0;
+  line-height: 1.4;
 }
 
 /* Breadcrumb */

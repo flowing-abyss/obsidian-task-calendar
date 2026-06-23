@@ -72,10 +72,10 @@ describe('parseTask', () => {
     expect(t?.cancelledDate).toBe('2026-06-10');
   });
 
-  it('parses time and moves to front of text', () => {
+  it('parses time and strips it from display text', () => {
     const t = parseTask('- [ ] Meeting ⏰ 14:30 with team', { filePath: 'f.md', line: 0 });
     expect(t?.time).toBe('14:30');
-    expect(t?.text).toBe('⏰ 14:30 Meeting with team');
+    expect(t?.text).toBe('Meeting with team');
   });
 
   it('parses recurrence', () => {

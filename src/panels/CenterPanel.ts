@@ -1,4 +1,4 @@
-import type { App } from 'obsidian';
+import { Notice, TFile, type App } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import type { Task } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
@@ -52,6 +52,7 @@ export class CenterPanel {
     if (mode === 'calendar') {
       this.destroyCalendar();
       this.el.empty();
+      this.el.addClass('tc-center--calendar');
       const config: ResolvedConfig = {
         ...DEFAULT_VIEW_CONFIG,
         ...this.settings.desktop,
@@ -62,6 +63,7 @@ export class CenterPanel {
       return;
     }
 
+    this.el.removeClass('tc-center--calendar');
     this.destroyCalendar();
     this.el.empty();
 
@@ -87,17 +89,17 @@ export class CenterPanel {
 
     if (tasks.length === 0) {
       scroll.createDiv({ cls: 'tc-center-empty', text: 'No tasks' });
-      return;
-    }
-
-    const sel = this.state.get('selectedList');
-    const needsGrouping = sel === 'today' || sel === 'upcoming';
-
-    if (needsGrouping) {
-      this.renderGrouped(scroll, tasks);
     } else {
-      this.renderFlat(scroll, tasks);
+      const sel = this.state.get('selectedList');
+      const needsGrouping = sel === 'today' || sel === 'upcoming';
+      if (needsGrouping) {
+        this.renderGrouped(scroll, tasks);
+      } else {
+        this.renderFlat(scroll, tasks);
+      }
     }
+
+    this.renderAddTaskBar();
   }
 
   private renderSearch(): void {
@@ -193,6 +195,9 @@ export class CenterPanel {
 
     // Title row
     const titleRow = body.createDiv({ cls: 'tc-task-title-row' });
+    if (task.time) {
+      titleRow.createEl('span', { cls: 'tc-task-time', text: task.time });
+    }
     titleRow.createEl('span', { cls: 'tc-task-title', text: task.text });
 
     // Meta row
@@ -228,6 +233,129 @@ export class CenterPanel {
     card.addEventListener('click', () => {
       this.state.set('taskStack', [task]);
     });
+
+    // Delete button (visible on hover)
+    const deleteBtn = card.createEl('button', {
+      cls: 'tc-task-delete-btn',
+      attr: { title: 'Delete task', 'aria-label': 'Delete task' },
+      text: '×',
+    });
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void this.deleteTask(task);
+    });
+  }
+
+  private renderAddTaskBar(): void {
+    const bar = this.el.createDiv({ cls: 'tc-add-task-bar' });
+    const trigger = bar.createDiv({ cls: 'tc-add-task-trigger' });
+    trigger.createEl('span', { cls: 'tc-add-task-plus', text: '+' });
+    trigger.createEl('span', { cls: 'tc-add-task-label', text: 'Add task' });
+    trigger.addEventListener('click', () => {
+      trigger.remove();
+      this.showQuickCapture(bar);
+    });
+  }
+
+  private showQuickCapture(container: HTMLElement): void {
+    const form = container.createDiv({ cls: 'tc-quick-capture' });
+    const input = form.createEl('input', {
+      cls: 'tc-quick-capture-input',
+      attr: { type: 'text', placeholder: 'Task name…' },
+    });
+
+    const commit = (): void => {
+      const text = input.value.trim();
+      if (text) void this.createTask(text).then(() => this.render());
+      else this.render();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      }
+      if (e.key === 'Escape') this.render();
+    });
+    input.addEventListener('blur', () => {
+      window.setTimeout(() => {
+        if (activeDocument.activeElement !== input) commit();
+      }, 150);
+    });
+    window.setTimeout(() => input.focus(), 0);
+  }
+
+  private async createTask(text: string): Promise<void> {
+    const sel = this.state.get('selectedList');
+    const today = window.moment().format('YYYY-MM-DD');
+    const dailyFolder = this.settings.desktop.dailyNoteFolder ?? 'Daily';
+    const dailyFormat = this.settings.desktop.dailyNoteFormat ?? 'YYYY-MM-DD';
+    const todayPath = `${dailyFolder}/${window.moment().format(dailyFormat)}.md`;
+
+    let filePath: string;
+    let taskLine: string;
+
+    if (sel === 'today') {
+      filePath = todayPath;
+      taskLine = `- [ ] ${text} 📅 ${today}`;
+    } else if (sel === 'inbox') {
+      filePath = this.settings.customFilePath || 'Inbox.md';
+      taskLine =
+        this.settings.inboxMode === 'tag'
+          ? `- [ ] ${text} ${this.settings.inboxTag ?? '#inbox'}`
+          : `- [ ] ${text}`;
+    } else if (typeof sel === 'object' && sel.type === 'tag') {
+      filePath = 'Inbox.md';
+      taskLine = `- [ ] ${text} ${sel.tag}`;
+    } else if (typeof sel === 'object' && sel.type === 'group') {
+      const group = this.settings.tagGroups.find((g) => g.id === sel.groupId);
+      const tag = group?.mode === 'prefix' ? `#${group.prefix ?? ''}` : (group?.tags?.[0] ?? '');
+      filePath = 'Inbox.md';
+      taskLine = tag ? `- [ ] ${text} ${tag}` : `- [ ] ${text}`;
+    } else {
+      filePath = todayPath;
+      taskLine = `- [ ] ${text}`;
+    }
+
+    let file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!(file instanceof TFile)) {
+      const withMd = filePath.endsWith('.md') ? filePath : `${filePath}.md`;
+      file = this.app.vault.getAbstractFileByPath(withMd);
+    }
+    if (!(file instanceof TFile)) {
+      try {
+        const path = filePath.endsWith('.md') ? filePath : `${filePath}.md`;
+        await this.app.vault.create(path, taskLine + '\n');
+        new Notice(`Created ${filePath}`);
+        return;
+      } catch {
+        new Notice(`Could not find task file: ${filePath}`);
+        return;
+      }
+    }
+    await this.app.vault.process(file, (data) => data.trimEnd() + '\n' + taskLine + '\n');
+  }
+
+  private async deleteTask(task: Task): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const from = task.line;
+      const to = task.subtaskRange ? task.subtaskRange.to : task.line;
+      lines.splice(from, to - from + 1);
+      return lines.join('\n');
+    });
+    const stack = this.state.get('taskStack');
+    const current = stack[stack.length - 1];
+    if (
+      current !== undefined &&
+      'line' in current &&
+      current.line === task.line &&
+      current.filePath === task.filePath
+    ) {
+      this.state.set('taskStack', []);
+    }
   }
 
   private getFilteredTasks(): Task[] {

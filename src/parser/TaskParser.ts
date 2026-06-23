@@ -126,9 +126,6 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
     .replace(/\s{2,}/gu, ' ')
     .trim();
 
-  // Time prefix for display
-  if (time) text = `⏰ ${time} ${text}`.trim();
-
   return {
     filePath: ctx.filePath,
     line: ctx.line,
