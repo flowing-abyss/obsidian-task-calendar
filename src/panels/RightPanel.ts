@@ -1,8 +1,7 @@
-import { TFile } from 'obsidian';
 import type { App } from 'obsidian';
+import { TFile } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import type { SubTask, Task, TaskComment } from '../parser/types';
-import type { TaskStore } from '../store/TaskStore';
 
 type TaskLike = Task | SubTask;
 
@@ -12,7 +11,6 @@ export class RightPanel {
 
   constructor(
     private state: AppState,
-    private store: TaskStore,
     private app: App,
   ) {}
 
@@ -74,7 +72,10 @@ export class RightPanel {
     });
     titleInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') titleInput.blur();
-      if (e.key === 'Escape') { titleInput.value = task.text; titleInput.blur(); }
+      if (e.key === 'Escape') {
+        titleInput.value = task.text;
+        titleInput.blur();
+      }
     });
 
     const headerActions = header.createDiv({ cls: 'tc-right-header-actions' });
@@ -85,7 +86,9 @@ export class RightPanel {
       attr: { title: 'Open in file', 'aria-label': 'Open in file' },
       text: '↗',
     });
-    openBtn.addEventListener('click', () => { void this.openInFile(task); });
+    openBtn.addEventListener('click', () => {
+      void this.openInFile(task);
+    });
 
     // Metadata chips
     if ('due' in task || 'priority' in task) {
@@ -163,7 +166,10 @@ export class RightPanel {
       cls: 'tc-comment-input',
       attr: { placeholder: 'Write a comment…', rows: '2' },
     });
-    const sendBtn = commentSection.createEl('button', { cls: 'tc-comment-send', text: 'Add comment' });
+    const sendBtn = commentSection.createEl('button', {
+      cls: 'tc-comment-send',
+      text: 'Add comment',
+    });
     sendBtn.addEventListener('click', () => {
       if (commentInput.value.trim()) {
         void this.addComment(task, commentInput.value.trim());
@@ -219,7 +225,12 @@ export class RightPanel {
   }
 
   private renderPriorityChip(container: HTMLElement, task: Task): void {
-    const labels: Record<string, string> = { A: '⏫ High', B: '🔼 Medium', C: 'Priority', D: '🔽 Low' };
+    const labels: Record<string, string> = {
+      A: '⏫ High',
+      B: '🔼 Medium',
+      C: 'Priority',
+      D: '🔽 Low',
+    };
     const chip = container.createEl('button', {
       cls: `tc-chip${task.priority === 'C' ? ' tc-chip-empty' : ''}`,
       text: labels[task.priority] ?? 'Priority',
@@ -242,7 +253,10 @@ export class RightPanel {
 
   private showDatePopover(anchor: HTMLElement, task: Task): void {
     const existing = this.el.querySelector('.tc-popover');
-    if (existing) { existing.remove(); return; }
+    if (existing) {
+      existing.remove();
+      return;
+    }
     const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover' });
     const input = pop.createEl('input', {
       cls: 'tc-date-input',
@@ -258,7 +272,10 @@ export class RightPanel {
 
   private showPriorityPopover(anchor: HTMLElement, task: Task): void {
     const existing = this.el.querySelector('.tc-popover');
-    if (existing) { existing.remove(); return; }
+    if (existing) {
+      existing.remove();
+      return;
+    }
     const pop = this.el.createDiv({ cls: 'tc-popover tc-priority-popover' });
     const options: Array<{ value: string; label: string }> = [
       { value: 'A', label: '⏫ High' },
@@ -284,19 +301,40 @@ export class RightPanel {
   }
 
   private showTagInput(container: HTMLElement, task: Task, _anchor: HTMLElement): void {
+    const datalistId = 'tc-tag-suggestions';
+    const existing = this.el.querySelector(`#${datalistId}`);
+    if (existing) existing.remove();
+
+    const tags = Object.keys(
+      (this.app.metadataCache as unknown as { getTags(): Record<string, number> }).getTags(),
+    );
+    const datalist = container.createEl('datalist', { attr: { id: datalistId } });
+    for (const tag of tags) {
+      datalist.createEl('option', { attr: { value: tag } });
+    }
+
     const input = container.createEl('input', {
       cls: 'tc-tag-input',
-      attr: { type: 'text', placeholder: '#Tag' },
+      attr: { type: 'text', placeholder: '#Tag', list: datalistId },
     });
     input.focus();
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && input.value.trim()) {
         void this.addTag(task, input.value.trim());
         input.remove();
+        datalist.remove();
       }
-      if (e.key === 'Escape') input.remove();
+      if (e.key === 'Escape') {
+        input.remove();
+        datalist.remove();
+      }
     });
-    input.addEventListener('blur', () => window.setTimeout(() => input.remove(), 200));
+    input.addEventListener('blur', () =>
+      window.setTimeout(() => {
+        input.remove();
+        datalist.remove();
+      }, 200),
+    );
   }
 
   // ---- Write-back helpers ----
@@ -306,7 +344,9 @@ export class RightPanel {
     if (!(file instanceof TFile)) return;
     const leaf = this.app.workspace.getLeaf('tab');
     await leaf.openFile(file);
-    const view = leaf.view as { editor?: { setCursor?: (pos: { line: number; ch: number }) => void } };
+    const view = leaf.view as {
+      editor?: { setCursor?: (pos: { line: number; ch: number }) => void };
+    };
     view.editor?.setCursor?.({ line: task.line, ch: 0 });
   }
 
@@ -332,16 +372,13 @@ export class RightPanel {
       if (!taskLine) return data;
       const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
 
-      const keepLines: string[] = [];
-      if (task.subtaskRange) {
-        for (let i = 0; i < lines.length; i++) {
-          if (i >= task.subtaskRange.from && i <= task.subtaskRange.to && /^\s*- > /.test(lines[i] ?? '')) {
-            continue;
-          }
-          keepLines.push(lines[i] ?? '');
+      // Remove existing description lines
+      const rangeStart = task.subtaskRange?.from ?? task.line + 1;
+      const rangeEnd = task.subtaskRange?.to ?? lines.length - 1;
+      for (let i = rangeStart; i <= rangeEnd; i++) {
+        if (/^\s*- > /.test(lines[i] ?? '')) {
+          lines[i] = '\x00'; // mark for removal
         }
-      } else {
-        keepLines.push(...lines);
       }
 
       const descLines = newDesc
@@ -349,12 +386,10 @@ export class RightPanel {
         .filter(Boolean)
         .map((l) => `${indent}- > ${l}`);
 
-      const insertIdx = task.subtaskRange
-        ? task.subtaskRange.from
-        : task.line + 1;
-      keepLines.splice(insertIdx, 0, ...descLines);
+      // Insert description at beginning of sub-item range
+      lines.splice(rangeStart, 0, ...descLines);
 
-      return keepLines.join('\n');
+      return lines.filter((l) => l !== '\x00').join('\n');
     });
   }
 
@@ -446,7 +481,10 @@ export class RightPanel {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
-      lines[task.line] = line.replace(tag, '').replace(/\s{2,}/gu, ' ').trimEnd();
+      lines[task.line] = line
+        .replace(tag, '')
+        .replace(/\s{2,}/gu, ' ')
+        .trimEnd();
       return lines.join('\n');
     });
   }

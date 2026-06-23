@@ -51,7 +51,7 @@ export class PanelView extends ItemView {
     this.rail = new RailPanel(this.state, this.app as never);
     this.left = new LeftPanel(this.state, this.store, this.settings);
     this.center = new CenterPanel(this.state, this.store, this.app, this.settings);
-    this.right = new RightPanel(this.state, this.store, this.app);
+    this.right = new RightPanel(this.state, this.app);
 
     this.rail.mount(railEl);
     this.left.mount(leftEl);
