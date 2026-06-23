@@ -90,6 +90,18 @@ export class RightPanel {
       void this.openInFile(task);
     });
 
+    // More actions menu button
+    const currentTask = task;
+    const menuBtn = headerActions.createEl('button', {
+      cls: 'tc-right-action-btn',
+      text: '⋯',
+      attr: { title: 'More actions', 'aria-label': 'More actions' },
+    });
+    menuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.renderContextMenu(currentTask, menuBtn);
+    });
+
     // Metadata chips
     if ('due' in task || 'priority' in task) {
       const t = task;
@@ -97,6 +109,16 @@ export class RightPanel {
 
       // Date chip
       this.renderDateChip(chips, t);
+      // Time chip
+      const timeChip = chips.createEl('span', {
+        cls: `tc-chip${t.time ? '' : ' tc-chip-empty'}`,
+        text: t.time ? `⏰ ${t.time}` : '⏰',
+        attr: { title: 'Set time' },
+      });
+      timeChip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.showTimePopover(timeChip, t);
+      });
       // Priority chip
       this.renderPriorityChip(chips, t);
       // Tag chips
@@ -503,6 +525,83 @@ export class RightPanel {
       lines[task.line] = line.trimEnd() + ` ${tagStr}`;
       return lines.join('\n');
     });
+  }
+
+  private showTimePopover(anchor: HTMLElement, task: Task): void {
+    const existing = this.el.querySelector('.tc-time-popover');
+    if (existing) {
+      existing.remove();
+      return;
+    }
+
+    const pop = this.el.createEl('div', { cls: 'tc-popover tc-time-popover' });
+    const input = pop.createEl('input', {
+      attr: { type: 'time', value: task.time ?? '' },
+    }) as HTMLInputElement;
+    input.focus();
+    input.addEventListener('change', () => {
+      void this.updateTime(task, input.value).then(() => pop.remove());
+    });
+    input.addEventListener('blur', () => activeWindow.setTimeout(() => pop.remove(), 200));
+    anchor.after(pop);
+  }
+
+  private async updateTime(task: Task, time: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      // eslint-disable-next-line sonarjs/super-linear-regex
+      const cleaned = line.replace(/⏰\s*\d{1,2}:\d{2}/gu, '').replace(/\s{2,}/gu, ' ');
+      lines[task.line] = time ? `${cleaned.trimEnd()} ⏰ ${time}` : cleaned.trim();
+      return lines.join('\n');
+    });
+  }
+
+  private renderContextMenu(task: TaskLike, anchor: HTMLElement): void {
+    const existing = this.el.querySelector('.tc-context-menu');
+    if (existing) {
+      existing.remove();
+      return;
+    }
+
+    const menu = anchor.createEl('div', { cls: 'tc-context-menu' });
+
+    const deleteItem = menu.createEl('div', { cls: 'tc-context-item', text: 'Delete task' });
+    deleteItem.addEventListener('click', () => {
+      menu.remove();
+      void this.deleteTask(task);
+    });
+
+    const copyItem = menu.createEl('div', { cls: 'tc-context-item', text: 'Copy link' });
+    copyItem.addEventListener('click', () => {
+      menu.remove();
+      const name = task.filePath.replace(/\.md$/u, '').split('/').pop() ?? task.filePath;
+      void navigator.clipboard.writeText(`[[${name}]]`);
+    });
+
+    const dismiss = (e: MouseEvent): void => {
+      if (!menu.contains(e.target as Node)) {
+        menu.remove();
+        activeDocument.removeEventListener('click', dismiss, true);
+      }
+    };
+    activeDocument.addEventListener('click', dismiss, true);
+  }
+
+  private async deleteTask(task: TaskLike): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const from = task.line;
+      const to = 'subtaskRange' in task && task.subtaskRange ? task.subtaskRange.to : task.line;
+      lines.splice(from, to - from + 1);
+      return lines.join('\n');
+    });
+    this.state.set('taskStack', []);
   }
 
   private formatDate(d: string): string {

@@ -1546,6 +1546,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   align-items: center;
   gap: 8px;
   padding: 12px 16px 8px;
+  position: relative;
 }
 .tc-right-title {
   flex: 1;
@@ -1831,4 +1832,35 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-normal);
   outline: none;
   width: 100px;
+}
+
+/* Context menu */
+.tc-context-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-s);
+  z-index: 100;
+  min-width: 140px;
+  overflow: hidden;
+}
+.tc-context-item {
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-normal);
+}
+.tc-context-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* Time popover */
+.tc-time-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
 }

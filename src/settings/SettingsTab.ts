@@ -167,6 +167,17 @@ export class CalendarSettingsTab extends PluginSettingTab {
         }),
     );
 
+    // Color picker
+    const colorRow = card.createEl('div', { cls: 'tc-setting-row' });
+    colorRow.createEl('span', { text: 'Color', cls: 'tc-setting-label' });
+    const colorInput = colorRow.createEl('input', {
+      attr: { type: 'color', value: group.color ?? '#888888' },
+    }) as HTMLInputElement;
+    colorInput.addEventListener('change', () => {
+      group.color = colorInput.value;
+      void this.plugin.saveSettings();
+    });
+
     if (group.mode === 'prefix') {
       new Setting(card)
         .setName('Prefix')

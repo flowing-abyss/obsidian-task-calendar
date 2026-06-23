@@ -254,7 +254,7 @@ export class CenterPanel {
             .filter((t) => {
               if (t.status !== 'open') return false;
               const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
-              return d !== undefined && d >= today;
+              return d !== undefined && d > today;
             })
             .sort((a, b) => {
               const da = a.due ?? a.scheduled ?? a.dailyNoteDate ?? '';
