@@ -7,6 +7,7 @@ import {
   type TAbstractFile,
 } from 'obsidian';
 import { parseTask } from '../parser/TaskParser';
+import { parseSubItems } from '../parser/SubItemParser';
 import type { Task, TaskFilter } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
 
@@ -112,6 +113,12 @@ export class TaskStore {
         task.noteColor = fm?.color;
         task.noteTextColor = fm?.textColor;
         task.noteIcon = fm?.icon;
+        // Parse sub-items (sub-tasks, comments, description)
+        const sub = parseSubItems(lines, lineIdx, filePath);
+        if (sub.subtasks.length) task.subtasks = sub.subtasks;
+        if (sub.comments.length) task.comments = sub.comments;
+        if (sub.description) task.description = sub.description;
+        if (sub.subtaskRange) task.subtaskRange = sub.subtaskRange;
         tasks.push(task);
       }
     }
