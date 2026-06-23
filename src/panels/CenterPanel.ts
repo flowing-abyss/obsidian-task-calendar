@@ -114,9 +114,11 @@ export class CenterPanel {
     const query = this.state.get('searchQuery').toLowerCase();
     if (!query) return;
 
-    const results = this.store.getTasks().filter(
-      (t) => t.text.toLowerCase().includes(query) || t.rawText.toLowerCase().includes(query),
-    );
+    const results = this.store
+      .getTasks()
+      .filter(
+        (t) => t.text.toLowerCase().includes(query) || t.rawText.toLowerCase().includes(query),
+      );
     const scroll = this.el.createDiv({ cls: 'tc-center-scroll' });
     if (results.length === 0) {
       scroll.createDiv({ cls: 'tc-center-empty', text: 'No results' });
@@ -219,7 +221,7 @@ export class CenterPanel {
       const done = task.subtasks.filter((s) => s.status === 'done').length;
       pills.createEl('span', {
         cls: 'tc-task-progress',
-        text: `${done}/${task.subtasks.length}`,
+        text: `[${done}/${task.subtasks.length}]`,
       });
     }
 
@@ -243,8 +245,7 @@ export class CenterPanel {
         case 'today':
           tasks = this.store.getTasks().filter((t) => {
             if (t.status !== 'open') return false;
-            const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
-            return d === today;
+            return t.due === today || t.scheduled === today || t.dailyNoteDate === today;
           });
           break;
         case 'upcoming':
