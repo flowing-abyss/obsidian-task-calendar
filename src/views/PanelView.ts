@@ -64,9 +64,38 @@ export class PanelView extends ItemView {
       layout.className = `tc-layout tc-layout--${mode}`;
     });
 
-    this.storeUnsub = this.store.onUpdate(() => {
+    this.storeUnsub = this.store.onUpdate(({ changedFile }) => {
       this.left.refresh();
       this.center.refresh();
+      // Refresh taskStack with fresh objects from the store so the right panel re-renders
+      const stack = this.state.get('taskStack');
+      if (stack.length === 0) return;
+      const root = stack[0];
+      if (!root || !changedFile || root.filePath !== changedFile) return;
+      const freshTasks = this.store.getTasks();
+      const freshRoot = freshTasks.find((t) => t.filePath === root.filePath && t.line === root.line);
+      if (!freshRoot) {
+        // Task was deleted
+        this.state.set('taskStack', []);
+        return;
+      }
+      if (stack.length === 1) {
+        this.state.set('taskStack', [freshRoot]);
+        return;
+      }
+      // Rebuild deeper stack levels (subtask navigation)
+      const freshStack: Array<import('../parser/types').Task | import('../parser/types').SubTask> = [
+        freshRoot,
+      ];
+      for (let i = 1; i < stack.length; i++) {
+        const prev = freshStack[i - 1];
+        const stale = stack[i];
+        if (!prev || !stale) break;
+        const freshSub = prev.subtasks?.find((s) => s.line === stale.line);
+        if (!freshSub) break;
+        freshStack.push(freshSub);
+      }
+      this.state.set('taskStack', freshStack);
     });
   }
 
