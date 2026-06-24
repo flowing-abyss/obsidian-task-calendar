@@ -2,7 +2,7 @@ import { Notice, Platform } from 'obsidian';
 import type { Task } from '../parser/types';
 import { attachLongPress } from './MobileTouch';
 
-export type TaskCardMode = 'default' | 'timeblock';
+type TaskCardMode = 'default' | 'timeblock';
 
 export interface TaskCardOptions {
   mode?: TaskCardMode;
