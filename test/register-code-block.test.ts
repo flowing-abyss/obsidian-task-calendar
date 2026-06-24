@@ -89,4 +89,3 @@ describe('resolveConfig', () => {
     });
   });
 });
-

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getTasksForDate, renderTaskGroup, sortTasks } from '../src/views/taskGrouping';
 import type { Task } from '../src/parser/types';
+import { getTasksForDate, renderTaskGroup, sortTasks } from '../src/views/taskGrouping';
 import { task, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -97,11 +97,7 @@ describe('getTasksForDate', () => {
   });
 
   it('places an open task with start on date and due not on date into start', () => {
-    const g = getTasksForDate(
-      [task({ start: DATE, due: '2026-06-28' })],
-      DATE,
-      TODAY,
-    );
+    const g = getTasksForDate([task({ start: DATE, due: '2026-06-28' })], DATE, TODAY);
     expect(g.start).toHaveLength(1);
   });
 
@@ -111,11 +107,7 @@ describe('getTasksForDate', () => {
   });
 
   it('places an open task with due after date and start before today into process', () => {
-    const g = getTasksForDate(
-      [task({ due: '2026-06-28', start: '2026-06-20' })],
-      DATE,
-      TODAY,
-    );
+    const g = getTasksForDate([task({ due: '2026-06-28', start: '2026-06-20' })], DATE, TODAY);
     expect(g.process).toHaveLength(1);
   });
 
@@ -136,11 +128,7 @@ describe('getTasksForDate', () => {
   });
 
   it('places a cancelled task due on date into cancelled', () => {
-    const g = getTasksForDate(
-      [task({ due: DATE, status: 'cancelled' })],
-      DATE,
-      TODAY,
-    );
+    const g = getTasksForDate([task({ due: DATE, status: 'cancelled' })], DATE, TODAY);
     expect(g.cancelled).toHaveLength(1);
     expect(g.due).toHaveLength(0);
   });
@@ -168,11 +156,7 @@ describe('getTasksForDate', () => {
 
   it('a task can appear in multiple groups (no de-duplication): overdue + start', () => {
     // due < today (overdue) AND start == date == today (start)
-    const g = getTasksForDate(
-      [task({ due: '2026-06-20', start: DATE })],
-      DATE,
-      TODAY,
-    );
+    const g = getTasksForDate([task({ due: '2026-06-20', start: DATE })], DATE, TODAY);
     expect(g.overdue).toHaveLength(1);
     expect(g.start).toHaveLength(1);
   });
@@ -191,10 +175,7 @@ describe('renderTaskGroup', () => {
   it('renders overdue first when date === today, then due', () => {
     const container = document.createElement('div');
     const g = getTasksForDate(
-      [
-        task({ due: '2026-06-20', text: 'overdue' }),
-        task({ due: '2026-06-24', text: 'due' }),
-      ],
+      [task({ due: '2026-06-20', text: 'overdue' }), task({ due: '2026-06-24', text: 'due' })],
       '2026-06-24',
       '2026-06-24',
     );
@@ -257,10 +238,7 @@ describe('renderTaskGroup', () => {
   it('sorts tasks within a group via sortTasks', () => {
     const container = document.createElement('div');
     const g = {
-      due: [
-        task({ text: 'b', priority: 'D' }),
-        task({ text: 'a', priority: 'A' }),
-      ],
+      due: [task({ text: 'b', priority: 'D' }), task({ text: 'a', priority: 'A' })],
       recurrence: [],
       overdue: [],
       start: [],
