@@ -2,20 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task.
 
-**Goal:** Исправить 13 визуальных и функциональных багов плагина Task Calendar.
+**Goal:** Fix 13 visual and functional bugs in the Task Calendar plugin.
 
-**Architecture:** Изменения разбиты на 5 параллельно независимых задач по компонентам: CenterPanel task-list, CenterPanel calendar, RightPanel, LeftPanel+Modal+CSS.
+**Architecture:** Changes split into 5 sequentially independent tasks by component: CenterPanel task list (B1/B8/B9), CenterPanel calendar (B12/B13/B14/B15), RightPanel core bugs (B3/B5/B6/B7), RightPanel sections (B4), LeftPanel+Modal+CSS (B2/B10/B11).
 
 **Tech Stack:** TypeScript, Obsidian Plugin API, vanilla DOM, moment.js.
 
 ## Global Constraints
 
-- `activeDocument` вместо `document` (obsidian lint rule).
-- DOM через Obsidian helpers: `createDiv()`, `createEl()`.
-- Запись в файлы только через `app.vault.process()`.
-- Strict TypeScript: нет `any`.
-- Conventional commits: `fix:` или `feat:` prefix.
-- `npm run build` (tsc + esbuild) должен пройти с нулём ошибок.
+- Use `activeDocument` instead of `document` (Obsidian lint rule).
+- DOM via Obsidian helpers: `createDiv()`, `createEl()`.
+- Write to files only via `app.vault.process()`.
+- Strict TypeScript: no `any`.
+- Conventional commits: `fix:` or `feat:` prefix.
+- `npm run build` (tsc + esbuild) must pass with zero errors.
+- Code comments in English.
 
 ---
 
@@ -26,11 +27,12 @@
 - Modify: `styles.css`
 
 **Interfaces:**
-- Produces: `renderTaskCard` с новой структурой DOM (tc-task-meta-right справа), `getFilteredTasks('today')` включает overdue, клик в поиске навигирует к задаче.
+- Consumes: `Task` from `../parser/types`, `AppState` state fields: `taskStack`, `selectedList`, `mode`, `searchQuery`
+- Produces: `renderTaskCard` with new DOM structure (`.tc-task-meta-right` on right), `getFilteredTasks('today')` includes overdue, clicking task in search view navigates to tasks mode
 
-- [ ] **Шаг 1: Перестроить renderTaskCard — metadata справа**
+- [ ] **Step 1: Restructure renderTaskCard — metadata on the right**
 
-В методе `renderTaskCard` (CenterPanel.ts, ~строка 314) изменить DOM-структуру:
+Find `renderTaskCard` method in `src/panels/CenterPanel.ts`. Replace the task card DOM construction to match this structure:
 
 ```typescript
 private renderTaskCard(container: HTMLElement, task: Task): void {
@@ -46,7 +48,6 @@ private renderTaskCard(container: HTMLElement, task: Task): void {
     cls: `tc-task-card${isSelected ? ' is-selected' : ''}`,
   });
 
-  // Checkbox
   const checkbox = card.createEl('input', {
     cls: 'tc-task-checkbox',
     attr: { type: 'checkbox' },
@@ -57,7 +58,6 @@ private renderTaskCard(container: HTMLElement, task: Task): void {
     void this.store.toggleTask(task);
   });
 
-  // Left body: title + optional description
   const body = card.createDiv({ cls: 'tc-task-body' });
   const titleRow = body.createDiv({ cls: 'tc-task-title-row' });
   if (task.time) {
@@ -71,7 +71,6 @@ private renderTaskCard(container: HTMLElement, task: Task): void {
     });
   }
 
-  // Right metadata: date + tags + progress — always on same line
   const today = window.moment().format('YYYY-MM-DD');
   const sel = this.state.get('selectedList');
   const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
@@ -116,9 +115,26 @@ private renderTaskCard(container: HTMLElement, task: Task): void {
 }
 ```
 
-- [ ] **Шаг 2: Обновить CSS для нового layout task card**
+Note: `this.isOverdue(d)` and `this.formatDate(d)` must already exist in CenterPanel. If they don't, add them:
+```typescript
+private isOverdue(date: string): boolean {
+  return date < window.moment().format('YYYY-MM-DD');
+}
 
-В `styles.css` найти блок `.tc-task-card` и обновить:
+private formatDate(date: string): string {
+  const m = window.moment(date, 'YYYY-MM-DD');
+  const today = window.moment().startOf('day');
+  const diff = m.diff(today, 'days');
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff === -1) return 'Yesterday';
+  return m.format('MMM D');
+}
+```
+
+- [ ] **Step 2: Update CSS for new task card layout**
+
+In `styles.css`, find `.tc-task-card` block and update:
 
 ```css
 .tc-task-card {
@@ -167,7 +183,6 @@ private renderTaskCard(container: HTMLElement, task: Task): void {
   white-space: nowrap;
 }
 
-/* Right-side metadata column */
 .tc-task-meta-right {
   flex-shrink: 0;
   display: flex;
@@ -178,91 +193,65 @@ private renderTaskCard(container: HTMLElement, task: Task): void {
 }
 ```
 
-- [ ] **Шаг 3: B9 — включить overdue в Today filter**
+- [ ] **Step 3: B9 — include overdue in Today filter**
 
-В методе `getFilteredTasks` (CenterPanel.ts, ~строка 508), изменить case 'today':
+Find `getFilteredTasks` method in `CenterPanel.ts`. Change `case 'today':` to:
 
 ```typescript
-case 'today':
+case 'today': {
+  const todayStr = window.moment().format('YYYY-MM-DD');
   tasks = this.store.getTasks().filter((t) => {
     if (t.status !== 'open') return false;
-    const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
-    // Include today's tasks AND overdue tasks (past due dates)
-    if (t.due === today || t.scheduled === today || t.dailyNoteDate === today) return true;
-    // Overdue: has a due date in the past
-    if (t.due && t.due < today) return true;
+    if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr) return true;
+    if (t.due && t.due < todayStr) return true;
     return false;
   });
   break;
-```
-
-- [ ] **Шаг 4: B8 — search click navigates to task**
-
-В методе `renderSearch` (CenterPanel.ts), изменить `renderFlat(scroll, results)` на отдельный рендер с click-навигацией:
-
-```typescript
-private renderSearch(): void {
-  const header = this.el.createDiv({ cls: 'tc-center-header' });
-  header.createEl('h2', { cls: 'tc-center-title', text: 'Search' });
-  const input = header.createEl('input', {
-    cls: 'tc-center-search tc-search-global',
-    attr: { type: 'text', placeholder: 'Search all tasks…' },
-  });
-  input.value = this.state.get('searchQuery');
-  input.addEventListener('input', () => this.state.set('searchQuery', input.value));
-  window.setTimeout(() => input.focus(), 0);
-
-  const query = this.state.get('searchQuery').toLowerCase();
-  if (!query) return;
-
-  const results = this.store
-    .getTasks()
-    .filter(
-      (t) => t.text.toLowerCase().includes(query) || t.rawText.toLowerCase().includes(query),
-    );
-  const scroll = this.el.createDiv({ cls: 'tc-center-scroll' });
-  if (results.length === 0) {
-    scroll.createDiv({ cls: 'tc-center-empty', text: 'No results' });
-    return;
-  }
-
-  // Render with navigation: clicking task switches to tasks mode and opens it in right panel
-  for (const task of results) {
-    this.renderTaskCard(scroll, task);
-  }
-
-  // Override click behavior: navigate to task in tasks mode
-  scroll.querySelectorAll('.tc-task-card').forEach((cardEl, idx) => {
-    const task = results[idx];
-    if (!task) return;
-    cardEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      // Determine best list context for this task
-      const today = window.moment().format('YYYY-MM-DD');
-      const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
-      let list: import('../app/AppState').ListSelection = 'inbox';
-      if (d === today || (task.due && task.due < today)) {
-        list = 'today';
-      } else if (d && d > today) {
-        list = 'upcoming';
-      }
-      this.state.set('selectedList', list);
-      this.state.set('mode', 'tasks');
-      this.state.set('taskStack', [task]);
-    }, { capture: true });
-  });
 }
 ```
 
-- [ ] **Шаг 5: Сборка и проверка**
+- [ ] **Step 4: B8 — search click navigates to task**
+
+Find `renderSearch` method in `CenterPanel.ts`. After rendering each task card in the search results list, attach a capturing click listener that navigates to tasks mode:
+
+```typescript
+// After the loop that renders task cards in search results:
+scroll.querySelectorAll<HTMLElement>('.tc-task-card').forEach((cardEl, idx) => {
+  const task = results[idx];
+  if (!task) return;
+  cardEl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const todayStr = window.moment().format('YYYY-MM-DD');
+    const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
+    let list: string = 'inbox';
+    if ((task.due && task.due < todayStr) || d === todayStr) {
+      list = 'today';
+    } else if (d && d > todayStr) {
+      list = 'upcoming';
+    }
+    this.state.set('selectedList', list as Parameters<typeof this.state.set>[1]);
+    this.state.set('mode', 'tasks');
+    this.state.set('taskStack', [task]);
+  }, { capture: true });
+});
+```
+
+Check AppState.ts for the exact type used for `selectedList`. If `set` is generic, use the correct type for the value. Adjust the cast accordingly.
+
+- [ ] **Step 5: Build and verify**
 
 ```bash
 npm run build
-obsidian plugin:reload id=task-calendar
-obsidian dev:screenshot path=/tmp/task1-b1-b8-b9.png
 ```
 
-- [ ] **Шаг 6: Commit**
+Expected: zero TypeScript errors, zero esbuild errors.
+
+```bash
+obsidian plugin:reload id=task-calendar
+obsidian dev:screenshot path=screenshot-b1-b8-b9.png
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/panels/CenterPanel.ts styles.css
@@ -274,41 +263,41 @@ git commit -m "fix: task card metadata right-aligned, today includes overdue, se
 ### Task 2: Calendar panel — nav, list view, styles (B12, B13, B14, B15)
 
 **Files:**
-- Modify: `src/panels/CenterPanel.ts` (renderCalendarMode)
+- Modify: `src/panels/CenterPanel.ts`
 - Modify: `src/views/ListView.ts`
 - Modify: `styles.css`
 
 **Interfaces:**
-- Produces: nav с группировкой кнопок, month/year pickers, style selector, redesigned ListView, чистые active-стили кнопок.
+- Consumes: `MonthView`, `WeekView`, `ListView` from their respective files; `ResolvedConfig` from `../settings/types`; `Task` type; `setIcon`, `activeDocument` from obsidian
+- Produces: calendar nav with grouped buttons, month/year picker popovers, 🎨 style cycle button, redesigned ListView with human-readable dates, clean active-state button styles
 
-- [ ] **Шаг 1: Добавить поле calStyle в CenterPanel**
+- [ ] **Step 1: Add calStyle field to CenterPanel**
 
-В классе `CenterPanel`, после `private calViewInstance`, добавить:
+Read `src/panels/CenterPanel.ts` and `src/settings/types.ts` to find the exact settings field for calendar style (look for `style`, `calendarStyle`, or similar in `DesktopConfig`/`ResolvedConfig`).
+
+Add after existing view-related field declarations in `CenterPanel`:
 
 ```typescript
 private calStyle: string = 'style1';
 ```
 
-В методе `mount()` инициализировать из settings:
+In `mount()`, initialize from settings:
 
 ```typescript
-mount(container: HTMLElement): void {
-  this.el = container;
-  this.calStyle = this.settings.desktop.style ?? 'style1';
-  this.taskModal = new TaskModal(this.app);
-  // ... rest unchanged
-}
+this.calStyle = (this.settings.desktop as Record<string, unknown>)['style'] as string ?? 'style1';
 ```
 
-- [ ] **Шаг 2: Переписать renderCalendarMode — новая nav структура**
+Use the actual field name found in `types.ts`.
 
-Заменить метод `renderCalendarMode` в CenterPanel.ts:
+- [ ] **Step 2: Rewrite renderCalendarMode — new nav structure**
+
+Read the existing `renderCalendarMode` to find exact field names (`this.calViewType`, `this.calDate`, `this.calViewInstance`, `this.calUnsubscribe`, `this.settings`, `this.store`, `this.taskModal`). Then replace the method body:
 
 ```typescript
 private renderCalendarMode(): void {
   const nav = this.el.createDiv({ cls: 'tc-cal-nav' });
 
-  // Left group: < [Month Year] >
+  // Left group: [<] [Month] [Year] [>]
   const leftGroup = nav.createDiv({ cls: 'tc-cal-nav-left' });
   const prevBtn = leftGroup.createEl('button', {
     cls: 'tc-cal-nav-btn',
@@ -326,48 +315,51 @@ private renderCalendarMode(): void {
   });
   setIcon(nextBtn, 'chevron-right');
 
-  // Right group: Today | Month | Week | List | Style
+  // Right group: [Today] [Month|Week|List switcher] [🎨]
   const rightGroup = nav.createDiv({ cls: 'tc-cal-nav-right' });
-  const todayBtn = rightGroup.createEl('button', { cls: 'tc-cal-nav-today', text: 'Today' });
+  const todayBtn = rightGroup.createEl('button', {
+    cls: 'tc-cal-nav-today',
+    text: 'Today',
+  });
 
   const viewSwitcher = rightGroup.createDiv({ cls: 'tc-cal-view-switcher' });
-  for (const v of ['month', 'week', 'list'] as CalViewType[]) {
+  const CAL_VIEWS = ['month', 'week', 'list'] as const;
+  for (const v of CAL_VIEWS) {
     const btn = viewSwitcher.createEl('button', {
       cls: `tc-cal-view-btn${this.calViewType === v ? ' is-active' : ''}`,
       text: v.charAt(0).toUpperCase() + v.slice(1),
     });
     btn.addEventListener('click', () => {
       this.calViewType = v;
-      if (v === 'week') this.calDate = window.moment().startOf('isoWeek');
-      else this.calDate = window.moment().date(1);
+      if (v === 'week') {
+        this.calDate = window.moment().startOf('isoWeek');
+      } else {
+        this.calDate = window.moment().date(1);
+      }
       this.render();
     });
   }
 
-  // Style cycle button (style1..style11)
-  const STYLES = ['style1','style2','style3','style4','style5','style6','style7','style8','style9','style10','style11'];
+  const CAL_STYLES = [
+    'style1','style2','style3','style4','style5','style6',
+    'style7','style8','style9','style10','style11',
+  ];
   const styleBtn = rightGroup.createEl('button', {
     cls: 'tc-cal-style-btn',
-    attr: { title: 'Change calendar style', 'aria-label': 'Style' },
+    attr: { title: `Style: ${this.calStyle}`, 'aria-label': 'Cycle calendar style' },
     text: '🎨',
   });
+
+  const viewContainer = this.el.createDiv({
+    cls: `tc-cal-body tasksCalendar ${this.calStyle}`,
+  });
+
   styleBtn.addEventListener('click', () => {
-    const idx = STYLES.indexOf(this.calStyle);
-    this.calStyle = STYLES[(idx + 1) % STYLES.length] ?? 'style1';
+    const idx = CAL_STYLES.indexOf(this.calStyle);
+    this.calStyle = CAL_STYLES[(idx + 1) % CAL_STYLES.length] ?? 'style1';
     viewContainer.className = `tc-cal-body tasksCalendar ${this.calStyle}`;
     styleBtn.setAttribute('title', `Style: ${this.calStyle}`);
   });
-
-  const calStyle = this.calStyle;
-  const viewContainer = this.el.createDiv({ cls: `tc-cal-body tasksCalendar ${calStyle}` });
-  viewContainer.setAttribute('view', this.calViewType);
-
-  const config: ResolvedConfig = {
-    ...DEFAULT_VIEW_CONFIG,
-    ...this.settings.desktop,
-    isMobile: false,
-    startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
-  };
 
   const updateTitle = (): void => {
     if (this.calViewType === 'week') {
@@ -390,11 +382,15 @@ private renderCalendarMode(): void {
 
   const mountView = (): void => {
     this.calViewInstance?.destroy();
-    viewContainer.setAttribute('view', this.calViewType);
+    viewContainer.empty();
     const tasks = this.store.getTasks();
     const cfg: ResolvedConfig = {
-      ...config,
-      startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
+      ...DEFAULT_VIEW_CONFIG,
+      ...this.settings.desktop,
+      isMobile: false,
+      startPosition: this.calDate.format(
+        this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM',
+      ),
     };
     if (this.calViewType === 'month') {
       this.calViewInstance = new MonthView({
@@ -435,8 +431,8 @@ private renderCalendarMode(): void {
     const existing = this.el.querySelector('.tc-month-picker');
     if (existing) { existing.remove(); return; }
     const picker = this.el.createDiv({ cls: 'tc-month-picker tc-popover' });
-    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    MONTHS.forEach((m, i) => {
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    MONTH_NAMES.forEach((m, i) => {
       const btn = picker.createEl('button', { cls: 'tc-month-picker-btn', text: m });
       if (i === this.calDate.month()) btn.addClass('is-active');
       btn.addEventListener('click', () => {
@@ -448,7 +444,7 @@ private renderCalendarMode(): void {
     });
     monthBtn.after(picker);
     window.setTimeout(() => {
-      const dismiss = (e: MouseEvent) => {
+      const dismiss = (e: MouseEvent): void => {
         if (!picker.contains(e.target as Node) && e.target !== monthBtn) {
           picker.remove();
           activeDocument.removeEventListener('click', dismiss, true);
@@ -465,7 +461,10 @@ private renderCalendarMode(): void {
     const picker = this.el.createDiv({ cls: 'tc-year-picker tc-popover' });
     const currentYear = this.calDate.year();
     for (let y = currentYear - 5; y <= currentYear + 5; y++) {
-      const btn = picker.createEl('button', { cls: 'tc-year-picker-btn', text: String(y) });
+      const btn = picker.createEl('button', {
+        cls: 'tc-year-picker-btn',
+        text: String(y),
+      });
       if (y === currentYear) btn.addClass('is-active');
       btn.addEventListener('click', () => {
         this.calDate = this.calDate.clone().year(y).date(1);
@@ -476,7 +475,7 @@ private renderCalendarMode(): void {
     }
     yearBtn.after(picker);
     window.setTimeout(() => {
-      const dismiss = (e: MouseEvent) => {
+      const dismiss = (e: MouseEvent): void => {
         if (!picker.contains(e.target as Node) && e.target !== yearBtn) {
           picker.remove();
           activeDocument.removeEventListener('click', dismiss, true);
@@ -488,9 +487,9 @@ private renderCalendarMode(): void {
 
   prevBtn.addEventListener('click', () => {
     if (this.calViewType === 'week') {
-      this.calDate = window.moment(this.calDate).subtract(7, 'days').startOf('isoWeek');
+      this.calDate = this.calDate.clone().subtract(7, 'days').startOf('isoWeek');
     } else {
-      this.calDate = window.moment(this.calDate).subtract(1, 'months').date(1);
+      this.calDate = this.calDate.clone().subtract(1, 'months').date(1);
     }
     updateTitle();
     mountView();
@@ -498,9 +497,9 @@ private renderCalendarMode(): void {
 
   nextBtn.addEventListener('click', () => {
     if (this.calViewType === 'week') {
-      this.calDate = window.moment(this.calDate).add(7, 'days').startOf('isoWeek');
+      this.calDate = this.calDate.clone().add(7, 'days').startOf('isoWeek');
     } else {
-      this.calDate = window.moment(this.calDate).add(1, 'months').date(1);
+      this.calDate = this.calDate.clone().add(1, 'months').date(1);
     }
     updateTitle();
     mountView();
@@ -508,7 +507,9 @@ private renderCalendarMode(): void {
 
   todayBtn.addEventListener('click', () => {
     this.calDate =
-      this.calViewType === 'week' ? window.moment().startOf('isoWeek') : window.moment().date(1);
+      this.calViewType === 'week'
+        ? window.moment().startOf('isoWeek')
+        : window.moment().date(1);
     updateTitle();
     mountView();
   });
@@ -517,11 +518,13 @@ private renderCalendarMode(): void {
 }
 ```
 
-Note: `ListViewCallbacks` needs `onTaskClick` — update the interface in ListView.ts (Step 3).
+Note: `DEFAULT_VIEW_CONFIG` may need to be imported or already exists in scope. Check existing `renderCalendarMode` for how config was constructed.
 
-- [ ] **Шаг 3: Переписать ListView.ts — информативный вид**
+- [ ] **Step 3: Rewrite ListView.ts — informative list view**
 
-Заменить `src/views/ListView.ts` полностью:
+Read `src/views/taskGrouping.ts` to check the exact return type of `getTasksForDate` (field names like `due`, `scheduled`, etc.). Read `src/views/BaseView.ts` for the `BaseView` class interface. Read the existing `src/views/ListView.ts` for imports.
+
+Then replace `src/views/ListView.ts` entirely:
 
 ```typescript
 import type { Task } from '../parser/types';
@@ -536,14 +539,11 @@ export interface ListViewCallbacks {
 }
 
 export class ListView extends BaseView {
-  private containerEl: HTMLElement | null = null;
-
   constructor(private callbacks: ListViewCallbacks) {
     super();
   }
 
   render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
-    this.containerEl = container;
     container.empty();
 
     const today = window.moment().format('YYYY-MM-DD');
@@ -554,15 +554,17 @@ export class ListView extends BaseView {
 
     const grid = container.createDiv({ cls: 'tc-list-view' });
 
-    // Show overdue tasks first
+    // Overdue section first
     const overdueTasks = tasks.filter(
       (t) => t.status === 'open' && t.due && t.due < today,
     );
     if (overdueTasks.length > 0) {
       const section = grid.createDiv({ cls: 'tc-list-section' });
-      section.createDiv({ cls: 'tc-list-date-header tc-list-overdue-header', text: 'Overdue' });
+      const overdueHeader = section.createDiv({ cls: 'tc-list-date-header tc-list-overdue-header' });
+      overdueHeader.createEl('span', { cls: 'tc-list-date-label', text: 'Overdue' });
+      overdueHeader.createEl('span', { cls: 'tc-list-date-count', text: String(overdueTasks.length) });
       for (const task of sortTasks(overdueTasks)) {
-        this.renderListTask(section, task, today);
+        this.renderListTask(section, task);
       }
     }
 
@@ -571,21 +573,15 @@ export class ListView extends BaseView {
       if (window.moment(currentDate).month() !== window.moment(month).month()) break;
 
       const groups = getTasksForDate(tasks, currentDate, today);
-      const allTasks = [
-        ...groups.due,
-        ...groups.recurrence,
-        ...groups.start,
-        ...groups.scheduled,
-        ...groups.process,
-        ...groups.dailyNote,
-        ...groups.allDone,
-        ...groups.cancelled,
-      ];
+      // Combine all task groups — adjust field names to match taskGrouping.ts actual return
+      const allTasks: Task[] = [];
+      for (const group of Object.values(groups)) {
+        if (Array.isArray(group)) allTasks.push(...(group as Task[]));
+      }
       if (allTasks.length === 0) continue;
 
       const section = grid.createDiv({ cls: 'tc-list-section' });
 
-      // Human-readable date header
       let dateLabel: string;
       if (currentDate === today) dateLabel = 'Today';
       else if (currentDate === yesterday) dateLabel = 'Yesterday';
@@ -593,19 +589,21 @@ export class ListView extends BaseView {
 
       const dateHeader = section.createDiv({ cls: 'tc-list-date-header' });
       dateHeader.createEl('span', { cls: 'tc-list-date-label', text: dateLabel });
-      dateHeader.createEl('span', { cls: 'tc-list-date-count', text: String(allTasks.length) });
+      dateHeader.createEl('span', {
+        cls: 'tc-list-date-count',
+        text: String(allTasks.length),
+      });
       dateHeader.addEventListener('click', () => this.callbacks.onDateClick(currentDate));
 
       for (const task of sortTasks(allTasks)) {
-        this.renderListTask(section, task, today);
+        this.renderListTask(section, task);
       }
     }
   }
 
-  private renderListTask(container: HTMLElement, task: Task, today: string): void {
+  private renderListTask(container: HTMLElement, task: Task): void {
     const row = container.createDiv({ cls: 'tc-list-task' });
 
-    // Checkbox
     const cb = row.createEl('input', {
       cls: 'tc-task-checkbox',
       attr: { type: 'checkbox' },
@@ -616,13 +614,11 @@ export class ListView extends BaseView {
       this.callbacks.onToggle(task);
     });
 
-    // Title
-    const titleSpan = row.createEl('span', {
+    row.createEl('span', {
       cls: `tc-list-task-title${task.status === 'done' ? ' is-done' : ''}`,
       text: task.text,
     });
 
-    // Right metadata
     const meta = row.createDiv({ cls: 'tc-list-task-meta' });
     if (task.time) {
       meta.createEl('span', { cls: 'tc-task-time', text: task.time });
@@ -633,27 +629,25 @@ export class ListView extends BaseView {
     }
     if ((task.subtasks?.length ?? 0) > 0) {
       const done = task.subtasks!.filter((s) => s.status === 'done').length;
-      meta.createEl('span', { cls: 'tc-task-progress', text: `${done}/${task.subtasks!.length}` });
+      meta.createEl('span', {
+        cls: 'tc-task-progress',
+        text: `${done}/${task.subtasks!.length}`,
+      });
     }
 
     row.addEventListener('click', (e) => {
       if (e.target === cb) return;
       this.callbacks.onTaskClick?.(task);
     });
-
-    // Suppress unused var warning
-    void titleSpan;
   }
 
-  destroy(): void {
-    this.containerEl = null;
-  }
+  destroy(): void {}
 }
 ```
 
-- [ ] **Шаг 4: B13 — исправить стили кнопок вида в styles.css**
+- [ ] **Step 4: B13 — fix view button active state in styles.css**
 
-Найти и обновить `.tc-cal-view-btn` и `.tc-cal-nav-today`:
+Find the existing `.tc-cal-view-btn` or `.tc-view-btn` selector in `styles.css`. Replace all rules for that selector and add `.is-active`:
 
 ```css
 .tc-cal-view-btn {
@@ -695,7 +689,9 @@ export class ListView extends BaseView {
 }
 ```
 
-- [ ] **Шаг 5: Добавить CSS для новой nav и list view**
+- [ ] **Step 5: Add CSS for new nav and list view**
+
+Add these new rules to `styles.css` (in a new section after existing calendar styles):
 
 ```css
 /* ── Calendar Nav ─────────────────────────────────────── */
@@ -756,7 +752,14 @@ export class ListView extends BaseView {
 }
 .tc-cal-style-btn:hover { opacity: 1; }
 
-/* Month/Year pickers */
+.tc-cal-view-switcher {
+  display: flex;
+  gap: 2px;
+  background: var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 2px;
+}
+
 .tc-month-picker,
 .tc-year-picker {
   display: grid;
@@ -825,7 +828,8 @@ export class ListView extends BaseView {
   letter-spacing: 0.05em;
 }
 
-.tc-list-overdue-header .tc-list-date-label {
+.tc-list-overdue-header .tc-list-date-label,
+.tc-list-overdue-header {
   color: var(--color-red, #e74c3c);
 }
 
@@ -868,15 +872,20 @@ export class ListView extends BaseView {
 }
 ```
 
-- [ ] **Шаг 6: Сборка и проверка**
+- [ ] **Step 6: Build and verify**
 
 ```bash
 npm run build
-obsidian plugin:reload id=task-calendar
-obsidian dev:screenshot path=/tmp/task2-calendar.png
 ```
 
-- [ ] **Шаг 7: Commit**
+Expected: zero errors.
+
+```bash
+obsidian plugin:reload id=task-calendar
+obsidian dev:screenshot path=screenshot-b12-b13-b14-b15.png
+```
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/panels/CenterPanel.ts src/views/ListView.ts styles.css
@@ -885,182 +894,163 @@ git commit -m "feat: calendar nav grouping, month/year pickers, style selector, 
 
 ---
 
-### Task 3: RightPanel — bugs (B3, B5, B6, B7)
+### Task 3: RightPanel — popovers, context menu, subtask indicators, dynamic comments (B3, B5, B6, B7)
 
 **Files:**
 - Modify: `src/panels/RightPanel.ts`
 - Modify: `styles.css`
 
 **Interfaces:**
-- Produces: корректный popover времени, toggle context menu, subtask indicators, динамические комментарии.
+- Consumes: `Task`, `SubTask` (check actual type names in `../parser/types`); `TFile` from obsidian; `activeDocument` from obsidian
+- Produces: fixed `showTimePopover` and `showDatePopover` (absolute positioning), toggle-aware `renderContextMenu`, `renderSubTask` with nested data indicators, `addComment` with optimistic DOM update and new signature `(task, text, commentList, inputEl)`
 
-- [ ] **Шаг 1: B3 — исправить позицию time popover**
+**Required reading first:** Read `src/panels/RightPanel.ts` fully before writing any code — find exact method names, field names, the `TaskLike` type if it exists, whether `clearPopovers` exists, whether `openInFile` exists, and where `addComment` is called.
 
-В `showTimePopover` заменить:
+- [ ] **Step 1: B3 — fix time and date popover position**
+
+Find `showTimePopover` in `RightPanel.ts`. Replace implementation (using exact position calculation):
 
 ```typescript
 private showTimePopover(anchor: HTMLElement, task: Task): void {
   const already = this.el.querySelector('.tc-time-popover');
-  this.clearPopovers();
+  this.el.querySelectorAll('.tc-popover').forEach((el) => el.remove());
   if (already) return;
 
-  const pop = this.el.createEl('div', { cls: 'tc-popover tc-time-popover' });
+  this.el.style.position = 'relative';
+  const pop = this.el.createDiv({ cls: 'tc-popover tc-time-popover' });
+  pop.style.position = 'absolute';
+  pop.style.top = `${anchor.offsetTop + anchor.offsetHeight + 4}px`;
+  pop.style.left = `${anchor.offsetLeft}px`;
+  pop.style.zIndex = '10';
+
   const input = pop.createEl('input', {
     attr: { type: 'time', value: task.time ?? '' },
   });
-  input.focus();
+  window.setTimeout(() => input.focus(), 0);
   input.addEventListener('change', () => {
     void this.updateTime(task, input.value).then(() => pop.remove());
   });
   input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
-
-  // Position below anchor
-  this.el.style.position = 'relative';
-  pop.style.position = 'absolute';
-  pop.style.top = `${anchor.offsetTop + anchor.offsetHeight + 4}px`;
-  pop.style.left = `${anchor.offsetLeft}px`;
-  pop.style.zIndex = '10';
-  this.el.appendChild(pop);
-  window.setTimeout(() => input.focus(), 0);
 }
 ```
 
-Also update `showDatePopover` similarly:
+Apply the same pattern to `showDatePopover` if it exists (same structure, use `.tc-date-popover` class, input type `date`).
 
-```typescript
-private showDatePopover(anchor: HTMLElement, task: Task): void {
-  const already = this.el.querySelector('.tc-date-popover');
-  this.clearPopovers();
-  if (already) return;
+- [ ] **Step 2: B5 — fix context menu toggle + "Open in file"**
 
-  const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover' });
-  const input = pop.createEl('input', {
-    cls: 'tc-date-input',
-    attr: { type: 'date', value: task.due ?? task.scheduled ?? '' },
-  });
-  input.addEventListener('change', () => {
-    void this.updateDate(task, input.value);
-    pop.remove();
-  });
-  input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
-
-  pop.style.position = 'absolute';
-  pop.style.top = `${anchor.offsetTop + anchor.offsetHeight + 4}px`;
-  pop.style.left = `${anchor.offsetLeft}px`;
-  pop.style.zIndex = '10';
-  this.el.style.position = 'relative';
-  this.el.appendChild(pop);
-  window.setTimeout(() => input.focus(), 0);
-}
-```
-
-- [ ] **Шаг 2: B5 — исправить context menu toggle + заменить "Copy link"**
-
-Заменить `renderContextMenu`:
+Find `renderContextMenu`. Replace:
 
 ```typescript
 private renderContextMenu(task: TaskLike, anchor: HTMLElement): void {
-  // Toggle: if menu already exists on this button, remove and stop
   const existing = anchor.querySelector('.tc-context-menu');
   if (existing) {
     existing.remove();
     return;
   }
-  // Also close any other open menus
   this.el.querySelectorAll('.tc-context-menu').forEach((el) => el.remove());
 
-  const menu = anchor.createEl('div', { cls: 'tc-context-menu' });
+  const menu = anchor.createDiv({ cls: 'tc-context-menu' });
 
-  const deleteItem = menu.createEl('div', { cls: 'tc-context-item tc-context-danger', text: 'Delete task' });
+  const deleteItem = menu.createDiv({
+    cls: 'tc-context-item tc-context-danger',
+    text: 'Delete task',
+  });
   deleteItem.addEventListener('click', () => {
     menu.remove();
     void this.deleteTask(task);
   });
 
-  const openItem = menu.createEl('div', { cls: 'tc-context-item', text: 'Open in file' });
+  const openItem = menu.createDiv({
+    cls: 'tc-context-item',
+    text: 'Open in file',
+  });
   openItem.addEventListener('click', () => {
     menu.remove();
     void this.openInFile(task);
   });
 
-  const dismiss = (e: MouseEvent): void => {
-    if (!menu.contains(e.target as Node) && e.target !== anchor) {
-      menu.remove();
-      activeDocument.removeEventListener('click', dismiss, true);
-    }
-  };
   window.setTimeout(() => {
+    const dismiss = (e: MouseEvent): void => {
+      if (!menu.contains(e.target as Node) && e.target !== anchor) {
+        menu.remove();
+        activeDocument.removeEventListener('click', dismiss, true);
+      }
+    };
     activeDocument.addEventListener('click', dismiss, true);
   }, 0);
 }
 ```
 
-- [ ] **Шаг 3: B6 — subtask indicators**
+Use the actual type of `task` parameter in the existing `renderContextMenu` signature — keep it unchanged (it may be `Task`, `SubTask`, or a union type `TaskLike`).
 
-В методе `renderSubTask`, после создания label, добавить meta-строку если есть вложения:
+If `openInFile` doesn't exist, add it:
 
 ```typescript
-private renderSubTask(container: HTMLElement, sub: SubTask): void {
-  const row = container.createDiv({ cls: 'tc-subtask-row' });
-  const cb = row.createEl('input', {
-    cls: 'tc-task-checkbox',
-    attr: { type: 'checkbox' },
-  });
-  cb.checked = sub.status === 'done';
-  cb.addEventListener('change', (e) => {
-    e.stopPropagation();
-    void this.toggleSubTask(sub);
-  });
-
-  const content = row.createDiv({ cls: 'tc-subtask-content' });
-  const label = content.createEl('span', {
-    cls: `tc-subtask-label${sub.status === 'done' ? ' is-done' : ''}`,
-    text: sub.text,
-  });
-  label.addEventListener('click', () => {
-    const stack = this.state.get('taskStack');
-    this.state.set('taskStack', [...stack, sub]);
-  });
-
-  // Show meta indicators for subtasks that have their own subtasks or comments
-  const subCount = sub.subtasks?.length ?? 0;
-  const commentCount = sub.comments?.length ?? 0;
-  if (subCount > 0 || commentCount > 0) {
-    const subMeta = content.createDiv({ cls: 'tc-subtask-meta' });
-    if (subCount > 0) {
-      const done = sub.subtasks!.filter((s) => s.status === 'done').length;
-      subMeta.createEl('span', { cls: 'tc-subtask-progress', text: `${done}/${subCount}` });
-    }
-    if (commentCount > 0) {
-      subMeta.createEl('span', { cls: 'tc-subtask-comment-count', text: `💬 ${commentCount}` });
-    }
+private async openInFile(task: { filePath: string; line: number }): Promise<void> {
+  const file = this.app.vault.getAbstractFileByPath(task.filePath);
+  if (!(file instanceof TFile)) return;
+  const leaf = this.app.workspace.getUnpinnedLeaf();
+  await leaf.openFile(file);
+  // Scroll to line
+  const view = leaf.view;
+  if ('editor' in view) {
+    (view as { editor: { setCursor: (pos: { line: number; ch: number }) => void } }).editor.setCursor({ line: task.line, ch: 0 });
   }
 }
 ```
 
-Add to styles.css:
-```css
-.tc-subtask-content {
-  flex: 1;
-  min-width: 0;
-}
-.tc-subtask-meta {
-  display: flex;
-  gap: 6px;
-  margin-top: 2px;
-}
-.tc-subtask-comment-count {
-  font-size: var(--font-smallest, 11px);
-  color: var(--text-muted);
+- [ ] **Step 3: B6 — subtask indicators**
+
+Find `renderSubTask`. After the existing label span, add the meta row:
+
+```typescript
+// Find the content wrapper div (or the row itself if there's no wrapper)
+// Add after the label:
+const subCount = sub.subtasks?.length ?? 0;
+const commentCount = sub.comments?.length ?? 0;
+if (subCount > 0 || commentCount > 0) {
+  const subMeta = content.createDiv({ cls: 'tc-subtask-meta' });
+  if (subCount > 0) {
+    const done = sub.subtasks!.filter((s) => s.status === 'done').length;
+    subMeta.createEl('span', {
+      cls: 'tc-subtask-progress',
+      text: `${done}/${subCount}`,
+    });
+  }
+  if (commentCount > 0) {
+    subMeta.createEl('span', {
+      cls: 'tc-subtask-comment-count',
+      text: `💬 ${commentCount}`,
+    });
+  }
 }
 ```
 
-- [ ] **Шаг 4: B7 — динамическое обновление комментариев**
+If there's no `content` div (label is directly in `row`), wrap it:
+```typescript
+const content = row.createDiv({ cls: 'tc-subtask-content' });
+// move label creation into content
+```
 
-В методе `addComment` — после `vault.process`, обновить список комментариев в DOM без полного перерендера. Заменить метод:
+- [ ] **Step 4: B7 — optimistic comment update**
+
+Find `addComment` and its call site in `renderTask`. Update the method signature and body:
 
 ```typescript
-private async addComment(task: TaskLike, text: string, commentList: HTMLElement, inputEl: HTMLTextAreaElement): Promise<void> {
+private async addComment(
+  task: TaskLike,
+  text: string,
+  commentList: HTMLElement,
+  inputEl: HTMLTextAreaElement,
+): Promise<void> {
+  // Optimistic DOM update first
+  const row = commentList.createDiv({ cls: 'tc-comment-row' });
+  row.createEl('span', { cls: 'tc-comment-date', text: 'Just now' });
+  row.createEl('p', { cls: 'tc-comment-text', text });
+  inputEl.value = '';
+  inputEl.focus();
+
+  // Write to file
   const file = this.app.vault.getAbstractFileByPath(task.filePath);
   if (!(file instanceof TFile)) return;
   const today = window.moment().format('YYYY-MM-DD');
@@ -1070,31 +1060,77 @@ private async addComment(task: TaskLike, text: string, commentList: HTMLElement,
     if (!taskLine) return data;
     const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
     const commentLine = `${indent}- ${today}: ${text}`;
-    const insertAt = task.subtaskRange ? task.subtaskRange.to + 1 : task.line + 1;
+    const insertAt =
+      'subtaskRange' in task && task.subtaskRange
+        ? (task.subtaskRange as { to: number }).to + 1
+        : task.line + 1;
     lines.splice(insertAt, 0, commentLine);
     return lines.join('\n');
   });
-  // Optimistically append to DOM without losing focus
-  const row = commentList.createDiv({ cls: 'tc-comment-row' });
-  row.createEl('span', { cls: 'tc-comment-date', text: 'Just now' });
-  row.createEl('p', { cls: 'tc-comment-text', text });
-  inputEl.value = '';
-  inputEl.focus();
 }
 ```
 
-Update the call site in `renderTask` — pass `commentList` and `inputEl`:
-Change the send button handler to call `this.addComment(task, commentInput.value.trim(), commentList, commentInput)`.
+Update the call site to pass `commentList` and `inputEl`. The send button handler should become:
+```typescript
+sendBtn.addEventListener('click', () => {
+  const text = commentInput.value.trim();
+  if (text) void this.addComment(task, text, commentList, commentInput);
+});
+// Also for Enter key handler if one exists
+```
 
-- [ ] **Шаг 5: Сборка и проверка**
+Use the exact type for `task` that `addComment` already used.
+
+- [ ] **Step 5: Add CSS**
+
+```css
+.tc-subtask-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.tc-subtask-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.tc-subtask-progress {
+  font-size: var(--font-smallest, 11px);
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+  border-radius: 8px;
+  padding: 0 5px;
+}
+
+.tc-subtask-comment-count {
+  font-size: var(--font-smallest, 11px);
+  color: var(--text-muted);
+}
+
+.tc-context-item.tc-context-danger {
+  color: var(--color-red, #e74c3c);
+}
+
+.tc-right {
+  position: relative;
+}
+```
+
+- [ ] **Step 6: Build**
 
 ```bash
 npm run build
-obsidian plugin:reload id=task-calendar
-obsidian dev:screenshot path=/tmp/task3-rightpanel.png
 ```
 
-- [ ] **Шаг 6: Commit**
+Expected: zero errors.
+
+```bash
+obsidian plugin:reload id=task-calendar
+obsidian dev:screenshot path=screenshot-b3-b5-b6-b7.png
+```
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/panels/RightPanel.ts styles.css
@@ -1103,29 +1139,33 @@ git commit -m "fix: time popover position, context menu toggle, subtask indicato
 
 ---
 
-### Task 4: RightPanel — секции и стиль (B4)
+### Task 4: RightPanel — section layout + Todoist-style comments (B4)
 
 **Files:**
 - Modify: `src/panels/RightPanel.ts`
 - Modify: `styles.css`
 
-- [ ] **Шаг 1: Секции — больше отступов + Todoist-стиль комментариев**
+**Interfaces:**
+- Consumes: `Task`, `SubTask` types; updated `addComment(task, text, commentList, inputEl)` signature from Task 3
+- Produces: redesigned section layout (border separator, 16px padding), inline add-subtask row at bottom of list, always-visible comment textarea with Enter-to-submit
 
-В методе `renderTask` (RightPanel.ts), изменить секции:
+**Required reading first:** Read `src/panels/RightPanel.ts` fully to find `renderTask` method and how it currently builds the description, subtasks, and comments sections. Find the actual method name for adding subtasks (`addSubTask` or similar).
 
-1. Description section — добавить `tc-right-section--desc` класс
-2. Sub-tasks section — убрать `+ add` кнопку из хедера, добавить inline "+ Add sub-task" строку снизу списка:
+- [ ] **Step 1: Redesign sub-tasks section in renderTask**
+
+Find the subtasks section in `renderTask`. Replace with:
 
 ```typescript
-// Sub-tasks section
-const subSection = this.el.createDiv({ cls: 'tc-right-section' });
+const subSection = taskEl.createDiv({ cls: 'tc-right-section' });
 const subHeader = subSection.createDiv({ cls: 'tc-right-section-header' });
 subHeader.createEl('span', { cls: 'tc-right-section-label', text: 'Sub-tasks' });
-const subProgress = (task.subtasks ?? []).length > 0
-  ? `${task.subtasks!.filter(s => s.status === 'done').length}/${task.subtasks!.length}`
-  : '';
-if (subProgress) {
-  subHeader.createEl('span', { cls: 'tc-right-section-count', text: subProgress });
+const totalSubs = task.subtasks?.length ?? 0;
+if (totalSubs > 0) {
+  const doneSubs = task.subtasks!.filter((s) => s.status === 'done').length;
+  subHeader.createEl('span', {
+    cls: 'tc-right-section-count',
+    text: `${doneSubs}/${totalSubs}`,
+  });
 }
 
 const subList = subSection.createDiv({ cls: 'tc-subtask-list' });
@@ -1133,23 +1173,22 @@ for (const sub of task.subtasks ?? []) {
   this.renderSubTask(subList, sub);
 }
 
-// Inline "add sub-task" row at the bottom
 const addSubRow = subSection.createDiv({ cls: 'tc-subtask-add-row' });
 addSubRow.createEl('span', { cls: 'tc-subtask-add-icon', text: '+' });
-const addSubLabel = addSubRow.createEl('span', { cls: 'tc-subtask-add-label', text: 'Add sub-task' });
-addSubLabel.addEventListener('click', () => {
+addSubRow.createEl('span', { cls: 'tc-subtask-add-label', text: 'Add sub-task' });
+addSubRow.addEventListener('click', () => {
   addSubRow.style.display = 'none';
   const input = subSection.createEl('input', {
     cls: 'tc-subtask-new-input',
     attr: { type: 'text', placeholder: 'New sub-task…' },
   });
   input.focus();
-  const commit = () => {
+  const commit = (): void => {
     if (input.value.trim()) void this.addSubTask(task, input.value.trim());
     input.remove();
     addSubRow.style.display = '';
   };
-  input.addEventListener('keydown', (e) => {
+  input.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.key === 'Enter') commit();
     if (e.key === 'Escape') { input.remove(); addSubRow.style.display = ''; }
   });
@@ -1157,16 +1196,22 @@ addSubLabel.addEventListener('click', () => {
 });
 ```
 
-3. Comments section — всегда видимое поле:
+Use the exact method name for adding subtasks found in the existing code.
+
+- [ ] **Step 2: Redesign comments section in renderTask**
+
+Find the comments section in `renderTask`. Replace with:
 
 ```typescript
-// Comments section
-const commentSection = this.el.createDiv({ cls: 'tc-right-section' });
+const commentSection = taskEl.createDiv({ cls: 'tc-right-section' });
 const commentHeader = commentSection.createDiv({ cls: 'tc-right-section-header' });
 commentHeader.createEl('span', { cls: 'tc-right-section-label', text: 'Comments' });
-const commentCount = (task.comments ?? []).length;
+const commentCount = task.comments?.length ?? 0;
 if (commentCount > 0) {
-  commentHeader.createEl('span', { cls: 'tc-right-section-count', text: String(commentCount) });
+  commentHeader.createEl('span', {
+    cls: 'tc-right-section-count',
+    text: String(commentCount),
+  });
 }
 
 const commentList = commentSection.createDiv({ cls: 'tc-comment-list' });
@@ -1174,12 +1219,11 @@ for (const comment of task.comments ?? []) {
   this.renderComment(commentList, comment);
 }
 
-// Always-visible comment input
 const commentInput = commentSection.createEl('textarea', {
   cls: 'tc-comment-input',
   attr: { placeholder: 'Write a comment…', rows: '2' },
 });
-commentInput.addEventListener('keydown', (e) => {
+commentInput.addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     const text = commentInput.value.trim();
@@ -1190,10 +1234,11 @@ commentInput.addEventListener('keydown', (e) => {
 });
 ```
 
-- [ ] **Шаг 2: CSS секций**
+Remove the old "Add comment" button and its handler.
+
+- [ ] **Step 3: Add section CSS**
 
 ```css
-/* ── Right Panel Sections ─────────────────────────────── */
 .tc-right-section {
   padding: 16px 16px 0;
 }
@@ -1226,7 +1271,6 @@ commentInput.addEventListener('keydown', (e) => {
   padding: 0 6px;
 }
 
-/* Sub-task inline add row */
 .tc-subtask-add-row {
   display: flex;
   align-items: center;
@@ -1241,7 +1285,18 @@ commentInput.addEventListener('keydown', (e) => {
 .tc-subtask-add-icon { font-size: 16px; line-height: 1; }
 .tc-subtask-add-label { font-size: var(--font-ui-small); }
 
-/* Comment input — always visible */
+.tc-subtask-new-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  margin: 4px 0;
+  box-sizing: border-box;
+}
+
 .tc-comment-input {
   width: 100%;
   min-height: 60px;
@@ -1254,6 +1309,7 @@ commentInput.addEventListener('keydown', (e) => {
   color: var(--text-normal);
   margin-top: 8px;
   box-sizing: border-box;
+  display: block;
 }
 
 .tc-comment-input:focus {
@@ -1261,7 +1317,6 @@ commentInput.addEventListener('keydown', (e) => {
   border-color: var(--interactive-accent);
 }
 
-/* Comment cards */
 .tc-comment-row {
   background: var(--background-secondary);
   border-radius: 6px;
@@ -1281,22 +1336,22 @@ commentInput.addEventListener('keydown', (e) => {
   font-size: var(--font-ui-small);
   color: var(--text-normal);
 }
-
-/* Context menu danger item */
-.tc-context-item.tc-context-danger {
-  color: var(--color-red, #e74c3c);
-}
 ```
 
-- [ ] **Шаг 3: Сборка**
+- [ ] **Step 4: Build**
 
 ```bash
 npm run build
-obsidian plugin:reload id=task-calendar
-obsidian dev:screenshot path=/tmp/task4-sections.png
 ```
 
-- [ ] **Шаг 4: Commit**
+Expected: zero errors.
+
+```bash
+obsidian plugin:reload id=task-calendar
+obsidian dev:screenshot path=screenshot-b4.png
+```
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/panels/RightPanel.ts styles.css
@@ -1312,164 +1367,88 @@ git commit -m "fix: right panel section spacing, Todoist-style comment input, in
 - Modify: `src/ui/TaskModal.ts`
 - Modify: `styles.css`
 
-- [ ] **Шаг 1: B10 — разделить chevron и name click в LeftPanel**
+**Interfaces:**
+- Consumes: `AppState`, `TagGroup` type; `RightPanel.mount()` API; `activeDocument` from obsidian
+- Produces: separate chevron (expand-only) vs header (select-only) click zones in `renderTagGroup`; `TaskModal.open()` inserts close button into `.tc-right-header-actions` (not absolutely positioned); uniform 24px chip height
 
-В методе `renderTagGroup`, разделить header на кликабельные зоны:
+**Required reading first:** Read `src/panels/LeftPanel.ts` and `src/ui/TaskModal.ts` before writing code.
+
+- [ ] **Step 1: B10 — split chevron vs header click in renderTagGroup**
+
+Find `renderTagGroup` in `src/panels/LeftPanel.ts`. The header currently has a single click handler doing both expand and select. Split it:
+
+1. Create the chevron element separately with `e.stopPropagation()` in its click handler (only toggles expand):
 
 ```typescript
-private renderTagGroup(parent: HTMLElement, group: TagGroup, allTasks: Task[]): void {
-  const sel = this.state.get('selectedList');
-  const isGroupActive =
-    typeof sel === 'object' && sel.type === 'group' && sel.groupId === group.id;
-
-  const tags = this.resolveGroupTags(group, allTasks);
-
-  const hasActiveChild = tags.some(
-    (t) => typeof sel === 'object' && sel.type === 'tag' && sel.tag === t,
-  );
-  if (hasActiveChild && !this.explicitlyCollapsed.has(group.id)) {
-    this.expandedGroups.add(group.id);
-  }
-  const isExpanded = this.expandedGroups.has(group.id);
-
-  const container = parent.createDiv({ cls: 'tc-tag-group' });
-  const header = container.createDiv({
-    cls: `tc-tag-group-header${isGroupActive ? ' is-active' : ''}`,
-  });
-
-  // Chevron: only toggles expand/collapse
-  const chevron = header.createEl('span', {
-    cls: `tc-left-icon tc-group-arrow${isExpanded ? ' is-open' : ''}`,
-    text: isExpanded ? '▼' : '▶',
-  });
-  chevron.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (isExpanded) {
-      this.expandedGroups.delete(group.id);
-      this.explicitlyCollapsed.add(group.id);
-    } else {
-      this.expandedGroups.add(group.id);
-      this.explicitlyCollapsed.delete(group.id);
-    }
-    this.render();
-  });
-
-  if (group.color) {
-    const dot = header.createEl('span', { cls: 'tc-group-dot' });
-    dot.style.background = group.color;
-  }
-  header.createEl('span', { cls: 'tc-left-label', text: group.name });
-
-  // Count
-  const rootTag = group.mode === 'prefix' && group.prefix ? `#${group.prefix}` : null;
-  const allGroupTags = rootTag ? [rootTag, ...tags] : tags;
-  const groupCount = allTasks.filter(
-    (t) => t.status === 'open' && allGroupTags.some((tag) => t.rawText.includes(tag)),
-  ).length;
-  if (groupCount > 0) {
-    header.createEl('span', { cls: 'tc-left-count', text: String(groupCount) });
-  }
-
-  // Name area click: only selects the group (no expand toggle)
-  header.addEventListener('click', () => {
-    this.state.set('selectedList', { type: 'group', groupId: group.id });
-    this.state.set('mode', 'tasks');
-  });
-
+const chevron = header.createEl('span', {
+  cls: `tc-left-icon tc-group-arrow${isExpanded ? ' is-open' : ''}`,
+  text: isExpanded ? '▼' : '▶',
+});
+chevron.addEventListener('click', (e) => {
+  e.stopPropagation();
   if (isExpanded) {
-    const children = container.createDiv({ cls: 'tc-tag-group-children' });
-    for (const tag of tags) {
-      const label =
-        group.mode === 'prefix' && group.prefix
-          ? tag.replace(`#${group.prefix}/`, '')
-          : tag;
-
-      const tagSel = this.state.get('selectedList');
-      const isTagActive =
-        typeof tagSel === 'object' && tagSel.type === 'tag' && tagSel.tag === tag;
-      const tagCount = allTasks.filter(
-        (t) => t.rawText.includes(tag) && t.status === 'open',
-      ).length;
-
-      const child = children.createDiv({
-        cls: `tc-left-item tc-tag-child${isTagActive ? ' is-active' : ''}`,
-      });
-      child.createDiv({ cls: 'tc-left-item-left' }, (l) => {
-        l.createEl('span', { cls: 'tc-left-label', text: label });
-      });
-      if (tagCount > 0) child.createEl('span', { cls: 'tc-left-count', text: String(tagCount) });
-      child.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.state.set('selectedList', { type: 'tag', tag });
-        this.state.set('mode', 'tasks');
-      });
-    }
+    this.expandedGroups.delete(group.id);
+    this.explicitlyCollapsed.add(group.id);
+  } else {
+    this.expandedGroups.add(group.id);
+    this.explicitlyCollapsed.delete(group.id);
   }
-}
+  this.render();
+});
 ```
 
-- [ ] **Шаг 2: B11 — fix modal close button position**
-
-В `src/ui/TaskModal.ts`, убрать `position: absolute` с close button. Вместо этого — после монтирования RightPanel добавить close button в tc-right-header-actions:
+2. Keep the header's click handler but remove expand/collapse logic — select only:
 
 ```typescript
-open(task: Task): void {
-  this.close();
-  this.ownerDoc = activeDocument;
-  this.innerState = new AppState();
-  this.innerState.set('taskStack', [task]);
+header.addEventListener('click', () => {
+  this.state.set('selectedList', { type: 'group', groupId: group.id });
+  this.state.set('mode', 'tasks');
+});
+```
 
-  const backdrop = this.ownerDoc.body.createDiv({ cls: 'tc-modal-backdrop' });
-  this.backdropEl = backdrop;
+Match the exact existing field names on `expandedGroups` and `explicitlyCollapsed`. Check if `expandedGroups` is a `Set<string>` and what `group.id` is. Match the exact `selectedList` value shape used elsewhere in LeftPanel.
 
-  const modal = backdrop.createDiv({ cls: 'tc-modal' });
-  const panelEl = modal.createDiv({ cls: 'tc-right tc-modal-body' });
-  this.innerPanel = new RightPanel(this.innerState, this.app);
-  this.innerPanel.mount(panelEl);
+- [ ] **Step 2: B11 — fix modal close button position**
 
-  // Insert close button into RightPanel's header-actions div (no position conflict)
-  const headerActions = panelEl.querySelector('.tc-right-header-actions');
-  const closeBtn = activeDocument.createElement('button');
-  closeBtn.className = 'tc-right-action-btn tc-modal-close-btn';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.setAttribute('title', 'Close');
-  closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => this.close());
-  if (headerActions) {
-    headerActions.appendChild(closeBtn);
-  }
+Find `open` method in `src/ui/TaskModal.ts`. Remove the existing absolute-positioned close button. After `this.innerPanel.mount(panelEl)`, insert close button into header-actions:
 
-  backdrop.addEventListener('click', (e) => {
-    if (e.target === backdrop) this.close();
-  });
-
-  this.keyHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') this.close();
-  };
-  this.ownerDoc.addEventListener('keydown', this.keyHandler);
+```typescript
+const headerActions = panelEl.querySelector<HTMLElement>('.tc-right-header-actions');
+const closeBtn = activeDocument.createElement('button');
+closeBtn.className = 'tc-right-action-btn tc-modal-close-btn';
+closeBtn.setAttribute('aria-label', 'Close');
+closeBtn.setAttribute('title', 'Close');
+closeBtn.textContent = '✕';
+closeBtn.addEventListener('click', () => this.close());
+if (headerActions) {
+  headerActions.appendChild(closeBtn);
+} else {
+  panelEl.appendChild(closeBtn);
 }
 ```
 
-Обновить CSS — убрать `position: absolute` с `.tc-modal-close-btn`:
+- [ ] **Step 3: Remove absolute positioning from modal close button CSS**
+
+In `styles.css`, find `.tc-modal-close-btn` and remove any `position: absolute`, `top`, `right`, `z-index` properties. The button is now in the flex row:
+
 ```css
 .tc-modal-close-btn {
-  /* No position: absolute needed — it's now in the header-actions flex row */
+  /* positioned inside .tc-right-header-actions flex row */
 }
 ```
 
-- [ ] **Шаг 3: B2 — чистый стиль чипов**
+- [ ] **Step 4: B2 — uniform chip styles**
 
-В `styles.css` найти и обновить чипы:
+Find `.tc-chip` in `styles.css`. Update all chip-related rules:
 
 ```css
-/* ── Chips ────────────────────────────────────────────── */
 .tc-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 26px;
+  height: 24px;
   padding: 0 10px;
-  border-radius: 13px;
+  border-radius: 12px;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
   font-size: 12px;
@@ -1478,6 +1457,8 @@ open(task: Task): void {
   white-space: nowrap;
   transition: border-color 0.1s, background 0.1s;
   user-select: none;
+  box-sizing: border-box;
+  vertical-align: middle;
 }
 
 .tc-chip:hover {
@@ -1488,11 +1469,6 @@ open(task: Task): void {
 .tc-chip-empty {
   color: var(--text-muted);
   border-style: dashed;
-}
-
-.tc-chip-tag {
-  background: var(--background-secondary);
-  border-color: var(--background-modifier-border);
 }
 
 .tc-chip-add {
@@ -1515,6 +1491,7 @@ open(task: Task): void {
   font-size: 12px;
   line-height: 1;
   padding: 0;
+  flex-shrink: 0;
   transition: background 0.1s, color 0.1s;
 }
 .tc-chip-remove:hover {
@@ -1523,15 +1500,20 @@ open(task: Task): void {
 }
 ```
 
-- [ ] **Шаг 4: Сборка и проверка**
+- [ ] **Step 5: Build and verify**
 
 ```bash
 npm run build
-obsidian plugin:reload id=task-calendar
-obsidian dev:screenshot path=/tmp/task5-leftmodal.png
 ```
 
-- [ ] **Шаг 5: Commit**
+Expected: zero errors.
+
+```bash
+obsidian plugin:reload id=task-calendar
+obsidian dev:screenshot path=screenshot-b2-b10-b11.png
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/panels/LeftPanel.ts src/ui/TaskModal.ts styles.css
@@ -1540,28 +1522,29 @@ git commit -m "fix: tag group chevron separates from select, modal close button,
 
 ---
 
-## Self-review
+## Self-Review
 
 **Spec coverage:**
 - ✅ B1: task card metadata right — Task 1 Step 1-2
-- ✅ B2: chip styles — Task 5 Step 3
+- ✅ B2: chip styles — Task 5 Step 4
 - ✅ B3: time popover position — Task 3 Step 1
-- ✅ B4: section spacing + Todoist comments — Task 4 Step 1-2
+- ✅ B4: section spacing + Todoist comments — Task 4 Step 1-3
 - ✅ B5: context menu toggle + "Open in file" — Task 3 Step 2
 - ✅ B6: subtask indicators — Task 3 Step 3
 - ✅ B7: dynamic comments — Task 3 Step 4
 - ✅ B8: search click nav — Task 1 Step 4
 - ✅ B9: today overdue — Task 1 Step 3
 - ✅ B10: chevron vs name click — Task 5 Step 1
-- ✅ B11: modal close button position — Task 5 Step 2
+- ✅ B11: modal close button position — Task 5 Step 2-3
 - ✅ B12: calendar nav grouping + pickers — Task 2 Step 2
 - ✅ B13: view button active state — Task 2 Step 4
 - ✅ B14: list view redesign — Task 2 Step 3
-- ✅ B15: style selector — Task 2 Step 2
+- ✅ B15: style selector — Task 2 Step 1-2
 
-**Placeholder scan:** нет TBD/TODO.
+**Placeholder scan:** No TBD/TODO. All steps have concrete code.
 
 **Type consistency:**
-- `ListViewCallbacks.onTaskClick?: (task: Task) => void` — optional, Task 2 Step 3 и Step 2.
-- `addComment` новая сигнатура с `commentList, inputEl` — используется только в Task 3/4.
-- `renderContextMenu` та же сигнатура `(task, anchor)` — Task 3 Step 2.
+- `ListViewCallbacks.onTaskClick?: (task: Task) => void` — optional, defined in Task 2 Step 3, consumed in Task 2 Step 2.
+- `addComment` new signature `(task, text, commentList, inputEl)` — defined in Task 3 Step 4, call site updated there; Task 4 Step 2 uses the new signature.
+- `renderContextMenu` same parameter order — Task 3 Step 2.
+- Task 3 Step 3: `content` variable assumed to be a wrapper div in `renderSubTask` — implementer must verify structure and add wrapper if missing.

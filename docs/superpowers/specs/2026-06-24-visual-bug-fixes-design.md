@@ -1,27 +1,27 @@
 # Visual Bug Fixes — Design Spec
 
-**Date:** 2026-06-24  
-**Status:** Reviewed & Approved  
+**Date:** 2026-06-24
+**Status:** Reviewed & Approved
 **Branch start:** 252fddf
 
-## Список исправлений (13 пунктов)
+## Bug List (B1–B15)
 
 ---
 
-### B1 — Task card: метаданные справа (Todoist-стиль)
+### B1 — Task card: metadata on the right (Todoist style)
 
-**Проблема:** метаданные (теги, дата, прогресс) рендерятся под заголовком задачи.
+**Problem:** Metadata (tags, date, progress) renders below the task title.
 
-**Решение:** Перестроить DOM task card в `CenterPanel.renderTaskCard`:
+**Solution:** Restructure task card DOM in `CenterPanel.renderTaskCard`:
 ```
 <div class="tc-task-card">
   <input checkbox>
   <div class="tc-task-body">        ← flex: 1, min-width: 0
     <div class="tc-task-title-row"> ← time + title
-    [description span if exists]
+    [description span if present]
   </div>
-  <div class="tc-task-meta-right">  ← flex-shrink: 0, align-items: flex-end
-    <div class="tc-task-pills">date | tags | progress</div>
+  <div class="tc-task-meta-right">  ← flex-shrink: 0, align-items: center
+    date | tags (max 2) | progress
   </div>
   <button class="tc-task-delete-btn">
 </div>
@@ -30,146 +30,146 @@ CSS: `.tc-task-card { display:flex; align-items:flex-start }`. `.tc-task-meta-ri
 
 ---
 
-### B2 — Chip-теги в правой панели
+### B2 — Right-panel tag chips inconsistent
 
-**Проблема:** tag chips выглядят несогласованно — крестик большой, размеры прыгают.
+**Problem:** Tag chips have inconsistent sizing — large × button, varying heights.
 
-**Решение:** Унифицировать `.tc-chip` и `.tc-chip-tag`. Все chips одинаковой высоты (24px), border-radius 12px, font-size 12px. Кнопка-крестик: 14px, line-height 1, без border.
-
----
-
-### B3 — Popover времени: позиция
-
-**Проблема:** `showTimePopover` использует `anchor.after(pop)` без `position: absolute`, popover раздвигает контент.
-
-**Решение:** Сделать `.tc-popover` позицией `absolute` относительно ближайшего positioned-предка. В `showTimePopover` вместо `anchor.after(pop)` — вычислять `offsetTop/offsetLeft` якоря относительно `this.el` и устанавливать `pop.style.top/left`. Добавить `position: relative` на `.tc-right`.
+**Solution:** Unify `.tc-chip` and `.tc-chip-tag`. All chips height 24px, border-radius 12px, font-size 12px. Remove button: 14px, line-height 1, no border.
 
 ---
 
-### B4 — Секции Description/Subtasks/Comments: отступы + Todoist-стиль
+### B3 — Time popover: wrong position
 
-**Проблема:** секции слиплись, комментарии требуют кнопку вместо inline-поля.
+**Problem:** `showTimePopover` uses `anchor.after(pop)` without `position: absolute`, so the popover pushes layout content down.
 
-**Решение:**
-- Между секциями `padding-top: 20px`, `border-top: 1px solid var(--background-modifier-border)`.
-- Комментарии: убрать кнопку "Add comment" полностью, всегда показывать `<textarea placeholder="Write a comment…">`. При нажатии Enter (без Shift) — сохранить и очистить поле. Shift+Enter — переход строки.
-- Sub-tasks: убрать `+ add` кнопку из хедера. Внизу списка подзадач добавить inline-строку `+ Add sub-task` (тонкий текст, клик → input).
+**Solution:** Make `.tc-popover` absolutely positioned relative to the nearest positioned ancestor. In `showTimePopover`, compute `offsetTop/offsetLeft` of anchor relative to `this.el` and set `pop.style.top/left`. Add `position: relative` to `.tc-right`.
 
 ---
 
-### B5 — Контекстное меню: toggle + пункты
+### B4 — Sections: spacing + Todoist-style comments
 
-**Проблема:** повторный клик на `⋯` не закрывает меню. "Copy link" бесполезен.
+**Problem:** Sections are cramped; comments require clicking a button instead of inline input.
 
-**Решение:**
-- В `renderContextMenu`: перед созданием меню проверять `menuBtn.contains` уже существующее `.tc-context-menu` и закрывать его. Или использовать флаг на элементе.
-- Заменить "Copy link" → "Open in file" (открывает файл задачи через `openInFile`).
-- Оба пункта меню закрывают меню после выполнения действия.
-
----
-
-### B6 — Подзадачи: индикаторы вложенных данных
-
-**Проблема:** подзадачи с собственными подзадачами или комментариями не имеют индикаторов.
-
-**Решение:** В `renderSubTask` (RightPanel) добавить мета-строку под label:
-- Если `sub.subtasks?.length > 0` → `0/N` прогресс
-- Если `sub.comments?.length > 0` → `💬 N`
+**Solution:**
+- Between sections: `padding-top: 20px`, `border-top: 1px solid var(--background-modifier-border)`.
+- Comments: remove "Add comment" button entirely. Always show `<textarea placeholder="Write a comment…">`. Press Enter (without Shift) → save and clear. Shift+Enter → line break.
+- Sub-tasks: remove `+ add` button from section header. Add inline `+ Add sub-task` row at the bottom of the subtask list (light text, click → inline input).
 
 ---
 
-### B7 — Комментарии: динамическое обновление без потери фокуса
+### B5 — Context menu: toggle + replace "Copy link"
 
-**Проблема:** после добавления комментария вся правая панель перерендерится через store.onUpdate, теряя фокус.
+**Problem:** Clicking ⋯ twice does not close the menu. "Copy link" is useless.
 
-**Решение:** Комментарий добавляется оптимистично — сначала `append` в DOM список комментариев (немедленно), потом `vault.process` записывает в файл. Никакого ожидания ответа от store перед обновлением UI. Фокус и позиция скролла не теряются.
+**Solution:**
+- In `renderContextMenu`: before creating menu, check if `.tc-context-menu` is a child of `anchor` — if so, remove it and return (toggle behavior).
+- Replace "Copy link" with "Open in file" (navigates to the task's source file).
+- Both menu items close the menu after executing their action.
 
 ---
 
-### B8 — Поиск: клик на задачу открывает контекст
+### B6 — Sub-tasks: indicators for nested data
 
-**Проблема:** клик на задачу в поиске ничего не делает (правая панель скрыта в search mode).
+**Problem:** Sub-tasks with their own sub-tasks or comments show no indicators.
 
-**Решение:** В `renderSearch` — при клике на задачу:
+**Solution:** In `renderSubTask` (RightPanel), add a meta row below the label:
+- If `sub.subtasks?.length > 0` → show `done/N` progress chip
+- If `sub.comments?.length > 0` → show `💬 N`
+
+---
+
+### B7 — Comments: dynamic update without losing focus
+
+**Problem:** Adding a comment causes full right-panel re-render via store.onUpdate, losing focus.
+
+**Solution:** Optimistic update — immediately `append` to the DOM comment list, then `vault.process` writes to file. No waiting for store response before updating UI. Focus and scroll position are preserved.
+
+---
+
+### B8 — Search: clicking a task navigates to its context
+
+**Problem:** Clicking a task in search mode does nothing (right panel is hidden in search mode).
+
+**Solution:** In `renderSearch`, on task click:
 1. `state.set('mode', 'tasks')`
-2. Определить список по three-way logic: если `due < today` или `due/scheduled/dailyNoteDate === today` → `'today'`; если дата в будущем → `'upcoming'`; иначе → `'inbox'`
-3. `state.set('taskStack', [task])` — покажет задачу в правой панели
+2. Three-way list logic: if `due < today` or `due/scheduled/dailyNoteDate === today` → `'today'`; if date is in the future → `'upcoming'`; else → `'inbox'`
+3. `state.set('taskStack', [task])` — shows task in right panel
 
 ---
 
-### B9 — Today: просроченные задачи сверху
+### B9 — Today view: include overdue tasks
 
-**Проблема:** `getFilteredTasks('today')` не включает просроченные задачи.
+**Problem:** `getFilteredTasks('today')` does not include overdue tasks.
 
-**Решение:** В фильтре 'today' добавить просроченные (`due < today` и `status === 'open'`). В `renderGrouped` убедиться что "Overdue" группа рендерится первой.
-
----
-
-### B10 — Теги: шеврон ↔ название раздельно
-
-**Проблема:** весь хедер группы — одна зона клика для expand+select.
-
-**Решение:** В `LeftPanel.renderTagGroup`:
-- Стрелка `▶`/`▼` — отдельный элемент с `e.stopPropagation()`, кликает только expand/collapse
-- Остальная часть (dot + name + count) — кликает только select (без toggle expand)
+**Solution:** In the 'today' filter, add overdue tasks (`due < today` and `status === 'open'`). Ensure the "Overdue" group renders first in `renderGrouped`.
 
 ---
 
-### B11 — Модальное окно: кнопка закрыть + стиль чипов
+### B10 — Tag groups: separate chevron from name click
 
-**Проблема:** close button overlaps с кнопками `↗ ⋯`. Чипы выглядят не как в правой панели.
+**Problem:** The entire group header is one click zone that both expands and selects.
 
-**Решение:**
-- В `TaskModal.open()`: после `innerPanel.mount(panelEl)` найти `panelEl.querySelector('.tc-right-header-actions')` и _appendChild_ туда close button (не absolute).
-- Убрать `position: absolute` с `.tc-modal-close-btn`.
-- Чипы наследуют `.tc-chip` — проверить что `.tc-modal-body` не сбрасывает стили.
-
----
-
-### B12 — Календарь: навигационная панель
-
-**Проблема:** стрелки на краях экрана, title между ними слишком далеко.
-
-**Решение:**
-- Перестроить nav: левая группа `[<] [Month Year] [>]`, правая группа `[Today] [Month|Week|List]`.
-- CSS: `tc-cal-nav { display:flex; align-items:center; justify-content:space-between }`. Левая группа — `tc-cal-nav-left { display:flex; gap:4px; align-items:center }`.
-- Title: `<button class="tc-cal-nav-month">June</button> <button class="tc-cal-nav-year">2026</button>` — клик по месяцу показывает сетку 12 месяцев, клик по году — список лет ±5.
-- Добавить style-selector: маленькая кнопка 🎨 в правой группе, при клике циклически переключает стили style1→style2→...→style11→style1 (cycle, не dropdown — проще и эффективнее для 11 стилей).
+**Solution:** In `LeftPanel.renderTagGroup`:
+- The `▶`/`▼` arrow is a separate element with `e.stopPropagation()` — click only toggles expand/collapse
+- The rest of the header (dot + name + count) — click only selects (no expand toggle)
 
 ---
 
-### B13 — Кнопки вида: active-стиль
+### B11 — Modal: close button overlaps ⋯ menu
 
-**Проблема:** выделение "Today" кнопки — фиолетовый контур выглядит плохо.
+**Problem:** `.tc-modal-close-btn` is absolutely positioned and overlaps action buttons.
 
-**Решение:** `.tc-cal-view-btn.is-active, .tc-cal-nav-today.is-active { background: var(--interactive-accent); color: white; border: none; outline: none; }` Нет `box-shadow`, нет border-outline.
-
----
-
-### B14 — List view: информативность
-
-**Проблема:** список показывает ISO-даты и пустые задачи.
-
-**Решение:** Переписать `ListView.ts`:
-- Дата-хедер: `formatListDate(date)` → "Today", "Yesterday", "Mon, 23 Jun" и т.д.
-- Задачи: компактные карточки с title + мета (время, теги, прогресс) — как в центральной панели
-- Показывать overdue задачи с меткой
+**Solution:**
+- In `TaskModal.open()`: after `innerPanel.mount(panelEl)`, query `panelEl.querySelector('.tc-right-header-actions')` and `appendChild` the close button there (no absolute positioning).
+- Remove `position: absolute` from `.tc-modal-close-btn`.
+- Chips inherit `.tc-chip` — verify `.tc-modal-body` does not reset styles.
 
 ---
 
-### B15 — Calendar styles: вернуть переключатель
+### B12 — Calendar: navigation panel layout
 
-**Проблема:** style1-style11 применяются из настроек статично, нет UI переключения.
+**Problem:** Prev/next arrows are at opposite ends of the screen; title is too far from buttons.
 
-**Решение:** В `CenterPanel`: добавить `private calStyle: string` (начальное значение из settings). В nav добавить кнопку-dropdown для выбора стиля (cycle 1-11 или dropdown). `viewContainer` обновляет className при смене стиля.
+**Solution:**
+- Restructure nav: left group `[<] [Month Year] [>]`, right group `[Today] [Month|Week|List] [🎨]`.
+- CSS: `tc-cal-nav { display:flex; justify-content:space-between }`. Left group: `tc-cal-nav-left { display:flex; gap:4px; align-items:center }`.
+- Month/year as clickable buttons: `<button class="tc-cal-nav-month">June</button> <button class="tc-cal-nav-year">2026</button>` — clicking month shows 12-month grid popover; clicking year shows ±5 year list popover.
+- Style selector: small `🎨` button in the right group. On click, cycles through styles style1→style2→...→style11→style1 (cycle, not dropdown — simpler for 11 items).
 
 ---
 
-## Файлы для изменения
+### B13 — View buttons: active state style
 
-| Файл | Изменения |
-|------|-----------|
-| `src/panels/CenterPanel.ts` | B1, B8, B9, B12, B13, B14, B15 |
+**Problem:** The active view button (Month/Week/List) has a purple outline that looks bad.
+
+**Solution:** `.tc-cal-view-btn.is-active { background: var(--interactive-accent); color: white; border: none; outline: none; }` No box-shadow, no border-outline.
+
+---
+
+### B14 — List view: make it informative
+
+**Problem:** List view shows ISO dates and empty task entries.
+
+**Solution:** Rewrite `ListView.ts`:
+- Date headers: `formatListDate(date)` → "Today", "Yesterday", "Mon, 23 Jun", etc.
+- Tasks: compact cards with title + right-side meta (time, tags, progress) — same as center panel
+- Overdue tasks shown with distinct "Overdue" section header in red
+
+---
+
+### B15 — Calendar style selector: restore toggle
+
+**Problem:** style1–style11 are applied statically from settings; no in-panel UI to switch.
+
+**Solution:** In `CenterPanel`: add `private calStyle: string` (initial value from settings). Add `🎨` cycle button in nav (see B12). `viewContainer` className updates when style changes.
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/panels/CenterPanel.ts` | B1, B8, B9, B12, B13, B15 |
 | `src/panels/RightPanel.ts` | B3, B4, B5, B6, B7 |
 | `src/panels/LeftPanel.ts` | B10 |
 | `src/ui/TaskModal.ts` | B11 |
