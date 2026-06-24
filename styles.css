@@ -2145,6 +2145,8 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-chip-tag {
   cursor: default;
+  color: var(--tc-chip-tag-color, inherit);
+  border-color: var(--tc-chip-tag-color, var(--interactive-accent));
 }
 .tc-chip-add {
   background: transparent;

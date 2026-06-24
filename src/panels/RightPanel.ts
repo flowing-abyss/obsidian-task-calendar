@@ -3,6 +3,7 @@ import { TFile, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import { formatTaskLine } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
+import type { CalendarSettings } from '../settings/types';
 
 type TaskLike = Task | SubTask;
 
@@ -13,6 +14,7 @@ export class RightPanel {
   constructor(
     private state: AppState,
     private app: App,
+    private settings?: CalendarSettings,
   ) {}
 
   mount(container: HTMLElement): void {
@@ -352,12 +354,31 @@ export class RightPanel {
 
   private renderTagChip(container: HTMLElement, task: Task, tag: string): void {
     const chip = container.createEl('span', { cls: 'tc-chip tc-chip-tag' });
+    const color = this.getTagColor(tag);
+    if (color) chip.setCssProps({ '--tc-chip-tag-color': color });
     chip.createEl('span', { text: tag });
     const x = chip.createEl('button', { cls: 'tc-chip-remove', text: '×' });
     x.addEventListener('click', (e) => {
       e.stopPropagation();
       void this.removeTag(task, tag);
     });
+  }
+
+  private getTagColor(tag: string): string | undefined {
+    if (!this.settings) return undefined;
+    const noHash = tag.replace(/^#/, '');
+    for (const group of this.settings.tagGroups) {
+      if (group.mode === 'prefix' && group.prefix) {
+        if (noHash === group.prefix || noHash.startsWith(`${group.prefix}/`)) {
+          return group.color;
+        }
+      } else if (group.mode === 'manual' && group.tags) {
+        if (group.tags.includes(tag) || group.tags.includes(noHash)) {
+          return group.color;
+        }
+      }
+    }
+    return undefined;
   }
 
   private clearPopovers(): void {
@@ -456,13 +477,18 @@ export class RightPanel {
     const rawTags = Object.keys(
       (this.app.metadataCache as unknown as { getTags(): Record<string, number> }).getTags(),
     );
-    // Sort: fewer slashes first (parent before child), then alphabetically
+    // Sort: group by root tag, parent before children within each group
     const sortedTags = [...rawTags];
     sortedTags.sort((a, b) => {
-      const da = (a.match(/\//g) ?? []).length;
-      const db = (b.match(/\//g) ?? []).length;
+      const aClean = a.startsWith('#') ? a.slice(1) : a;
+      const bClean = b.startsWith('#') ? b.slice(1) : b;
+      const aRoot = aClean.split('/')[0] ?? '';
+      const bRoot = bClean.split('/')[0] ?? '';
+      if (aRoot !== bRoot) return aRoot.localeCompare(bRoot);
+      const da = (aClean.match(/\//g) ?? []).length;
+      const db = (bClean.match(/\//g) ?? []).length;
       if (da !== db) return da - db;
-      return a.localeCompare(b);
+      return aClean.localeCompare(bClean);
     });
     const datalist = container.createEl('datalist', { attr: { id: datalistId } });
     for (const tag of sortedTags) {

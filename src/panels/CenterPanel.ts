@@ -30,7 +30,7 @@ export class CenterPanel {
 
   mount(container: HTMLElement): void {
     this.el = container;
-    this.taskModal = new TaskModal(this.app);
+    this.taskModal = new TaskModal(this.app, this.settings);
     this.calStyle = this.settings.desktop.style ?? 'style1';
     this.offs.push(
       this.state.on('selectedList', () => this.render()),

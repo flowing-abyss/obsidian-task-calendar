@@ -2,6 +2,7 @@ import type { App } from 'obsidian';
 import { AppState } from '../app/AppState';
 import { RightPanel } from '../panels/RightPanel';
 import type { Task } from '../parser/types';
+import type { CalendarSettings } from '../settings/types';
 
 export class TaskModal {
   private backdropEl: HTMLElement | null = null;
@@ -10,7 +11,10 @@ export class TaskModal {
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private ownerDoc: Document | null = null;
 
-  constructor(private app: App) {}
+  constructor(
+    private app: App,
+    private settings?: CalendarSettings,
+  ) {}
 
   open(task: Task): void {
     this.close();
@@ -25,7 +29,7 @@ export class TaskModal {
     const modal = backdrop.createDiv({ cls: 'tc-modal' });
 
     const panelEl = modal.createDiv({ cls: 'tc-right tc-modal-body' });
-    this.innerPanel = new RightPanel(this.innerState, this.app);
+    this.innerPanel = new RightPanel(this.innerState, this.app, this.settings);
     this.innerPanel.mount(panelEl);
 
     // Insert close button into the panel's header actions row (flex row, not absolutely positioned)
