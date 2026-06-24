@@ -89,4 +89,109 @@ describe('parseSubItems', () => {
     const r = parseSubItems(lines, 0, FILE);
     expect(r.subtasks[0]?.filePath).toBe(FILE);
   });
+
+  it('parses 3 levels of nesting (great-grandchild)', () => {
+    const lines = [
+      '- [ ] Root',
+      '  - [ ] Child',
+      '    - [ ] Grandchild',
+      '      - [ ] GreatGrandchild',
+    ];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks).toHaveLength(1);
+    const child = r.subtasks[0];
+    expect(child?.subtasks).toHaveLength(1);
+    const grand = child?.subtasks?.[0];
+    expect(grand?.subtasks).toHaveLength(1);
+    expect(grand?.subtasks?.[0]?.text).toBe('GreatGrandchild');
+  });
+
+  it('subtaskRange covers all descendants', () => {
+    const lines = [
+      '- [ ] Root',
+      '  - [ ] Child',
+      '    - [ ] Grandchild',
+    ];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtaskRange).toEqual({ from: 1, to: 2 });
+  });
+
+  it('skips empty lines between subtasks without breaking range', () => {
+    const lines = [
+      '- [ ] Parent',
+      '  - [ ] Child 1',
+      '',
+      '  - [ ] Child 2',
+    ];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks).toHaveLength(2);
+    expect(r.subtasks[0]?.text).toBe('Child 1');
+    expect(r.subtasks[1]?.text).toBe('Child 2');
+    expect(r.subtaskRange).toEqual({ from: 1, to: 3 });
+  });
+
+  it('handles tab-indented subtasks', () => {
+    const lines = ['- [ ] Parent', '\t- [ ] Tab child'];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks).toHaveLength(1);
+    expect(r.subtasks[0]?.text).toBe('Tab child');
+  });
+
+  it('subtask can have its own description', () => {
+    const lines = [
+      '- [ ] Parent',
+      '  - [ ] Child',
+      '    - > Child desc',
+    ];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks[0]?.description).toBe('Child desc');
+  });
+
+  it('subtask can have its own dated comment', () => {
+    const lines = [
+      '- [ ] Parent',
+      '  - [ ] Child',
+      '    - 2026-01-15: Child note',
+    ];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks[0]?.comments).toHaveLength(1);
+    expect(r.subtasks[0]?.comments?.[0]?.date).toBe('2026-01-15');
+    expect(r.subtasks[0]?.comments?.[0]?.text).toBe('Child note');
+  });
+
+  it('subtask with its own children has subtaskRange set', () => {
+    const lines = [
+      '- [ ] Root',
+      '  - [ ] Child',
+      '    - [ ] Grandchild',
+    ];
+    const r = parseSubItems(lines, 0, FILE);
+    const child = r.subtasks[0];
+    expect(child?.subtaskRange).toEqual({ from: 2, to: 2 });
+  });
+
+  it('sibling after nested group is parsed correctly', () => {
+    const lines = [
+      '- [ ] Root',
+      '  - [ ] Child A',
+      '    - [ ] Nested',
+      '  - [ ] Child B',
+    ];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks).toHaveLength(2);
+    expect(r.subtasks[0]?.text).toBe('Child A');
+    expect(r.subtasks[1]?.text).toBe('Child B');
+    expect(r.subtasks[1]?.subtasks).toBeUndefined();
+  });
+
+  it('line property is correct for deeply nested items', () => {
+    const lines = [
+      '- [ ] Root',       // line 0
+      '  - [ ] Child',    // line 1
+      '    - [ ] Grand',  // line 2
+    ];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks[0]?.line).toBe(1);
+    expect(r.subtasks[0]?.subtasks?.[0]?.line).toBe(2);
+  });
 });
