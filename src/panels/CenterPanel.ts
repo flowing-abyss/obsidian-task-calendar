@@ -488,7 +488,7 @@ export class CenterPanel {
       attr: { type: 'checkbox' },
     });
     checkbox.checked = task.status === 'done';
-    if (task.priority && task.priority !== 'C') {
+    if (task.priority && task.priority !== 'D') {
       checkbox.dataset['priority'] = task.priority;
     }
     checkbox.addEventListener('change', (e) => {

@@ -1,5 +1,6 @@
 export type TaskStatus = 'open' | 'done' | 'cancelled' | 'in-progress';
-export type TaskPriority = 'A' | 'B' | 'C' | 'D'; // A=highest (⏫), D=lowest (🔽), C=default
+// A=🔺 Highest, B=⏫ High, C=🔼 Medium, D=normal (no emoji), E=🔽 Low, F=⏬ Lowest
+export type TaskPriority = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 
 export interface Task {
   filePath: string;

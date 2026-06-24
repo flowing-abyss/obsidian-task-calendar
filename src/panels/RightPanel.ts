@@ -1,6 +1,7 @@
 import type { App } from 'obsidian';
 import { TFile, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
+import { formatTaskLine } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 
 type TaskLike = Task | SubTask;
@@ -331,15 +332,17 @@ export class RightPanel {
 
   private renderPriorityChip(container: HTMLElement, task: Task): void {
     const labels: Record<string, string> = {
-      A: '🚩 High',
-      B: '🚩 Medium',
-      C: 'Priority',
-      D: '🚩 Low',
+      A: '🚩 Highest',
+      B: '🚩 High',
+      C: '🚩 Medium',
+      D: 'Priority',
+      E: '🚩 Low',
+      F: '🚩 Lowest',
     };
     const chip = container.createEl('button', {
-      cls: `tc-chip tc-priority-chip tc-priority-chip--${task.priority ?? 'C'}${task.priority === 'C' ? ' tc-chip-empty' : ''}`,
+      cls: `tc-chip tc-priority-chip tc-priority-chip--${task.priority ?? 'D'}${task.priority === 'D' ? ' tc-chip-empty' : ''}`,
       text: labels[task.priority] ?? 'Priority',
-      attr: { 'data-priority': task.priority ?? 'C' },
+      attr: { 'data-priority': task.priority ?? 'D' },
     });
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -408,12 +411,14 @@ export class RightPanel {
       '--tc-pop-left': `${anchor.offsetLeft}px`,
     });
 
-    const currentPriority = anchor.getAttribute('data-priority') ?? task.priority ?? 'C';
+    const currentPriority = anchor.getAttribute('data-priority') ?? task.priority ?? 'D';
     const options: Array<{ value: string; label: string }> = [
-      { value: 'A', label: 'High' },
-      { value: 'B', label: 'Medium' },
-      { value: 'D', label: 'Low' },
-      { value: 'C', label: 'None' },
+      { value: 'A', label: 'Highest' },
+      { value: 'B', label: 'High' },
+      { value: 'C', label: 'Medium' },
+      { value: 'D', label: 'None' },
+      { value: 'E', label: 'Low' },
+      { value: 'F', label: 'Lowest' },
     ];
     for (const opt of options) {
       const btn = pop.createEl('button', {
@@ -424,14 +429,16 @@ export class RightPanel {
       btn.addEventListener('click', () => {
         // Optimistic update on the chip
         const chipLabels: Record<string, string> = {
-          A: '🚩 High',
-          B: '🚩 Medium',
-          C: 'Priority',
-          D: '🚩 Low',
+          A: '🚩 Highest',
+          B: '🚩 High',
+          C: '🚩 Medium',
+          D: 'Priority',
+          E: '🚩 Low',
+          F: '🚩 Lowest',
         };
         anchor.textContent = chipLabels[opt.value] ?? 'Priority';
         anchor.setAttribute('data-priority', opt.value);
-        anchor.className = `tc-chip tc-priority-chip tc-priority-chip--${opt.value}${opt.value === 'C' ? ' tc-chip-empty' : ''}`;
+        anchor.className = `tc-chip tc-priority-chip tc-priority-chip--${opt.value}${opt.value === 'D' ? ' tc-chip-empty' : ''}`;
         pop.remove();
         void this.updatePriority(task, opt.value);
       });
@@ -517,9 +524,9 @@ export class RightPanel {
       const rawAfterPrefix = line.slice(prefix.length);
       // Find where metadata begins: a space followed by a known metadata emoji or hashtag.
       // Use a single \s (no quantifier) to avoid super-linear backtracking reported by sonarjs.
-      const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁⏫🔼🔽#]/u);
+      const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁🔺⏫🔼🔽⏬#➕]/u);
       const suffix = spaceIdx >= 0 ? rawAfterPrefix.slice(spaceIdx) : '';
-      lines[task.line] = prefix + newText + suffix;
+      lines[task.line] = formatTaskLine(prefix + newText + suffix);
       return lines.join('\n');
     });
   }
@@ -652,11 +659,10 @@ export class RightPanel {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
-      if (task.due) {
-        lines[task.line] = line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${date}`);
-      } else {
-        lines[task.line] = line.trimEnd() + ` 📅 ${date}`;
-      }
+      const withDate = task.due
+        ? line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${date}`)
+        : line.trimEnd() + ` 📅 ${date}`;
+      lines[task.line] = formatTaskLine(withDate);
       return lines.join('\n');
     });
   }
@@ -668,10 +674,11 @@ export class RightPanel {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
-      lines[task.line] = line
+      const stripped = line
         .replace(/[📅⏳🛫]\s*\d{4}-\d{2}-\d{2}/gu, '')
         .replace(/\s{2,}/gu, ' ')
         .trimEnd();
+      lines[task.line] = formatTaskLine(stripped);
       return lines.join('\n');
     });
   }
@@ -679,17 +686,16 @@ export class RightPanel {
   private async updatePriority(task: Task, priority: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
-    const PRIORITY_EMOJIS = ['⏫', '🔼', '🔽'];
-    const PRIORITY_MAP: Record<string, string> = { A: '⏫', B: '🔼', D: '🔽' };
+    const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'];
+    const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
     await this.app.vault.process(file, (data) => {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
       let updated = line;
       for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
-      updated = updated.trimEnd();
-      if (priority !== 'C' && PRIORITY_MAP[priority]) updated += ` ${PRIORITY_MAP[priority]}`;
-      lines[task.line] = updated;
+      if (priority !== 'C' && PRIORITY_MAP[priority]) updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
+      lines[task.line] = formatTaskLine(updated);
       return lines.join('\n');
     });
   }
@@ -703,11 +709,11 @@ export class RightPanel {
       if (!line) return data;
       // Escape the tag for regex use; match the tag not followed by word chars or subtag separator
       const escaped = tag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-
-      lines[task.line] = line
+      const stripped = line
         .replace(new RegExp(`${escaped}(?![\\w/-])`, 'gu'), '')
         .replace(/\s{2,}/gu, ' ')
         .trimEnd();
+      lines[task.line] = formatTaskLine(stripped);
       return lines.join('\n');
     });
   }
@@ -720,7 +726,7 @@ export class RightPanel {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
-      lines[task.line] = line.trimEnd() + ` ${tagStr}`;
+      lines[task.line] = formatTaskLine(line.trimEnd() + ` ${tagStr}`);
       return lines.join('\n');
     });
   }
@@ -767,8 +773,9 @@ export class RightPanel {
       const line = lines[task.line];
       if (!line) return data;
 
-      const cleaned = line.replace(/⏰\s*\d{1,2}:\d{2}/gu, '').replace(/\s{2,}/gu, ' ');
-      lines[task.line] = time ? `${cleaned.trimEnd()} ⏰ ${time}` : cleaned.trim();
+      const withoutTime = line.replace(/⏰\s*\d{1,2}:\d{2}/gu, '').replace(/\s{2,}/gu, ' ');
+      const withTime = time ? `${withoutTime.trimEnd()} ⏰ ${time}` : withoutTime.trim();
+      lines[task.line] = formatTaskLine(withTime);
       return lines.join('\n');
     });
   }

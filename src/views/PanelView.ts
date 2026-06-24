@@ -73,7 +73,9 @@ export class PanelView extends ItemView {
       const root = stack[0];
       if (!root || !changedFile || root.filePath !== changedFile) return;
       const freshTasks = this.store.getTasks();
-      const freshRoot = freshTasks.find((t) => t.filePath === root.filePath && t.line === root.line);
+      const freshRoot = freshTasks.find(
+        (t) => t.filePath === root.filePath && t.line === root.line,
+      );
       if (!freshRoot) {
         // Task was deleted
         this.state.set('taskStack', []);
@@ -84,9 +86,8 @@ export class PanelView extends ItemView {
         return;
       }
       // Rebuild deeper stack levels (subtask navigation)
-      const freshStack: Array<import('../parser/types').Task | import('../parser/types').SubTask> = [
-        freshRoot,
-      ];
+      const freshStack: Array<import('../parser/types').Task | import('../parser/types').SubTask> =
+        [freshRoot];
       for (let i = 1; i < stack.length; i++) {
         const prev = freshStack[i - 1];
         const stale = stack[i];

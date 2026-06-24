@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTask } from '../src/parser/TaskParser';
+import { formatTaskLine, parseTask } from '../src/parser/TaskParser';
 
 describe('parseTask', () => {
   it('returns null for non-task lines', () => {
@@ -15,7 +15,7 @@ describe('parseTask', () => {
     expect(t?.status).toBe('open');
     expect(t?.text).toBe('Do something');
     expect(t?.line).toBe(5);
-    expect(t?.priority).toBe('C');
+    expect(t?.priority).toBe('D');
   });
 
   it('parses done task', () => {
@@ -84,20 +84,32 @@ describe('parseTask', () => {
     expect(t?.text).not.toContain('🔁');
   });
 
-  it('parses high priority', () => {
-    const t = parseTask('- [ ] Urgent task ⏫', { filePath: 'f.md', line: 0 });
+  it('parses highest priority (🔺)', () => {
+    const t = parseTask('- [ ] Urgent task 🔺', { filePath: 'f.md', line: 0 });
     expect(t?.priority).toBe('A');
+    expect(t?.text).not.toContain('🔺');
+  });
+
+  it('parses high priority (⏫)', () => {
+    const t = parseTask('- [ ] Urgent task ⏫', { filePath: 'f.md', line: 0 });
+    expect(t?.priority).toBe('B');
     expect(t?.text).not.toContain('⏫');
   });
 
-  it('parses medium priority', () => {
+  it('parses medium priority (🔼)', () => {
     const t = parseTask('- [ ] Medium 🔼', { filePath: 'f.md', line: 0 });
-    expect(t?.priority).toBe('B');
+    expect(t?.priority).toBe('C');
   });
 
-  it('parses low priority', () => {
+  it('parses low priority (🔽)', () => {
     const t = parseTask('- [ ] Low 🔽', { filePath: 'f.md', line: 0 });
-    expect(t?.priority).toBe('D');
+    expect(t?.priority).toBe('E');
+  });
+
+  it('parses lowest priority (⏬)', () => {
+    const t = parseTask('- [ ] Lowest ⏬', { filePath: 'f.md', line: 0 });
+    expect(t?.priority).toBe('F');
+    expect(t?.text).not.toContain('⏬');
   });
 
   it('collapses wikilink with alias', () => {
@@ -151,5 +163,59 @@ describe('parseTask', () => {
     const t = parseTask('  - [ ] Indented subtask', { filePath: 'f.md', line: 0 });
     expect(t).not.toBeNull();
     expect(t?.text).toBe('Indented subtask');
+  });
+});
+
+describe('formatTaskLine', () => {
+  it('returns non-task lines unchanged', () => {
+    expect(formatTaskLine('- plain list item')).toBe('- plain list item');
+    expect(formatTaskLine('# heading')).toBe('# heading');
+  });
+
+  it('leaves already-canonical line unchanged', () => {
+    const line = '- [ ] Buy milk #shopping ⏰ 09:00 ⏫ 🔁 every day 🛫 2026-01-01 ⏳ 2026-01-10 📅 2026-01-20 ❌ 2026-01-21 ✅ 2026-01-22';
+    expect(formatTaskLine(line)).toBe(line);
+  });
+
+  it('reorders emojis into canonical Tasks order', () => {
+    const input = '- [ ] Task 📅 2026-07-01 ⏫ ⏳ 2026-06-25 🛫 2026-06-20';
+    const result = formatTaskLine(input);
+    expect(result).toBe('- [ ] Task ⏫ 🛫 2026-06-20 ⏳ 2026-06-25 📅 2026-07-01');
+  });
+
+  it('places ⏰ before all other metadata', () => {
+    const input = '- [ ] Meeting 📅 2026-07-01 ⏰ 09:30';
+    expect(formatTaskLine(input)).toBe('- [ ] Meeting ⏰ 09:30 📅 2026-07-01');
+  });
+
+  it('moves tags before emoji metadata', () => {
+    const input = '- [ ] Task 📅 2026-07-01 #work #urgent';
+    expect(formatTaskLine(input)).toBe('- [ ] Task #work #urgent 📅 2026-07-01');
+  });
+
+  it('preserves created date (➕) between recurrence and start date', () => {
+    const input = '- [ ] Task ➕ 2026-01-01 🛫 2026-01-05 📅 2026-01-10';
+    expect(formatTaskLine(input)).toBe('- [ ] Task ➕ 2026-01-01 🛫 2026-01-05 📅 2026-01-10');
+  });
+
+  it('handles recurrence with text', () => {
+    const input = '- [ ] Standup 📅 2026-07-01 🔁 every weekday';
+    expect(formatTaskLine(input)).toBe('- [ ] Standup 🔁 every weekday 📅 2026-07-01');
+  });
+
+  it('is idempotent', () => {
+    const input = '- [ ] Task 📅 2026-07-01 ⏫ #work ⏰ 09:00 🔁 every day 🛫 2026-06-20';
+    const once = formatTaskLine(input);
+    expect(formatTaskLine(once)).toBe(once);
+  });
+
+  it('preserves indentation and checkbox state', () => {
+    const input = '  - [x] Done task 📅 2026-07-01 ✅ 2026-07-01';
+    expect(formatTaskLine(input)).toBe('  - [x] Done task 📅 2026-07-01 ✅ 2026-07-01');
+  });
+
+  it('handles all five priority levels', () => {
+    expect(formatTaskLine('- [ ] Task ⏬ 📅 2026-07-01')).toBe('- [ ] Task ⏬ 📅 2026-07-01');
+    expect(formatTaskLine('- [ ] Task 🔺 📅 2026-07-01')).toBe('- [ ] Task 🔺 📅 2026-07-01');
   });
 });

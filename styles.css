@@ -1484,20 +1484,32 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 /* Priority coloring on task card checkbox — outline visible even when unchecked */
 .tc-task-checkbox[data-priority='A'] {
+  accent-color: #c0001a;
+  outline: 2px solid #c0001a;
+  outline-offset: 0px;
+  border-radius: 2px;
+}
+.tc-task-checkbox[data-priority='B'] {
   accent-color: #e44332;
   outline: 2px solid #e44332;
   outline-offset: 0px;
   border-radius: 2px;
 }
-.tc-task-checkbox[data-priority='B'] {
+.tc-task-checkbox[data-priority='C'] {
   accent-color: #e87d00;
   outline: 2px solid #e87d00;
   outline-offset: 0px;
   border-radius: 2px;
 }
-.tc-task-checkbox[data-priority='D'] {
+.tc-task-checkbox[data-priority='E'] {
   accent-color: #5297ff;
   outline: 2px solid #5297ff;
+  outline-offset: 0px;
+  border-radius: 2px;
+}
+.tc-task-checkbox[data-priority='F'] {
+  accent-color: #2255cc;
+  outline: 2px solid #2255cc;
   outline-offset: 0px;
   border-radius: 2px;
 }
@@ -2237,13 +2249,19 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   flex-shrink: 0;
 }
 .tc-priority-option[data-priority='A']::before {
-  color: #e44332;
+  color: #c0001a;
 }
 .tc-priority-option[data-priority='B']::before {
-  color: #ff9933;
+  color: #e44332;
 }
-.tc-priority-option[data-priority='D']::before {
+.tc-priority-option[data-priority='C']::before {
+  color: #e87d00;
+}
+.tc-priority-option[data-priority='E']::before {
   color: #5297ff;
+}
+.tc-priority-option[data-priority='F']::before {
+  color: #2255cc;
 }
 .tc-priority-option:hover {
   background: var(--background-modifier-hover);
@@ -2260,13 +2278,19 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* Priority chip in right panel */
 .tc-priority-chip[data-priority='A'] {
-  color: #e44332;
+  color: #c0001a;
 }
 .tc-priority-chip[data-priority='B'] {
-  color: #ff9933;
+  color: #e44332;
 }
-.tc-priority-chip[data-priority='D'] {
+.tc-priority-chip[data-priority='C'] {
+  color: #e87d00;
+}
+.tc-priority-chip[data-priority='E'] {
   color: #5297ff;
+}
+.tc-priority-chip[data-priority='F'] {
+  color: #2255cc;
 }
 
 /* Right panel body */

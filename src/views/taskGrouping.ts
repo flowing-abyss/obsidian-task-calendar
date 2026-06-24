@@ -37,7 +37,7 @@ export function getTasksForDate(tasks: Task[], date: string, today: string): Tas
 
 export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
-    // Priority first (A < B < C < D lexicographically)
+    // Priority first (A=Highest … F=Lowest, D=none — alphabetical order is correct)
     if (a.priority < b.priority) return -1;
     if (a.priority > b.priority) return 1;
     // Tasks with a specific time come before tasks without
