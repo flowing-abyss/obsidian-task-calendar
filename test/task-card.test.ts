@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTaskCard } from '../src/ui/TaskCard';
-import type { Task } from '../src/parser/types';
 import { task, useRealMoment, withMobile } from './helpers';
 
 useRealMoment();
@@ -23,10 +22,7 @@ describe('createTaskCard', () => {
     });
 
     it('both noteColor and noteTextColor: text colors set directly, no transColor call', () => {
-      const el = createTaskCard(
-        task({ noteColor: '#abcdef', noteTextColor: '#123456' }),
-        'due',
-      );
+      const el = createTaskCard(task({ noteColor: '#abcdef', noteTextColor: '#123456' }), 'due');
       expect(el.getAttribute('style')).toBe(
         '--task-background:#abcdef33;--task-color:#abcdef;--dark-task-text-color:#123456;--light-task-text-color:#123456',
       );
@@ -102,14 +98,14 @@ describe('createTaskCard', () => {
   describe('internal link', () => {
     it('href is the file path with .md stripped', () => {
       expect(
-        createTaskCard(task({ filePath: 'notes/x.md' }), 'due').querySelector(
-          'a.internal-link',
-        )?.getAttribute('href'),
+        createTaskCard(task({ filePath: 'notes/x.md' }), 'due')
+          .querySelector('a.internal-link')
+          ?.getAttribute('href'),
       ).toBe('notes/x');
       expect(
-        createTaskCard(task({ filePath: 'notes/x' }), 'due').querySelector(
-          'a.internal-link',
-        )?.getAttribute('href'),
+        createTaskCard(task({ filePath: 'notes/x' }), 'due')
+          .querySelector('a.internal-link')
+          ?.getAttribute('href'),
       ).toBe('notes/x');
     });
   });
