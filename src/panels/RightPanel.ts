@@ -694,7 +694,8 @@ export class RightPanel {
       if (!line) return data;
       let updated = line;
       for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
-      if (priority !== 'C' && PRIORITY_MAP[priority]) updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
+      if (priority !== 'C' && PRIORITY_MAP[priority])
+        updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
       lines[task.line] = formatTaskLine(updated);
       return lines.join('\n');
     });

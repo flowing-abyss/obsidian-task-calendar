@@ -173,7 +173,8 @@ describe('formatTaskLine', () => {
   });
 
   it('leaves already-canonical line unchanged', () => {
-    const line = '- [ ] Buy milk #shopping ⏰ 09:00 ⏫ 🔁 every day 🛫 2026-01-01 ⏳ 2026-01-10 📅 2026-01-20 ❌ 2026-01-21 ✅ 2026-01-22';
+    const line =
+      '- [ ] Buy milk #shopping ⏰ 09:00 ⏫ 🔁 every day 🛫 2026-01-01 ⏳ 2026-01-10 📅 2026-01-20 ❌ 2026-01-21 ✅ 2026-01-22';
     expect(formatTaskLine(line)).toBe(line);
   });
 
