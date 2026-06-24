@@ -642,13 +642,6 @@ export class RightPanel {
       void this.openInFile(task);
     });
 
-    const copyItem = menu.createDiv({ cls: 'tc-context-item', text: 'Copy link' });
-    copyItem.addEventListener('click', () => {
-      menu.remove();
-      const name = task.filePath.replace(/\.md$/u, '').split('/').pop() ?? task.filePath;
-      void navigator.clipboard.writeText(`[[${name}]]`);
-    });
-
     window.setTimeout(() => {
       const dismiss = (e: MouseEvent): void => {
         if (!menu.contains(e.target as Node) && e.target !== anchor) {
