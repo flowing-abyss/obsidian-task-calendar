@@ -1393,9 +1393,8 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   border: 1px solid var(--background-modifier-border);
   border-left: 3px solid var(--interactive-accent);
   border-radius: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 12px;
   overflow: hidden;
-  background: var(--background-secondary);
 }
 
 .tc-settings-section-header {
@@ -1404,10 +1403,26 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   padding: 12px 16px;
   cursor: pointer;
   user-select: none;
+  background: var(--background-modifier-form-field);
+  gap: 8px;
 }
 
 .tc-settings-section-header:hover {
   background: var(--background-modifier-hover);
+}
+
+.tc-settings-section-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+
+.tc-settings-section-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .tc-settings-section-label {
@@ -1416,25 +1431,34 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-normal);
 }
 
-.tc-settings-section-toggle {
+.tc-settings-section-chevron {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
   color: var(--text-muted);
-  font-family: monospace;
-  font-size: 16px;
-  line-height: 1;
+  transition: transform 150ms ease;
+}
+
+.tc-settings-section-chevron svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tc-settings-section.is-open .tc-settings-section-chevron {
+  transform: rotate(90deg);
 }
 
 .tc-settings-section-body {
   max-height: 0;
   overflow: hidden;
   transition: max-height 150ms ease;
+  background: var(--background-primary);
 }
 
 .tc-settings-section.is-open .tc-settings-section-body {
   max-height: 2000px;
-}
-
-.tc-settings-section.is-open .tc-settings-section-header {
-  border-bottom: 1px solid var(--background-modifier-border);
 }
 
 /* ---- Center Panel ---- */
