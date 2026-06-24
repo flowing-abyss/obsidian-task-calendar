@@ -271,6 +271,26 @@ export class CenterPanel {
       return;
     }
     this.renderFlat(scroll, results);
+
+    // Navigate to task in tasks mode when clicking a search result
+    scroll.querySelectorAll<HTMLElement>('.tc-task-card').forEach((cardEl, idx) => {
+      const task = results[idx];
+      if (!task) return;
+      cardEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const todayStr = window.moment().format('YYYY-MM-DD');
+        const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
+        let list: 'inbox' | 'today' | 'upcoming' = 'inbox';
+        if ((task.due && task.due < todayStr) || d === todayStr) {
+          list = 'today';
+        } else if (d && d > todayStr) {
+          list = 'upcoming';
+        }
+        this.state.set('selectedList', list);
+        this.state.set('mode', 'tasks');
+        this.state.set('taskStack', [task]);
+      }, { capture: true });
+    });
   }
 
   private renderGrouped(container: HTMLElement, tasks: Task[]): void {
@@ -324,7 +344,6 @@ export class CenterPanel {
       cls: `tc-task-card${isSelected ? ' is-selected' : ''}`,
     });
 
-    // Checkbox
     const checkbox = card.createEl('input', {
       cls: 'tc-task-checkbox',
       attr: { type: 'checkbox' },
@@ -336,45 +355,44 @@ export class CenterPanel {
     });
 
     const body = card.createDiv({ cls: 'tc-task-body' });
-
-    // Title row
     const titleRow = body.createDiv({ cls: 'tc-task-title-row' });
     if (task.time) {
       titleRow.createEl('span', { cls: 'tc-task-time', text: task.time });
     }
     titleRow.createEl('span', { cls: 'tc-task-title', text: task.text });
-
-    // Meta row
-    const meta = body.createDiv({ cls: 'tc-task-meta' });
-
     if (task.description) {
-      meta.createDiv({
+      body.createDiv({
         cls: 'tc-task-desc',
         text: task.description.split('\n')[0] ?? '',
       });
     }
 
-    const pills = meta.createDiv({ cls: 'tc-task-pills' });
-    const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
     const today = window.moment().format('YYYY-MM-DD');
     const sel = this.state.get('selectedList');
-    const suppressToday = sel === 'today' && d === today;
-    if (d && !suppressToday) {
-      pills.createEl('span', {
-        cls: `tc-task-date${this.isOverdue(d) ? ' is-overdue' : ''}`,
-        text: this.formatDate(d),
-      });
-    }
+    const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
     const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
-    for (const tag of tags.slice(0, 2)) {
-      pills.createEl('span', { cls: 'tc-task-tag', text: tag });
-    }
-    if (task.subtasks?.length) {
-      const done = task.subtasks.filter((s) => s.status === 'done').length;
-      pills.createEl('span', {
-        cls: 'tc-task-progress',
-        text: `${done}/${task.subtasks.length}`,
-      });
+    const hasProgress = (task.subtasks?.length ?? 0) > 0;
+    const suppressToday = sel === 'today' && d === today;
+
+    const hasRightMeta = (d && !suppressToday) || tags.length > 0 || hasProgress;
+    if (hasRightMeta) {
+      const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
+      if (d && !suppressToday) {
+        metaRight.createEl('span', {
+          cls: `tc-task-date${this.isOverdue(d) ? ' is-overdue' : ''}`,
+          text: this.formatDate(d),
+        });
+      }
+      for (const tag of tags.slice(0, 2)) {
+        metaRight.createEl('span', { cls: 'tc-task-tag', text: tag });
+      }
+      if (hasProgress) {
+        const done = task.subtasks!.filter((s) => s.status === 'done').length;
+        metaRight.createEl('span', {
+          cls: 'tc-task-progress',
+          text: `${done}/${task.subtasks!.length}`,
+        });
+      }
     }
 
     card.addEventListener('click', () => {
@@ -517,12 +535,16 @@ export class CenterPanel {
         case 'inbox':
           tasks = this.getInboxTasks();
           break;
-        case 'today':
+        case 'today': {
+          const todayStr = window.moment().format('YYYY-MM-DD');
           tasks = this.store.getTasks().filter((t) => {
             if (t.status !== 'open') return false;
-            return t.due === today || t.scheduled === today || t.dailyNoteDate === today;
+            if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr) return true;
+            if (t.due && t.due < todayStr) return true;
+            return false;
           });
           break;
+        }
         case 'upcoming':
           tasks = this.store
             .getTasks()

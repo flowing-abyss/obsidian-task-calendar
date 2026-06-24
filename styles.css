@@ -1458,24 +1458,20 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* Task card */
 .tc-task-card {
-  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 8px 16px 8px 12px;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
   cursor: pointer;
   transition: background 0.1s;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-.tc-task-card:last-of-type {
-  border-bottom: none;
+  position: relative;
 }
 .tc-task-card:hover {
   background: var(--background-modifier-hover);
 }
 .tc-task-card.is-selected {
-  background: var(--nav-item-background-active, var(--background-modifier-active-hover));
-  border-bottom-color: transparent;
+  background: var(--background-modifier-active-hover);
 }
 .tc-task-checkbox {
   margin-top: 3px;
@@ -1493,15 +1489,15 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-task-title-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: nowrap;
 }
 .tc-task-title {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
   font-size: 14px;
   color: var(--text-normal);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
 }
 .tc-task-meta {
   display: flex;
@@ -1510,17 +1506,26 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   margin-top: 2px;
 }
 .tc-task-desc {
-  font-size: 12px;
+  font-size: var(--font-smallest, 11px);
   color: var(--text-muted);
-  white-space: nowrap;
+  margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tc-task-pills {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+.tc-task-meta-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  padding-top: 2px;
 }
 .tc-task-date {
   font-size: 11px;
