@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TaskStore } from '../src/store/TaskStore';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { TaskStore } from '../src/store/TaskStore';
 import { createAppWithFiles, seedTaskCache, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -54,12 +54,11 @@ describe('TaskStore initialize + getTasks', () => {
     const app = await createAppWithFiles({
       'a.md': '---\ncolor: "#ff0000"\ntextColor: "#00ff00"\nicon: "📧"\n---\n- [ ] task',
     });
-    seedTaskCache(
-      app,
-      'a.md',
-      [{ task: ' ', parent: -1, line: 5 }],
-      { color: '#ff0000', textColor: '#00ff00', icon: '📧' },
-    );
+    seedTaskCache(app, 'a.md', [{ task: ' ', parent: -1, line: 5 }], {
+      color: '#ff0000',
+      textColor: '#00ff00',
+      icon: '📧',
+    });
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const task = store.getTasks()[0]!;
@@ -175,7 +174,10 @@ describe('TaskStore getTasks filters', () => {
     await store.initialize();
     // CURRENT BEHAVIOR (follow-up FU-10): 'sub' matches 'subway.md' (startsWith prefix, not folder-segment-aware)
     const folderTasks = store.getTasks({ folder: 'sub' });
-    expect(folderTasks.map((t) => t.filePath).sort((a, b) => a.localeCompare(b))).toEqual(['sub/x.md', 'subway.md']);
+    expect(folderTasks.map((t) => t.filePath).sort((a, b) => a.localeCompare(b))).toEqual([
+      'sub/x.md',
+      'subway.md',
+    ]);
   });
 
   it('filter by tag (rawText includes)', async () => {
@@ -239,9 +241,7 @@ describe('TaskStore getTasks filters', () => {
     seedTaskCache(app, 'work/b.md', [{ task: 'x', parent: -1, line: 0 }]);
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
-    expect(
-      store.getTasks({ folder: 'work', status: ['open'], tag: '#urgent' }),
-    ).toHaveLength(1);
+    expect(store.getTasks({ folder: 'work', status: ['open'], tag: '#urgent' })).toHaveLength(1);
   });
 
   it('no filter returns all tasks', async () => {
