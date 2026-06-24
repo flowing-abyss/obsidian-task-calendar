@@ -37,6 +37,17 @@ export class CenterPanel {
       this.state.on('mode', () => this.render()),
       this.state.on('centerFilter', () => this.render()),
       this.state.on('searchQuery', () => this.render()),
+      this.state.on('taskStack', () => {
+        const stack = this.state.get('taskStack');
+        const current = stack[stack.length - 1];
+        this.el.querySelectorAll<HTMLElement>('.tc-task-card').forEach((card) => {
+          const isSelected =
+            current !== undefined &&
+            card.dataset['filePath'] === current.filePath &&
+            card.dataset['line'] === String(current.line);
+          card.classList.toggle('is-selected', isSelected);
+        });
+      }),
     );
     this.render();
   }
@@ -184,7 +195,7 @@ export class CenterPanel {
       viewContainer.className = `tc-cal-body tasksCalendar ${this.calStyle}`;
       viewContainer.setAttribute('view', this.calViewType);
       styleBtn.setAttribute('title', `Style: ${this.calStyle}`);
-      if (this.calViewType === 'week') mountView();
+      mountView();
     });
 
     const updateTitle = (): void => {
@@ -467,12 +478,17 @@ export class CenterPanel {
     const card = container.createDiv({
       cls: `tc-task-card${isSelected ? ' is-selected' : ''}`,
     });
+    card.dataset['filePath'] = task.filePath;
+    card.dataset['line'] = String(task.line);
 
     const checkbox = card.createEl('input', {
       cls: 'tc-task-checkbox',
       attr: { type: 'checkbox' },
     });
     checkbox.checked = task.status === 'done';
+    if (task.priority && task.priority !== 'C') {
+      checkbox.dataset['priority'] = task.priority;
+    }
     checkbox.addEventListener('change', (e) => {
       e.stopPropagation();
       void this.store.toggleTask(task);
@@ -500,26 +516,12 @@ export class CenterPanel {
     if (hasRightMeta) {
       const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
 
-      // Priority flag (first)
-      if (hasPriority) {
-        const PRIORITY_COLORS: Record<string, string> = {
-          A: '#e44332',
-          B: '#ff9933',
-          D: '#5297ff',
-        };
-        const pEl = metaRight.createEl('span', {
-          cls: `tc-task-priority-flag tc-priority-${task.priority}`,
-        });
-        const color = PRIORITY_COLORS[task.priority];
-        if (color) pEl.setCssProps({ '--tc-priority-color': color });
-      }
-
       // Date + time combined badge
       if (d && !suppressToday) {
         let dateLabel = this.formatDate(d);
         if (task.time) dateLabel += ` ${task.time}`;
         metaRight.createEl('span', {
-          cls: `tc-task-date${this.isOverdue(d) ? ' is-overdue' : ''}`,
+          cls: `tc-task-date ${this.getDateClass(d)}`.trim(),
           text: dateLabel,
         });
       } else if (!d && task.time) {
@@ -783,8 +785,15 @@ export class CenterPanel {
     return m.format('D MMM');
   }
 
-  private isOverdue(d: string): boolean {
-    return d < window.moment().format('YYYY-MM-DD');
+  private getDateClass(d: string): string {
+    const today = window.moment().format('YYYY-MM-DD');
+    if (d < today) return 'is-overdue';
+    if (d === today) return 'is-today';
+    const tomorrow = window.moment().add(1, 'day').format('YYYY-MM-DD');
+    if (d === tomorrow) return 'is-tomorrow';
+    const dayAfter = window.moment().add(2, 'days').format('YYYY-MM-DD');
+    if (d === dayAfter) return 'is-soon';
+    return '';
   }
 
   private getTagColor(tag: string): string | undefined {
