@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
-import { getTasksForDate, renderTaskGroup, sortTasks } from '../src/views/taskGrouping';
+import { getTasksForDate, renderTaskGroup, sortTasks, sortTasksByDateTime } from '../src/views/taskGrouping';
 import { task, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -159,6 +159,77 @@ describe('getTasksForDate', () => {
     const g = getTasksForDate([task({ due: '2026-06-20', start: DATE })], DATE, TODAY);
     expect(g.overdue).toHaveLength(1);
     expect(g.start).toHaveLength(1);
+  });
+});
+
+describe('sortTasksByDateTime', () => {
+  it('returns empty array for empty input', () => {
+    expect(sortTasksByDateTime([])).toEqual([]);
+  });
+
+  it('returns a new array (does not mutate input)', () => {
+    const input: Task[] = [task({ text: 'a', due: '2026-06-25' })];
+    const out = sortTasksByDateTime(input);
+    expect(out).not.toBe(input);
+  });
+
+  it('sorts by date ascending when dates differ', () => {
+    const out = sortTasksByDateTime([
+      task({ text: 'later', due: '2026-06-26' }),
+      task({ text: 'earlier', due: '2026-06-25' }),
+    ]);
+    expect(out.map((t) => t.text)).toEqual(['earlier', 'later']);
+  });
+
+  it('within same date, timed tasks come before untimed', () => {
+    const out = sortTasksByDateTime([
+      task({ text: 'noTime', due: '2026-06-25' }),
+      task({ text: 'timed', due: '2026-06-25', time: '08:00' }),
+    ]);
+    expect(out.map((t) => t.text)).toEqual(['timed', 'noTime']);
+  });
+
+  it('within same date, timed tasks sort chronologically', () => {
+    const out = sortTasksByDateTime([
+      task({ text: 'afternoon', due: '2026-06-25', time: '15:00' }),
+      task({ text: 'morning', due: '2026-06-25', time: '08:00' }),
+      task({ text: 'evening', due: '2026-06-25', time: '20:00' }),
+    ]);
+    expect(out.map((t) => t.time)).toEqual(['08:00', '15:00', '20:00']);
+  });
+
+  it('date ordering is not broken by time — later-date timed task stays after earlier-date untimed', () => {
+    // Bug scenario from Upcoming view: Fri 26 Jun 20:00 was sorting before Tue 30 Jun (no time)
+    const out = sortTasksByDateTime([
+      task({ text: 'laterDateTimed', due: '2026-06-30', time: '18:00' }),
+      task({ text: 'earlyDateNoTime', due: '2026-06-26' }),
+      task({ text: 'earlyDateTimed', due: '2026-06-26', time: '20:00' }),
+    ]);
+    expect(out.map((t) => t.text)).toEqual(['earlyDateTimed', 'earlyDateNoTime', 'laterDateTimed']);
+  });
+
+  it('uses scheduled as fallback date when due is absent', () => {
+    const out = sortTasksByDateTime([
+      task({ text: 'b', scheduled: '2026-06-26' }),
+      task({ text: 'a', scheduled: '2026-06-25' }),
+    ]);
+    expect(out.map((t) => t.text)).toEqual(['a', 'b']);
+  });
+
+  it('uses dailyNoteDate as fallback when due and scheduled are absent', () => {
+    const out = sortTasksByDateTime([
+      task({ text: 'b', dailyNoteDate: '2026-06-26' }),
+      task({ text: 'a', dailyNoteDate: '2026-06-25' }),
+    ]);
+    expect(out.map((t) => t.text)).toEqual(['a', 'b']);
+  });
+
+  it('tasks with no date sort to end', () => {
+    const out = sortTasksByDateTime([
+      task({ text: 'noDate' }),
+      task({ text: 'dated', due: '2026-06-25' }),
+    ]);
+    expect(out.map((t) => t.text)).toEqual(['dated', 'noDate']);
   });
 });
 

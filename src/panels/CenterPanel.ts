@@ -8,6 +8,7 @@ import { TaskModal } from '../ui/TaskModal';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
+import { sortTasksByDateTime } from '../views/taskGrouping';
 
 type CalViewType = 'month' | 'week' | 'list';
 
@@ -460,7 +461,7 @@ export class CenterPanel {
       const cls = firstGroup ? 'tc-group-header tc-group-header--first' : 'tc-group-header';
       container.createDiv({ cls, text: `${group.label}  ${group.tasks.length}` });
       firstGroup = false;
-      for (const task of group.tasks) this.renderTaskCard(container, task);
+      for (const task of sortTasksByDateTime(group.tasks)) this.renderTaskCard(container, task);
     }
   }
 
@@ -718,20 +719,15 @@ export class CenterPanel {
           });
           break;
         }
-        case 'upcoming':
-          tasks = this.store
-            .getTasks()
-            .filter((t) => {
-              if (t.status !== 'open') return false;
-              const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
-              return d !== undefined && d > today;
-            })
-            .sort((a, b) => {
-              const da = a.due ?? a.scheduled ?? a.dailyNoteDate ?? '';
-              const db = b.due ?? b.scheduled ?? b.dailyNoteDate ?? '';
-              return da.localeCompare(db);
-            });
+        case 'upcoming': {
+          const filtered = this.store.getTasks().filter((t) => {
+            if (t.status !== 'open') return false;
+            const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
+            return d !== undefined && d > today;
+          });
+          tasks = sortTasksByDateTime(filtered);
           break;
+        }
         default:
           tasks = this.store.getTasks().filter((t) => t.status === 'open');
       }

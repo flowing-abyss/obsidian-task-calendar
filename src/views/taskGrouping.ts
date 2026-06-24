@@ -35,6 +35,25 @@ export function getTasksForDate(tasks: Task[], date: string, today: string): Tas
   };
 }
 
+export function sortTasksByDateTime(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    const da = a.due ?? a.scheduled ?? a.dailyNoteDate ?? '';
+    const db = b.due ?? b.scheduled ?? b.dailyNoteDate ?? '';
+    if (da !== db) {
+      if (!da) return 1;
+      if (!db) return -1;
+      return da < db ? -1 : 1;
+    }
+    const ta = a.time ?? '';
+    const tb = b.time ?? '';
+    if (ta && !tb) return -1;
+    if (!ta && tb) return 1;
+    if (ta < tb) return -1;
+    if (ta > tb) return 1;
+    return 0;
+  });
+}
+
 export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
     // Priority first (A=Highest … F=Lowest, D=none — alphabetical order is correct)
