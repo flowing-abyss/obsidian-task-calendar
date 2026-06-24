@@ -383,6 +383,13 @@ export class RightPanel {
     });
     input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
     window.setTimeout(() => input.focus(), 0);
+
+    const clearBtn = pop.createEl('button', { cls: 'tc-popover-clear-btn', text: 'Clear date' });
+    clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    clearBtn.addEventListener('click', () => {
+      void this.clearDate(task);
+      pop.remove();
+    });
   }
 
   private showPriorityPopover(anchor: HTMLElement, task: Task): void {
@@ -649,6 +656,21 @@ export class RightPanel {
     });
   }
 
+  private async clearDate(task: Task): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      lines[task.line] = line
+        .replace(/[📅⏳🛫]\s*\d{4}-\d{2}-\d{2}/gu, '')
+        .replace(/\s{2,}/gu, ' ')
+        .trimEnd();
+      return lines.join('\n');
+    });
+  }
+
   private async updatePriority(task: Task, priority: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
@@ -711,6 +733,7 @@ export class RightPanel {
     });
 
     const input = pop.createEl('input', {
+      cls: 'tc-time-input',
       attr: { type: 'time', value: task.time ?? '' },
     });
     window.setTimeout(() => input.focus(), 0);
@@ -718,6 +741,12 @@ export class RightPanel {
       void this.updateTime(task, input.value).then(() => pop.remove());
     });
     input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
+
+    const clearBtn = pop.createEl('button', { cls: 'tc-popover-clear-btn', text: 'Clear time' });
+    clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    clearBtn.addEventListener('click', () => {
+      void this.updateTime(task, '').then(() => pop.remove());
+    });
   }
 
   private async updateTime(task: Task, time: string): Promise<void> {

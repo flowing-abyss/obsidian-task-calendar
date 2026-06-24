@@ -1482,15 +1482,24 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   cursor: pointer;
   accent-color: var(--interactive-accent);
 }
-/* Priority coloring on task card checkbox */
+/* Priority coloring on task card checkbox — outline visible even when unchecked */
 .tc-task-checkbox[data-priority='A'] {
   accent-color: #e44332;
+  outline: 2px solid #e44332;
+  outline-offset: 0px;
+  border-radius: 2px;
 }
 .tc-task-checkbox[data-priority='B'] {
   accent-color: #e87d00;
+  outline: 2px solid #e87d00;
+  outline-offset: 0px;
+  border-radius: 2px;
 }
 .tc-task-checkbox[data-priority='D'] {
   accent-color: #5297ff;
+  outline: 2px solid #5297ff;
+  outline-offset: 0px;
+  border-radius: 2px;
 }
 .tc-task-body {
   flex: 1;
@@ -1541,30 +1550,27 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   font-size: 11px;
   color: var(--text-muted);
   font-weight: 500;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 10px;
-  background: var(--background-modifier-form-field);
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   white-space: nowrap;
+}
+.tc-task-date svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
 }
 .tc-task-date.is-overdue {
   color: #e44332;
-  background: hsla(0, 70%, 50%, 0.12);
 }
 .tc-task-date.is-today {
   color: #e44332;
-  background: hsla(0, 70%, 50%, 0.12);
 }
 .tc-task-date.is-tomorrow {
   color: #e87d00;
-  background: hsla(30, 90%, 45%, 0.12);
 }
 .tc-task-date.is-soon {
   color: var(--interactive-accent);
-  background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.12);
 }
 .tc-task-tag {
   font-size: 11px;
@@ -1585,13 +1591,22 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-muted);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 10px;
-  background: var(--background-modifier-form-field);
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+.tc-task-count-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.tc-task-count-badge svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
 }
 
 /* Task time badge (in title row, kept for list view compatibility) */
@@ -1605,7 +1620,6 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   font-family: var(--font-monospace, monospace);
   margin-right: 4px;
 }
-
 
 /* Delete button on task card */
 .tc-task-delete-btn {
@@ -2146,17 +2160,36 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
   z-index: 100;
   padding: 8px;
   min-width: 160px;
 }
-.tc-date-input {
+.tc-date-input,
+.tc-time-input {
   width: 100%;
   border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
   padding: 4px 6px;
-  background: var(--background-secondary);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 13px;
+}
+.tc-popover-clear-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: 6px;
+  padding: 3px 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.tc-popover-clear-btn:hover {
+  background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
 .tc-priority-popover {

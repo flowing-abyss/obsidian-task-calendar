@@ -166,37 +166,39 @@ export class CenterPanel {
       });
     }
 
-    const CAL_STYLES = [
-      'style1',
-      'style2',
-      'style3',
-      'style4',
-      'style5',
-      'style6',
-      'style7',
-      'style8',
-      'style9',
-      'style10',
-      'style11',
-    ];
-    const styleBtn = rightGroup.createEl('button', {
-      cls: 'tc-cal-style-btn',
-      attr: { title: `Style: ${this.calStyle}`, 'aria-label': 'Cycle calendar style' },
-      text: '🎨',
-    });
-
     const viewContainer = this.el.createDiv({
       cls: `tc-cal-body tasksCalendar ${this.calStyle}`,
     });
 
-    styleBtn.addEventListener('click', () => {
-      const idx = CAL_STYLES.indexOf(this.calStyle);
-      this.calStyle = CAL_STYLES[(idx + 1) % CAL_STYLES.length] ?? 'style1';
-      viewContainer.className = `tc-cal-body tasksCalendar ${this.calStyle}`;
-      viewContainer.setAttribute('view', this.calViewType);
-      styleBtn.setAttribute('title', `Style: ${this.calStyle}`);
-      mountView();
-    });
+    // Style picker only applies to week view (CSS style variants only defined for week)
+    if (this.calViewType === 'week') {
+      const CAL_STYLES = [
+        'style1',
+        'style2',
+        'style3',
+        'style4',
+        'style5',
+        'style6',
+        'style7',
+        'style8',
+        'style9',
+        'style10',
+        'style11',
+      ];
+      const styleBtn = rightGroup.createEl('button', {
+        cls: 'tc-cal-style-btn',
+        attr: { title: `Style: ${this.calStyle}`, 'aria-label': 'Cycle calendar style' },
+        text: '🎨',
+      });
+      styleBtn.addEventListener('click', () => {
+        const idx = CAL_STYLES.indexOf(this.calStyle);
+        this.calStyle = CAL_STYLES[(idx + 1) % CAL_STYLES.length] ?? 'style1';
+        viewContainer.className = `tc-cal-body tasksCalendar ${this.calStyle}`;
+        viewContainer.setAttribute('view', this.calViewType);
+        styleBtn.setAttribute('title', `Style: ${this.calStyle}`);
+        mountView();
+      });
+    }
 
     const updateTitle = (): void => {
       if (this.calViewType === 'week') {
@@ -508,35 +510,46 @@ export class CenterPanel {
     const sel = this.state.get('selectedList');
     const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
     const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
-    const hasProgress = (task.subtasks?.length ?? 0) > 0;
+    const subtaskCount = task.subtasks?.length ?? 0;
+    const commentCount = task.comments?.length ?? 0;
+    const hasProgress = subtaskCount > 0;
+    const hasComments = commentCount > 0;
     const suppressToday = sel === 'today' && d === today;
-    const hasRightMeta = (d && !suppressToday) || hasProgress || tags.length > 0;
+    const hasRightMeta =
+      (d && !suppressToday) || task.time || hasProgress || hasComments || tags.length > 0;
     if (hasRightMeta) {
       const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
 
-      // Date + time combined badge
-      if (d && !suppressToday) {
-        let dateLabel = this.formatDate(d);
-        if (task.time) dateLabel += ` ${task.time}`;
-        metaRight.createEl('span', {
-          cls: `tc-task-date ${this.getDateClass(d)}`.trim(),
-          text: dateLabel,
-        });
-      } else if (!d && task.time) {
-        // Time-only (no date) — show time chip
-        metaRight.createEl('span', {
-          cls: 'tc-task-date',
-          text: `⏰ ${task.time}`,
-        });
-      }
-
-      // Progress (before tags)
+      // Subtask count badge with icon (before date)
       if (hasProgress) {
         const done = task.subtasks!.filter((s) => s.status === 'done').length;
-        metaRight.createEl('span', {
-          cls: 'tc-task-progress',
-          text: `${done}/${task.subtasks!.length}`,
+        const badge = metaRight.createEl('span', { cls: 'tc-task-count-badge' });
+        setIcon(badge, 'check-square');
+        badge.createEl('span', { text: `${done}/${subtaskCount}` });
+      }
+
+      // Comment count badge with icon
+      if (hasComments) {
+        const badge = metaRight.createEl('span', { cls: 'tc-task-count-badge' });
+        setIcon(badge, 'message-square');
+        badge.createEl('span', { text: String(commentCount) });
+      }
+
+      // Date + optional time: icon + colored text, no background
+      if (d && !suppressToday) {
+        const dateEl = metaRight.createEl('span', {
+          cls: `tc-task-date ${this.getDateClass(d)}`.trim(),
         });
+        setIcon(dateEl, 'calendar');
+        dateEl.createEl('span', { text: this.formatDate(d) });
+        if (task.time) {
+          setIcon(dateEl, 'clock');
+          dateEl.createEl('span', { cls: 'tc-task-time-text', text: task.time });
+        }
+      } else if (!d && task.time) {
+        const timeEl = metaRight.createEl('span', { cls: 'tc-task-date' });
+        setIcon(timeEl, 'clock');
+        timeEl.createEl('span', { text: task.time });
       }
 
       // Tags last (max 2, with group color)
