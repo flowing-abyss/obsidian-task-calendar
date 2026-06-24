@@ -1668,15 +1668,53 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   flex-direction: column;
 }
 
-/* Panel calendar nav bar */
+/* ── Calendar Nav ─────────────────────────────────────── */
 .tc-cal-nav {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 16px 8px;
-  flex-shrink: 0;
+  justify-content: space-between;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--background-modifier-border);
+  gap: 8px;
+  flex-shrink: 0;
 }
+
+.tc-cal-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tc-cal-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tc-cal-nav-title-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tc-cal-nav-month,
+.tc-cal-nav-year {
+  background: transparent;
+  border: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.tc-cal-nav-month:hover,
+.tc-cal-nav-year:hover {
+  background: var(--background-modifier-hover);
+}
+
 .tc-cal-nav-btn {
   background: transparent;
   border: none;
@@ -1689,55 +1727,185 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   align-items: center;
   justify-content: center;
 }
+
 .tc-cal-nav-btn:hover {
   background: var(--background-modifier-hover);
 }
-.tc-cal-nav-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-normal);
-  flex: 1;
-  text-align: center;
-}
+
 .tc-cal-nav-today {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: none;
   background: transparent;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
-  cursor: pointer;
   color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  transition: background 0.1s, color 0.1s;
 }
+
 .tc-cal-nav-today:hover {
-  border-color: var(--interactive-accent);
-  color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
+
 .tc-cal-view-switcher {
   display: flex;
   gap: 2px;
-  background: var(--background-secondary);
-  border-radius: 6px;
+  background: var(--background-modifier-border);
+  border-radius: 8px;
   padding: 2px;
 }
+
 .tc-cal-view-btn {
-  background: transparent;
+  padding: 4px 10px;
+  border-radius: 6px;
   border: none;
-  cursor: pointer;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  background: transparent;
   color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  transition: background 0.1s, color 0.1s;
 }
-.tc-cal-view-btn.is-active {
-  background: var(--background-primary);
+
+.tc-cal-view-btn:hover {
+  background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+.tc-cal-view-btn.is-active {
+  background: var(--interactive-accent);
+  color: white;
   font-weight: 500;
 }
+
+.tc-cal-style-btn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.6;
+  transition: opacity 0.1s;
+}
+.tc-cal-style-btn:hover { opacity: 1; }
+
+.tc-month-picker,
+.tc-year-picker {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 8px;
+  min-width: 180px;
+  position: absolute;
+  z-index: 100;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-l);
+}
+
+.tc-year-picker {
+  grid-template-columns: repeat(3, 1fr);
+  min-width: 160px;
+}
+
+.tc-month-picker-btn,
+.tc-year-picker-btn {
+  padding: 6px 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  transition: background 0.1s;
+}
+
+.tc-month-picker-btn:hover,
+.tc-year-picker-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.tc-month-picker-btn.is-active,
+.tc-year-picker-btn.is-active {
+  background: var(--interactive-accent);
+  color: white;
+}
+
 .tc-cal-body {
   flex: 1;
   overflow: auto;
   min-height: 0;
   padding: 8px 0;
+}
+
+/* ── List View ────────────────────────────────────────── */
+.tc-list-view {
+  padding: 8px 0;
+}
+
+.tc-list-section {
+  margin-bottom: 16px;
+}
+
+.tc-list-date-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  cursor: pointer;
+}
+
+.tc-list-date-label {
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tc-list-overdue-header .tc-list-date-label,
+.tc-list-overdue-header {
+  color: var(--color-red, #e74c3c);
+}
+
+.tc-list-date-count {
+  font-size: var(--font-ui-small);
+  color: var(--text-faint);
+  background: var(--background-modifier-hover);
+  border-radius: 10px;
+  padding: 0 6px;
+}
+
+.tc-list-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.tc-list-task:hover {
+  background: var(--background-modifier-hover);
+}
+
+.tc-list-task-title {
+  flex: 1;
+  font-size: var(--font-ui-medium);
+}
+
+.tc-list-task-title.is-done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.tc-list-task-meta {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ---- Right Panel ---- */

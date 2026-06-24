@@ -19,6 +19,7 @@ export class CenterPanel {
   private calViewInstance: MonthView | WeekView | ListView | null = null;
   private calUnsubscribe: (() => void) | null = null;
   private taskModal: TaskModal | null = null;
+  private calStyle: string = 'style1';
 
   constructor(
     private state: AppState,
@@ -30,6 +31,7 @@ export class CenterPanel {
   mount(container: HTMLElement): void {
     this.el = container;
     this.taskModal = new TaskModal(this.app);
+    this.calStyle = this.settings.desktop.style ?? 'style1';
     this.offs.push(
       this.state.on('selectedList', () => this.render()),
       this.state.on('mode', () => this.render()),
@@ -110,52 +112,77 @@ export class CenterPanel {
   private renderCalendarMode(): void {
     const nav = this.el.createDiv({ cls: 'tc-cal-nav' });
 
-    const prevBtn = nav.createEl('button', {
+    // Left group: [<] [Month] [Year] [>]
+    const leftGroup = nav.createDiv({ cls: 'tc-cal-nav-left' });
+    const prevBtn = leftGroup.createEl('button', {
       cls: 'tc-cal-nav-btn',
       attr: { 'aria-label': 'Previous' },
     });
     setIcon(prevBtn, 'chevron-left');
 
-    const titleEl = nav.createEl('span', { cls: 'tc-cal-nav-title' });
+    const titleGroup = leftGroup.createDiv({ cls: 'tc-cal-nav-title-group' });
+    const monthBtn = titleGroup.createEl('button', { cls: 'tc-cal-nav-month' });
+    const yearBtn = titleGroup.createEl('button', { cls: 'tc-cal-nav-year' });
 
-    const nextBtn = nav.createEl('button', {
+    const nextBtn = leftGroup.createEl('button', {
       cls: 'tc-cal-nav-btn',
       attr: { 'aria-label': 'Next' },
     });
     setIcon(nextBtn, 'chevron-right');
 
-    const todayBtn = nav.createEl('button', { cls: 'tc-cal-nav-today', text: 'Today' });
+    // Right group: [Today] [Month|Week|List switcher] [🎨]
+    const rightGroup = nav.createDiv({ cls: 'tc-cal-nav-right' });
+    const todayBtn = rightGroup.createEl('button', {
+      cls: 'tc-cal-nav-today',
+      text: 'Today',
+    });
 
-    const viewSwitcher = nav.createDiv({ cls: 'tc-cal-view-switcher' });
-    for (const v of ['month', 'week', 'list'] as CalViewType[]) {
+    const viewSwitcher = rightGroup.createDiv({ cls: 'tc-cal-view-switcher' });
+    const CAL_VIEWS = ['month', 'week', 'list'] as const;
+    for (const v of CAL_VIEWS) {
       const btn = viewSwitcher.createEl('button', {
         cls: `tc-cal-view-btn${this.calViewType === v ? ' is-active' : ''}`,
         text: v.charAt(0).toUpperCase() + v.slice(1),
       });
       btn.addEventListener('click', () => {
-        this.calViewType = v;
-        if (v === 'week') this.calDate = window.moment().startOf('isoWeek');
-        else this.calDate = window.moment().date(1);
+        this.calViewType = v as CalViewType;
+        if (v === 'week') {
+          this.calDate = window.moment().startOf('isoWeek');
+        } else {
+          this.calDate = window.moment().date(1);
+        }
         this.render();
       });
     }
 
-    const calStyle = this.settings.desktop.style ?? 'style1';
-    const viewContainer = this.el.createDiv({ cls: `tc-cal-body tasksCalendar ${calStyle}` });
-    viewContainer.setAttribute('view', this.calViewType);
+    const CAL_STYLES = [
+      'style1', 'style2', 'style3', 'style4', 'style5', 'style6',
+      'style7', 'style8', 'style9', 'style10', 'style11',
+    ];
+    const styleBtn = rightGroup.createEl('button', {
+      cls: 'tc-cal-style-btn',
+      attr: { title: `Style: ${this.calStyle}`, 'aria-label': 'Cycle calendar style' },
+      text: '🎨',
+    });
 
-    const config: ResolvedConfig = {
-      ...DEFAULT_VIEW_CONFIG,
-      ...this.settings.desktop,
-      isMobile: false,
-      startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
-    };
+    const viewContainer = this.el.createDiv({
+      cls: `tc-cal-body tasksCalendar ${this.calStyle}`,
+    });
+
+    styleBtn.addEventListener('click', () => {
+      const idx = CAL_STYLES.indexOf(this.calStyle);
+      this.calStyle = CAL_STYLES[(idx + 1) % CAL_STYLES.length] ?? 'style1';
+      viewContainer.className = `tc-cal-body tasksCalendar ${this.calStyle}`;
+      styleBtn.setAttribute('title', `Style: ${this.calStyle}`);
+    });
 
     const updateTitle = (): void => {
       if (this.calViewType === 'week') {
-        titleEl.textContent = `Week ${this.calDate.format('w')} · ${this.calDate.format('YYYY')}`;
+        monthBtn.textContent = `Week ${this.calDate.format('w')}`;
+        yearBtn.textContent = this.calDate.format('YYYY');
       } else {
-        titleEl.textContent = this.calDate.format('MMMM YYYY');
+        monthBtn.textContent = this.calDate.format('MMMM');
+        yearBtn.textContent = this.calDate.format('YYYY');
       }
     };
     updateTitle();
@@ -170,22 +197,23 @@ export class CenterPanel {
 
     const mountView = (): void => {
       this.calViewInstance?.destroy();
-      viewContainer.setAttribute('view', this.calViewType);
+      viewContainer.empty();
       const tasks = this.store.getTasks();
       const cfg: ResolvedConfig = {
-        ...config,
-        startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
+        ...DEFAULT_VIEW_CONFIG,
+        ...this.settings.desktop,
+        isMobile: false,
+        startPosition: this.calDate.format(
+          this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM',
+        ),
       };
       if (this.calViewType === 'month') {
         this.calViewInstance = new MonthView({
-          onToggle: (t) => {
-            void this.store.toggleTask(t);
-          },
+          onToggle: (t) => { void this.store.toggleTask(t); },
           onCellClick: () => {},
           onWeekClick: (wk, yr) => {
             this.calViewType = 'week';
-            this.calDate = window
-              .moment()
+            this.calDate = window.moment()
               .isoWeekYear(parseInt(yr, 10))
               .isoWeek(parseInt(wk, 10))
               .startOf('isoWeek');
@@ -196,19 +224,16 @@ export class CenterPanel {
         });
       } else if (this.calViewType === 'week') {
         this.calViewInstance = new WeekView({
-          onToggle: (t) => {
-            void this.store.toggleTask(t);
-          },
+          onToggle: (t) => { void this.store.toggleTask(t); },
           onCellClick: () => {},
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
         });
       } else {
         this.calViewInstance = new ListView({
-          onToggle: (t) => {
-            void this.store.toggleTask(t);
-          },
+          onToggle: (t) => { void this.store.toggleTask(t); },
           onDateClick: () => {},
+          onTaskClick: handleTaskClick,
         });
       }
       this.calViewInstance.render(viewContainer, tasks, cfg);
@@ -216,11 +241,70 @@ export class CenterPanel {
 
     mountView();
 
+    // Month picker popover
+    monthBtn.addEventListener('click', () => {
+      const existing = this.el.querySelector('.tc-month-picker');
+      if (existing) { existing.remove(); return; }
+      const picker = this.el.createDiv({ cls: 'tc-month-picker tc-popover' });
+      const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      MONTH_NAMES.forEach((m, i) => {
+        const btn = picker.createEl('button', { cls: 'tc-month-picker-btn', text: m });
+        if (i === this.calDate.month()) btn.addClass('is-active');
+        btn.addEventListener('click', () => {
+          this.calDate = this.calDate.clone().month(i).date(1);
+          updateTitle();
+          mountView();
+          picker.remove();
+        });
+      });
+      monthBtn.after(picker);
+      window.setTimeout(() => {
+        const dismiss = (e: MouseEvent): void => {
+          if (!picker.contains(e.target as Node) && e.target !== monthBtn) {
+            picker.remove();
+            activeDocument.removeEventListener('click', dismiss, true);
+          }
+        };
+        activeDocument.addEventListener('click', dismiss, true);
+      }, 0);
+    });
+
+    // Year picker popover
+    yearBtn.addEventListener('click', () => {
+      const existing = this.el.querySelector('.tc-year-picker');
+      if (existing) { existing.remove(); return; }
+      const picker = this.el.createDiv({ cls: 'tc-year-picker tc-popover' });
+      const currentYear = this.calDate.year();
+      for (let y = currentYear - 5; y <= currentYear + 5; y++) {
+        const btn = picker.createEl('button', {
+          cls: 'tc-year-picker-btn',
+          text: String(y),
+        });
+        if (y === currentYear) btn.addClass('is-active');
+        btn.addEventListener('click', () => {
+          this.calDate = this.calDate.clone().year(y).date(1);
+          updateTitle();
+          mountView();
+          picker.remove();
+        });
+      }
+      yearBtn.after(picker);
+      window.setTimeout(() => {
+        const dismiss = (e: MouseEvent): void => {
+          if (!picker.contains(e.target as Node) && e.target !== yearBtn) {
+            picker.remove();
+            activeDocument.removeEventListener('click', dismiss, true);
+          }
+        };
+        activeDocument.addEventListener('click', dismiss, true);
+      }, 0);
+    });
+
     prevBtn.addEventListener('click', () => {
       if (this.calViewType === 'week') {
-        this.calDate = window.moment(this.calDate).subtract(7, 'days').startOf('isoWeek');
+        this.calDate = this.calDate.clone().subtract(7, 'days').startOf('isoWeek');
       } else {
-        this.calDate = window.moment(this.calDate).subtract(1, 'months').date(1);
+        this.calDate = this.calDate.clone().subtract(1, 'months').date(1);
       }
       updateTitle();
       mountView();
@@ -228,9 +312,9 @@ export class CenterPanel {
 
     nextBtn.addEventListener('click', () => {
       if (this.calViewType === 'week') {
-        this.calDate = window.moment(this.calDate).add(7, 'days').startOf('isoWeek');
+        this.calDate = this.calDate.clone().add(7, 'days').startOf('isoWeek');
       } else {
-        this.calDate = window.moment(this.calDate).add(1, 'months').date(1);
+        this.calDate = this.calDate.clone().add(1, 'months').date(1);
       }
       updateTitle();
       mountView();
@@ -238,7 +322,9 @@ export class CenterPanel {
 
     todayBtn.addEventListener('click', () => {
       this.calDate =
-        this.calViewType === 'week' ? window.moment().startOf('isoWeek') : window.moment().date(1);
+        this.calViewType === 'week'
+          ? window.moment().startOf('isoWeek')
+          : window.moment().date(1);
       updateTitle();
       mountView();
     });
@@ -276,20 +362,24 @@ export class CenterPanel {
     scroll.querySelectorAll<HTMLElement>('.tc-task-card').forEach((cardEl, idx) => {
       const task = results[idx];
       if (!task) return;
-      cardEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const todayStr = window.moment().format('YYYY-MM-DD');
-        const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
-        let list: 'inbox' | 'today' | 'upcoming' = 'inbox';
-        if ((task.due && task.due < todayStr) || d === todayStr) {
-          list = 'today';
-        } else if (d && d > todayStr) {
-          list = 'upcoming';
-        }
-        this.state.set('selectedList', list);
-        this.state.set('mode', 'tasks');
-        this.state.set('taskStack', [task]);
-      }, { capture: true });
+      cardEl.addEventListener(
+        'click',
+        (e) => {
+          e.stopPropagation();
+          const todayStr = window.moment().format('YYYY-MM-DD');
+          const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
+          let list: 'inbox' | 'today' | 'upcoming' = 'inbox';
+          if ((task.due && task.due < todayStr) || d === todayStr) {
+            list = 'today';
+          } else if (d && d > todayStr) {
+            list = 'upcoming';
+          }
+          this.state.set('selectedList', list);
+          this.state.set('mode', 'tasks');
+          this.state.set('taskStack', [task]);
+        },
+        { capture: true },
+      );
     });
   }
 
@@ -539,7 +629,8 @@ export class CenterPanel {
           const todayStr = window.moment().format('YYYY-MM-DD');
           tasks = this.store.getTasks().filter((t) => {
             if (t.status !== 'open') return false;
-            if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr) return true;
+            if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr)
+              return true;
             if (t.due && t.due < todayStr) return true;
             return false;
           });
