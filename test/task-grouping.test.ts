@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
-import { getTasksForDate, renderTaskGroup, sortTasks, sortTasksByDateTime } from '../src/views/taskGrouping';
+import {
+  getTasksForDate,
+  renderTaskGroup,
+  sortTasks,
+  sortTasksByDateTime,
+} from '../src/views/taskGrouping';
 import { task, useRealMoment } from './helpers';
 
 useRealMoment();
