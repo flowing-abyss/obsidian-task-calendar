@@ -2145,7 +2145,18 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-chip-tag {
   cursor: default;
-  color: var(--tc-chip-tag-color, inherit);
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  height: auto;
+  color: var(--tc-chip-tag-color, var(--text-faint));
+  font-size: 11px;
+  opacity: 0.9;
+}
+.tc-chip-tag:hover {
+  background: transparent;
+  border: none;
+  opacity: 1;
 }
 .tc-chip-add {
   background: transparent;
