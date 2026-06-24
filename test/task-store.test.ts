@@ -1,10 +1,22 @@
-import { TFile } from 'obsidian';
+import { TFile, type CachedMetadata } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TaskStore } from '../src/store/TaskStore';
-import { createAppWithFiles, seedTaskCache, useRealMoment } from './helpers';
+import { captureChangedCallback, createAppWithFiles, flushMicrotasks, seedTaskCache, useRealMoment } from './helpers';
 
 useRealMoment();
+
+/** Narrow getAbstractFileByPath to TFile via instanceof (satisfies no-tfile-tfolder-cast). */
+function mdFile(app: { vault: { getAbstractFileByPath(p: string): unknown } }, path: string): TFile {
+  const f = app.vault.getAbstractFileByPath(path);
+  if (!(f instanceof TFile)) throw new Error(`${path} is not a TFile`);
+  return f;
+}
+
+/** Cast a partial cache object to CachedMetadata (position omits col/offset). */
+function cache(obj: unknown): CachedMetadata {
+  return obj as CachedMetadata;
+}
 
 describe('TaskStore initialize + getTasks', () => {
   it('empty vault yields no tasks and fires one bulk onUpdate', async () => {
@@ -365,5 +377,156 @@ describe('TaskStore addTask', () => {
     if (!(file instanceof TFile)) throw new Error('daily note not a TFile');
     const content = await app.vault.cachedRead(file);
     expect(content).toContain('- [ ] #task/one-off today task 📅 2026-06-24');
+  });
+});
+
+describe('TaskStore onUpdate + events', () => {
+  it('onUpdate returns an unsubscribe that stops notifications', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] x' });
+    seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const events: string[] = [];
+    const off = store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    off();
+    // trigger a rename to see if events fire
+    const file = mdFile(app, 't.md');
+    await app.vault.rename(file, 't2.md');
+    await flushMicrotasks(20);
+    expect(events).toHaveLength(0);
+  });
+
+  it('metadataCache changed (via captureChangedCallback) re-parses + updates + notifies', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] old' });
+    seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const fireChanged = captureChangedCallback(app);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const events: string[] = [];
+    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    const file = mdFile(app, 't.md');
+    fireChanged(file, '- [ ] new 📅 2026-06-25', cache({
+      listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
+      frontmatter: { color: '#abc' },
+    }));
+    expect(events).toContain('t.md');
+    const tasks = store.getTasks();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.due).toBe('2026-06-25');
+    expect(tasks[0]?.noteColor).toBe('#abc');
+  });
+
+  it('changed with frontmatter updates frontmatterMap', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] x' });
+    seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const fireChanged = captureChangedCallback(app);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const file = mdFile(app, 't.md');
+    fireChanged(file, '- [ ] x', cache({
+      listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
+      frontmatter: { color: '#def', icon: '⭐' },
+    }));
+    const task = store.getTasks()[0]!;
+    expect(task.noteColor).toBe('#def');
+    expect(task.noteIcon).toBe('⭐');
+  });
+
+  it('vault rename moves tasks + frontmatter and notifies', async () => {
+    const app = await createAppWithFiles({ 'old.md': '- [ ] task' });
+    seedTaskCache(
+      app,
+      'old.md',
+      [{ task: ' ', parent: -1, line: 0 }],
+      { color: '#aaa' },
+    );
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const events: string[] = [];
+    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    const file = mdFile(app, 'old.md');
+    await app.vault.rename(file, 'new.md');
+    await flushMicrotasks(20);
+    expect(events).toContain('new.md');
+    const tasks = store.getTasks();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.filePath).toBe('new.md');
+    expect(tasks[0]?.noteColor).toBe('#aaa');
+  });
+
+  it('rename of a .md file with no tasks still notifies (CURRENT BEHAVIOR, follow-up FU-13)', async () => {
+    const app = await createAppWithFiles({ 'empty.md': 'no tasks here' });
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const events: string[] = [];
+    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    const file = mdFile(app, 'empty.md');
+    await app.vault.rename(file, 'empty2.md');
+    await flushMicrotasks(20);
+    expect(events).toContain('empty2.md');
+  });
+
+  it('vault delete removes tasks + notifies', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] task' });
+    seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const events: string[] = [];
+    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    const file = mdFile(app, 't.md');
+    await app.vault.delete(file);
+    await flushMicrotasks(20);
+    expect(events).toContain('t.md');
+    expect(store.getTasks()).toHaveLength(0);
+  });
+
+  it('delete of a file with no tasks does not notify', async () => {
+    const app = await createAppWithFiles({ 'empty.md': 'no tasks' });
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const events: string[] = [];
+    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    const file = mdFile(app, 'empty.md');
+    await app.vault.delete(file);
+    await flushMicrotasks(20);
+    expect(events).toHaveLength(0);
+  });
+});
+
+describe('TaskStore destroy', () => {
+  it('destroy detaches events (no further onUpdate)', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] x' });
+    seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
+    // Capture to ensure the changed handler registers; destroy must detach it so the mock's
+    // own event dispatch no longer invokes it. (fireChanged bypasses offref via its closure,
+    // so we use the mock's trigger() which respects offref after destroy.)
+    captureChangedCallback(app);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    store.destroy();
+    const events: string[] = [];
+    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    const file = mdFile(app, 't.md');
+    (
+      app.metadataCache as unknown as {
+        trigger(name: string, ...data: unknown[]): void;
+      }
+    ).trigger('changed', file, '- [ ] changed', cache({
+      listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
+      frontmatter: { color: '#def' },
+    }));
+    // destroy detaches the metadataCache changed handler (offref), so the mock's trigger no
+    // longer calls it; onUpdate was re-registered after destroy (listeners cleared), but the
+    // changed handler is detached so it won't call notify. events should be empty.
+    expect(events).toHaveLength(0);
+  });
+
+  it('destroy is idempotent (calling twice does not throw)', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] x' });
+    seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    store.destroy();
+    expect(() => store.destroy()).not.toThrow();
   });
 });
