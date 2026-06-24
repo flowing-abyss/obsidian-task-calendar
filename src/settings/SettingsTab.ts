@@ -18,6 +18,35 @@ export class CalendarSettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
+    this.addSection(containerEl, 'General', (body) => this.renderGeneralSettings(body));
+    this.addSection(containerEl, 'Desktop', (body) =>
+      this.renderViewConfigSettings(body, 'desktop'),
+    );
+    this.addSection(containerEl, 'Mobile', (body) => this.renderViewConfigSettings(body, 'mobile'));
+    this.addSection(containerEl, 'Tag groups', (body) => this.renderTagGroupSettings(body));
+  }
+
+  private addSection(
+    containerEl: HTMLElement,
+    title: string,
+    renderFn: (bodyEl: HTMLElement) => void,
+  ): void {
+    const section = containerEl.createDiv({ cls: 'tc-settings-section' });
+
+    const header = section.createDiv({ cls: 'tc-settings-section-header' });
+    header.createSpan({ cls: 'tc-settings-section-label', text: title });
+    const toggle = header.createSpan({ cls: 'tc-settings-section-toggle', text: '+' });
+
+    const body = section.createDiv({ cls: 'tc-settings-section-body' });
+    renderFn(body);
+
+    header.addEventListener('click', () => {
+      const isOpen = section.classList.toggle('is-open');
+      toggle.textContent = isOpen ? '−' : '+';
+    });
+  }
+
+  private renderGeneralSettings(containerEl: HTMLElement): void {
     new Setting(containerEl)
       .setName('Task prefix')
       // eslint-disable-next-line obsidianmd/ui/sentence-case
@@ -59,19 +88,9 @@ export class CalendarSettingsTab extends PluginSettingTab {
             }),
         );
     }
-
-    new Setting(containerEl).setName('Desktop defaults').setHeading();
-    this.renderViewConfigSettings(containerEl, 'desktop');
-
-    new Setting(containerEl).setName('Mobile defaults').setHeading();
-    this.renderViewConfigSettings(containerEl, 'mobile');
-
-    this.renderTagGroupSettings(containerEl);
   }
 
   private renderTagGroupSettings(containerEl: HTMLElement): void {
-    new Setting(containerEl).setName('Tag groups').setHeading();
-
     new Setting(containerEl)
       .setName('Inbox source')
       .setDesc('Show tasks with a specific tag, or all tasks with no tags.')
@@ -103,7 +122,6 @@ export class CalendarSettingsTab extends PluginSettingTab {
         );
     }
 
-    // Render existing groups
     const groups = this.plugin.settings.tagGroups;
     for (let idx = 0; idx < groups.length; idx++) {
       this.renderTagGroupCard(containerEl, idx);
@@ -167,7 +185,6 @@ export class CalendarSettingsTab extends PluginSettingTab {
         }),
     );
 
-    // Color picker
     const colorRow = card.createEl('div', { cls: 'tc-setting-row' });
     colorRow.createEl('span', { text: 'Color', cls: 'tc-setting-label' });
     const colorInput = colorRow.createEl('input', {
