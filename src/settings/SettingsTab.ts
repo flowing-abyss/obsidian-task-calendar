@@ -27,9 +27,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
     this.addSection(containerEl, 'Mobile', 'smartphone', (body) =>
       this.renderViewConfigSettings(body, 'mobile'),
     );
-    this.addSection(containerEl, 'Tag groups', 'tags', (body) =>
-      this.renderTagGroupSettings(body),
-    );
+    this.addSection(containerEl, 'Tag groups', 'tags', (body) => this.renderTagGroupSettings(body));
   }
 
   private addSection(
@@ -197,14 +195,12 @@ export class CalendarSettingsTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(card)
-      .setName('Color')
-      .addColorPicker((cp) =>
-        cp.setValue(group.color ?? '#888888').onChange(async (v) => {
-          group.color = v;
-          await this.plugin.saveSettings();
-        }),
-      );
+    new Setting(card).setName('Color').addColorPicker((cp) =>
+      cp.setValue(group.color ?? '#888888').onChange(async (v) => {
+        group.color = v;
+        await this.plugin.saveSettings();
+      }),
+    );
 
     if (group.mode === 'prefix') {
       new Setting(card)
