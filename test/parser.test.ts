@@ -164,6 +164,103 @@ describe('parseTask', () => {
     expect(t).not.toBeNull();
     expect(t?.text).toBe('Indented subtask');
   });
+
+  // --- Edge cases (Phase 1 coverage) ---
+
+  it('keeps only the first due date (CURRENT BEHAVIOR, follow-up FU-4)', () => {
+    const t = parseTask('- [ ] Task 📅 2026-01-01 📅 2026-01-02', { filePath: 'f.md', line: 0 });
+    expect(t?.due).toBe('2026-01-01');
+    // second emoji not stripped: stays in text
+    expect(t?.text).toContain('📅 2026-01-02');
+  });
+
+  it('does not match a non-date string (CURRENT BEHAVIOR)', () => {
+    const t = parseTask('- [ ] Task 📅 not-a-date', { filePath: 'f.md', line: 0 });
+    expect(t?.due).toBeUndefined();
+    // regex requires \d{4}-\d{2}-\d{2} shape; non-digit text doesn't match, emoji stays in text
+    expect(t?.text).toContain('📅');
+  });
+
+  it('matches a structurally-shaped but semantically-invalid date (CURRENT BEHAVIOR, follow-up FU-3)', () => {
+    // 2026-13-99 has the \d{4}-\d{2}-\d{2} shape, so it matches; no date-range validation
+    const t = parseTask('- [ ] Task 📅 2026-13-99', { filePath: 'f.md', line: 0 });
+    expect(t?.due).toBe('2026-13-99');
+    expect(t?.text).not.toContain('📅');
+  });
+
+  it('matches time with two-digit minutes, rejects single-digit minutes', () => {
+    const ok = parseTask('- [ ] Task ⏰ 09:05', { filePath: 'f.md', line: 0 });
+    expect(ok?.time).toBe('09:05');
+    expect(ok?.text).not.toContain('⏰');
+
+    const no = parseTask('- [ ] Task ⏰ 9:5', { filePath: 'f.md', line: 0 });
+    // CURRENT BEHAVIOR: single-digit minute does not match TIME_RE \d{1,2}:\d{2}
+    expect(no?.time).toBeUndefined();
+    expect(no?.text).toContain('⏰ 9:5');
+  });
+
+  it('accepts out-of-range time values (CURRENT BEHAVIOR, follow-up FU-3)', () => {
+    const t = parseTask('- [ ] Task ⏰ 25:99', { filePath: 'f.md', line: 0 });
+    expect(t?.time).toBe('25:99');
+  });
+
+  it('treats empty recurrence as undefined', () => {
+    const t = parseTask('- [ ] Task 🔁 ', { filePath: 'f.md', line: 0 });
+    expect(t?.recurrence).toBeUndefined();
+    expect(t?.text).not.toContain('🔁');
+  });
+
+  it('stops recurrence at the next metadata emoji', () => {
+    const t = parseTask('- [ ] Task 🔁 every week 📅 2026-01-01', { filePath: 'f.md', line: 0 });
+    expect(t?.recurrence).toBe('every week');
+    expect(t?.due).toBe('2026-01-01');
+    expect(t?.text).not.toContain('🔁');
+  });
+
+  it('strips literal non-link brackets from title (CURRENT BEHAVIOR)', () => {
+    const t = parseTask('- [ ] Note [draft]', { filePath: 'f.md', line: 0 });
+    // BRACKETS_RE collapses [draft] to draft after wikilink/md-link collapses ran
+    expect(t?.text).toBe('Note draft');
+  });
+
+  it('strips file extension from wikilink', () => {
+    const t = parseTask('- [ ] [[note.md]] task', { filePath: 'f.md', line: 0 });
+    expect(t?.text).toContain('🔗 note');
+    expect(t?.text).not.toContain('note.md');
+  });
+
+  it('parses a task with tab indentation', () => {
+    const t = parseTask('\t- [ ] Tabbed task', { filePath: 'f.md', line: 0 });
+    expect(t).not.toBeNull();
+    expect(t?.text).toBe('Tabbed task');
+  });
+
+  it('corrupts a partial-overlap tag when stripping global filter (CURRENT BEHAVIOR, follow-up FU-2)', () => {
+    const t = parseTask('- [ ] #task/x Buy', {
+      filePath: 'f.md',
+      line: 0,
+      globalTaskFilter: '#task',
+    });
+    // split('#task').join('') removes the '#task' prefix of '#task/x', leaving '/x Buy'
+    expect(t?.text).toBe('/x Buy');
+  });
+
+  it('cancelled emoji overrides a done checkbox to cancelled', () => {
+    const t = parseTask('- [x] Done but cancelled ❌ 2026-06-22', { filePath: 'f.md', line: 0 });
+    expect(t?.status).toBe('cancelled');
+    expect(t?.cancelledDate).toBe('2026-06-22');
+  });
+
+  it('empty title with only metadata', () => {
+    const t = parseTask('- [ ] 📅 2026-01-01', { filePath: 'f.md', line: 0 });
+    expect(t?.due).toBe('2026-01-01');
+    expect(t?.text).toBe('');
+  });
+
+  it('whitespace-only after checkbox yields empty text', () => {
+    const t = parseTask('- [ ]   ', { filePath: 'f.md', line: 0 });
+    expect(t?.text).toBe('');
+  });
 });
 
 describe('formatTaskLine', () => {
@@ -218,5 +315,56 @@ describe('formatTaskLine', () => {
   it('handles all five priority levels', () => {
     expect(formatTaskLine('- [ ] Task ⏬ 📅 2026-07-01')).toBe('- [ ] Task ⏬ 📅 2026-07-01');
     expect(formatTaskLine('- [ ] Task 🔺 📅 2026-07-01')).toBe('- [ ] Task 🔺 📅 2026-07-01');
+  });
+
+  // --- Edge cases (Phase 1 coverage) ---
+
+  it('preserves a capital [X] checkbox', () => {
+    expect(formatTaskLine('- [X] Done 📅 2026-07-01 ✅ 2026-07-01')).toBe(
+      '- [X] Done 📅 2026-07-01 ✅ 2026-07-01',
+    );
+  });
+
+  it('passes a literal non-metadata emoji with no date through unchanged', () => {
+    // bare 📅 with no date is neither extracted nor stripped
+    expect(formatTaskLine('- [ ] Meeting 📅 kickoff')).toBe('- [ ] Meeting 📅 kickoff');
+  });
+
+  it('extracts a date-bearing emoji embedded in prose (CURRENT BEHAVIOR, follow-up FU-5)', () => {
+    // author intent: 📅 is prose; parser extracts it as due
+    const out = formatTaskLine('- [ ] Meeting 📅 2026-01-01 kickoff');
+    expect(out).toBe('- [ ] Meeting kickoff 📅 2026-01-01');
+  });
+
+  it('round-trips a tag containing hyphen and slash', () => {
+    const out = formatTaskLine('- [ ] Task 📅 2026-07-01 #a/b-c');
+    expect(out).toBe('- [ ] Task #a/b-c 📅 2026-07-01');
+  });
+
+  it('emits both cancelled and done dates in canonical order', () => {
+    const out = formatTaskLine('- [x] Task ✅ 2026-07-22 ❌ 2026-07-21 📅 2026-07-20');
+    // canonical order: … 📅 ❌ ✅
+    expect(out).toBe('- [x] Task 📅 2026-07-20 ❌ 2026-07-21 ✅ 2026-07-22');
+  });
+
+  it('handles a line with only metadata and an empty title', () => {
+    const out = formatTaskLine('- [ ] 📅 2026-01-01');
+    expect(out).toBe('- [ ] 📅 2026-01-01');
+  });
+
+  it('rebuilds a line with all metadata fields in canonical order', () => {
+    const out = formatTaskLine(
+      '- [ ] Task ✅ 2026-07-22 ❌ 2026-07-21 📅 2026-07-20 ⏳ 2026-07-15 🛫 2026-07-10 ➕ 2026-07-05 🔁 every week ⏬ #work ⏰ 09:00',
+    );
+    // canonical: title · #tags · ⏰ · priority · 🔁 · ➕ · 🛫 · ⏳ · 📅 · ❌ · ✅
+    expect(out).toBe(
+      '- [ ] Task #work ⏰ 09:00 ⏬ 🔁 every week ➕ 2026-07-05 🛫 2026-07-10 ⏳ 2026-07-15 📅 2026-07-20 ❌ 2026-07-21 ✅ 2026-07-22',
+    );
+  });
+
+  it('is idempotent for a shuffled-metadata line', () => {
+    const shuffled = '- [ ] Task 📅 2026-07-01 ⏫ ⏳ 2026-06-25 🛫 2026-06-20 #work ⏰ 09:30';
+    const once = formatTaskLine(shuffled);
+    expect(formatTaskLine(once)).toBe(once);
   });
 });
