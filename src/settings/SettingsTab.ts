@@ -16,6 +16,12 @@ export class CalendarSettingsTab extends PluginSettingTab {
 
   display(): void {
     const { containerEl } = this;
+
+    const openIndices = new Set<number>();
+    containerEl.querySelectorAll('.tc-settings-section').forEach((el, i) => {
+      if (el.classList.contains('is-open')) openIndices.add(i);
+    });
+
     containerEl.empty();
 
     this.addSection(containerEl, 'General', 'sliders-horizontal', (body) =>
@@ -28,6 +34,10 @@ export class CalendarSettingsTab extends PluginSettingTab {
       this.renderViewConfigSettings(body, 'mobile'),
     );
     this.addSection(containerEl, 'Tag groups', 'tags', (body) => this.renderTagGroupSettings(body));
+
+    containerEl.querySelectorAll('.tc-settings-section').forEach((el, i) => {
+      if (openIndices.has(i)) el.classList.add('is-open');
+    });
   }
 
   private addSection(

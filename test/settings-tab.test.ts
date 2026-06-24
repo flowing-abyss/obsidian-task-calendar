@@ -75,4 +75,19 @@ describe('CalendarSettingsTab sections', () => {
     const chevrons = tab.containerEl.querySelectorAll('.tc-settings-section-chevron');
     expect(chevrons).toHaveLength(4);
   });
+
+  it('open sections stay open after display() re-render', () => {
+    const tab = makeTab();
+    const headers = Array.from(
+      tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header'),
+    );
+    headers[1]!.click(); // open Desktop (index 1)
+    headers[2]!.click(); // open Mobile (index 2)
+    tab.display();
+    const sections = Array.from(tab.containerEl.querySelectorAll('.tc-settings-section'));
+    expect(sections[0]!.classList.contains('is-open')).toBe(false);
+    expect(sections[1]!.classList.contains('is-open')).toBe(true);
+    expect(sections[2]!.classList.contains('is-open')).toBe(true);
+    expect(sections[3]!.classList.contains('is-open')).toBe(false);
+  });
 });
