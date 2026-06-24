@@ -1482,6 +1482,16 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   cursor: pointer;
   accent-color: var(--interactive-accent);
 }
+/* Priority coloring on task card checkbox */
+.tc-task-checkbox[data-priority='A'] {
+  accent-color: #e44332;
+}
+.tc-task-checkbox[data-priority='B'] {
+  accent-color: #e87d00;
+}
+.tc-task-checkbox[data-priority='D'] {
+  accent-color: #5297ff;
+}
 .tc-task-body {
   flex: 1;
   min-width: 0;
@@ -1529,35 +1539,45 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-task-date {
   font-size: 11px;
-  color: var(--interactive-accent);
+  color: var(--text-muted);
   font-weight: 500;
   height: 18px;
   padding: 0 6px;
   border-radius: 10px;
-  background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.12);
+  background: var(--background-modifier-form-field);
   display: inline-flex;
   align-items: center;
   gap: 2px;
   white-space: nowrap;
 }
 .tc-task-date.is-overdue {
-  color: var(--text-error);
+  color: #e44332;
   background: hsla(0, 70%, 50%, 0.12);
 }
+.tc-task-date.is-today {
+  color: #e44332;
+  background: hsla(0, 70%, 50%, 0.12);
+}
+.tc-task-date.is-tomorrow {
+  color: #e87d00;
+  background: hsla(30, 90%, 45%, 0.12);
+}
+.tc-task-date.is-soon {
+  color: var(--interactive-accent);
+  background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.12);
+}
 .tc-task-tag {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--tc-tag-color, var(--text-faint));
   background: transparent;
-  border: 1px solid var(--tc-tag-color, var(--background-modifier-border));
-  padding: 0 5px;
-  border-radius: 10px;
-  height: 18px;
+  border: none;
+  padding: 0 2px;
+  height: auto;
   display: inline-flex;
   align-items: center;
-  opacity: 0.85;
+  opacity: 0.88;
 }
 .tc-task-tag--colored {
-  background: color-mix(in srgb, var(--tc-tag-color) 12%, transparent);
   opacity: 1;
 }
 .tc-task-progress {
@@ -1586,26 +1606,6 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   margin-right: 4px;
 }
 
-/* Priority flag in task card */
-.tc-task-priority-flag {
-  width: 8px;
-  height: 12px;
-  border-radius: 1px;
-  background: var(--tc-priority-color, var(--text-muted));
-  flex-shrink: 0;
-  position: relative;
-}
-.tc-task-priority-flag::after {
-  content: '';
-  position: absolute;
-  right: -4px;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 4px solid var(--tc-priority-color, var(--text-muted));
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-}
 
 /* Delete button on task card */
 .tc-task-delete-btn {
@@ -2143,10 +2143,10 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 /* Popovers */
 .tc-popover {
   position: absolute;
-  background: var(--background-primary);
+  background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.10);
   z-index: 100;
   padding: 8px;
   min-width: 160px;
@@ -2183,9 +2183,15 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-muted);
   flex-shrink: 0;
 }
-.tc-priority-option[data-priority="A"]::before { color: #e44332; }
-.tc-priority-option[data-priority="B"]::before { color: #ff9933; }
-.tc-priority-option[data-priority="D"]::before { color: #5297ff; }
+.tc-priority-option[data-priority='A']::before {
+  color: #e44332;
+}
+.tc-priority-option[data-priority='B']::before {
+  color: #ff9933;
+}
+.tc-priority-option[data-priority='D']::before {
+  color: #5297ff;
+}
 .tc-priority-option:hover {
   background: var(--background-modifier-hover);
 }
@@ -2200,9 +2206,15 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 
 /* Priority chip in right panel */
-.tc-priority-chip[data-priority="A"] { color: #e44332; }
-.tc-priority-chip[data-priority="B"] { color: #ff9933; }
-.tc-priority-chip[data-priority="D"] { color: #5297ff; }
+.tc-priority-chip[data-priority='A'] {
+  color: #e44332;
+}
+.tc-priority-chip[data-priority='B'] {
+  color: #ff9933;
+}
+.tc-priority-chip[data-priority='D'] {
+  color: #5297ff;
+}
 
 /* Right panel body */
 .tc-right-divider {
@@ -2382,6 +2394,21 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-comment-input:focus {
   outline: none;
   border-color: var(--interactive-accent);
+}
+.tc-comment-edit-input {
+  width: 100%;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 13px;
+  font-family: var(--font-text);
+  resize: vertical;
+  min-height: 48px;
+  outline: none;
+  box-sizing: border-box;
+  margin-top: 4px;
 }
 .tc-tag-input {
   padding: 3px 8px;
