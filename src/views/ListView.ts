@@ -26,9 +26,7 @@ export class ListView extends BaseView {
     const grid = container.createDiv({ cls: 'tc-list-view' });
 
     // Overdue section first
-    const overdueTasks = tasks.filter(
-      (t) => t.status === 'open' && t.due && t.due < today,
-    );
+    const overdueTasks = tasks.filter((t) => t.status === 'open' && t.due && t.due < today);
     if (overdueTasks.length > 0) {
       const section = grid.createDiv({ cls: 'tc-list-section' });
       const overdueHeader = section.createDiv({
@@ -50,11 +48,15 @@ export class ListView extends BaseView {
 
       const groups = getTasksForDate(tasks, currentDate, today);
       // Combine all task groups (due, recurrence, start, scheduled, process, dailyNote, allDone, cancelled)
+      // Exclude overdue — it has its own section at the top
       const allTasks: Task[] = [];
-      for (const group of Object.values(groups)) {
+      for (const [key, group] of Object.entries(groups)) {
+        if (key === 'overdue') continue;
         if (Array.isArray(group)) allTasks.push(...(group as Task[]));
       }
-      if (allTasks.length === 0) continue;
+      // Filter to only open tasks (exclude done and cancelled from day sections)
+      const openDayTasks = allTasks.filter((t) => t.status === 'open');
+      if (openDayTasks.length === 0) continue;
 
       const section = grid.createDiv({ cls: 'tc-list-section' });
 
@@ -67,11 +69,11 @@ export class ListView extends BaseView {
       dateHeader.createEl('span', { cls: 'tc-list-date-label', text: dateLabel });
       dateHeader.createEl('span', {
         cls: 'tc-list-date-count',
-        text: String(allTasks.length),
+        text: String(openDayTasks.length),
       });
       dateHeader.addEventListener('click', () => this.callbacks.onDateClick(currentDate));
 
-      for (const task of sortTasks(allTasks)) {
+      for (const task of sortTasks(openDayTasks)) {
         this.renderListTask(section, task);
       }
     }
@@ -90,8 +92,14 @@ export class ListView extends BaseView {
       this.callbacks.onToggle(task);
     });
 
+    let statusClass = '';
+    if (task.status === 'done') {
+      statusClass = ' is-done';
+    } else if (task.status === 'cancelled') {
+      statusClass = ' is-cancelled';
+    }
     row.createEl('span', {
-      cls: `tc-list-task-title${task.status === 'done' ? ' is-done' : ''}`,
+      cls: `tc-list-task-title${statusClass}`,
       text: task.text,
     });
 
