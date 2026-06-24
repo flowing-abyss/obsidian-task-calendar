@@ -299,14 +299,15 @@ export class RightPanel {
 
   private renderPriorityChip(container: HTMLElement, task: Task): void {
     const labels: Record<string, string> = {
-      A: '⏫ High',
-      B: '🔼 Medium',
+      A: '🚩 High',
+      B: '🚩 Medium',
       C: 'Priority',
-      D: '🔽 Low',
+      D: '🚩 Low',
     };
     const chip = container.createEl('button', {
-      cls: `tc-chip${task.priority === 'C' ? ' tc-chip-empty' : ''}`,
+      cls: `tc-chip tc-priority-chip tc-priority-chip--${task.priority ?? 'C'}${task.priority === 'C' ? ' tc-chip-empty' : ''}`,
       text: labels[task.priority] ?? 'Priority',
+      attr: { 'data-priority': task.priority ?? 'C' },
     });
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -357,25 +358,39 @@ export class RightPanel {
     this.clearPopovers();
     if (already) return;
 
-    const pop = this.el.createDiv({ cls: 'tc-popover tc-priority-popover' });
+    const pop = this.el.createDiv({ cls: 'tc-popover tc-priority-popover tc-popover-anchored' });
+    pop.setCssProps({
+      '--tc-pop-top': `${anchor.offsetTop + anchor.offsetHeight + 4}px`,
+      '--tc-pop-left': `${anchor.offsetLeft}px`,
+    });
+
     const options: Array<{ value: string; label: string }> = [
-      { value: 'A', label: '⏫ High' },
-      { value: 'B', label: '🔼 Medium' },
+      { value: 'A', label: 'High' },
+      { value: 'B', label: 'Medium' },
       { value: 'C', label: 'None' },
-      { value: 'D', label: '🔽 Low' },
+      { value: 'D', label: 'Low' },
     ];
     for (const opt of options) {
       const btn = pop.createEl('button', {
         cls: `tc-priority-option${task.priority === opt.value ? ' is-active' : ''}`,
         text: opt.label,
+        attr: { 'data-priority': opt.value },
       });
       btn.addEventListener('click', () => {
-        void this.updatePriority(task, opt.value);
+        // Optimistic update on the chip
+        const chipLabels: Record<string, string> = {
+          A: '🚩 High',
+          B: '🚩 Medium',
+          C: 'Priority',
+          D: '🚩 Low',
+        };
+        anchor.textContent = chipLabels[opt.value] ?? 'Priority';
+        anchor.setAttribute('data-priority', opt.value);
+        anchor.className = `tc-chip tc-priority-chip tc-priority-chip--${opt.value}${opt.value === 'C' ? ' tc-chip-empty' : ''}`;
         pop.remove();
+        void this.updatePriority(task, opt.value);
       });
     }
-    // Dismiss popover on next click outside — use container element to avoid
-    // direct `document` usage (Obsidian lint rule)
     window.setTimeout(() => {
       this.el.addEventListener('click', () => pop.remove(), { once: true });
     }, 0);

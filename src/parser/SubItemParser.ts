@@ -14,7 +14,9 @@ const COMMENT_RE = /^(\s*)- (.+)/;
 const INDENT_RE = /^(\s*)/;
 
 function getIndent(line: string): number {
-  return INDENT_RE.exec(line)?.[1]?.length ?? 0;
+  const raw = INDENT_RE.exec(line)?.[1] ?? '';
+  // Normalize: each tab counts as 4 spaces so mixed indent still compares correctly
+  return raw.replace(/\t/g, '    ').length;
 }
 
 function parseSubtask(

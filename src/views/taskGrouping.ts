@@ -37,8 +37,15 @@ export function getTasksForDate(tasks: Task[], date: string, today: string): Tas
 
 export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
+    // Priority first (A < B < C < D lexicographically)
     if (a.priority < b.priority) return -1;
     if (a.priority > b.priority) return 1;
+    // Tasks with a specific time come before tasks without
+    const aTime = a.time ?? '';
+    const bTime = b.time ?? '';
+    if (aTime && !bTime) return -1;
+    if (!aTime && bTime) return 1;
+    if (aTime && bTime && aTime !== bTime) return aTime < bTime ? -1 : 1;
     return a.text.localeCompare(b.text);
   });
 }

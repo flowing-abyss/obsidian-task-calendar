@@ -480,9 +480,6 @@ export class CenterPanel {
 
     const body = card.createDiv({ cls: 'tc-task-body' });
     const titleRow = body.createDiv({ cls: 'tc-task-title-row' });
-    if (task.time) {
-      titleRow.createEl('span', { cls: 'tc-task-time', text: task.time });
-    }
     titleRow.createEl('span', { cls: 'tc-task-title', text: task.text });
     if (task.description) {
       body.createDiv({
@@ -497,25 +494,59 @@ export class CenterPanel {
     const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
     const hasProgress = (task.subtasks?.length ?? 0) > 0;
     const suppressToday = sel === 'today' && d === today;
+    const hasPriority = task.priority && task.priority !== 'C';
 
-    const hasRightMeta = (d && !suppressToday) || tags.length > 0 || hasProgress;
+    const hasRightMeta = hasPriority || (d && !suppressToday) || hasProgress || tags.length > 0;
     if (hasRightMeta) {
       const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
+
+      // Priority flag (first)
+      if (hasPriority) {
+        const PRIORITY_COLORS: Record<string, string> = {
+          A: '#e44332',
+          B: '#ff9933',
+          D: '#5297ff',
+        };
+        const pEl = metaRight.createEl('span', {
+          cls: `tc-task-priority-flag tc-priority-${task.priority}`,
+        });
+        const color = PRIORITY_COLORS[task.priority];
+        if (color) pEl.setCssProps({ '--tc-priority-color': color });
+      }
+
+      // Date + time combined badge
       if (d && !suppressToday) {
+        let dateLabel = this.formatDate(d);
+        if (task.time) dateLabel += ` ${task.time}`;
         metaRight.createEl('span', {
           cls: `tc-task-date${this.isOverdue(d) ? ' is-overdue' : ''}`,
-          text: this.formatDate(d),
+          text: dateLabel,
+        });
+      } else if (!d && task.time) {
+        // Time-only (no date) — show time chip
+        metaRight.createEl('span', {
+          cls: 'tc-task-date',
+          text: `⏰ ${task.time}`,
         });
       }
-      for (const tag of tags.slice(0, 2)) {
-        metaRight.createEl('span', { cls: 'tc-task-tag', text: tag });
-      }
+
+      // Progress (before tags)
       if (hasProgress) {
         const done = task.subtasks!.filter((s) => s.status === 'done').length;
         metaRight.createEl('span', {
           cls: 'tc-task-progress',
           text: `${done}/${task.subtasks!.length}`,
         });
+      }
+
+      // Tags last (max 2, with group color)
+      for (const tag of tags.slice(0, 2)) {
+        const tagEl = metaRight.createEl('span', { cls: 'tc-task-tag', text: tag });
+        const color = this.getTagColor(tag);
+        if (color) {
+          tagEl.setCssProps({ '--tc-tag-color': color });
+          tagEl.addClass('tc-task-tag--colored');
+        }
       }
     }
 
@@ -553,7 +584,10 @@ export class CenterPanel {
       attr: { type: 'text', placeholder: 'Task name…' },
     });
 
+    let committed = false;
     const commit = (): void => {
+      if (committed) return;
+      committed = true;
       const text = input.value.trim();
       if (text) void this.createTask(text).then(() => this.render());
       else this.render();
@@ -751,6 +785,22 @@ export class CenterPanel {
 
   private isOverdue(d: string): boolean {
     return d < window.moment().format('YYYY-MM-DD');
+  }
+
+  private getTagColor(tag: string): string | undefined {
+    const noHash = tag.replace(/^#/, '');
+    for (const group of this.settings.tagGroups) {
+      if (group.mode === 'prefix' && group.prefix) {
+        if (noHash === group.prefix || noHash.startsWith(`${group.prefix}/`)) {
+          return group.color;
+        }
+      } else if (group.mode === 'manual' && group.tags) {
+        if (group.tags.includes(tag) || group.tags.includes(noHash)) {
+          return group.color;
+        }
+      }
+    }
+    return undefined;
   }
 
   private async rescheduleTask(dragData: string, targetDate: string): Promise<void> {
