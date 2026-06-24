@@ -2,12 +2,21 @@ import { TFile, type CachedMetadata } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TaskStore } from '../src/store/TaskStore';
-import { captureChangedCallback, createAppWithFiles, flushMicrotasks, seedTaskCache, useRealMoment } from './helpers';
+import {
+  captureChangedCallback,
+  createAppWithFiles,
+  flushMicrotasks,
+  seedTaskCache,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
 /** Narrow getAbstractFileByPath to TFile via instanceof (satisfies no-tfile-tfolder-cast). */
-function mdFile(app: { vault: { getAbstractFileByPath(p: string): unknown } }, path: string): TFile {
+function mdFile(
+  app: { vault: { getAbstractFileByPath(p: string): unknown } },
+  path: string,
+): TFile {
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) throw new Error(`${path} is not a TFile`);
   return f;
@@ -405,10 +414,14 @@ describe('TaskStore onUpdate + events', () => {
     const events: string[] = [];
     store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
     const file = mdFile(app, 't.md');
-    fireChanged(file, '- [ ] new 📅 2026-06-25', cache({
-      listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
-      frontmatter: { color: '#abc' },
-    }));
+    fireChanged(
+      file,
+      '- [ ] new 📅 2026-06-25',
+      cache({
+        listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
+        frontmatter: { color: '#abc' },
+      }),
+    );
     expect(events).toContain('t.md');
     const tasks = store.getTasks();
     expect(tasks).toHaveLength(1);
@@ -423,10 +436,14 @@ describe('TaskStore onUpdate + events', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const file = mdFile(app, 't.md');
-    fireChanged(file, '- [ ] x', cache({
-      listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
-      frontmatter: { color: '#def', icon: '⭐' },
-    }));
+    fireChanged(
+      file,
+      '- [ ] x',
+      cache({
+        listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
+        frontmatter: { color: '#def', icon: '⭐' },
+      }),
+    );
     const task = store.getTasks()[0]!;
     expect(task.noteColor).toBe('#def');
     expect(task.noteIcon).toBe('⭐');
@@ -434,12 +451,7 @@ describe('TaskStore onUpdate + events', () => {
 
   it('vault rename moves tasks + frontmatter and notifies', async () => {
     const app = await createAppWithFiles({ 'old.md': '- [ ] task' });
-    seedTaskCache(
-      app,
-      'old.md',
-      [{ task: ' ', parent: -1, line: 0 }],
-      { color: '#aaa' },
-    );
+    seedTaskCache(app, 'old.md', [{ task: ' ', parent: -1, line: 0 }], { color: '#aaa' });
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
@@ -511,10 +523,15 @@ describe('TaskStore destroy', () => {
       app.metadataCache as unknown as {
         trigger(name: string, ...data: unknown[]): void;
       }
-    ).trigger('changed', file, '- [ ] changed', cache({
-      listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
-      frontmatter: { color: '#def' },
-    }));
+    ).trigger(
+      'changed',
+      file,
+      '- [ ] changed',
+      cache({
+        listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
+        frontmatter: { color: '#def' },
+      }),
+    );
     // destroy detaches the metadataCache changed handler (offref), so the mock's trigger no
     // longer calls it; onUpdate was re-registered after destroy (listeners cleared), but the
     // changed handler is detached so it won't call notify. events should be empty.
