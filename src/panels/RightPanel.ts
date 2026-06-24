@@ -188,7 +188,10 @@ export class RightPanel {
       };
       input.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter') commit();
-        if (e.key === 'Escape') { input.remove(); addSubRow.removeClass('tc-subtask-add-row--hidden'); }
+        if (e.key === 'Escape') {
+          input.remove();
+          addSubRow.removeClass('tc-subtask-add-row--hidden');
+        }
       });
       // Delay to allow click on commit button before blur fires
       input.addEventListener('blur', () => window.setTimeout(commit, 150));
