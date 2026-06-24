@@ -54,8 +54,16 @@ export class ListView extends BaseView {
         if (key === 'overdue') continue;
         if (Array.isArray(group)) allTasks.push(...(group as Task[]));
       }
+      // Deduplicate: a task may appear in multiple groups (e.g. due + scheduled on same day)
+      const seen = new Set<string>();
+      const uniqueTasks = allTasks.filter((t) => {
+        const id = `${t.filePath}:${t.line}`;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
       // Filter to only open tasks (exclude done and cancelled from day sections)
-      const openDayTasks = allTasks.filter((t) => t.status === 'open');
+      const openDayTasks = uniqueTasks.filter((t) => t.status === 'open');
       if (openDayTasks.length === 0) continue;
 
       const section = grid.createDiv({ cls: 'tc-list-section' });
