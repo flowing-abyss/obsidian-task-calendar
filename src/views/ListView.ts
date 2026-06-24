@@ -27,6 +27,7 @@ export class ListView extends BaseView {
 
     // Overdue section first
     const overdueTasks = tasks.filter((t) => t.status === 'open' && t.due && t.due < today);
+    const overdueIds = new Set(overdueTasks.map((t) => `${t.filePath}:${t.line}`));
     if (overdueTasks.length > 0) {
       const section = grid.createDiv({ cls: 'tc-list-section' });
       const overdueHeader = section.createDiv({
@@ -62,8 +63,10 @@ export class ListView extends BaseView {
         seen.add(id);
         return true;
       });
-      // Filter to only open tasks (exclude done and cancelled from day sections)
-      const openDayTasks = uniqueTasks.filter((t) => t.status === 'open');
+      // Filter to only open tasks; also exclude tasks already shown in the overdue section
+      const openDayTasks = uniqueTasks.filter(
+        (t) => t.status === 'open' && !overdueIds.has(`${t.filePath}:${t.line}`),
+      );
       if (openDayTasks.length === 0) continue;
 
       const section = grid.createDiv({ cls: 'tc-list-section' });

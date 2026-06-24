@@ -145,7 +145,7 @@ export class CenterPanel {
         text: v.charAt(0).toUpperCase() + v.slice(1),
       });
       btn.addEventListener('click', () => {
-        this.calViewType = v as CalViewType;
+        this.calViewType = v;
         if (v === 'week') {
           this.calDate = window.moment().startOf('isoWeek');
         } else {
@@ -156,8 +156,17 @@ export class CenterPanel {
     }
 
     const CAL_STYLES = [
-      'style1', 'style2', 'style3', 'style4', 'style5', 'style6',
-      'style7', 'style8', 'style9', 'style10', 'style11',
+      'style1',
+      'style2',
+      'style3',
+      'style4',
+      'style5',
+      'style6',
+      'style7',
+      'style8',
+      'style9',
+      'style10',
+      'style11',
     ];
     const styleBtn = rightGroup.createEl('button', {
       cls: 'tc-cal-style-btn',
@@ -173,7 +182,9 @@ export class CenterPanel {
       const idx = CAL_STYLES.indexOf(this.calStyle);
       this.calStyle = CAL_STYLES[(idx + 1) % CAL_STYLES.length] ?? 'style1';
       viewContainer.className = `tc-cal-body tasksCalendar ${this.calStyle}`;
+      viewContainer.setAttribute('view', this.calViewType);
       styleBtn.setAttribute('title', `Style: ${this.calStyle}`);
+      if (this.calViewType === 'week') mountView();
     });
 
     const updateTitle = (): void => {
@@ -198,22 +209,24 @@ export class CenterPanel {
     const mountView = (): void => {
       this.calViewInstance?.destroy();
       viewContainer.empty();
+      viewContainer.setAttribute('view', this.calViewType);
       const tasks = this.store.getTasks();
       const cfg: ResolvedConfig = {
         ...DEFAULT_VIEW_CONFIG,
         ...this.settings.desktop,
         isMobile: false,
-        startPosition: this.calDate.format(
-          this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM',
-        ),
+        startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
       };
       if (this.calViewType === 'month') {
         this.calViewInstance = new MonthView({
-          onToggle: (t) => { void this.store.toggleTask(t); },
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
           onCellClick: () => {},
           onWeekClick: (wk, yr) => {
             this.calViewType = 'week';
-            this.calDate = window.moment()
+            this.calDate = window
+              .moment()
               .isoWeekYear(parseInt(yr, 10))
               .isoWeek(parseInt(wk, 10))
               .startOf('isoWeek');
@@ -224,14 +237,18 @@ export class CenterPanel {
         });
       } else if (this.calViewType === 'week') {
         this.calViewInstance = new WeekView({
-          onToggle: (t) => { void this.store.toggleTask(t); },
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
           onCellClick: () => {},
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
         });
       } else {
         this.calViewInstance = new ListView({
-          onToggle: (t) => { void this.store.toggleTask(t); },
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
           onDateClick: () => {},
           onTaskClick: handleTaskClick,
         });
@@ -244,9 +261,25 @@ export class CenterPanel {
     // Month picker popover
     monthBtn.addEventListener('click', () => {
       const existing = this.el.querySelector('.tc-month-picker');
-      if (existing) { existing.remove(); return; }
+      if (existing) {
+        existing.remove();
+        return;
+      }
       const picker = this.el.createDiv({ cls: 'tc-month-picker tc-popover' });
-      const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const MONTH_NAMES = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
       MONTH_NAMES.forEach((m, i) => {
         const btn = picker.createEl('button', { cls: 'tc-month-picker-btn', text: m });
         if (i === this.calDate.month()) btn.addClass('is-active');
@@ -272,7 +305,10 @@ export class CenterPanel {
     // Year picker popover
     yearBtn.addEventListener('click', () => {
       const existing = this.el.querySelector('.tc-year-picker');
-      if (existing) { existing.remove(); return; }
+      if (existing) {
+        existing.remove();
+        return;
+      }
       const picker = this.el.createDiv({ cls: 'tc-year-picker tc-popover' });
       const currentYear = this.calDate.year();
       for (let y = currentYear - 5; y <= currentYear + 5; y++) {
@@ -322,9 +358,7 @@ export class CenterPanel {
 
     todayBtn.addEventListener('click', () => {
       this.calDate =
-        this.calViewType === 'week'
-          ? window.moment().startOf('isoWeek')
-          : window.moment().date(1);
+        this.calViewType === 'week' ? window.moment().startOf('isoWeek') : window.moment().date(1);
       updateTitle();
       mountView();
     });

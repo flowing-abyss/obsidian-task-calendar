@@ -1718,6 +1718,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-cal-nav-btn {
   background: transparent;
   border: none;
+  padding: 0;
   cursor: pointer;
   color: var(--icon-color);
   width: 28px;
@@ -1726,6 +1727,11 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.tc-cal-nav-btn .svg-icon {
+  width: 18px;
+  height: 18px;
 }
 
 .tc-cal-nav-btn:hover {
@@ -2062,7 +2068,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-normal);
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.1s, background 0.1s;
+  transition:
+    border-color 0.1s,
+    background 0.1s;
   user-select: none;
   box-sizing: border-box;
   vertical-align: middle;
@@ -2098,7 +2106,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   line-height: 1;
   padding: 0;
   flex-shrink: 0;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 .tc-chip-remove:hover {
   background: var(--background-modifier-hover);
