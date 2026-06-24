@@ -1,4 +1,4 @@
-import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import type { CalendarSettings } from './types';
 
 interface TaskCalendarPlugin extends Plugin {
@@ -18,31 +18,43 @@ export class CalendarSettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    this.addSection(containerEl, 'General', (body) => this.renderGeneralSettings(body));
-    this.addSection(containerEl, 'Desktop', (body) =>
+    this.addSection(containerEl, 'General', 'sliders-horizontal', (body) =>
+      this.renderGeneralSettings(body),
+    );
+    this.addSection(containerEl, 'Desktop', 'monitor', (body) =>
       this.renderViewConfigSettings(body, 'desktop'),
     );
-    this.addSection(containerEl, 'Mobile', (body) => this.renderViewConfigSettings(body, 'mobile'));
-    this.addSection(containerEl, 'Tag groups', (body) => this.renderTagGroupSettings(body));
+    this.addSection(containerEl, 'Mobile', 'smartphone', (body) =>
+      this.renderViewConfigSettings(body, 'mobile'),
+    );
+    this.addSection(containerEl, 'Tag groups', 'tags', (body) =>
+      this.renderTagGroupSettings(body),
+    );
   }
 
   private addSection(
     containerEl: HTMLElement,
     title: string,
+    icon: string,
     renderFn: (bodyEl: HTMLElement) => void,
   ): void {
     const section = containerEl.createDiv({ cls: 'tc-settings-section' });
 
     const header = section.createDiv({ cls: 'tc-settings-section-header' });
+
+    const iconEl = header.createDiv({ cls: 'tc-settings-section-icon' });
+    setIcon(iconEl, icon);
+
     header.createSpan({ cls: 'tc-settings-section-label', text: title });
-    const toggle = header.createSpan({ cls: 'tc-settings-section-toggle', text: '+' });
+
+    const chevronEl = header.createDiv({ cls: 'tc-settings-section-chevron' });
+    setIcon(chevronEl, 'chevron-right');
 
     const body = section.createDiv({ cls: 'tc-settings-section-body' });
     renderFn(body);
 
     header.addEventListener('click', () => {
-      const isOpen = section.classList.toggle('is-open');
-      toggle.textContent = isOpen ? '−' : '+';
+      section.classList.toggle('is-open');
     });
   }
 
@@ -185,15 +197,14 @@ export class CalendarSettingsTab extends PluginSettingTab {
         }),
     );
 
-    const colorRow = card.createEl('div', { cls: 'tc-setting-row' });
-    colorRow.createEl('span', { text: 'Color', cls: 'tc-setting-label' });
-    const colorInput = colorRow.createEl('input', {
-      attr: { type: 'color', value: group.color ?? '#888888' },
-    });
-    colorInput.addEventListener('change', () => {
-      group.color = colorInput.value;
-      void this.plugin.saveSettings();
-    });
+    new Setting(card)
+      .setName('Color')
+      .addColorPicker((cp) =>
+        cp.setValue(group.color ?? '#888888').onChange(async (v) => {
+          group.color = v;
+          await this.plugin.saveSettings();
+        }),
+      );
 
     if (group.mode === 'prefix') {
       new Setting(card)

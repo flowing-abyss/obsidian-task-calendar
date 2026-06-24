@@ -47,23 +47,13 @@ describe('CalendarSettingsTab sections', () => {
     expect(section?.classList.contains('is-open')).toBe(true);
   });
 
-  it('toggle text changes from + to − on open', () => {
-    const tab = makeTab();
-    const header = tab.containerEl.querySelector<HTMLElement>('.tc-settings-section-header');
-    const toggle = header!.querySelector('.tc-settings-section-toggle');
-    expect(toggle?.textContent).toBe('+');
-    header!.click();
-    expect(toggle?.textContent).toBe('−');
-  });
-
-  it('clicking header again closes the section', () => {
+  it('clicking header again removes is-open', () => {
     const tab = makeTab();
     const header = tab.containerEl.querySelector<HTMLElement>('.tc-settings-section-header');
     header!.click();
     header!.click();
     const section = header!.closest('.tc-settings-section');
     expect(section?.classList.contains('is-open')).toBe(false);
-    expect(header!.querySelector('.tc-settings-section-toggle')?.textContent).toBe('+');
   });
 
   it('section labels match expected names', () => {
@@ -72,5 +62,17 @@ describe('CalendarSettingsTab sections', () => {
       (el) => el.textContent,
     );
     expect(labels).toEqual(['General', 'Desktop', 'Mobile', 'Tag groups']);
+  });
+
+  it('each section header has an icon element', () => {
+    const tab = makeTab();
+    const icons = tab.containerEl.querySelectorAll('.tc-settings-section-icon');
+    expect(icons).toHaveLength(4);
+  });
+
+  it('each section header has a chevron element', () => {
+    const tab = makeTab();
+    const chevrons = tab.containerEl.querySelectorAll('.tc-settings-section-chevron');
+    expect(chevrons).toHaveLength(4);
   });
 });
