@@ -1,0 +1,262 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { Task } from '../src/parser/types';
+import { ListView } from '../src/views/ListView';
+import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
+
+useRealMoment();
+
+const today = () => window.moment().format('YYYY-MM-DD');
+const yesterday = () => window.moment().subtract(1, 'day').format('YYYY-MM-DD');
+
+function makeView(
+  callbacks: Partial<{
+    onToggle: (t: Task) => void;
+    onDateClick: (d: string) => void;
+    onTaskClick: (t: Task) => void;
+  }> = {},
+) {
+  const spies = {
+    onToggle: vi.fn(callbacks.onToggle),
+    onDateClick: vi.fn(callbacks.onDateClick),
+    onTaskClick: vi.fn(callbacks.onTaskClick),
+  };
+  const view = new ListView(spies);
+  return { view, spies };
+}
+
+describe('ListView', () => {
+  describe('render contract', () => {
+    it('empty tasks → only .tc-list-view, no sections', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [], resolvedConfig());
+      expect(c.querySelector('.tc-list-view')).not.toBeNull();
+      expect(c.querySelectorAll('.tc-list-section')).toHaveLength(0);
+    });
+
+    it('overdue task → one overdue section with count + one task row', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      const t = task({ due: yesterday(), status: 'open' });
+      view.render(c, [t], resolvedConfig());
+      const header = c.querySelector('.tc-list-overdue-header');
+      expect(header).not.toBeNull();
+      expect(header?.querySelector('.tc-list-date-count')?.textContent).toBe('1');
+      expect(c.querySelectorAll('.tc-list-task')).toHaveLength(1);
+    });
+
+    it('overdue count span equals overdueTasks.length', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      const tasks = [
+        task({ text: 'a', due: '2020-01-01', status: 'open' }),
+        task({ text: 'b', due: '2020-01-02', status: 'open' }),
+      ];
+      view.render(c, tasks, resolvedConfig());
+      expect(c.querySelector('.tc-list-overdue-header .tc-list-date-count')?.textContent).toBe('2');
+    });
+
+    it('done task with due today → NOT shown (only open tasks)', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: today(), status: 'done' })], resolvedConfig());
+      expect(c.querySelectorAll('.tc-list-task')).toHaveLength(0);
+    });
+
+    it('cancelled task → NOT shown', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: today(), status: 'cancelled' })], resolvedConfig());
+      expect(c.querySelectorAll('.tc-list-task')).toHaveLength(0);
+    });
+
+    it('task due today → date label "Today"', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: today(), status: 'open' })], resolvedConfig());
+      const labels = c.querySelectorAll('.tc-list-date-label');
+      const hasToday = Array.from(labels).some((l) => l.textContent === 'Today');
+      expect(hasToday).toBe(true);
+    });
+
+    it('task due yesterday → date label "Yesterday"', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: yesterday(), status: 'open' })], resolvedConfig());
+      // yesterday is overdue, so it goes to overdue section, not day section
+      // CURRENT BEHAVIOR: overdue tasks are in "Overdue" section, not "Yesterday"
+      expect(c.querySelector('.tc-list-overdue-header .tc-list-date-label')?.textContent).toBe('Overdue');
+    });
+
+    it('other date → label formatted ddd, D MMM', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      // Pick a future date within the current month that isn't today/yesterday.
+      // ListView only renders the current month, and past dates go to the Overdue
+      // section (which uses the "Overdue" label, not the ddd, D MMM format).
+      const m = window.moment().add(2, 'days');
+      if (m.format('YYYY-MM-DD') === today()) m.add(1, 'day');
+      const d = m.format('YYYY-MM-DD');
+      view.render(c, [task({ due: d, status: 'open' })], resolvedConfig());
+      const labels = c.querySelectorAll('.tc-list-date-label');
+      const label = Array.from(labels).find((l) => l.textContent !== 'Overdue');
+      expect(label?.textContent ?? '').toMatch(/^[A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2}$/);
+    });
+
+    it('dedup: task in multiple groups renders once', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      const d = today();
+      // due AND scheduled on same day → appears in both groups, deduped to one row
+      const t = task({ due: d, scheduled: d, status: 'open' });
+      view.render(c, [t], resolvedConfig());
+      expect(c.querySelectorAll('.tc-list-task')).toHaveLength(1);
+    });
+
+    it('tasks sorted by priority then time then text', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      const d = today();
+      // Distinct filePath/line so dedup doesn't collapse rows (task() defaults to line 0).
+      const tasks = [
+        task({ text: 'zzz', due: d, priority: 'D', status: 'open', line: 1 }),
+        task({ text: 'aaa', due: d, priority: 'A', status: 'open', line: 2 }),
+        task({ text: 'bbb', due: d, priority: 'A', time: '09:00', status: 'open', line: 3 }),
+      ];
+      view.render(c, tasks, resolvedConfig());
+      const rows = Array.from(c.querySelectorAll('.tc-list-task-title'));
+      expect(rows[0]?.textContent).toBe('bbb');
+      expect(rows[1]?.textContent).toBe('aaa');
+      expect(rows[2]?.textContent).toBe('zzz');
+    });
+  });
+
+  describe('interactions', () => {
+    it('clicking date header invokes onDateClick(currentDate)', () => {
+      const { view, spies } = makeView({ onDateClick: (d) => d });
+      const c = freshContainer();
+      const d = today();
+      view.render(c, [task({ due: d, status: 'open' })], resolvedConfig());
+      const header = c.querySelector('.tc-list-date-header') as HTMLElement;
+      header.click();
+      expect(spies.onDateClick).toHaveBeenCalledWith(d);
+    });
+
+    it('clicking task row invokes onTaskClick', () => {
+      const { view, spies } = makeView({ onTaskClick: (t) => t });
+      const c = freshContainer();
+      const t = task({ due: today(), status: 'open' });
+      view.render(c, [t], resolvedConfig());
+      const row = c.querySelector('.tc-list-task') as HTMLElement;
+      row.click();
+      expect(spies.onTaskClick).toHaveBeenCalledWith(t);
+    });
+
+    it('checkbox change invokes onToggle and stops propagation', () => {
+      const { view, spies } = makeView({ onToggle: (t) => t });
+      const c = freshContainer();
+      const t = task({ due: today(), status: 'open' });
+      view.render(c, [t], resolvedConfig());
+      const cb = c.querySelector('.tc-task-checkbox') as HTMLInputElement;
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+      expect(spies.onToggle).toHaveBeenCalledWith(t);
+      expect(spies.onTaskClick).not.toHaveBeenCalled();
+    });
+
+    it('checkbox checked reflects task.status === done', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      // done tasks are filtered out, so test via a task that is done but in overdue? No — done never shown.
+      // Instead verify an open task has unchecked checkbox
+      view.render(c, [task({ due: today(), status: 'open' })], resolvedConfig());
+      const cb = c.querySelector('.tc-task-checkbox') as HTMLInputElement;
+      expect(cb.checked).toBe(false);
+    });
+
+    it('is-done class on title when status done — N/A (done tasks filtered)', () => {
+      // CURRENT BEHAVIOR: done tasks are never rendered in ListView, so is-done class
+      // never appears. Pin the absence.
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: today(), status: 'done' })], resolvedConfig());
+      expect(c.querySelectorAll('.is-done')).toHaveLength(0);
+    });
+
+    it('meta: tc-task-time span shows task.time when present', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: today(), time: '14:30', status: 'open' })], resolvedConfig());
+      expect(c.querySelector('.tc-task-time')?.textContent).toBe('14:30');
+    });
+
+    it('meta: no tc-task-time span when time absent', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: today(), status: 'open' })], resolvedConfig());
+      expect(c.querySelector('.tc-task-time')).toBeNull();
+    });
+
+    it('meta: first tag shown as tc-task-tag', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: today(), rawText: '- [ ] t #work #urgent', status: 'open' })], resolvedConfig());
+      expect(c.querySelector('.tc-task-tag')?.textContent).toBe('#work');
+    });
+
+    it('meta: only first tag (slice 0,1)', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [task({ due: today(), rawText: '- [ ] t #work #urgent', status: 'open' })], resolvedConfig());
+      expect(c.querySelectorAll('.tc-task-tag')).toHaveLength(1);
+    });
+
+    it('meta: subtask progress shown as done/total', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(
+        c,
+        [
+          task({
+            due: today(),
+            status: 'open',
+            subtasks: [
+              { filePath: 'f.md', line: 1, text: 'a', status: 'done' },
+              { filePath: 'f.md', line: 2, text: 'b', status: 'open' },
+            ],
+          }),
+        ],
+        resolvedConfig(),
+      );
+      expect(c.querySelector('.tc-task-progress')?.textContent).toBe('1/2');
+    });
+
+    it('destroy is a no-op (no throw)', () => {
+      const { view } = makeView();
+      expect(() => view.destroy()).not.toThrow();
+    });
+  });
+
+  describe('edge cases', () => {
+    it('startPosition YYYY-MM controls which month is rendered', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      const nextMonth = window.moment().add(1, 'month').format('YYYY-MM');
+      const todayStr = today();
+      // a task due today (current month) should NOT appear when rendering next month
+      view.render(c, [task({ due: todayStr, status: 'open' })], resolvedConfig({ startPosition: nextMonth }));
+      // today is not in next month → no day sections (overdue section may appear if due<today, but today is not <today)
+      expect(c.querySelectorAll('.tc-list-section')).toHaveLength(0);
+    });
+
+    it('past-due task in rendered month appears in overdue section only (not duplicated)', () => {
+      const { view } = makeView();
+      const c = freshContainer();
+      // Use current month so the overdue task's date falls within the rendered month
+      const pastDate = window.moment().subtract(5, 'days').format('YYYY-MM-DD');
+      const t = task({ due: pastDate, status: 'open' });
+      view.render(c, [t], resolvedConfig());
+      expect(c.querySelectorAll('.tc-list-task')).toHaveLength(1);
+      expect(c.querySelector('.tc-list-overdue-header')).not.toBeNull();
+    });
+  });
+});
