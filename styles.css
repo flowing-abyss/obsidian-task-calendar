@@ -2145,18 +2145,15 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-chip-tag {
   cursor: default;
-  background: transparent;
-  border: none;
-  padding: 0 2px;
-  height: auto;
-  color: var(--tc-chip-tag-color, var(--text-faint));
-  font-size: 11px;
-  opacity: 0.9;
+  color: var(--tc-chip-tag-color, var(--text-normal));
+  border-color: var(--tc-chip-tag-color, var(--background-modifier-border));
 }
 .tc-chip-tag:hover {
-  background: transparent;
-  border: none;
-  opacity: 1;
+  background: var(--background-modifier-hover);
+  border-color: var(--tc-chip-tag-color, var(--interactive-accent));
+}
+.tc-chip-add--hidden {
+  display: none;
 }
 .tc-chip-add {
   background: transparent;
