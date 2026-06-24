@@ -1740,7 +1740,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-muted);
   cursor: pointer;
   font-size: var(--font-ui-small);
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 
 .tc-cal-nav-today:hover {
@@ -1764,7 +1766,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-muted);
   cursor: pointer;
   font-size: var(--font-ui-small);
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 
 .tc-cal-view-btn:hover {
@@ -1788,7 +1792,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   opacity: 0.6;
   transition: opacity 0.1s;
 }
-.tc-cal-style-btn:hover { opacity: 1; }
+.tc-cal-style-btn:hover {
+  opacity: 1;
+}
 
 .tc-month-picker,
 .tc-year-picker {
@@ -2214,8 +2220,24 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   text-decoration: line-through;
   color: var(--text-muted);
 }
+.tc-subtask-content {
+  flex: 1;
+  min-width: 0;
+}
 .tc-subtask-progress {
-  font-size: 11px;
+  font-size: var(--font-smallest, 11px);
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+  border-radius: 8px;
+  padding: 0 5px;
+}
+.tc-subtask-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.tc-subtask-comment-count {
+  font-size: var(--font-smallest, 11px);
   color: var(--text-muted);
 }
 .tc-subtask-new-input {
@@ -2317,6 +2339,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-context-item:hover {
   background: var(--background-modifier-hover);
 }
+.tc-context-item.tc-context-danger {
+  color: var(--color-red, #e74c3c);
+}
 
 /* Time popover */
 .tc-time-popover {
@@ -2324,6 +2349,14 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   top: 100%;
   left: 0;
   z-index: 50;
+}
+
+/* Anchor-positioned popover: uses CSS custom properties set via setCssProps */
+.tc-popover-anchored {
+  position: absolute;
+  top: var(--tc-pop-top, 100%);
+  left: var(--tc-pop-left, 0);
+  z-index: 10;
 }
 
 /* ── Task Modal ──────────────────────────────────────────── */

@@ -199,10 +199,8 @@ export class RightPanel {
       text: 'Add comment',
     });
     sendBtn.addEventListener('click', () => {
-      if (commentInput.value.trim()) {
-        void this.addComment(task, commentInput.value.trim());
-        commentInput.value = '';
-      }
+      const text = commentInput.value.trim();
+      if (text) void this.addComment(task, text, commentList, commentInput);
     });
   }
 
@@ -217,7 +215,10 @@ export class RightPanel {
       e.stopPropagation();
       void this.toggleSubTask(sub);
     });
-    const label = row.createEl('span', {
+
+    // Content wrapper holds the label and optional meta indicators
+    const content = row.createDiv({ cls: 'tc-subtask-content' });
+    const label = content.createEl('span', {
       cls: `tc-subtask-label${sub.status === 'done' ? ' is-done' : ''}`,
       text: sub.text,
     });
@@ -226,9 +227,24 @@ export class RightPanel {
       this.state.set('taskStack', [...stack, sub]);
     });
 
-    if ((sub.subtasks?.length ?? 0) > 0) {
-      const done = sub.subtasks!.filter((s) => s.status === 'done').length;
-      row.createEl('span', { cls: 'tc-subtask-progress', text: `${done}/${sub.subtasks!.length}` });
+    // Show nested subtask progress and comment count if present
+    const subCount = sub.subtasks?.length ?? 0;
+    const commentCount = sub.comments?.length ?? 0;
+    if (subCount > 0 || commentCount > 0) {
+      const subMeta = content.createDiv({ cls: 'tc-subtask-meta' });
+      if (subCount > 0) {
+        const done = sub.subtasks!.filter((s) => s.status === 'done').length;
+        subMeta.createEl('span', {
+          cls: 'tc-subtask-progress',
+          text: `${done}/${subCount}`,
+        });
+      }
+      if (commentCount > 0) {
+        subMeta.createEl('span', {
+          cls: 'tc-subtask-comment-count',
+          text: `💬 ${commentCount}`,
+        });
+      }
     }
   }
 
@@ -291,7 +307,13 @@ export class RightPanel {
     this.clearPopovers();
     if (already) return;
 
-    const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover' });
+    const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover tc-popover-anchored' });
+    // Use setCssProps for dynamic offset values (position/z-index are in the CSS class)
+    pop.setCssProps({
+      '--tc-pop-top': `${anchor.offsetTop + anchor.offsetHeight + 4}px`,
+      '--tc-pop-left': `${anchor.offsetLeft}px`,
+    });
+
     const input = pop.createEl('input', {
       cls: 'tc-date-input',
       attr: { type: 'date', value: task.due ?? task.scheduled ?? '' },
@@ -457,7 +479,20 @@ export class RightPanel {
     });
   }
 
-  private async addComment(task: TaskLike, text: string): Promise<void> {
+  private async addComment(
+    task: TaskLike,
+    text: string,
+    commentList: HTMLElement,
+    inputEl: HTMLTextAreaElement,
+  ): Promise<void> {
+    // Optimistic DOM update: show the new comment immediately before writing to disk
+    const row = commentList.createDiv({ cls: 'tc-comment-row' });
+    row.createEl('span', { cls: 'tc-comment-date', text: 'Just now' });
+    row.createEl('p', { cls: 'tc-comment-text', text });
+    inputEl.value = '';
+    inputEl.focus();
+
+    // Write comment to vault file
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
     const today = window.moment().format('YYYY-MM-DD');
@@ -467,7 +502,10 @@ export class RightPanel {
       if (!taskLine) return data;
       const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
       const commentLine = `${indent}- ${today}: ${text}`;
-      const insertAt = task.subtaskRange ? task.subtaskRange.to + 1 : task.line + 1;
+      const insertAt =
+        'subtaskRange' in task && task.subtaskRange
+          ? (task.subtaskRange as { to: number }).to + 1
+          : task.line + 1;
       lines.splice(insertAt, 0, commentLine);
       return lines.join('\n');
     });
@@ -543,16 +581,21 @@ export class RightPanel {
     this.clearPopovers();
     if (already) return;
 
-    const pop = this.el.createEl('div', { cls: 'tc-popover tc-time-popover' });
+    const pop = this.el.createDiv({ cls: 'tc-popover tc-time-popover tc-popover-anchored' });
+    // Use setCssProps for dynamic offset values (position/z-index are in the CSS class)
+    pop.setCssProps({
+      '--tc-pop-top': `${anchor.offsetTop + anchor.offsetHeight + 4}px`,
+      '--tc-pop-left': `${anchor.offsetLeft}px`,
+    });
+
     const input = pop.createEl('input', {
       attr: { type: 'time', value: task.time ?? '' },
     });
-    input.focus();
+    window.setTimeout(() => input.focus(), 0);
     input.addEventListener('change', () => {
       void this.updateTime(task, input.value).then(() => pop.remove());
     });
     input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
-    anchor.after(pop);
   }
 
   private async updateTime(task: Task, time: string): Promise<void> {
@@ -570,34 +613,51 @@ export class RightPanel {
   }
 
   private renderContextMenu(task: TaskLike, anchor: HTMLElement): void {
-    const existing = this.el.querySelector('.tc-context-menu');
+    // Toggle: if a menu is already open inside this anchor, close it
+    const existing = anchor.querySelector('.tc-context-menu');
     if (existing) {
       existing.remove();
       return;
     }
+    // Close any other open context menus
+    this.el.querySelectorAll('.tc-context-menu').forEach((el) => el.remove());
 
-    const menu = anchor.createEl('div', { cls: 'tc-context-menu' });
+    const menu = anchor.createDiv({ cls: 'tc-context-menu' });
 
-    const deleteItem = menu.createEl('div', { cls: 'tc-context-item', text: 'Delete task' });
+    const deleteItem = menu.createDiv({
+      cls: 'tc-context-item tc-context-danger',
+      text: 'Delete task',
+    });
     deleteItem.addEventListener('click', () => {
       menu.remove();
       void this.deleteTask(task);
     });
 
-    const copyItem = menu.createEl('div', { cls: 'tc-context-item', text: 'Copy link' });
+    const openItem = menu.createDiv({
+      cls: 'tc-context-item',
+      text: 'Open in file',
+    });
+    openItem.addEventListener('click', () => {
+      menu.remove();
+      void this.openInFile(task);
+    });
+
+    const copyItem = menu.createDiv({ cls: 'tc-context-item', text: 'Copy link' });
     copyItem.addEventListener('click', () => {
       menu.remove();
       const name = task.filePath.replace(/\.md$/u, '').split('/').pop() ?? task.filePath;
       void navigator.clipboard.writeText(`[[${name}]]`);
     });
 
-    const dismiss = (e: MouseEvent): void => {
-      if (!menu.contains(e.target as Node)) {
-        menu.remove();
-        activeDocument.removeEventListener('click', dismiss, true);
-      }
-    };
-    activeDocument.addEventListener('click', dismiss, true);
+    window.setTimeout(() => {
+      const dismiss = (e: MouseEvent): void => {
+        if (!menu.contains(e.target as Node) && e.target !== anchor) {
+          menu.remove();
+          activeDocument.removeEventListener('click', dismiss, true);
+        }
+      };
+      activeDocument.addEventListener('click', dismiss, true);
+    }, 0);
   }
 
   private async deleteTask(task: TaskLike): Promise<void> {
