@@ -85,7 +85,9 @@ describe('ListView', () => {
       view.render(c, [task({ due: yesterday(), status: 'open' })], resolvedConfig());
       // yesterday is overdue, so it goes to overdue section, not day section
       // CURRENT BEHAVIOR: overdue tasks are in "Overdue" section, not "Yesterday"
-      expect(c.querySelector('.tc-list-overdue-header .tc-list-date-label')?.textContent).toBe('Overdue');
+      expect(c.querySelector('.tc-list-overdue-header .tc-list-date-label')?.textContent).toBe(
+        'Overdue',
+      );
     });
 
     it('other date → label formatted ddd, D MMM', () => {
@@ -199,14 +201,22 @@ describe('ListView', () => {
     it('meta: first tag shown as tc-task-tag', () => {
       const { view } = makeView();
       const c = freshContainer();
-      view.render(c, [task({ due: today(), rawText: '- [ ] t #work #urgent', status: 'open' })], resolvedConfig());
+      view.render(
+        c,
+        [task({ due: today(), rawText: '- [ ] t #work #urgent', status: 'open' })],
+        resolvedConfig(),
+      );
       expect(c.querySelector('.tc-task-tag')?.textContent).toBe('#work');
     });
 
     it('meta: only first tag (slice 0,1)', () => {
       const { view } = makeView();
       const c = freshContainer();
-      view.render(c, [task({ due: today(), rawText: '- [ ] t #work #urgent', status: 'open' })], resolvedConfig());
+      view.render(
+        c,
+        [task({ due: today(), rawText: '- [ ] t #work #urgent', status: 'open' })],
+        resolvedConfig(),
+      );
       expect(c.querySelectorAll('.tc-task-tag')).toHaveLength(1);
     });
 
@@ -243,7 +253,11 @@ describe('ListView', () => {
       const nextMonth = window.moment().add(1, 'month').format('YYYY-MM');
       const todayStr = today();
       // a task due today (current month) should NOT appear when rendering next month
-      view.render(c, [task({ due: todayStr, status: 'open' })], resolvedConfig({ startPosition: nextMonth }));
+      view.render(
+        c,
+        [task({ due: todayStr, status: 'open' })],
+        resolvedConfig({ startPosition: nextMonth }),
+      );
       // today is not in next month → no day sections (overdue section may appear if due<today, but today is not <today)
       expect(c.querySelectorAll('.tc-list-section')).toHaveLength(0);
     });

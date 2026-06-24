@@ -5,13 +5,15 @@ import { dispatchDnD, freshContainer, resolvedConfig, task, useRealMoment } from
 
 useRealMoment();
 
-function makeView(callbacks: Partial<{
-  onToggle: (t: Task) => void;
-  onCellClick: (d: string) => void;
-  onWeekClick: (w: string, y: string) => void;
-  onTaskClick: (t: Task) => void;
-  onDrop: (d: string, date: string) => void;
-}> = {}) {
+function makeView(
+  callbacks: Partial<{
+    onToggle: (t: Task) => void;
+    onCellClick: (d: string) => void;
+    onWeekClick: (w: string, y: string) => void;
+    onTaskClick: (t: Task) => void;
+    onDrop: (d: string, date: string) => void;
+  }> = {},
+) {
   const spies = {
     onToggle: vi.fn(callbacks.onToggle),
     onCellClick: vi.fn(callbacks.onCellClick),
@@ -234,8 +236,12 @@ describe('MonthView', () => {
       const card = c.querySelector('.task') as HTMLElement;
       const dt = new (class {
         store = new Map<string, string>();
-        setData(f: string, d: string) { this.store.set(f, d); }
-        getData(f: string) { return this.store.get(f) ?? ''; }
+        setData(f: string, d: string) {
+          this.store.set(f, d);
+        }
+        getData(f: string) {
+          return this.store.get(f) ?? '';
+        }
         effectAllowed = '';
         dropEffect = '';
       })();
@@ -256,7 +262,17 @@ describe('MonthView', () => {
       view.render(c, [t], resolvedConfig());
       const card = c.querySelector('.task') as HTMLElement;
       const startEv = new MouseEvent('dragstart', { bubbles: true });
-      Object.defineProperty(startEv, 'dataTransfer', { value: { setData() {}, getData() { return ''; }, effectAllowed: '', dropEffect: '' }, configurable: true });
+      Object.defineProperty(startEv, 'dataTransfer', {
+        value: {
+          setData() {},
+          getData() {
+            return '';
+          },
+          effectAllowed: '',
+          dropEffect: '',
+        },
+        configurable: true,
+      });
       card.dispatchEvent(startEv);
       expect(card.classList.contains('is-dragging')).toBe(true);
       card.dispatchEvent(new MouseEvent('dragend', { bubbles: true }));
@@ -300,7 +316,12 @@ describe('MonthView', () => {
       view.render(c, [], resolvedConfig());
       const cellContent = c.querySelector('.cell.today .cellContent') as HTMLElement;
       const ev = new MouseEvent('dragover', { bubbles: true, cancelable: true });
-      Object.defineProperty(ev, 'dataTransfer', { value: new (class { dropEffect=''; })(), configurable: true });
+      Object.defineProperty(ev, 'dataTransfer', {
+        value: new (class {
+          dropEffect = '';
+        })(),
+        configurable: true,
+      });
       cellContent.dispatchEvent(ev);
       expect(cellContent.classList.contains('is-drag-over')).toBe(true);
       vi.useRealTimers();

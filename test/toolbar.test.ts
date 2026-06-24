@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Toolbar, type ToolbarCallbacks, type ToolbarState, type ViewEntry } from '../src/ui/Toolbar';
+import {
+  Toolbar,
+  type ToolbarCallbacks,
+  type ToolbarState,
+  type ViewEntry,
+} from '../src/ui/Toolbar';
 import { freshContainer } from './helpers';
 
 const VIEWS: ViewEntry[] = [
@@ -57,7 +62,17 @@ describe('Toolbar', () => {
     it('creates expected buttons', () => {
       const { callbacks } = makeCallbacks();
       const tb = new Toolbar(container, VIEWS, callbacks);
-      const cls = ['.filter', '.listView', '.monthView', '.weekView', '.current', '.previous', '.next', '.overdueHighlighter', '.statistic'];
+      const cls = [
+        '.filter',
+        '.listView',
+        '.monthView',
+        '.weekView',
+        '.current',
+        '.previous',
+        '.next',
+        '.overdueHighlighter',
+        '.statistic',
+      ];
       for (const c of cls) {
         expect(container.querySelector(c), `missing ${c}`).not.toBeNull();
       }
@@ -125,9 +140,13 @@ describe('Toolbar', () => {
       tb.update({ ...baseState, currentView: 'month' });
       const btn = container.querySelector('.monthView') as HTMLButtonElement;
       btn.click();
-      expect((container.querySelector('.weekViewContext') as HTMLElement).classList.contains('active')).toBe(true);
+      expect(
+        (container.querySelector('.weekViewContext') as HTMLElement).classList.contains('active'),
+      ).toBe(true);
       btn.click();
-      expect((container.querySelector('.weekViewContext') as HTMLElement).classList.contains('active')).toBe(false);
+      expect(
+        (container.querySelector('.weekViewContext') as HTMLElement).classList.contains('active'),
+      ).toBe(false);
       tb.destroy();
     });
 
@@ -139,7 +158,9 @@ describe('Toolbar', () => {
       const li = container.querySelector('.weekViewContext li[data-style="style3"]') as HTMLElement;
       li.click();
       expect(spies.onStyleChange).toHaveBeenCalledWith('style3');
-      expect((container.querySelector('.weekViewContext') as HTMLElement).classList.contains('active')).toBe(false);
+      expect(
+        (container.querySelector('.weekViewContext') as HTMLElement).classList.contains('active'),
+      ).toBe(false);
       tb.destroy();
     });
 
@@ -175,7 +196,9 @@ describe('Toolbar', () => {
       const statBtn = container.querySelector('.statistic') as HTMLButtonElement;
       statBtn.click();
       expect(statBtn.classList.contains('active')).toBe(true);
-      expect((container.querySelector('.statisticPopup') as HTMLElement).classList.contains('active')).toBe(true);
+      expect(
+        (container.querySelector('.statisticPopup') as HTMLElement).classList.contains('active'),
+      ).toBe(true);
       tb.destroy();
     });
 
@@ -206,7 +229,9 @@ describe('Toolbar', () => {
       const { callbacks } = makeCallbacks();
       const tb = new Toolbar(container, VIEWS, callbacks);
       tb.update({ ...baseState, currentTitle: 'July 2026' });
-      expect((container.querySelector('.current') as HTMLButtonElement).textContent).toBe('July 2026');
+      expect((container.querySelector('.current') as HTMLButtonElement).textContent).toBe(
+        'July 2026',
+      );
       tb.destroy();
     });
 
@@ -214,9 +239,13 @@ describe('Toolbar', () => {
       const { callbacks } = makeCallbacks();
       const tb = new Toolbar(container, VIEWS, callbacks);
       tb.update({ ...baseState, filterActive: true });
-      expect((container.querySelector('.filter') as HTMLElement).classList.contains('active')).toBe(true);
+      expect((container.querySelector('.filter') as HTMLElement).classList.contains('active')).toBe(
+        true,
+      );
       tb.update({ ...baseState, filterActive: false });
-      expect((container.querySelector('.filter') as HTMLElement).classList.contains('active')).toBe(false);
+      expect((container.querySelector('.filter') as HTMLElement).classList.contains('active')).toBe(
+        false,
+      );
       tb.destroy();
     });
 
@@ -224,7 +253,11 @@ describe('Toolbar', () => {
       const { callbacks } = makeCallbacks();
       const tb = new Toolbar(container, VIEWS, callbacks);
       tb.update({ ...baseState, overdueHighlightActive: true });
-      expect((container.querySelector('.overdueHighlighter') as HTMLElement).classList.contains('active')).toBe(true);
+      expect(
+        (container.querySelector('.overdueHighlighter') as HTMLElement).classList.contains(
+          'active',
+        ),
+      ).toBe(true);
       tb.destroy();
     });
 
@@ -232,8 +265,12 @@ describe('Toolbar', () => {
       const { callbacks } = makeCallbacks();
       const tb = new Toolbar(container, VIEWS, callbacks);
       tb.update({ ...baseState, currentView: 'week' });
-      expect((container.querySelector('.weekView') as HTMLElement).classList.contains('active')).toBe(true);
-      expect((container.querySelector('.monthView') as HTMLElement).classList.contains('active')).toBe(false);
+      expect(
+        (container.querySelector('.weekView') as HTMLElement).classList.contains('active'),
+      ).toBe(true);
+      expect(
+        (container.querySelector('.monthView') as HTMLElement).classList.contains('active'),
+      ).toBe(false);
       tb.destroy();
     });
 
@@ -244,12 +281,27 @@ describe('Toolbar', () => {
         ...baseState,
         stats: { done: 3, due: 5, overdue: 2, start: 1, scheduled: 4, recurrence: 6, dailyNote: 7 },
       });
-      expect(container.querySelector('.statisticPopup li[data-group="done"] .stat-count')?.textContent).toBe('3');
-      expect(container.querySelector('.statisticPopup li[data-group="due"] .stat-count')?.textContent).toBe('5');
-      expect(container.querySelector('.statisticPopup li[data-group="start"] .stat-count')?.textContent).toBe('1');
-      expect(container.querySelector('.statisticPopup li[data-group="scheduled"] .stat-count')?.textContent).toBe('4');
-      expect(container.querySelector('.statisticPopup li[data-group="recurrence"] .stat-count')?.textContent).toBe('6');
-      expect(container.querySelector('.statisticPopup li[data-group="dailyNote"] .stat-count')?.textContent).toBe('7');
+      expect(
+        container.querySelector('.statisticPopup li[data-group="done"] .stat-count')?.textContent,
+      ).toBe('3');
+      expect(
+        container.querySelector('.statisticPopup li[data-group="due"] .stat-count')?.textContent,
+      ).toBe('5');
+      expect(
+        container.querySelector('.statisticPopup li[data-group="start"] .stat-count')?.textContent,
+      ).toBe('1');
+      expect(
+        container.querySelector('.statisticPopup li[data-group="scheduled"] .stat-count')
+          ?.textContent,
+      ).toBe('4');
+      expect(
+        container.querySelector('.statisticPopup li[data-group="recurrence"] .stat-count')
+          ?.textContent,
+      ).toBe('6');
+      expect(
+        container.querySelector('.statisticPopup li[data-group="dailyNote"] .stat-count')
+          ?.textContent,
+      ).toBe('7');
       tb.destroy();
     });
 
@@ -257,9 +309,13 @@ describe('Toolbar', () => {
       const { callbacks } = makeCallbacks();
       const tb = new Toolbar(container, VIEWS, callbacks);
       tb.update({ ...baseState, currentStyle: 'style5' });
-      const activeLi = container.querySelector('.weekViewContext li[data-style="style5"]') as HTMLElement;
+      const activeLi = container.querySelector(
+        '.weekViewContext li[data-style="style5"]',
+      ) as HTMLElement;
       expect(activeLi.classList.contains('active')).toBe(true);
-      const otherLi = container.querySelector('.weekViewContext li[data-style="style1"]') as HTMLElement;
+      const otherLi = container.querySelector(
+        '.weekViewContext li[data-style="style1"]',
+      ) as HTMLElement;
       expect(otherLi.classList.contains('active')).toBe(false);
       tb.destroy();
     });
@@ -277,7 +333,9 @@ describe('Toolbar', () => {
       const { callbacks } = makeCallbacks();
       const tb = new Toolbar(container, VIEWS, callbacks);
       tb.update({ ...baseState, activeStatGroup: 'due' });
-      const activeLi = container.querySelector('.statisticPopup li[data-group="due"]') as HTMLElement;
+      const activeLi = container.querySelector(
+        '.statisticPopup li[data-group="due"]',
+      ) as HTMLElement;
       expect(activeLi.classList.contains('active')).toBe(true);
       tb.destroy();
     });
@@ -307,7 +365,9 @@ describe('Toolbar', () => {
       vi.advanceTimersByTime(1);
       // mousedown on a target that is NOT statBtn and NOT inside statPopup
       activeDocument.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      expect((container.querySelector('.statisticPopup') as HTMLElement).classList.contains('active')).toBe(false);
+      expect(
+        (container.querySelector('.statisticPopup') as HTMLElement).classList.contains('active'),
+      ).toBe(false);
       expect(statBtn.classList.contains('active')).toBe(false);
       tb.destroy();
     });
@@ -330,7 +390,9 @@ describe('Toolbar', () => {
       vi.advanceTimersByTime(1);
       tb.destroy();
       // dispatching mousedown after destroy should not throw and should be a no-op
-      expect(() => activeDocument.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))).not.toThrow();
+      expect(() =>
+        activeDocument.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })),
+      ).not.toThrow();
     });
   });
 });

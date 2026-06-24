@@ -18,12 +18,12 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**'],
       exclude: ['src/main.ts'],
-      // Raised after Phase 3 Task 9 (CalendarRenderer TaskInputModal submit path).
-      // Measured 44.07 lines / 40.16 functions / 37.16 branches; set ~2-4 pts below to avoid flake.
+      // Raised after Phase 3 Task 10 (PanelView smoke tests — final Phase 3 task).
+      // Measured 59.55 lines / 52.24 functions / 46.51 branches; set Phase 3 target below measured.
       thresholds: {
-        lines: 36,
-        functions: 38,
-        branches: 26,
+        lines: 38,
+        functions: 42,
+        branches: 28,
       },
     },
   },
