@@ -2148,33 +2148,31 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   margin: 0 16px;
 }
 .tc-right-section {
-  padding: 12px 16px;
+  padding: 16px 16px 0;
+}
+.tc-right-section + .tc-right-section {
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 8px;
 }
 .tc-right-section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 .tc-right-section-label {
-  font-size: 11px;
+  font-size: var(--font-ui-smaller, 11px);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
 }
-.tc-right-add-btn {
-  font-size: 11.5px;
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px dashed var(--background-modifier-border-hover);
-  cursor: pointer;
-  padding: 2px 8px;
+.tc-right-section-count {
+  font-size: var(--font-ui-small);
+  color: var(--text-faint);
+  background: var(--background-modifier-hover);
   border-radius: 10px;
-}
-.tc-right-add-btn:hover {
-  color: var(--text-normal);
-  border-color: var(--text-muted);
+  padding: 0 6px;
 }
 .tc-right-desc {
   width: 100%;
@@ -2242,15 +2240,32 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-subtask-new-input {
   width: 100%;
-  margin-top: 6px;
+  padding: 4px 8px;
   border: 1px solid var(--interactive-accent);
   border-radius: 4px;
-  padding: 5px 8px;
-  background: var(--background-primary);
+  background: var(--background-secondary);
   color: var(--text-normal);
-  font-size: 13.5px;
+  font-size: var(--font-ui-small);
+  margin: 4px 0;
+  box-sizing: border-box;
   outline: none;
 }
+
+/* Inline add-subtask row */
+.tc-subtask-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 4px;
+  transition: color 0.1s;
+}
+.tc-subtask-add-row:hover { color: var(--text-normal); }
+.tc-subtask-add-row--hidden { display: none; }
+.tc-subtask-add-icon { font-size: 16px; line-height: 1; }
+.tc-subtask-add-label { font-size: var(--font-ui-small); }
 
 /* Comments */
 .tc-comment-list {
@@ -2278,33 +2293,23 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-comment-input {
   width: 100%;
-  border: 1.5px solid var(--background-modifier-border-hover);
+  min-height: 60px;
+  resize: vertical;
+  border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 8px;
+  font-size: var(--font-ui-small);
   background: var(--background-secondary);
   color: var(--text-normal);
-  font-size: 13px;
-  resize: none;
+  margin-top: 8px;
+  box-sizing: border-box;
+  display: block;
   font-family: var(--font-text);
   outline: none;
-  box-sizing: border-box;
 }
 .tc-comment-input:focus {
+  outline: none;
   border-color: var(--interactive-accent);
-}
-.tc-comment-send {
-  margin-top: 6px;
-  padding: 5px 12px;
-  font-size: 13px;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-}
-.tc-comment-send:hover {
-  background: var(--interactive-accent-hover);
 }
 .tc-tag-input {
   padding: 3px 8px;

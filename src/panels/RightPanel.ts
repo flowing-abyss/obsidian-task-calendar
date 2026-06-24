@@ -156,51 +156,74 @@ export class RightPanel {
     const subSection = this.el.createDiv({ cls: 'tc-right-section' });
     const subHeader = subSection.createDiv({ cls: 'tc-right-section-header' });
     subHeader.createEl('span', { cls: 'tc-right-section-label', text: 'Sub-tasks' });
-    const addSubBtn = subHeader.createEl('button', { cls: 'tc-right-add-btn', text: '+ add' });
+    const totalSubs = task.subtasks?.length ?? 0;
+    if (totalSubs > 0) {
+      const doneSubs = task.subtasks!.filter((s) => s.status === 'done').length;
+      subHeader.createEl('span', {
+        cls: 'tc-right-section-count',
+        text: `${doneSubs}/${totalSubs}`,
+      });
+    }
 
     const subList = subSection.createDiv({ cls: 'tc-subtask-list' });
     for (const sub of task.subtasks ?? []) {
       this.renderSubTask(subList, sub);
     }
 
-    addSubBtn.addEventListener('click', () => {
+    // Inline add-subtask row at the bottom of the subtask list
+    const addSubRow = subSection.createDiv({ cls: 'tc-subtask-add-row' });
+    addSubRow.createEl('span', { cls: 'tc-subtask-add-icon', text: '+' });
+    addSubRow.createEl('span', { cls: 'tc-subtask-add-label', text: 'Add sub-task' });
+    addSubRow.addEventListener('click', () => {
+      addSubRow.addClass('tc-subtask-add-row--hidden');
       const input = subSection.createEl('input', {
         cls: 'tc-subtask-new-input',
         attr: { type: 'text', placeholder: 'New sub-task…' },
       });
       input.focus();
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && input.value.trim()) {
-          void this.addSubTask(task, input.value.trim());
-        }
-        if (e.key === 'Escape') input.remove();
-      });
-      input.addEventListener('blur', () => {
+      const commit = (): void => {
         if (input.value.trim()) void this.addSubTask(task, input.value.trim());
-        else input.remove();
+        input.remove();
+        addSubRow.removeClass('tc-subtask-add-row--hidden');
+      };
+      input.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter') commit();
+        if (e.key === 'Escape') { input.remove(); addSubRow.removeClass('tc-subtask-add-row--hidden'); }
       });
+      // Delay to allow click on commit button before blur fires
+      input.addEventListener('blur', () => window.setTimeout(commit, 150));
     });
 
     // Comments
     const commentSection = this.el.createDiv({ cls: 'tc-right-section' });
-    commentSection.createEl('div', { cls: 'tc-right-section-label', text: 'Comments' });
+    const commentHeader = commentSection.createDiv({ cls: 'tc-right-section-header' });
+    commentHeader.createEl('span', { cls: 'tc-right-section-label', text: 'Comments' });
+    const commentCount = task.comments?.length ?? 0;
+    if (commentCount > 0) {
+      commentHeader.createEl('span', {
+        cls: 'tc-right-section-count',
+        text: String(commentCount),
+      });
+    }
 
     const commentList = commentSection.createDiv({ cls: 'tc-comment-list' });
     for (const comment of task.comments ?? []) {
       this.renderComment(commentList, comment);
     }
 
+    // Always-visible textarea — Enter submits, Shift+Enter inserts newline
     const commentInput = commentSection.createEl('textarea', {
       cls: 'tc-comment-input',
       attr: { placeholder: 'Write a comment…', rows: '2' },
     });
-    const sendBtn = commentSection.createEl('button', {
-      cls: 'tc-comment-send',
-      text: 'Add comment',
-    });
-    sendBtn.addEventListener('click', () => {
-      const text = commentInput.value.trim();
-      if (text) void this.addComment(task, text, commentList, commentInput);
+    commentInput.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const text = commentInput.value.trim();
+        if (text) {
+          void this.addComment(task, text, commentList, commentInput);
+        }
+      }
     });
   }
 
