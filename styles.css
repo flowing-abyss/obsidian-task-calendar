@@ -2146,7 +2146,6 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-chip-tag {
   cursor: default;
   color: var(--tc-chip-tag-color, inherit);
-  border-color: var(--tc-chip-tag-color, var(--interactive-accent));
 }
 .tc-chip-add {
   background: transparent;
@@ -2498,6 +2497,40 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-normal);
   outline: none;
   width: 100px;
+}
+.tc-tag-dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+}
+.tc-tag-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  min-width: 160px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.tc-tag-dropdown--hidden {
+  display: none;
+}
+.tc-tag-dropdown-opt {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--tc-tag-opt-color, var(--text-faint));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tc-tag-dropdown-opt:hover,
+.tc-tag-dropdown-opt.is-active {
+  background: var(--background-modifier-hover);
+  color: var(--tc-tag-opt-color, var(--text-normal));
 }
 
 /* Context menu */
