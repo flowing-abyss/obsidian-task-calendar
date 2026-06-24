@@ -68,6 +68,7 @@ describe('AppState', () => {
     const cb = vi.fn();
     s.on('taskStack', cb);
     s.set('taskStack', []);
+    // eslint-disable-next-line sonarjs/no-element-overwrite
     s.set('taskStack', []); // new ref, empty
     expect(cb).toHaveBeenCalledTimes(2);
   });
@@ -78,6 +79,7 @@ describe('AppState', () => {
     const arr: never[] = [];
     s.on('taskStack', cb);
     s.set('taskStack', arr);
+    // eslint-disable-next-line sonarjs/no-element-overwrite
     s.set('taskStack', arr); // same ref
     expect(cb).toHaveBeenCalledTimes(1);
   });

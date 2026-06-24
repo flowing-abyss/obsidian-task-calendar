@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Task } from '../src/parser/types';
 import { createTaskCard } from '../src/ui/TaskCard';
 import { task, useRealMoment, withMobile } from './helpers';
 
@@ -68,16 +69,16 @@ describe('createTaskCard', () => {
 
   describe('checkbox (default mode)', () => {
     it('renders a checkbox in default mode, checked iff status === done', () => {
-      expect(
-        createTaskCard(task({ status: 'open' }), 'due').querySelector(
-          'input.calendar-task-checkbox',
-        )?.checked,
-      ).toBe(false);
-      expect(
-        createTaskCard(task({ status: 'done' }), 'due').querySelector(
-          'input.calendar-task-checkbox',
-        )?.checked,
-      ).toBe(true);
+      const openCb = createTaskCard(
+        task({ status: 'open' }),
+        'due',
+      ).querySelector<HTMLInputElement>('input.calendar-task-checkbox');
+      expect(openCb?.checked).toBe(false);
+      const doneCb = createTaskCard(
+        task({ status: 'done' }),
+        'due',
+      ).querySelector<HTMLInputElement>('input.calendar-task-checkbox');
+      expect(doneCb?.checked).toBe(true);
     });
 
     it('omits the checkbox in timeblock mode', () => {
@@ -91,7 +92,7 @@ describe('createTaskCard', () => {
       const cb = el.querySelector('input.calendar-task-checkbox') as HTMLInputElement;
       cb.dispatchEvent(new Event('change'));
       expect(onToggle).toHaveBeenCalledTimes(1);
-      expect(onToggle.mock.calls[0]?.[0]?.text).toBe('x');
+      expect((onToggle.mock.calls[0]?.[0] as Task).text).toBe('x');
     });
   });
 
@@ -140,13 +141,13 @@ describe('createTaskCard', () => {
       vi.useFakeTimers({ now: new Date('2026-06-24T10:00:00Z').getTime() });
       const el = createTaskCard(task({ due: '2026-06-24' }), 'due');
       // exact phrasing depends on locale/timezone; assert it is non-empty
-      expect(el.querySelector('.description')?.dataset.relative).toBeTruthy();
+      expect(el.querySelector<HTMLElement>('.description')?.dataset.relative).toBeTruthy();
       vi.useRealTimers();
     });
 
     it('sets data-relative to empty string when no due', () => {
       const el = createTaskCard(task(), 'due');
-      expect(el.querySelector('.description')?.dataset.relative).toBe('');
+      expect(el.querySelector<HTMLElement>('.description')?.dataset.relative).toBe('');
     });
   });
 
@@ -156,6 +157,7 @@ describe('createTaskCard', () => {
     it('attaches long-press and sets userSelect styles', () => {
       const el = createTaskCard(task(), 'due');
       expect(el.style.userSelect).toBe('none');
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       expect(el.style.webkitUserSelect).toBe('none');
       expect(el.style.touchAction).toBe('manipulation');
     });

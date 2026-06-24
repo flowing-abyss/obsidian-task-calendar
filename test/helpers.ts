@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports, import/no-extraneous-dependencies
 import moment from 'moment';
 import { Platform } from 'obsidian';
 import { afterEach, beforeEach } from 'vitest';
@@ -37,5 +38,5 @@ export function task(overrides: Partial<Task> = {}): Task {
     status: 'open',
     priority: 'D',
     ...overrides,
-  } as Task;
+  };
 }

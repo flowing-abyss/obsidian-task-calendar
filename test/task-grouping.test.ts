@@ -164,23 +164,23 @@ describe('getTasksForDate', () => {
 
 describe('renderTaskGroup', () => {
   it('appends nothing for all-empty groups', () => {
-    const container = document.createElement('div');
+    const container = activeDocument.createElement('div');
     const g = getTasksForDate([], '2026-06-24', '2026-06-24');
-    renderTaskGroup(container, g, '2026-06-24', '2026-06-24', (t) =>
-      document.createElement('span'),
+    renderTaskGroup(container, g, '2026-06-24', '2026-06-24', (_t) =>
+      activeDocument.createElement('span'),
     );
     expect(container.children).toHaveLength(0);
   });
 
   it('renders overdue first when date === today, then due', () => {
-    const container = document.createElement('div');
+    const container = activeDocument.createElement('div');
     const g = getTasksForDate(
       [task({ due: '2026-06-20', text: 'overdue' }), task({ due: '2026-06-24', text: 'due' })],
       '2026-06-24',
       '2026-06-24',
     );
     const spy = vi.fn((_t: Task, cls: string) => {
-      const el = document.createElement('div');
+      const el = activeDocument.createElement('div');
       el.className = cls;
       el.textContent = _t.text;
       return el;
@@ -193,20 +193,20 @@ describe('renderTaskGroup', () => {
   });
 
   it('does not render overdue when date !== today', () => {
-    const container = document.createElement('div');
+    const container = activeDocument.createElement('div');
     const g = getTasksForDate(
       [task({ due: '2026-06-20', text: 'overdue' })],
       '2026-06-25',
       '2026-06-24',
     );
-    const spy = vi.fn((_t: Task, cls: string) => document.createElement('div'));
+    const spy = vi.fn((_t: Task, _cls: string) => activeDocument.createElement('div'));
     renderTaskGroup(container, g, '2026-06-25', '2026-06-24', spy);
     expect(spy).not.toHaveBeenCalled();
     expect(container.children).toHaveLength(0);
   });
 
   it('renders groups in canonical order with exact cls strings', () => {
-    const container = document.createElement('div');
+    const container = activeDocument.createElement('div');
     const g = {
       due: [task({ text: 'd' })],
       recurrence: [task({ text: 'r', recurrence: 'every week', due: '2026-06-24' })],
@@ -221,7 +221,7 @@ describe('renderTaskGroup', () => {
     const classes: string[] = [];
     renderTaskGroup(container, g, '2026-06-25', '2026-06-25', (t, cls) => {
       classes.push(cls);
-      return document.createElement('div');
+      return activeDocument.createElement('div');
     });
     // date !== today → no overdue; order: due, recurrence, start, scheduled, dailyNote, allDone(cls:'done'), cancelled
     expect(classes).toEqual([
@@ -236,7 +236,7 @@ describe('renderTaskGroup', () => {
   });
 
   it('sorts tasks within a group via sortTasks', () => {
-    const container = document.createElement('div');
+    const container = activeDocument.createElement('div');
     const g = {
       due: [task({ text: 'b', priority: 'D' }), task({ text: 'a', priority: 'A' })],
       recurrence: [],
@@ -251,7 +251,7 @@ describe('renderTaskGroup', () => {
     const texts: string[] = [];
     renderTaskGroup(container, g, '2026-06-24', '2026-06-24', (t) => {
       texts.push(t.text);
-      return document.createElement('div');
+      return activeDocument.createElement('div');
     });
     // priority A before D → 'a' then 'b'
     expect(texts).toEqual(['a', 'b']);
