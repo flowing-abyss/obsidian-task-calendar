@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { TFile } from 'obsidian';
+import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TaskStore } from '../src/store/TaskStore';
 import { createAppWithFiles, seedTaskCache, useRealMoment } from './helpers';

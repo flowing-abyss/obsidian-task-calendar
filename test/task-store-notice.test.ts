@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Notice } from 'obsidian';
-import { TaskStore } from '../src/store/TaskStore';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { TaskStore } from '../src/store/TaskStore';
 import { createAppWithFiles, seedTaskCache, useRealMoment } from './helpers';
 
 // File-level mock: override Notice with a vi.fn so TaskStore's `new Notice(msg)` is captured.
@@ -66,9 +66,9 @@ describe('TaskStore error paths (Notice spy via vi.mock)', () => {
     await addPromise;
     vi.useRealTimers();
     expect(noticeCalls().length).toBeGreaterThan(0);
-    expect(String(noticeCalls().find((c) => String(c[0]).includes('No target file'))?.[0])).toContain(
-      'No target file',
-    );
+    expect(
+      String(noticeCalls().find((c) => String(c[0]).includes('No target file'))?.[0]),
+    ).toContain('No target file');
   });
 
   it('addTask no config shows Notice', async () => {
