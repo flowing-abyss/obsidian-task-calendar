@@ -2053,18 +2053,19 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 12.5px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
+  font-size: 12px;
   color: var(--text-normal);
   cursor: pointer;
-  user-select: none;
-  transition:
-    background 0.1s,
-    border-color 0.1s;
   white-space: nowrap;
+  transition: border-color 0.1s, background 0.1s;
+  user-select: none;
+  box-sizing: border-box;
+  vertical-align: middle;
 }
 .tc-chip:hover {
   background: var(--background-modifier-hover);
@@ -2078,28 +2079,30 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   cursor: default;
 }
 .tc-chip-add {
+  background: transparent;
   border-style: dashed;
   color: var(--text-muted);
 }
 .tc-chip-remove {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  padding: 0;
-  margin-left: 2px;
-  font-size: 13px;
-  line-height: 1;
-  min-width: 16px;
-  min-height: 16px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
   border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
 }
 .tc-chip-remove:hover {
-  color: var(--text-error);
-  background: hsla(0, 70%, 50%, 0.12);
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }
 
 /* Popovers */
@@ -2262,10 +2265,19 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   border-radius: 4px;
   transition: color 0.1s;
 }
-.tc-subtask-add-row:hover { color: var(--text-normal); }
-.tc-subtask-add-row--hidden { display: none; }
-.tc-subtask-add-icon { font-size: 16px; line-height: 1; }
-.tc-subtask-add-label { font-size: var(--font-ui-small); }
+.tc-subtask-add-row:hover {
+  color: var(--text-normal);
+}
+.tc-subtask-add-row--hidden {
+  display: none;
+}
+.tc-subtask-add-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.tc-subtask-add-label {
+  font-size: var(--font-ui-small);
+}
 
 /* Comments */
 .tc-comment-list {
@@ -2388,10 +2400,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 
 .tc-modal-close-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 1;
+  /* positioned inside .tc-right-header-actions flex row */
 }
 
 /* Modal body reuses tc-right panel styles — no extra CSS needed */

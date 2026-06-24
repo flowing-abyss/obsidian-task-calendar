@@ -1,7 +1,7 @@
 import type { App } from 'obsidian';
 import { AppState } from '../app/AppState';
-import type { Task } from '../parser/types';
 import { RightPanel } from '../panels/RightPanel';
+import type { Task } from '../parser/types';
 
 export class TaskModal {
   private backdropEl: HTMLElement | null = null;
@@ -24,16 +24,23 @@ export class TaskModal {
 
     const modal = backdrop.createDiv({ cls: 'tc-modal' });
 
-    const closeBtn = modal.createEl('button', {
-      cls: 'tc-modal-close-btn tc-right-action-btn',
-      attr: { 'aria-label': 'Close', title: 'Close' },
-      text: '✕',
-    });
-    closeBtn.addEventListener('click', () => this.close());
-
     const panelEl = modal.createDiv({ cls: 'tc-right tc-modal-body' });
     this.innerPanel = new RightPanel(this.innerState, this.app);
     this.innerPanel.mount(panelEl);
+
+    // Insert close button into the panel's header actions row (flex row, not absolutely positioned)
+    const headerActions = panelEl.querySelector<HTMLElement>('.tc-right-header-actions');
+    const closeBtn = activeDocument.createElement('button');
+    closeBtn.className = 'tc-right-action-btn tc-modal-close-btn';
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.setAttribute('title', 'Close');
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', () => this.close());
+    if (headerActions) {
+      headerActions.appendChild(closeBtn);
+    } else {
+      panelEl.appendChild(closeBtn);
+    }
 
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) this.close();

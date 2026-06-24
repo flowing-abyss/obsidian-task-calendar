@@ -116,10 +116,23 @@ export class LeftPanel {
       cls: `tc-tag-group-header${isGroupActive ? ' is-active' : ''}`,
     });
 
-    header.createEl('span', {
+    // Chevron: toggles expand/collapse only, does NOT select the group
+    const chevron = header.createEl('span', {
       cls: `tc-left-icon tc-group-arrow${isExpanded ? ' is-open' : ''}`,
       text: isExpanded ? '▼' : '▶',
     });
+    chevron.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (isExpanded) {
+        this.expandedGroups.delete(group.id);
+        this.explicitlyCollapsed.add(group.id);
+      } else {
+        this.expandedGroups.add(group.id);
+        this.explicitlyCollapsed.delete(group.id);
+      }
+      this.render();
+    });
+
     if (group.color) {
       const dot = header.createEl('span', { cls: 'tc-group-dot' });
       dot.style.background = group.color;
@@ -136,19 +149,10 @@ export class LeftPanel {
       header.createEl('span', { cls: 'tc-left-count', text: String(groupCount) });
     }
 
+    // Header click: select the group (expand/collapse is handled by the chevron above)
     header.addEventListener('click', () => {
-      if (isExpanded) {
-        // Collapse — keep selection but close the tree
-        this.expandedGroups.delete(group.id);
-        this.explicitlyCollapsed.add(group.id);
-      } else {
-        // Expand + select the group
-        this.explicitlyCollapsed.delete(group.id); // remove explicit-collapse when user re-expands
-        this.expandedGroups.add(group.id);
-        this.state.set('selectedList', { type: 'group', groupId: group.id });
-        this.state.set('mode', 'tasks');
-      }
-      this.render();
+      this.state.set('selectedList', { type: 'group', groupId: group.id });
+      this.state.set('mode', 'tasks');
     });
 
     if (isExpanded) {
