@@ -496,8 +496,31 @@ export class CenterPanel {
       void this.store.toggleTask(task);
     });
 
+    // Pre-compute metadata needed in both body and meta-right
+    const today = window.moment().format('YYYY-MM-DD');
+    const sel = this.state.get('selectedList');
+    const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
+    const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
+    const subtaskCount = task.subtasks?.length ?? 0;
+    const commentCount = task.comments?.length ?? 0;
+    const doneCount = task.subtasks?.filter((s) => s.status === 'done').length ?? 0;
+    const suppressToday = sel === 'today' && d === today;
+
     const body = card.createDiv({ cls: 'tc-task-body' });
     const titleRow = body.createDiv({ cls: 'tc-task-title-row' });
+
+    // Count badges BEFORE title text so they're seen while reading left-to-right
+    if (subtaskCount > 0) {
+      const badge = titleRow.createEl('span', { cls: 'tc-task-count-badge' });
+      setIcon(badge, 'check-square');
+      badge.createEl('span', { text: `${doneCount}/${subtaskCount}` });
+    }
+    if (commentCount > 0) {
+      const badge = titleRow.createEl('span', { cls: 'tc-task-count-badge' });
+      setIcon(badge, 'message-square');
+      badge.createEl('span', { text: String(commentCount) });
+    }
+
     titleRow.createEl('span', { cls: 'tc-task-title', text: task.text });
     if (task.description) {
       body.createDiv({
@@ -506,49 +529,27 @@ export class CenterPanel {
       });
     }
 
-    const today = window.moment().format('YYYY-MM-DD');
-    const sel = this.state.get('selectedList');
-    const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
-    const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
-    const subtaskCount = task.subtasks?.length ?? 0;
-    const commentCount = task.comments?.length ?? 0;
-    const hasProgress = subtaskCount > 0;
-    const hasComments = commentCount > 0;
-    const suppressToday = sel === 'today' && d === today;
-    const hasRightMeta =
-      (d && !suppressToday) || task.time || hasProgress || hasComments || tags.length > 0;
+    const hasRightMeta = (d && !suppressToday) || task.time || tags.length > 0;
     if (hasRightMeta) {
       const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
 
-      // Subtask count badge with icon (before date)
-      if (hasProgress) {
-        const done = task.subtasks!.filter((s) => s.status === 'done').length;
-        const badge = metaRight.createEl('span', { cls: 'tc-task-count-badge' });
-        setIcon(badge, 'check-square');
-        badge.createEl('span', { text: `${done}/${subtaskCount}` });
-      }
-
-      // Comment count badge with icon
-      if (hasComments) {
-        const badge = metaRight.createEl('span', { cls: 'tc-task-count-badge' });
-        setIcon(badge, 'message-square');
-        badge.createEl('span', { text: String(commentCount) });
-      }
-
-      // Date + optional time: icon + colored text, no background
+      // Date + optional time: use child spans for each icon to avoid setIcon replacing parent
       if (d && !suppressToday) {
         const dateEl = metaRight.createEl('span', {
           cls: `tc-task-date ${this.getDateClass(d)}`.trim(),
         });
-        setIcon(dateEl, 'calendar');
+        const calIcon = dateEl.createEl('span', { cls: 'tc-date-icon' });
+        setIcon(calIcon, 'calendar');
         dateEl.createEl('span', { text: this.formatDate(d) });
         if (task.time) {
-          setIcon(dateEl, 'clock');
-          dateEl.createEl('span', { cls: 'tc-task-time-text', text: task.time });
+          const clockIcon = dateEl.createEl('span', { cls: 'tc-date-icon' });
+          setIcon(clockIcon, 'clock');
+          dateEl.createEl('span', { text: task.time });
         }
       } else if (!d && task.time) {
         const timeEl = metaRight.createEl('span', { cls: 'tc-task-date' });
-        setIcon(timeEl, 'clock');
+        const clockIcon = timeEl.createEl('span', { cls: 'tc-date-icon' });
+        setIcon(clockIcon, 'clock');
         timeEl.createEl('span', { text: task.time });
       }
 

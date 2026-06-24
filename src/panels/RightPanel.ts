@@ -373,7 +373,8 @@ export class RightPanel {
       '--tc-pop-left': `${anchor.offsetLeft}px`,
     });
 
-    const input = pop.createEl('input', {
+    const inputRow = pop.createDiv({ cls: 'tc-popover-input-row' });
+    const input = inputRow.createEl('input', {
       cls: 'tc-date-input',
       attr: { type: 'date', value: task.due ?? task.scheduled ?? '' },
     });
@@ -384,7 +385,11 @@ export class RightPanel {
     input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
     window.setTimeout(() => input.focus(), 0);
 
-    const clearBtn = pop.createEl('button', { cls: 'tc-popover-clear-btn', text: 'Clear date' });
+    const clearBtn = inputRow.createEl('button', {
+      cls: 'tc-popover-clear-icon-btn',
+      attr: { title: 'Clear date', 'aria-label': 'Clear date' },
+    });
+    setIcon(clearBtn, 'x');
     clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
     clearBtn.addEventListener('click', () => {
       void this.clearDate(task);
@@ -732,7 +737,8 @@ export class RightPanel {
       '--tc-pop-left': `${anchor.offsetLeft}px`,
     });
 
-    const input = pop.createEl('input', {
+    const inputRow = pop.createDiv({ cls: 'tc-popover-input-row' });
+    const input = inputRow.createEl('input', {
       cls: 'tc-time-input',
       attr: { type: 'time', value: task.time ?? '' },
     });
@@ -742,7 +748,11 @@ export class RightPanel {
     });
     input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
 
-    const clearBtn = pop.createEl('button', { cls: 'tc-popover-clear-btn', text: 'Clear time' });
+    const clearBtn = inputRow.createEl('button', {
+      cls: 'tc-popover-clear-icon-btn',
+      attr: { title: 'Clear time', 'aria-label': 'Clear time' },
+    });
+    setIcon(clearBtn, 'x');
     clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
     clearBtn.addEventListener('click', () => {
       void this.updateTime(task, '').then(() => pop.remove());
