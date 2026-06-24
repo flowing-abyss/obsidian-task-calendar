@@ -6,6 +6,9 @@ export default defineConfig({
     setupFiles: ['obsidian-test-mocks/vitest-setup'],
     passWithNoTests: true,
     environment: 'jsdom',
+    alias: {
+      obsidian: 'obsidian-test-mocks/obsidian',
+    },
     server: {
       deps: {
         inline: ['@obsidian-typings', 'obsidian-dev-utils'],
@@ -14,6 +17,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
+      exclude: ['src/main.ts'],
       // Start at 0; raise thresholds as tests are added
       thresholds: {
         lines: 0,
