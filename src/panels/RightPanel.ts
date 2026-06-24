@@ -86,16 +86,6 @@ export class RightPanel {
 
     const headerActions = header.createDiv({ cls: 'tc-right-header-actions' });
 
-    // Open in file button
-    const openBtn = headerActions.createEl('button', {
-      cls: 'tc-right-action-btn',
-      attr: { title: 'Open in file', 'aria-label': 'Open in file' },
-      text: '↗',
-    });
-    openBtn.addEventListener('click', () => {
-      void this.openInFile(task);
-    });
-
     // More actions menu button
     const currentTask = task;
     const menuBtn = headerActions.createEl('button', {
@@ -116,7 +106,7 @@ export class RightPanel {
       // Date chip
       this.renderDateChip(chips, t);
       // Time chip
-      const timeChip = chips.createEl('span', {
+      const timeChip = chips.createEl('button', {
         cls: `tc-chip${t.time ? '' : ' tc-chip-empty'}`,
         text: t.time ? `⏰ ${t.time}` : '⏰',
         attr: { title: 'Set time' },
@@ -142,7 +132,8 @@ export class RightPanel {
 
     // Description
     const descSection = this.el.createDiv({ cls: 'tc-right-section' });
-    descSection.createEl('div', { cls: 'tc-right-section-label', text: 'Description' });
+    const descHeader = descSection.createDiv({ cls: 'tc-right-section-header' });
+    descHeader.createEl('span', { cls: 'tc-right-section-label', text: 'Description' });
     const descArea = descSection.createEl('textarea', {
       cls: 'tc-right-desc',
       attr: { placeholder: 'Add a description…', rows: '3' },
@@ -181,7 +172,10 @@ export class RightPanel {
         attr: { type: 'text', placeholder: 'New sub-task…' },
       });
       input.focus();
+      let committed = false;
       const commit = (): void => {
+        if (committed) return;
+        committed = true;
         if (input.value.trim()) void this.addSubTask(task, input.value.trim());
         input.remove();
         addSubRow.removeClass('tc-subtask-add-row--hidden');
@@ -189,6 +183,7 @@ export class RightPanel {
       input.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter') commit();
         if (e.key === 'Escape') {
+          committed = true; // prevent blur from committing
           input.remove();
           addSubRow.removeClass('tc-subtask-add-row--hidden');
         }
@@ -211,7 +206,7 @@ export class RightPanel {
 
     const commentList = commentSection.createDiv({ cls: 'tc-comment-list' });
     for (const comment of task.comments ?? []) {
-      this.renderComment(commentList, comment);
+      this.renderComment(commentList, comment, task);
     }
 
     // Always-visible textarea — Enter submits, Shift+Enter inserts newline
@@ -274,7 +269,7 @@ export class RightPanel {
     }
   }
 
-  private renderComment(container: HTMLElement, comment: TaskComment): void {
+  private renderComment(container: HTMLElement, comment: TaskComment, task: TaskLike): void {
     const row = container.createDiv({ cls: 'tc-comment-row' });
     if (comment.date) {
       const m = window.moment(comment.date, 'YYYY-MM-DD');
@@ -282,7 +277,40 @@ export class RightPanel {
       const label = Math.abs(diff) < 7 ? m.fromNow() : m.format('D MMM YYYY');
       row.createEl('span', { cls: 'tc-comment-date', text: label });
     }
-    row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
+    const textEl = row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
+    textEl.addEventListener('click', () => {
+      textEl.remove();
+      const textarea = row.createEl('textarea', { cls: 'tc-comment-edit-input' });
+      textarea.value = comment.text;
+      textarea.focus();
+      textarea.select();
+      let saved = false;
+      const finish = (): void => {
+        if (saved) return;
+        saved = true;
+        const val = textarea.value.trim();
+        textarea.remove();
+        if (val === '') {
+          void this.deleteComment(task, comment);
+        } else if (val !== comment.text) {
+          void this.updateComment(task, comment, val);
+        } else {
+          row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
+        }
+      };
+      textarea.addEventListener('blur', () => window.setTimeout(finish, 150));
+      textarea.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          textarea.blur();
+        }
+        if (e.key === 'Escape') {
+          saved = true;
+          textarea.remove();
+          row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
+        }
+      });
+    });
   }
 
   private renderDateChip(container: HTMLElement, task: Task): void {
@@ -364,15 +392,16 @@ export class RightPanel {
       '--tc-pop-left': `${anchor.offsetLeft}px`,
     });
 
+    const currentPriority = anchor.getAttribute('data-priority') ?? task.priority ?? 'C';
     const options: Array<{ value: string; label: string }> = [
       { value: 'A', label: 'High' },
       { value: 'B', label: 'Medium' },
-      { value: 'C', label: 'None' },
       { value: 'D', label: 'Low' },
+      { value: 'C', label: 'None' },
     ];
     for (const opt of options) {
       const btn = pop.createEl('button', {
-        cls: `tc-priority-option${task.priority === opt.value ? ' is-active' : ''}`,
+        cls: `tc-priority-option${currentPriority === opt.value ? ' is-active' : ''}`,
         text: opt.label,
         attr: { 'data-priority': opt.value },
       });
@@ -401,12 +430,22 @@ export class RightPanel {
     const existing = this.el.querySelector(`#${datalistId}`);
     if (existing) existing.remove();
 
-    const tags = Object.keys(
+    const rawTags = Object.keys(
       (this.app.metadataCache as unknown as { getTags(): Record<string, number> }).getTags(),
     );
+    // Sort: fewer slashes first (parent before child), then alphabetically
+    const sortedTags = [...rawTags];
+    sortedTags.sort((a, b) => {
+      const da = (a.match(/\//g) ?? []).length;
+      const db = (b.match(/\//g) ?? []).length;
+      if (da !== db) return da - db;
+      return a.localeCompare(b);
+    });
     const datalist = container.createEl('datalist', { attr: { id: datalistId } });
-    for (const tag of tags) {
-      datalist.createEl('option', { attr: { value: tag } });
+    for (const tag of sortedTags) {
+      // Obsidian returns tags with '#' prefix already; ensure it
+      const val = tag.startsWith('#') ? tag : `#${tag}`;
+      datalist.createEl('option', { attr: { value: val } });
     }
 
     const input = container.createEl('input', {
@@ -453,10 +492,13 @@ export class RightPanel {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
-      // Replace only the first occurrence of the exact task.text in the line
-      // task.text is set from the parsed display text, safe to use as literal
-      const escaped = task.text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-      lines[task.line] = line.replace(new RegExp(escaped, 'u'), newText);
+      // Match the checkbox prefix (handles any checkbox state and indentation)
+      const prefixMatch = /^(\s*- \[[ xX/]\] )/.exec(line);
+      if (!prefixMatch) return data;
+      const prefix = prefixMatch[1] ?? '';
+      // Everything after the old text (tags, emojis, metadata) is preserved
+      const rest = line.slice(prefix.length + task.text.length);
+      lines[task.line] = prefix + newText + rest;
       return lines.join('\n');
     });
   }
@@ -548,6 +590,32 @@ export class RightPanel {
           ? (task.subtaskRange as { to: number }).to + 1
           : task.line + 1;
       lines.splice(insertAt, 0, commentLine);
+      return lines.join('\n');
+    });
+  }
+
+  private async updateComment(task: TaskLike, comment: TaskComment, newText: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[comment.line];
+      if (!line) return data;
+      // Preserve date prefix if present
+      const datePrefix = /^(\s*- \d{4}-\d{2}-\d{2}: )/.exec(line)?.[1];
+      const barePrefix = /^(\s*- )/.exec(line)?.[1] ?? '';
+      const prefix = datePrefix ?? barePrefix;
+      lines[comment.line] = prefix + newText;
+      return lines.join('\n');
+    });
+  }
+
+  private async deleteComment(task: TaskLike, comment: TaskComment): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      lines.splice(comment.line, 1);
       return lines.join('\n');
     });
   }
