@@ -18,13 +18,12 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**'],
       exclude: ['src/main.ts'],
-      // Raised after Phase 2 store contract tests (events + destroy); ~2 pts below measured
-      // (21.73 lines / 14.79 functions / 25.34 branches) to avoid flake. Bump as Phases 3-4
-      // cover ui/views/panels/settings.
+      // Raised after Phase 3 Task 9 (CalendarRenderer TaskInputModal submit path).
+      // Measured 44.07 lines / 40.16 functions / 37.16 branches; set ~2-4 pts below to avoid flake.
       thresholds: {
-        lines: 19,
-        functions: 12,
-        branches: 23,
+        lines: 36,
+        functions: 38,
+        branches: 26,
       },
     },
   },
