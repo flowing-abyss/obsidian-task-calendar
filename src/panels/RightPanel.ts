@@ -291,9 +291,13 @@ export class RightPanel {
         const val = textarea.value.trim();
         textarea.remove();
         if (val === '') {
-          void this.deleteComment(task, comment);
+          this.deleteComment(task, comment).catch(() => {
+            row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
+          });
         } else if (val !== comment.text) {
-          void this.updateComment(task, comment, val);
+          this.updateComment(task, comment, val).catch(() => {
+            row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
+          });
         } else {
           row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
         }
@@ -492,13 +496,18 @@ export class RightPanel {
       const lines = data.split('\n');
       const line = lines[task.line];
       if (!line) return data;
-      // Match the checkbox prefix (handles any checkbox state and indentation)
       const prefixMatch = /^(\s*- \[[ xX/]\] )/.exec(line);
       if (!prefixMatch) return data;
       const prefix = prefixMatch[1] ?? '';
-      // Everything after the old text (tags, emojis, metadata) is preserved
-      const rest = line.slice(prefix.length + task.text.length);
-      lines[task.line] = prefix + newText + rest;
+      // Derive suffix from the raw file line (available here as `line`) rather than task.text.
+      // task.text has wikilinks collapsed and emoji stripped, so its .length differs from
+      // the raw title length. Find where metadata begins in the raw file line instead.
+      const rawAfterPrefix = line.slice(prefix.length);
+      // Find where metadata begins: a space followed by a known metadata emoji or hashtag.
+      // Use a single \s (no quantifier) to avoid super-linear backtracking reported by sonarjs.
+      const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁⏫🔼🔽#]/u);
+      const suffix = spaceIdx >= 0 ? rawAfterPrefix.slice(spaceIdx) : '';
+      lines[task.line] = prefix + newText + suffix;
       return lines.join('\n');
     });
   }
@@ -594,7 +603,11 @@ export class RightPanel {
     });
   }
 
-  private async updateComment(task: TaskLike, comment: TaskComment, newText: string): Promise<void> {
+  private async updateComment(
+    task: TaskLike,
+    comment: TaskComment,
+    newText: string,
+  ): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
     await this.app.vault.process(file, (data) => {

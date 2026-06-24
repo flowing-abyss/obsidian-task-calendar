@@ -510,9 +510,7 @@ export class CenterPanel {
     const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
     const hasProgress = (task.subtasks?.length ?? 0) > 0;
     const suppressToday = sel === 'today' && d === today;
-    const hasPriority = task.priority && task.priority !== 'C';
-
-    const hasRightMeta = hasPriority || (d && !suppressToday) || hasProgress || tags.length > 0;
+    const hasRightMeta = (d && !suppressToday) || hasProgress || tags.length > 0;
     if (hasRightMeta) {
       const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
 
