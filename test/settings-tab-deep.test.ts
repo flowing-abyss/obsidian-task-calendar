@@ -202,8 +202,7 @@ describe('CalendarSettingsTab renderTagGroupSettings', () => {
     openSection(tab, 3);
     findComp(captured, 'Inbox source', 'dropdown')!.comp.setValue('tag');
     expect(plugin.saveSettings).toHaveBeenCalled();
-    // @ts-expect-error migrated — TODO Task 7: update to assert settings.inbox.mode / settings.inbox.tag
-    expect(plugin.settings.inboxMode).toBe('tag');
+    expect(plugin.settings.inbox.mode).toBe('tag');
   });
 
   it('inbox tag field visible when inboxMode is tag', () => {
@@ -232,13 +231,12 @@ describe('CalendarSettingsTab renderTagGroupSettings', () => {
     openSection(tab, 3);
     findComp(captured, 'Inbox tag', 'text')!.comp.setValue('  #new  ');
     expect(plugin.saveSettings).toHaveBeenCalled();
-    // @ts-expect-error migrated — TODO Task 7: update to assert settings.inbox.mode / settings.inbox.tag
-    expect(plugin.settings.inboxTag).toBe('#new');
+    expect(plugin.settings.inbox.tag).toBe('#new');
   });
 
   it('add group button appends new group with timestamp id', () => {
     const { tab, plugin, captured } = makeTab({ tagGroups: [] });
-    openSection(tab, 3);
+    openSection(tab, 4);
     // Add group button is the only button with empty name (no setName called)
     const addBtn = captured.find((c) => c.type === 'button' && c.name === '');
     expect(addBtn).toBeDefined();
@@ -257,7 +255,7 @@ describe('CalendarSettingsTab renderTagGroupCard', () => {
 
   it('group name input saves on change', () => {
     const { tab, plugin, captured } = makeTab({ tagGroups: [{ ...baseGroup }] });
-    openSection(tab, 3);
+    openSection(tab, 4);
     findComp(captured, 'Group name', 'text')!.comp.setValue('Personal');
     expect(plugin.saveSettings).toHaveBeenCalled();
     expect(plugin.settings.tagGroups[0]!.name).toBe('Personal');
@@ -265,7 +263,7 @@ describe('CalendarSettingsTab renderTagGroupCard', () => {
 
   it('mode dropdown has prefix/manual options', () => {
     const { tab } = makeTab({ tagGroups: [{ ...baseGroup }] });
-    const body = openSection(tab, 3);
+    const body = openSection(tab, 4);
     const dd = findDropdown(body, 'Mode');
     expect(dd).not.toBeNull();
     const options = Array.from(dd!.options).map((o) => o.value);
@@ -274,21 +272,21 @@ describe('CalendarSettingsTab renderTagGroupCard', () => {
 
   it('prefix mode shows Prefix input', () => {
     const { tab } = makeTab({ tagGroups: [{ ...baseGroup, mode: 'prefix', prefix: 'work' }] });
-    const body = openSection(tab, 3);
+    const body = openSection(tab, 4);
     expect(findInput(body, 'Prefix')).not.toBeNull();
     expect(findInput(body, 'Tags')).toBeNull();
   });
 
   it('manual mode shows Tags input', () => {
     const { tab } = makeTab({ tagGroups: [{ ...baseGroup, mode: 'manual', tags: ['#a', '#b'] }] });
-    const body = openSection(tab, 3);
+    const body = openSection(tab, 4);
     expect(findInput(body, 'Tags')).not.toBeNull();
     expect(findInput(body, 'Prefix')).toBeNull();
   });
 
   it('prefix input change saves (trimmed)', () => {
     const { tab, plugin, captured } = makeTab({ tagGroups: [{ ...baseGroup, prefix: '' }] });
-    openSection(tab, 3);
+    openSection(tab, 4);
     findComp(captured, 'Prefix', 'text')!.comp.setValue('  work  ');
     expect(plugin.saveSettings).toHaveBeenCalled();
     expect(plugin.settings.tagGroups[0]!.prefix).toBe('work');
@@ -298,7 +296,7 @@ describe('CalendarSettingsTab renderTagGroupCard', () => {
     const { tab, plugin, captured } = makeTab({
       tagGroups: [{ ...baseGroup, mode: 'manual', tags: [] }],
     });
-    openSection(tab, 3);
+    openSection(tab, 4);
     findComp(captured, 'Tags', 'text')!.comp.setValue('a, b, c');
     expect(plugin.saveSettings).toHaveBeenCalled();
     expect(plugin.settings.tagGroups[0]!.tags).toEqual(['a', 'b', 'c']);
@@ -308,14 +306,14 @@ describe('CalendarSettingsTab renderTagGroupCard', () => {
     const { tab, plugin, captured } = makeTab({
       tagGroups: [{ ...baseGroup, mode: 'manual', tags: [] }],
     });
-    openSection(tab, 3);
+    openSection(tab, 4);
     findComp(captured, 'Tags', 'text')!.comp.setValue('a,, ,b');
     expect(plugin.settings.tagGroups[0]!.tags).toEqual(['a', 'b']);
   });
 
   it('color picker saves on change', () => {
     const { tab, plugin, captured } = makeTab({ tagGroups: [{ ...baseGroup, color: '#ff0000' }] });
-    const body = openSection(tab, 3);
+    const body = openSection(tab, 4);
     const colorInput = findColorInput(body, 'Color');
     expect(colorInput).not.toBeNull();
     findComp(captured, 'Color', 'color')!.comp.setValue('#00ff00');
@@ -327,7 +325,7 @@ describe('CalendarSettingsTab renderTagGroupCard', () => {
     const { tab, plugin, captured } = makeTab({
       tagGroups: [{ ...baseGroup }, { ...baseGroup, id: 'g2', name: 'Other' }],
     });
-    const body = openSection(tab, 3);
+    const body = openSection(tab, 4);
     const cards = body.querySelectorAll('.tc-settings-group-card');
     expect(cards).toHaveLength(2);
     // Delete buttons are the buttons in "Group name" Setting rows (one per card)

@@ -34,6 +34,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
     this.addSection(containerEl, 'Mobile', 'smartphone', (body) =>
       this.renderViewConfigSettings(body, 'mobile'),
     );
+    this.addSection(containerEl, 'Inbox', 'inbox', (body) => this.renderInboxSettings(body));
     this.addSection(containerEl, 'Tag groups', 'tags', (body) => this.renderTagGroupSettings(body));
 
     containerEl.querySelectorAll('.tc-settings-section').forEach((el, i) => {
@@ -95,8 +96,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
           })
           .setValue(this.plugin.settings.sourceNoteDisplay)
           .onChange(async (v) => {
-            this.plugin.settings.sourceNoteDisplay =
-              v as CalendarSettings['sourceNoteDisplay'];
+            this.plugin.settings.sourceNoteDisplay = v as CalendarSettings['sourceNoteDisplay'];
             await this.plugin.saveSettings();
           }),
       );
@@ -226,50 +226,85 @@ export class CalendarSettingsTab extends PluginSettingTab {
     }
   }
 
-  private renderTagGroupSettings(containerEl: HTMLElement): void {
+  private renderInboxSettings(containerEl: HTMLElement): void {
     new Setting(containerEl)
       .setName('Inbox source')
-      .setDesc('Show tasks with a specific tag, or all tasks with no tags.')
+      // eslint-disable-next-line obsidianmd/ui/sentence-case
+      .setDesc('What appears in your Inbox list.')
       .addDropdown((d) =>
         d
-          .addOptions({ tag: 'Tag', untagged: 'Untagged tasks' })
-          // @ts-expect-error migrated
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-          .setValue(this.plugin.settings.inboxMode)
+          .addOptions({
+            tag: 'Tasks with inbox tag',
+            untagged: 'Untagged tasks',
+            both: 'Both',
+          })
+          .setValue(this.plugin.settings.inbox.mode)
           .onChange(async (v) => {
-            // @ts-expect-error migrated
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-            this.plugin.settings.inboxMode = v as 'tag' | 'untagged';
+            this.plugin.settings.inbox.mode = v as 'tag' | 'untagged' | 'both';
             await this.plugin.saveSettings();
             // eslint-disable-next-line @typescript-eslint/no-deprecated
             this.display();
           }),
       );
 
-    // @ts-expect-error migrated
-    if (this.plugin.settings.inboxMode === 'tag') {
+    if (this.plugin.settings.inbox.mode !== 'untagged') {
       new Setting(containerEl)
         .setName('Inbox tag')
+         
         .setDesc('Tasks with this tag appear in inbox.')
         .addText((t) =>
           t
             // eslint-disable-next-line obsidianmd/ui/sentence-case
-            .setPlaceholder('#inbox')
-            // @ts-expect-error migrated
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-            .setValue(this.plugin.settings.inboxTag)
+            .setPlaceholder('#task/inbox')
+            .setValue(this.plugin.settings.inbox.tag)
             .onChange(async (v) => {
-              // @ts-expect-error migrated
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-              this.plugin.settings.inboxTag = v.trim();
+              this.plugin.settings.inbox.tag = v.trim();
               await this.plugin.saveSettings();
             }),
         );
     }
 
+    new Setting(containerEl)
+      .setName('Show untagged tasks in inbox')
+      .setDesc('Tasks with no tags also appear in inbox.')
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.inbox.showUntagged).onChange(async (v) => {
+          this.plugin.settings.inbox.showUntagged = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('Remove inbox tag when assigning another tag')
+      .setDesc('When you drag a task to a tag, the inbox tag is removed automatically.')
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.inbox.removeTagOnAssign).onChange(async (v) => {
+          this.plugin.settings.inbox.removeTagOnAssign = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+  }
+
+  private renderTagGroupSettings(containerEl: HTMLElement): void {
     const groups = this.plugin.settings.tagGroups;
     for (let idx = 0; idx < groups.length; idx++) {
       this.renderTagGroupCard(containerEl, idx);
+    }
+
+    const archived = this.plugin.settings.archivedTags;
+    if (archived.length > 0) {
+      new Setting(containerEl).setName("Archived tags").setHeading();
+      for (const tag of archived) {
+        new Setting(containerEl).setName(tag).addButton((b) =>
+          b.setButtonText('Unarchive').onClick(async () => {
+            const idx = this.plugin.settings.archivedTags.indexOf(tag);
+            if (idx >= 0) this.plugin.settings.archivedTags.splice(idx, 1);
+            await this.plugin.saveSettings();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            this.display();
+          }),
+        );
+      }
     }
 
     new Setting(containerEl).addButton((b) =>
