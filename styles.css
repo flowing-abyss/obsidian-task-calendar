@@ -1680,6 +1680,19 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-task-tag--colored {
   opacity: 1;
 }
+.tc-task-source-note {
+  font-size: 11px;
+  color: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.88;
+  cursor: default;
+  pointer-events: none;
+}
+.tc-task-source-note-icon {
+  flex-shrink: 0;
+}
 .tc-task-progress {
   font-size: 11px;
   color: var(--text-muted);

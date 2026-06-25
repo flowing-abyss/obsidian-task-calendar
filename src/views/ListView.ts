@@ -1,6 +1,6 @@
 import type { Task } from '../parser/types';
-import type { ResolvedConfig } from '../settings/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
+import type { ResolvedConfig } from '../settings/types';
 import { BaseView } from './BaseView';
 import { getTasksForDate, sortTasks } from './taskGrouping';
 
@@ -131,11 +131,10 @@ export class ListView extends BaseView {
     // Source note chip — before tags
     const showChip = this.shouldShowSourceNote(task);
     if (showChip) {
-      const noteName =
-        task.filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
+      const noteName = task.filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
       const chip = meta.createEl('span', { cls: 'tc-task-source-note' });
       chip.createEl('span', { cls: 'tc-task-source-note-icon', text: '📄' });
-      chip.appendText(noteName);
+      chip.appendText(' ' + noteName);
     }
 
     const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
