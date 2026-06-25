@@ -23,7 +23,11 @@ function setupCodeBlock(settings: CalendarSettings = DEFAULT_SETTINGS): {
     },
   };
   const store = new TaskStore(fakePlugin.app as never, settings);
-  registerCodeBlock(fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0], store, settings);
+  registerCodeBlock(
+    fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0],
+    store,
+    settings,
+  );
   if (!captured) throw new Error('processor not registered');
   return { processor: captured, store };
 }
@@ -47,31 +51,31 @@ describe('parseCodeBlockYaml (indirect via registerCodeBlock)', () => {
     expect(root.getAttribute('view')).toBe('week');
   });
 
-  it('strips single-quoted values', () => {
+  it('accepts single-quoted folder value without error (quote-strip exercised)', () => {
     const { processor } = setupCodeBlock();
     const { el } = invokeProcessor(processor, "folder: 'my folder'");
     expect(el.querySelector('.tasksCalendar')).not.toBeNull();
   });
 
-  it('strips double-quoted values', () => {
+  it('accepts double-quoted folder value without error (quote-strip exercised)', () => {
     const { processor } = setupCodeBlock();
     const { el } = invokeProcessor(processor, 'folder: "my folder"');
     expect(el.querySelector('.tasksCalendar')).not.toBeNull();
   });
 
-  it('coerces firstDayOfWeek to int', () => {
+  it('accepts numeric firstDayOfWeek without error (parseInt exercised for coverage)', () => {
     const { processor } = setupCodeBlock();
     const { el } = invokeProcessor(processor, 'firstDayOfWeek: 3');
     expect(el.querySelector('.tasksCalendar')).not.toBeNull();
   });
 
-  it('coerces upcomingDays to int', () => {
+  it('accepts numeric upcomingDays without error (parseInt exercised for coverage)', () => {
     const { processor } = setupCodeBlock();
     const { el } = invokeProcessor(processor, 'upcomingDays: 14');
     expect(el.querySelector('.tasksCalendar')).not.toBeNull();
   });
 
-  it('coerces quoted numeric firstDayOfWeek to int', () => {
+  it('accepts quoted numeric firstDayOfWeek without error (parseInt + quote-strip exercised)', () => {
     const { processor } = setupCodeBlock();
     const { el } = invokeProcessor(processor, 'firstDayOfWeek: "5"');
     expect(el.querySelector('.tasksCalendar')).not.toBeNull();
@@ -113,7 +117,11 @@ describe('registerCodeBlock processor', () => {
       },
     };
     const store = new TaskStore(fakePlugin.app as never, DEFAULT_SETTINGS);
-    registerCodeBlock(fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0], store, DEFAULT_SETTINGS);
+    registerCodeBlock(
+      fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0],
+      store,
+      DEFAULT_SETTINGS,
+    );
     expect(registered).toBe(true);
   });
 
