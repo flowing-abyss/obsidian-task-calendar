@@ -1,7 +1,7 @@
 // eslint-disable-next-line no-restricted-imports, import/no-extraneous-dependencies
 import moment from 'moment';
 import { App as ObsidianApp, Platform, TFile, type CachedMetadata } from 'obsidian';
-import { afterEach, beforeEach } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../src/settings/defaults';
 import type { ResolvedConfig } from '../src/settings/types';
@@ -183,11 +183,32 @@ export function freshContainer(): HTMLElement {
 }
 
 /**
- * Minimal TaskStore stub exposing only getTasks() for panels that read tasks.
- * Cast to TaskStore via `as unknown as TaskStore` in constructor calls.
+ * Minimal TaskStore stub exposing getTasks() (with optional tag/status filtering)
+ * for panels that read tasks. Cast to TaskStore via `as unknown as TaskStore`.
  */
 export function makeStubStore(tasks: Task[]): unknown {
   return {
-    getTasks: () => tasks,
+    getTasks: (filter?: { tag?: string; status?: string[] }): Task[] => {
+      let all = tasks;
+      if (filter?.tag) all = all.filter((t) => t.rawText.includes(filter.tag!));
+      if (filter?.status?.length) all = all.filter((t) => filter.status!.includes(t.status));
+      return all;
+    },
   };
+}
+
+/**
+ * Freeze window.moment to a known date for deterministic date-dependent tests.
+ * Uses fake timers + the real moment module (which reads system time via Date).
+ * Restores real timers in afterEach.
+ */
+export function fixedToday(dateStr: string): void {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(dateStr + 'T12:00:00Z'));
+    (window as unknown as { moment: unknown }).moment = moment;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 }

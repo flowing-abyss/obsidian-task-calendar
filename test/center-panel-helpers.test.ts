@@ -2,10 +2,10 @@ import type { App } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
+import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
-import type { Task } from '../src/parser/types';
 import { fixedToday, makeStubStore, task, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -19,7 +19,7 @@ function makePanel(
   settings: CalendarSettings = DEFAULT_SETTINGS,
   state: AppState = new AppState(),
 ): { panel: CenterPanel; state: AppState } {
-  const store = makeStubStore(tasks) as unknown as TaskStore;
+  const store = makeStubStore(tasks) as TaskStore;
   const app = {} as App;
   const panel = new CenterPanel(state, store, app, settings);
   return { panel, state };
@@ -159,7 +159,10 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', { type: 'group', groupId: 'g1' });
       const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text).sort((a, b) => a.localeCompare(b))).toEqual(['work', 'workSub']);
+      expect(result.map((t) => t.text).sort((a, b) => a.localeCompare(b))).toEqual([
+        'work',
+        'workSub',
+      ]);
     });
 
     it('{type:"group"} manual mode matches any tag in group.tags', () => {
@@ -231,7 +234,10 @@ describe('CenterPanel pure helpers', () => {
     });
 
     it('centerFilter empty returns all (no filtering)', () => {
-      const tasks = [task({ text: 'a', rawText: '- [ ] a' }), task({ text: 'b', rawText: '- [ ] b' })];
+      const tasks = [
+        task({ text: 'a', rawText: '- [ ] a' }),
+        task({ text: 'b', rawText: '- [ ] b' }),
+      ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'inbox');
       state.set('centerFilter', '');
