@@ -220,4 +220,28 @@ describe('DailyNoteResolver.addTask — section mode', () => {
     expect(content).toContain('## Tasks');
     expect(content.indexOf('- [ ] buy milk')).toBeGreaterThan(content.indexOf('## Tasks'));
   });
+
+  it('falls back to append when taskInsertionSection is empty string', async () => {
+    const app = await createAppWithFiles({
+      'periodic/daily/2026-06-25.md': '# Today\n\n\n',
+    });
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      taskPrefix: '',
+      dailyNoteProvider: 'manual' as const,
+      taskInsertionMode: 'section' as const,
+      taskInsertionSection: '',
+      desktop: {
+        ...DEFAULT_SETTINGS.desktop,
+        dailyNoteFolder: 'periodic/daily',
+        dailyNoteFormat: 'YYYY-MM-DD',
+      },
+    };
+    const resolver = new DailyNoteResolver(app, settings);
+    await resolver.addTask('buy milk', '2026-06-25');
+    const file = app.vault.getAbstractFileByPath('periodic/daily/2026-06-25.md');
+    const content = await app.vault.cachedRead(file as TFile);
+    // Task should appear at end, not after first empty line
+    expect(content.trimEnd()).toMatch(/- \[ \] buy milk 📅 2026-06-25$/);
+  });
 });

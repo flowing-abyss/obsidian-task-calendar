@@ -140,7 +140,7 @@ export class DailyNoteResolver {
   private async insertTask(file: TFile, line: string): Promise<void> {
     const { taskInsertionMode: mode, taskInsertionSection: section } = this.settings;
     await this.app.vault.process(file, (content) => {
-      if (mode === 'section') {
+      if (mode === 'section' && section.trim()) {
         const lines = content.split('\n');
         const idx = lines.findIndex((l) => l.trim() === section.trim());
         if (idx === -1) {
