@@ -229,6 +229,8 @@ export class CenterPanel {
         ...DEFAULT_VIEW_CONFIG,
         ...this.settings.desktop,
         isMobile: false,
+        sourceNoteDisplay: this.settings.sourceNoteDisplay,
+        customFilePath: this.settings.customFilePath,
         startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
       };
       if (this.calViewType === 'month') {

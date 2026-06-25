@@ -84,6 +84,24 @@ export class CalendarSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Source note display')
+      .setDesc('Show which note a task comes from, before the tag chip in list view.')
+      .addDropdown((d) =>
+        d
+          .addOptions({
+            never: 'Never',
+            'non-default': 'Non-default notes only',
+            always: 'Always',
+          })
+          .setValue(this.plugin.settings.sourceNoteDisplay)
+          .onChange(async (v) => {
+            this.plugin.settings.sourceNoteDisplay =
+              v as CalendarSettings['sourceNoteDisplay'];
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
       .setName("Add to today's note")
       .setDesc('New tasks are added to the daily note for today.')
       .addToggle((t) =>

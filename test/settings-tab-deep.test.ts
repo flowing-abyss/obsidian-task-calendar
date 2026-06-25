@@ -447,3 +447,50 @@ describe('CalendarSettingsTab renderViewConfigSettings', () => {
     expect(findInput(body, 'Daily note folder')).not.toBeNull();
   });
 });
+
+describe('sourceNoteDisplay setting', () => {
+  it('renders a source-note-display dropdown in the General section', () => {
+    const { tab } = makeTab();
+    // Open the General section (index 0) to make its body visible
+    const headers = Array.from(
+      tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header'),
+    );
+    headers[0]!.click();
+    const selects = tab.containerEl.querySelectorAll<HTMLSelectElement>('select');
+    const values = Array.from(selects).map((s) => s.value);
+    expect(values).toContain('non-default');
+  });
+
+  it('dropdown has three options: never, always, non-default', () => {
+    const { tab } = makeTab();
+    const headers = Array.from(
+      tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header'),
+    );
+    headers[0]!.click();
+    const selects = Array.from(tab.containerEl.querySelectorAll<HTMLSelectElement>('select'));
+    const sourceSelect = selects.find((s) =>
+      Array.from(s.options).some((o) => o.value === 'non-default'),
+    );
+    expect(sourceSelect).not.toBeUndefined();
+    const optionValues = Array.from(sourceSelect!.options).map((o) => o.value);
+    expect(optionValues).toContain('never');
+    expect(optionValues).toContain('always');
+    expect(optionValues).toContain('non-default');
+  });
+
+  it('dropdown reflects current settings value', () => {
+    const { tab, plugin } = makeTab();
+    plugin.settings.sourceNoteDisplay = 'always';
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    tab.display();
+    const headers = Array.from(
+      tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header'),
+    );
+    headers[0]!.click();
+    const selects = Array.from(tab.containerEl.querySelectorAll<HTMLSelectElement>('select'));
+    const sourceSelect = selects.find((s) =>
+      Array.from(s.options).some((o) => o.value === 'non-default'),
+    );
+    expect(sourceSelect?.value).toBe('always');
+  });
+});
