@@ -63,7 +63,7 @@ export class CenterPanel {
     );
     this.render();
     this.el.setAttribute('tabindex', '0');
-    this.el.addEventListener('keydown', (e) => {
+    const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && this.selectedTaskKeys.size > 0) {
         this.selectedTaskKeys.clear();
         this.lastClickedTaskKey = null;
@@ -90,7 +90,9 @@ export class CenterPanel {
         this.lastClickedTaskKey = nextKey;
         this.updateSelectionVisuals();
       }
-    });
+    };
+    this.el.addEventListener('keydown', onKeyDown);
+    this.offs.push(() => this.el.removeEventListener('keydown', onKeyDown));
   }
 
   refresh(): void {
@@ -159,6 +161,7 @@ export class CenterPanel {
     }
 
     this.renderAddTaskBar();
+    this.updateSelectionVisuals();
   }
 
   private renderCalendarMode(): void {
@@ -743,7 +746,7 @@ export class CenterPanel {
       // ── Today toggle ──────────────────────────────────────
       menu.addItem((item) =>
         item
-          .setTitle(isToday ? `✓ Today  📅 ${today}` : 'Today')
+          .setTitle(isToday ? `Today  📅 ${today}` : 'Today')
           .setIcon('calendar')
           .setSection('today')
           .setChecked(isToday)
@@ -759,7 +762,7 @@ export class CenterPanel {
           ).test(task.rawText);
           menu.addItem((item) =>
             item
-              .setTitle(`${hasTag ? '✓ ' : ''}${pinnedTag}`)
+              .setTitle(pinnedTag)
               .setIcon('tag')
               .setSection('tags')
               .setChecked(hasTag)
@@ -869,12 +872,12 @@ export class CenterPanel {
     );
   }
 
-  private deleteBulkTasks(selectedTasks: Task[]): void {
-    void Promise.all(selectedTasks.map((t) => this.deleteTask(t))).then(() => {
-      this.selectedTaskKeys.clear();
-      this.lastClickedTaskKey = null;
-      this.updateSelectionVisuals();
-    });
+  private async deleteBulkTasks(selectedTasks: Task[]): Promise<void> {
+    const sorted = [...selectedTasks].sort((a, b) => b.line - a.line);
+    for (const t of sorted) await this.deleteTask(t);
+    this.selectedTaskKeys.clear();
+    this.lastClickedTaskKey = null;
+    this.updateSelectionVisuals();
   }
 
   private showBulkContextMenu(e: MouseEvent, card: HTMLElement): void {
@@ -951,7 +954,7 @@ export class CenterPanel {
         .setTitle('Delete all')
         .setIcon('trash-2')
         .setSection('danger')
-        .onClick(() => this.deleteBulkTasks(selectedTasks)),
+        .onClick(() => void this.deleteBulkTasks(selectedTasks)),
     );
 
     menu.showAtMouseEvent(e);
