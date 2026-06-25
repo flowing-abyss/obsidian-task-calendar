@@ -35,6 +35,7 @@ export interface CalendarSettings {
   inboxTag: string; // e.g. '#inbox', used when inboxMode === 'tag'
   tagGroups: TagGroup[];
   dailyNoteProvider: 'auto' | 'periodic-notes' | 'core' | 'obsidian-journal' | 'manual';
+  manualDailyNotePath: string; // e.g. 'Daily/YYYY-MM-DD' or just 'YYYY-MM-DD'
   taskInsertionMode: 'append' | 'section';
   taskInsertionSection: string;
 }

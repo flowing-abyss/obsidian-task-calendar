@@ -130,9 +130,8 @@ describe('DailyNoteResolver.addTask — append mode', () => {
       taskInsertionMode: 'append' as const,
       desktop: {
         ...DEFAULT_SETTINGS.desktop,
-        dailyNoteFolder: 'periodic/daily',
-        dailyNoteFormat: 'YYYY-MM-DD',
       },
+      manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
     await resolver.addTask('buy milk', '2026-06-25');
@@ -150,9 +149,8 @@ describe('DailyNoteResolver.addTask — append mode', () => {
       taskInsertionMode: 'append' as const,
       desktop: {
         ...DEFAULT_SETTINGS.desktop,
-        dailyNoteFolder: 'periodic/daily',
-        dailyNoteFormat: 'YYYY-MM-DD',
       },
+      manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
     // mock moment to return fixed date so path is predictable
@@ -182,9 +180,8 @@ describe('DailyNoteResolver.addTask — section mode', () => {
       taskInsertionSection: '## Tasks',
       desktop: {
         ...DEFAULT_SETTINGS.desktop,
-        dailyNoteFolder: 'periodic/daily',
-        dailyNoteFormat: 'YYYY-MM-DD',
       },
+      manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
     await resolver.addTask('buy milk', '2026-06-25');
@@ -209,9 +206,8 @@ describe('DailyNoteResolver.addTask — section mode', () => {
       taskInsertionSection: '## Tasks',
       desktop: {
         ...DEFAULT_SETTINGS.desktop,
-        dailyNoteFolder: 'periodic/daily',
-        dailyNoteFormat: 'YYYY-MM-DD',
       },
+      manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
     await resolver.addTask('buy milk', '2026-06-25');
@@ -233,9 +229,8 @@ describe('DailyNoteResolver.addTask — section mode', () => {
       taskInsertionSection: '',
       desktop: {
         ...DEFAULT_SETTINGS.desktop,
-        dailyNoteFolder: 'periodic/daily',
-        dailyNoteFormat: 'YYYY-MM-DD',
       },
+      manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
     await resolver.addTask('buy milk', '2026-06-25');

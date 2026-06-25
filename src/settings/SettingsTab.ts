@@ -109,9 +109,27 @@ export class CalendarSettingsTab extends PluginSettingTab {
         providerOptions['obsidian-journal'] = 'Obsidian Journal';
       if (!providerOptions['manual']) providerOptions['manual'] = 'Manual';
 
+      const adapter = resolver.getActiveAdapter();
+      const ps = adapter.getSettings(this.app, this.plugin.settings);
+      const providerDesc = createFragment();
+      providerDesc.appendText('Which plugin manages your daily notes.');
+      try {
+        const todayPath =
+          (ps.folder ? `${ps.folder}/` : '') + window.moment().format(ps.format) + '.md';
+        providerDesc.createEl('br');
+        providerDesc.appendText('Today → ');
+        providerDesc.createEl('code', { text: todayPath });
+        if (ps.template) {
+          providerDesc.appendText('  template: ');
+          providerDesc.createEl('code', { text: ps.template });
+        }
+      } catch {
+        // moment not available in test environment
+      }
+
       new Setting(containerEl)
         .setName('Daily note provider')
-        .setDesc('Which plugin manages your daily notes.')
+        .setDesc(providerDesc)
         .addDropdown((d) =>
           d
             .addOptions(providerOptions)
@@ -125,22 +143,23 @@ export class CalendarSettingsTab extends PluginSettingTab {
             }),
         );
 
-      const adapter = resolver.getActiveAdapter();
-      const ps = adapter.getSettings(this.app, this.plugin.settings);
-      try {
-        const todayName = window.moment().format(ps.format);
-        const todayPath = ps.folder ? `${ps.folder}/${todayName}.md` : `${todayName}.md`;
-        const preview = containerEl.createDiv({
-          cls: 'setting-item-description tc-resolver-preview',
-        });
-        preview.createSpan({ text: `Today's note → ` });
-        preview.createEl('code', { text: todayPath });
-        if (ps.template) {
-          preview.createSpan({ text: `  template: ` });
-          preview.createEl('code', { text: ps.template });
-        }
-      } catch {
-        // moment not available in test environment
+      if (this.plugin.settings.dailyNoteProvider === 'manual') {
+        new Setting(containerEl)
+          .setName('Note path pattern')
+          // eslint-disable-next-line obsidianmd/ui/sentence-case
+          .setDesc('Folder + date format, e.g. Daily/YYYY-MM-DD or just YYYY-MM-DD.')
+          .addText((t) =>
+            t
+              // eslint-disable-next-line obsidianmd/ui/sentence-case
+              .setPlaceholder('YYYY-MM-DD')
+              .setValue(this.plugin.settings.manualDailyNotePath)
+              .onChange(async (v) => {
+                this.plugin.settings.manualDailyNotePath = v;
+                await this.plugin.saveSettings();
+                // eslint-disable-next-line @typescript-eslint/no-deprecated
+                this.display();
+              }),
+          );
       }
 
       new Setting(containerEl)

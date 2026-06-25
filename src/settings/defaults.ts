@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
   inboxTag: '#inbox',
   tagGroups: [],
   dailyNoteProvider: 'auto',
+  manualDailyNotePath: 'YYYY-MM-DD',
   taskInsertionMode: 'append',
   taskInsertionSection: '## Tasks',
 };

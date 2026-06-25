@@ -21,8 +21,9 @@ describe('PeriodicNotesAdapter', () => {
 
   it('isAvailable returns true when plugin enabled', () => {
     const app = appWith({
-      plugins: { getPlugin: (id: string) =>
-        id === 'periodic-notes' ? { settings: { daily: { enabled: true } } } : null,
+      plugins: {
+        getPlugin: (id: string) =>
+          id === 'periodic-notes' ? { settings: { daily: { enabled: true } } } : null,
       },
     });
     expect(adapter.isAvailable(app)).toBe(true);
@@ -35,8 +36,9 @@ describe('PeriodicNotesAdapter', () => {
 
   it('isAvailable returns false when daily disabled', () => {
     const app = appWith({
-      plugins: { getPlugin: (id: string) =>
-        id === 'periodic-notes' ? { settings: { daily: { enabled: false } } } : null,
+      plugins: {
+        getPlugin: (id: string) =>
+          id === 'periodic-notes' ? { settings: { daily: { enabled: false } } } : null,
       },
     });
     expect(adapter.isAvailable(app)).toBe(false);
@@ -44,10 +46,20 @@ describe('PeriodicNotesAdapter', () => {
 
   it('getSettings reads from plugin settings', () => {
     const app = appWith({
-      plugins: { getPlugin: (id: string) =>
-        id === 'periodic-notes'
-          ? { settings: { daily: { folder: 'notes/daily', format: 'YYYY/MM/DD', template: 'templates/day.md', enabled: true } } }
-          : null,
+      plugins: {
+        getPlugin: (id: string) =>
+          id === 'periodic-notes'
+            ? {
+                settings: {
+                  daily: {
+                    folder: 'notes/daily',
+                    format: 'YYYY/MM/DD',
+                    template: 'templates/day.md',
+                    enabled: true,
+                  },
+                },
+              }
+            : null,
       },
     });
     expect(adapter.getSettings(app, DEFAULT_SETTINGS)).toEqual({
@@ -59,8 +71,9 @@ describe('PeriodicNotesAdapter', () => {
 
   it('getSettings falls back to defaults when plugin values missing', () => {
     const app = appWith({
-      plugins: { getPlugin: (id: string) =>
-        id === 'periodic-notes' ? { settings: { daily: { enabled: true } } } : null,
+      plugins: {
+        getPlugin: (id: string) =>
+          id === 'periodic-notes' ? { settings: { daily: { enabled: true } } } : null,
       },
     });
     const result = adapter.getSettings(app, DEFAULT_SETTINGS);
@@ -81,8 +94,9 @@ describe('CoreDailyNotesAdapter', () => {
 
   it('isAvailable returns true when core plugin enabled', () => {
     const app = appWith({
-      internalPlugins: { getPluginById: (id: string) =>
-        id === 'daily-notes' ? { enabled: true, instance: { options: {} } } : null,
+      internalPlugins: {
+        getPluginById: (id: string) =>
+          id === 'daily-notes' ? { enabled: true, instance: { options: {} } } : null,
       },
     });
     expect(adapter.isAvailable(app)).toBe(true);
@@ -90,8 +104,9 @@ describe('CoreDailyNotesAdapter', () => {
 
   it('isAvailable returns false when disabled', () => {
     const app = appWith({
-      internalPlugins: { getPluginById: (id: string) =>
-        id === 'daily-notes' ? { enabled: false, instance: { options: {} } } : null,
+      internalPlugins: {
+        getPluginById: (id: string) =>
+          id === 'daily-notes' ? { enabled: false, instance: { options: {} } } : null,
       },
     });
     expect(adapter.isAvailable(app)).toBe(false);
@@ -104,10 +119,16 @@ describe('CoreDailyNotesAdapter', () => {
 
   it('getSettings reads from core plugin options', () => {
     const app = appWith({
-      internalPlugins: { getPluginById: (id: string) =>
-        id === 'daily-notes'
-          ? { enabled: true, instance: { options: { folder: 'journal', format: 'DD-MM-YYYY', template: 'tpl/day.md' } } }
-          : null,
+      internalPlugins: {
+        getPluginById: (id: string) =>
+          id === 'daily-notes'
+            ? {
+                enabled: true,
+                instance: {
+                  options: { folder: 'journal', format: 'DD-MM-YYYY', template: 'tpl/day.md' },
+                },
+              }
+            : null,
       },
     });
     expect(adapter.getSettings(app, DEFAULT_SETTINGS)).toEqual({
@@ -160,14 +181,20 @@ describe('ManualAdapter', () => {
     expect(adapter.isAvailable({} as App)).toBe(true);
   });
 
-  it('getSettings returns folder and format from calSettings.desktop', () => {
-    const settings = {
-      ...DEFAULT_SETTINGS,
-      desktop: { ...DEFAULT_SETTINGS.desktop, dailyNoteFolder: 'my/notes', dailyNoteFormat: 'YYYY/MM/DD' },
-    };
+  it('getSettings parses manualDailyNotePath into folder + format', () => {
+    const settings = { ...DEFAULT_SETTINGS, manualDailyNotePath: 'my/notes/YYYY-MM-DD' };
     expect(adapter.getSettings({} as App, settings)).toEqual({
       folder: 'my/notes',
-      format: 'YYYY/MM/DD',
+      format: 'YYYY-MM-DD',
+      template: '',
+    });
+  });
+
+  it('getSettings handles path with no folder prefix', () => {
+    const settings = { ...DEFAULT_SETTINGS, manualDailyNotePath: 'YYYY-MM-DD' };
+    expect(adapter.getSettings({} as App, settings)).toEqual({
+      folder: '',
+      format: 'YYYY-MM-DD',
       template: '',
     });
   });

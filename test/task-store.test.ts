@@ -374,7 +374,11 @@ describe('TaskStore addTask', () => {
 
   it('addToToday with existing daily-note file appends', async () => {
     const today = window.moment().format('YYYY-MM-DD');
-    const settings = { ...DEFAULT_SETTINGS, addToToday: true };
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      addToToday: true,
+      manualDailyNotePath: `periodic/daily/YYYY-MM-DD`,
+    };
     const app = await createAppWithFiles({ [`periodic/daily/${today}.md`]: '- [ ] existing' });
     (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
     (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };

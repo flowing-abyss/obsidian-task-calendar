@@ -500,7 +500,7 @@ export class CenterPanel {
     // Pre-compute metadata needed in both body and meta-right
     const today = window.moment().format('YYYY-MM-DD');
     const sel = this.state.get('selectedList');
-    const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
+    const d = task.due ?? task.scheduled; // only explicit dates show a badge
     const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
     const subtaskCount = task.subtasks?.length ?? 0;
     const commentCount = task.comments?.length ?? 0;
@@ -626,48 +626,55 @@ export class CenterPanel {
   private async createTask(text: string): Promise<void> {
     const sel = this.state.get('selectedList');
     const today = window.moment().format('YYYY-MM-DD');
-    const dailyFolder = this.settings.desktop.dailyNoteFolder ?? 'Daily';
-    const dailyFormat = this.settings.desktop.dailyNoteFormat ?? 'YYYY-MM-DD';
-    const todayPath = `${dailyFolder}/${window.moment().format(dailyFormat)}.md`;
 
-    let filePath: string;
+    // Today view: delegate fully to store (resolver handles file + prefix + date)
+    if (sel === 'today' || sel === 'upcoming') {
+      await this.store.addTask(today, text);
+      return;
+    }
+
+    // Dateless contexts: build raw line, then route via resolver or fallback file
     let taskLine: string;
+    let fallbackPath: string;
 
-    if (sel === 'today') {
-      filePath = todayPath;
-      taskLine = `- [ ] ${text} 📅 ${today}`;
-    } else if (sel === 'inbox') {
-      filePath = this.settings.customFilePath || 'Inbox.md';
+    if (sel === 'inbox') {
       taskLine =
         this.settings.inboxMode === 'tag'
           ? `- [ ] ${text} ${this.settings.inboxTag ?? '#inbox'}`
           : `- [ ] ${text}`;
+      fallbackPath = this.settings.customFilePath || 'Inbox.md';
     } else if (typeof sel === 'object' && sel.type === 'tag') {
-      filePath = 'Inbox.md';
       taskLine = `- [ ] ${text} ${sel.tag}`;
+      fallbackPath = this.settings.customFilePath || 'Inbox.md';
     } else if (typeof sel === 'object' && sel.type === 'group') {
       const group = this.settings.tagGroups.find((g) => g.id === sel.groupId);
       const tag = group?.mode === 'prefix' ? `#${group.prefix ?? ''}` : (group?.tags?.[0] ?? '');
-      filePath = 'Inbox.md';
       taskLine = tag ? `- [ ] ${text} ${tag}` : `- [ ] ${text}`;
+      fallbackPath = this.settings.customFilePath || 'Inbox.md';
     } else {
-      filePath = todayPath;
-      taskLine = `- [ ] ${text}`;
+      await this.store.addTask(today, text);
+      return;
     }
 
-    let file = this.app.vault.getAbstractFileByPath(filePath);
+    if (this.settings.addToToday) {
+      await this.store.addRawLine(taskLine);
+      return;
+    }
+
+    // addToToday off: write to fallback file
+    let file = this.app.vault.getAbstractFileByPath(fallbackPath);
     if (!(file instanceof TFile)) {
-      const withMd = filePath.endsWith('.md') ? filePath : `${filePath}.md`;
+      const withMd = fallbackPath.endsWith('.md') ? fallbackPath : `${fallbackPath}.md`;
       file = this.app.vault.getAbstractFileByPath(withMd);
     }
     if (!(file instanceof TFile)) {
       try {
-        const path = filePath.endsWith('.md') ? filePath : `${filePath}.md`;
+        const path = fallbackPath.endsWith('.md') ? fallbackPath : `${fallbackPath}.md`;
         await this.app.vault.create(path, taskLine + '\n');
-        new Notice(`Created ${filePath}`);
+        new Notice(`Created ${fallbackPath}`);
         return;
       } catch {
-        new Notice(`Could not find task file: ${filePath}`);
+        new Notice(`Could not find task file: ${fallbackPath}`);
         return;
       }
     }
