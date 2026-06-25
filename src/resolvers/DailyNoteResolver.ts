@@ -56,6 +56,10 @@ export class DailyNoteResolver {
   }
 
   async addTask(text: string, date: string): Promise<void> {
+    return this.appendLine(this.buildTaskLine(text, date));
+  }
+
+  async appendLine(rawLine: string): Promise<void> {
     const adapter = this.getActiveAdapter();
     const ps = adapter.getSettings(this.app, this.settings);
     let file: TFile;
@@ -65,9 +69,8 @@ export class DailyNoteResolver {
       new Notice('Failed to get or create daily note: ' + String(e));
       return;
     }
-    const line = this.buildTaskLine(text, date);
     try {
-      await this.insertTask(file, line);
+      await this.insertTask(file, rawLine);
     } catch (e) {
       new Notice('Failed to insert task: ' + String(e));
       return;

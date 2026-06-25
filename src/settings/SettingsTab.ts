@@ -105,7 +105,8 @@ export class CalendarSettingsTab extends PluginSettingTab {
       // Always include all providers so user can force a choice even if not detected
       if (!providerOptions['periodic-notes']) providerOptions['periodic-notes'] = 'Periodic Notes';
       if (!providerOptions['core']) providerOptions['core'] = 'Core Daily Notes';
-      if (!providerOptions['obsidian-journal']) providerOptions['obsidian-journal'] = 'Obsidian Journal';
+      if (!providerOptions['obsidian-journal'])
+        providerOptions['obsidian-journal'] = 'Obsidian Journal';
       if (!providerOptions['manual']) providerOptions['manual'] = 'Manual';
 
       new Setting(containerEl)
@@ -123,6 +124,24 @@ export class CalendarSettingsTab extends PluginSettingTab {
               this.display();
             }),
         );
+
+      const adapter = resolver.getActiveAdapter();
+      const ps = adapter.getSettings(this.app, this.plugin.settings);
+      try {
+        const todayName = window.moment().format(ps.format);
+        const todayPath = ps.folder ? `${ps.folder}/${todayName}.md` : `${todayName}.md`;
+        const preview = containerEl.createDiv({
+          cls: 'setting-item-description tc-resolver-preview',
+        });
+        preview.createSpan({ text: `Today's note → ` });
+        preview.createEl('code', { text: todayPath });
+        if (ps.template) {
+          preview.createSpan({ text: `  template: ` });
+          preview.createEl('code', { text: ps.template });
+        }
+      } catch {
+        // moment not available in test environment
+      }
 
       new Setting(containerEl)
         .setName('Insert position')
