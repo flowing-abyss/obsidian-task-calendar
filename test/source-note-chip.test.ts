@@ -44,11 +44,10 @@ describe('renderSourceNoteChip', () => {
     expect(container.querySelector('.tc-task-source-note')).not.toBeNull();
   });
 
-  it('chip contains .tc-task-source-note-icon with 📄', () => {
+  it('chip contains .tc-task-source-note-icon element', () => {
     const container = freshContainer();
     renderSourceNoteChip(container, task({ filePath: 'Projects/alpha.md' } as Partial<Task>));
-    const icon = container.querySelector('.tc-task-source-note-icon');
-    expect(icon?.textContent).toBe('📄');
+    expect(container.querySelector('.tc-task-source-note-icon')).not.toBeNull();
   });
 
   it('chip text contains filename without path or extension', () => {
@@ -64,6 +63,6 @@ describe('renderSourceNoteChip', () => {
     const container = freshContainer();
     renderSourceNoteChip(container, task({ filePath: 'Note.md' } as Partial<Task>));
     const chip = container.querySelector('.tc-task-source-note');
-    expect(chip?.textContent).toBe('📄 Note');
+    expect(chip?.textContent).toBe(' Note');
   });
 });

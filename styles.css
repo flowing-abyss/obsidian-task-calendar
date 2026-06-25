@@ -1682,16 +1682,22 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-task-source-note {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--color-blue);
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  opacity: 0.88;
+  gap: 2px;
+  opacity: 0.85;
   cursor: default;
   pointer-events: none;
 }
 .tc-task-source-note-icon {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.tc-task-source-note-icon svg {
+  width: 11px;
+  height: 11px;
 }
 .tc-task-progress {
   font-size: 11px;
