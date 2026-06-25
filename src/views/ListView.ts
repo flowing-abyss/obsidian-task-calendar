@@ -1,5 +1,6 @@
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
+import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import { BaseView } from './BaseView';
 import { getTasksForDate, sortTasks } from './taskGrouping';
 
@@ -10,11 +11,19 @@ export interface ListViewCallbacks {
 }
 
 export class ListView extends BaseView {
+  private config: ResolvedConfig = {
+    ...DEFAULT_VIEW_CONFIG,
+    isMobile: false,
+    sourceNoteDisplay: 'non-default',
+    customFilePath: '',
+  };
+
   constructor(private callbacks: ListViewCallbacks) {
     super();
   }
 
   render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+    this.config = config;
     container.empty();
 
     const today = window.moment().format('YYYY-MM-DD');
@@ -118,6 +127,17 @@ export class ListView extends BaseView {
     if (task.time) {
       meta.createEl('span', { cls: 'tc-task-time', text: task.time });
     }
+
+    // Source note chip — before tags
+    const showChip = this.shouldShowSourceNote(task);
+    if (showChip) {
+      const noteName =
+        task.filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
+      const chip = meta.createEl('span', { cls: 'tc-task-source-note' });
+      chip.createEl('span', { cls: 'tc-task-source-note-icon', text: '📄' });
+      chip.appendText(noteName);
+    }
+
     const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
     for (const tag of tags.slice(0, 1)) {
       meta.createEl('span', { cls: 'tc-task-tag', text: tag });
@@ -134,6 +154,17 @@ export class ListView extends BaseView {
       if (e.target === cb) return;
       this.callbacks.onTaskClick?.(task);
     });
+  }
+
+  private shouldShowSourceNote(task: Task): boolean {
+    const { sourceNoteDisplay, customFilePath } = this.config;
+    if (sourceNoteDisplay === 'never') return false;
+    if (sourceNoteDisplay === 'always') return true;
+    // 'non-default': hide for daily notes and the configured custom file
+    const isDefault =
+      task.dailyNoteDate !== undefined ||
+      (customFilePath !== '' && task.filePath === customFilePath);
+    return !isDefault;
   }
 
   destroy(): void {}
