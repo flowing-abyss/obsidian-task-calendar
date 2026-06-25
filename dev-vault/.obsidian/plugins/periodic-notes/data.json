@@ -1,0 +1,8 @@
+{
+  "daily": {
+    "enabled": true,
+    "format": "YYYY-MM-DD",
+    "folder": "periodic/daily",
+    "template": "templates/daily.md"
+  }
+}

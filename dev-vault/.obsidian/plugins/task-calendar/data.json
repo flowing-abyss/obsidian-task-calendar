@@ -1,0 +1,47 @@
+{
+  "desktop": {
+    "defaultView": "month",
+    "firstDayOfWeek": 1,
+    "dailyNoteFolder": "Daily",
+    "dailyNoteFormat": "YYYY-MM-DD",
+    "upcomingDays": 14,
+    "style": "style1",
+    "globalTaskFilter": "",
+    "startPosition": "",
+    "tag": "",
+    "folder": ""
+  },
+  "mobile": {
+    "defaultView": "list",
+    "firstDayOfWeek": 1,
+    "dailyNoteFolder": "Daily",
+    "dailyNoteFormat": "YYYY-MM-DD",
+    "upcomingDays": 7,
+    "style": "style4",
+    "globalTaskFilter": "",
+    "startPosition": "",
+    "tag": "",
+    "folder": ""
+  },
+  "taskPrefix": "#task/one-off",
+  "addToToday": true,
+  "customFilePath": "",
+  "inboxMode": "untagged",
+  "inboxTag": "#inbox",
+  "tagGroups": [
+    {
+      "id": "work",
+      "name": "Work",
+      "color": "#4a90d9",
+      "mode": "prefix",
+      "prefix": "work"
+    },
+    {
+      "id": "personal",
+      "name": "Personal",
+      "color": "#27ae60",
+      "mode": "prefix",
+      "prefix": "personal"
+    }
+  ]
+}
