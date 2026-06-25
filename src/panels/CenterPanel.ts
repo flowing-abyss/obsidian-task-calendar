@@ -6,8 +6,8 @@ import type { CalendarSettings, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { TaskModal } from '../ui/TaskModal';
-import { openInFile } from '../ui/taskNavigation';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
+import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
@@ -953,6 +953,48 @@ export class CenterPanel {
       }
 
       lines[line] = updated;
+      return lines.join('\n');
+    });
+  }
+
+  private async toggleDueToday(task: Task): Promise<void> {
+    const today = window.moment().format('YYYY-MM-DD');
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      let updated: string;
+      if (task.due === today) {
+        // Toggle off: remove the due date
+        updated = line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, '').replace(/\s{2,}/gu, ' ').trimEnd();
+      } else if (task.due) {
+        // Replace existing due date with today
+        updated = line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${today}`);
+      } else {
+        // No due date — append today
+        updated = line.trimEnd() + ` 📅 ${today}`;
+      }
+      lines[task.line] = updated;
+      return lines.join('\n');
+    });
+  }
+
+  private async setPriority(task: Task, priority: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(task.filePath);
+    if (!(file instanceof TFile)) return;
+    const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'] as const;
+    const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
+    await this.app.vault.process(file, (data) => {
+      const lines = data.split('\n');
+      const line = lines[task.line];
+      if (!line) return data;
+      let updated = line;
+      for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
+      if (priority !== 'D' && PRIORITY_MAP[priority])
+        updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
+      lines[task.line] = updated.replace(/\s{2,}/gu, ' ').trimEnd();
       return lines.join('\n');
     });
   }
