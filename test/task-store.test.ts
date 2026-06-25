@@ -291,13 +291,14 @@ describe('TaskStore toggleTask', () => {
   });
 
   it('toggles open (no ✅) to done, appends ✅ today', async () => {
-    const app = await createAppWithFiles({ 't.md': '- [ ] task 📅 2026-06-24' });
+    const today = window.moment().format('YYYY-MM-DD');
+    const app = await createAppWithFiles({ 't.md': `- [ ] task 📅 ${today}` });
     seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     await store.toggleTask(store.getTasks()[0]!);
     const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);
-    expect(content).toBe('- [x] task 📅 2026-06-24 ✅ 2026-06-24');
+    expect(content).toBe(`- [x] task 📅 ${today} ✅ ${today}`);
   });
 
   it('toggles done to open, strips ✅ date', async () => {
@@ -372,8 +373,9 @@ describe('TaskStore addTask', () => {
   });
 
   it('addToToday with existing daily-note file appends', async () => {
+    const today = window.moment().format('YYYY-MM-DD');
     const settings = { ...DEFAULT_SETTINGS, addToToday: true };
-    const app = await createAppWithFiles({ 'periodic/daily/2026-06-24.md': '- [ ] existing' });
+    const app = await createAppWithFiles({ [`periodic/daily/${today}.md`]: '- [ ] existing' });
     (app as unknown as Record<string, unknown>).plugins = {
       'periodic-notes': { settings: { daily: { folder: 'periodic/daily', format: 'YYYY-MM-DD' } } },
     };
@@ -381,11 +383,11 @@ describe('TaskStore addTask', () => {
       executeCommandById: () => {},
     };
     const store = new TaskStore(app, settings);
-    await store.addTask('2026-06-24', 'today task');
-    const file = app.vault.getAbstractFileByPath('periodic/daily/2026-06-24.md');
+    await store.addTask(today, 'today task');
+    const file = app.vault.getAbstractFileByPath(`periodic/daily/${today}.md`);
     if (!(file instanceof TFile)) throw new Error('daily note not a TFile');
     const content = await app.vault.cachedRead(file);
-    expect(content).toContain('- [ ] #task/one-off today task 📅 2026-06-24');
+    expect(content).toContain(`- [ ] #task/one-off today task 📅 ${today}`);
   });
 });
 
