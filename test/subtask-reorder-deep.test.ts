@@ -13,12 +13,7 @@ describe('applySubtaskReorder deep edges', () => {
       'before',
     );
     // A moved before C: adjLine = 3 - 1 = 2; position before → insertAt = 2
-    expect(result.split('\n')).toEqual([
-      '- [ ] Parent',
-      '  - [ ] B',
-      '  - [ ] A',
-      '  - [ ] C',
-    ]);
+    expect(result.split('\n')).toEqual(['- [ ] Parent', '  - [ ] B', '  - [ ] A', '  - [ ] C']);
   });
 
   it('moves block up with position=after (L26 false branch)', () => {
@@ -32,22 +27,13 @@ describe('applySubtaskReorder deep edges', () => {
       'after',
     );
     // C moved after A: insertAt = 1 + 1 = 2
-    expect(result.split('\n')).toEqual([
-      '- [ ] Parent',
-      '  - [ ] A',
-      '  - [ ] C',
-      '  - [ ] B',
-    ]);
+    expect(result.split('\n')).toEqual(['- [ ] Parent', '  - [ ] A', '  - [ ] C', '  - [ ] B']);
   });
 
   it('moves multi-line block down with position=before', () => {
-    const content = [
-      '- [ ] Parent',
-      '  - [ ] A',
-      '    - [ ] A1',
-      '  - [ ] B',
-      '  - [ ] C',
-    ].join('\n');
+    const content = ['- [ ] Parent', '  - [ ] A', '    - [ ] A1', '  - [ ] B', '  - [ ] C'].join(
+      '\n',
+    );
     const result = applySubtaskReorder(
       content,
       { line: 1, rangeTo: 2 },
@@ -64,13 +50,9 @@ describe('applySubtaskReorder deep edges', () => {
   });
 
   it('moves multi-line block up with position=after', () => {
-    const content = [
-      '- [ ] Parent',
-      '  - [ ] A',
-      '  - [ ] B',
-      '    - [ ] B1',
-      '  - [ ] C',
-    ].join('\n');
+    const content = ['- [ ] Parent', '  - [ ] A', '  - [ ] B', '    - [ ] B1', '  - [ ] C'].join(
+      '\n',
+    );
     const result = applySubtaskReorder(
       content,
       { line: 4, rangeTo: 4 },

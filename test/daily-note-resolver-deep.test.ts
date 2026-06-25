@@ -19,7 +19,11 @@ describe('DailyNoteResolver deep — createNoteWithTemplate', () => {
   it('creates note with templater when plugin available + templatePath set (L101)', async () => {
     const app = await createAppWithFiles({ 'template.md': '# Template\n\n## Tasks\n' });
     // Mock templater plugin + core daily-notes plugin supplying a template path
-    const writeSpy = { called: false, templateFile: null as TFile | null, newFile: null as TFile | null };
+    const writeSpy = {
+      called: false,
+      templateFile: null as TFile | null,
+      newFile: null as TFile | null,
+    };
     const realApp = {
       ...app,
       plugins: {
