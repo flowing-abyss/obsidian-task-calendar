@@ -7,8 +7,8 @@ import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { TaskModal } from '../ui/TaskModal';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
-import { openInFile } from '../ui/taskNavigation';
 import { showTagDropdown } from '../ui/tagDropdown';
+import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
@@ -25,6 +25,8 @@ export class CenterPanel {
   private calUnsubscribe: (() => void) | null = null;
   private taskModal: TaskModal | null = null;
   private calStyle: string = 'style1';
+  private selectedTaskKeys = new Set<string>();
+  private lastClickedTaskKey: string | null = null;
 
   constructor(
     private state: AppState,
@@ -39,7 +41,11 @@ export class CenterPanel {
     this.taskModal = new TaskModal(this.app, this.settings);
     this.calStyle = this.settings.desktop.style ?? 'style1';
     this.offs.push(
-      this.state.on('selectedList', () => this.render()),
+      this.state.on('selectedList', () => {
+        this.selectedTaskKeys.clear();
+        this.lastClickedTaskKey = null;
+        this.render();
+      }),
       this.state.on('mode', () => this.render()),
       this.state.on('centerFilter', () => this.render()),
       this.state.on('searchQuery', () => this.render()),
@@ -56,6 +62,35 @@ export class CenterPanel {
       }),
     );
     this.render();
+    this.el.setAttribute('tabindex', '0');
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.selectedTaskKeys.size > 0) {
+        this.selectedTaskKeys.clear();
+        this.lastClickedTaskKey = null;
+        this.updateSelectionVisuals();
+        return;
+      }
+
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.shiftKey) {
+        e.preventDefault();
+        const allCards = Array.from(this.el.querySelectorAll<HTMLElement>('.tc-task-card'));
+        const keys = allCards.map(
+          (c) => `${c.dataset['filePath'] ?? ''}:${c.dataset['line'] ?? ''}`,
+        );
+        const anchorIdx = this.lastClickedTaskKey ? keys.indexOf(this.lastClickedTaskKey) : -1;
+        if (anchorIdx === -1) return;
+
+        const delta = e.key === 'ArrowDown' ? 1 : -1;
+        const nextIdx = Math.max(0, Math.min(keys.length - 1, anchorIdx + delta));
+        const nextKey = keys[nextIdx];
+        if (!nextKey) return;
+
+        this.selectedTaskKeys.add(this.lastClickedTaskKey!);
+        this.selectedTaskKeys.add(nextKey);
+        this.lastClickedTaskKey = nextKey;
+        this.updateSelectionVisuals();
+      }
+    });
   }
 
   refresh(): void {
@@ -601,7 +636,45 @@ export class CenterPanel {
       }
     }
 
-    card.addEventListener('click', () => {
+    card.addEventListener('click', (e) => {
+      const key = this.taskKey(task);
+
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl/Cmd+Click: toggle this task in selection
+        if (this.selectedTaskKeys.has(key)) {
+          this.selectedTaskKeys.delete(key);
+        } else {
+          this.selectedTaskKeys.add(key);
+          this.lastClickedTaskKey = key;
+        }
+        this.updateSelectionVisuals();
+        return;
+      }
+
+      if (e.shiftKey && this.lastClickedTaskKey) {
+        // Shift+Click: range select from anchor to this card
+        const allCards = Array.from(this.el.querySelectorAll<HTMLElement>('.tc-task-card'));
+        const keys = allCards.map(
+          (c) => `${c.dataset['filePath'] ?? ''}:${c.dataset['line'] ?? ''}`,
+        );
+        const anchorIdx = keys.indexOf(this.lastClickedTaskKey);
+        const thisIdx = keys.indexOf(key);
+        if (anchorIdx !== -1) {
+          const from = Math.min(anchorIdx, thisIdx);
+          const to = Math.max(anchorIdx, thisIdx);
+          for (let i = from; i <= to; i++) {
+            const k = keys[i];
+            if (k) this.selectedTaskKeys.add(k);
+          }
+          this.updateSelectionVisuals();
+          return;
+        }
+      }
+
+      // Plain click: clear selection, open in RightPanel
+      this.selectedTaskKeys.clear();
+      this.lastClickedTaskKey = key;
+      this.updateSelectionVisuals();
       this.state.set('taskStack', [task]);
     });
 
@@ -680,15 +753,14 @@ export class CenterPanel {
       }
 
       // ── Priority ───────────────────────────────────────────
-      const PRIORITY_LEVELS: Array<{ label: string; value: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' }> =
-        [
-          { label: '🔺 Highest', value: 'A' },
-          { label: '⏫ High', value: 'B' },
-          { label: '🔼 Medium', value: 'C' },
-          { label: 'Normal', value: 'D' },
-          { label: '🔽 Low', value: 'E' },
-          { label: '⏬ Lowest', value: 'F' },
-        ];
+      const PRIORITY_LEVELS: Array<{ label: string; value: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' }> = [
+        { label: '🔺 Highest', value: 'A' },
+        { label: '⏫ High', value: 'B' },
+        { label: '🔼 Medium', value: 'C' },
+        { label: 'Normal', value: 'D' },
+        { label: '🔽 Low', value: 'E' },
+        { label: '⏬ Lowest', value: 'F' },
+      ];
       for (const level of PRIORITY_LEVELS) {
         menu.addItem((item) =>
           item
@@ -1049,6 +1121,35 @@ export class CenterPanel {
       lines[task.line] = updated;
       return lines.join('\n');
     });
+  }
+
+  private taskKey(task: Task): string {
+    return `${task.filePath}:${task.line}`;
+  }
+
+  private updateSelectionVisuals(): void {
+    // Sync tc-multi-selected class on each card
+    this.el.querySelectorAll<HTMLElement>('.tc-task-card').forEach((card) => {
+      const key = `${card.dataset['filePath'] ?? ''}:${card.dataset['line'] ?? ''}`;
+      card.classList.toggle('tc-multi-selected', this.selectedTaskKeys.has(key));
+    });
+
+    // Update or remove badge
+    const existing = this.el.querySelector('.tc-selection-badge');
+    if (this.selectedTaskKeys.size >= 2) {
+      if (existing) {
+        existing.textContent = `${this.selectedTaskKeys.size} selected`;
+      } else {
+        const list = this.el.querySelector('.tc-center-scroll');
+        if (list) {
+          const badge = list.createDiv({ cls: 'tc-selection-badge' });
+          badge.textContent = `${this.selectedTaskKeys.size} selected`;
+          list.prepend(badge);
+        }
+      }
+    } else {
+      existing?.remove();
+    }
   }
 
   private async setPriority(
