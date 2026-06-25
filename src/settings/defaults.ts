@@ -22,4 +22,7 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
   inboxMode: 'untagged',
   inboxTag: '#inbox',
   tagGroups: [],
+  dailyNoteProvider: 'auto',
+  taskInsertionMode: 'append',
+  taskInsertionSection: '## Tasks',
 };

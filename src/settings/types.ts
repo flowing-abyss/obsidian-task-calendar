@@ -34,6 +34,9 @@ export interface CalendarSettings {
   inboxMode: 'tag' | 'untagged';
   inboxTag: string; // e.g. '#inbox', used when inboxMode === 'tag'
   tagGroups: TagGroup[];
+  dailyNoteProvider: 'auto' | 'periodic-notes' | 'core' | 'obsidian-journal' | 'manual';
+  taskInsertionMode: 'append' | 'section';
+  taskInsertionSection: string;
 }
 
 // Params parsed from a task-calendar code block (all optional overrides of ViewConfig)
