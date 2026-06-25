@@ -84,9 +84,7 @@ function makeTab(settingsOverrides: Partial<CalendarSettings> = {}): {
 function openSection(tab: CalendarSettingsTab, index: number): HTMLElement {
   const headers = tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header');
   headers[index]!.click();
-  return tab.containerEl
-    .querySelectorAll<HTMLElement>('.tc-settings-section')
-    [index]!.querySelector('.tc-settings-section-body')!;
+  return tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section')[index]!.querySelector('.tc-settings-section-body')!;
 }
 
 /** Find a Setting's root element within a section body by its nameEl text.
@@ -95,18 +93,7 @@ function findSettingEl(body: HTMLElement, name: string): HTMLElement | null {
   const allDivs = body.querySelectorAll('div');
   for (const d of allDivs) {
     if (d.textContent === name && d.children.length === 0) {
-      // The nameEl is the 2nd child of infoEl; the Setting root is the
-      // ancestor whose parent is either body or a .tc-settings-group-card.
-      let cur: HTMLElement | null = d;
-      while (
-        cur &&
-        cur.parentElement !== body &&
-        !cur.classList?.contains('tc-settings-group-card')
-      ) {
-        cur = cur.parentElement;
-      }
-      // cur is the infoEl (parent of nameEl); the Setting root is cur.parentElement
-      // Actually nameEl is child of infoEl; infoEl is child of settingEl.
+      // nameEl is child of infoEl; infoEl is child of settingEl.
       // Walk up: nameEl -> infoEl -> settingEl
       return d.parentElement?.parentElement ?? null;
     }
