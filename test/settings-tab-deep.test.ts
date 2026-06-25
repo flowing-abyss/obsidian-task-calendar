@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { CalendarSettingsTab } from '../src/settings/SettingsTab';
 import type { CalendarSettings } from '../src/settings/types';
+import { useRealMoment } from './helpers';
+
+useRealMoment();
 
 interface StubPlugin {
   app: App;
@@ -84,7 +87,9 @@ function makeTab(settingsOverrides: Partial<CalendarSettings> = {}): {
 function openSection(tab: CalendarSettingsTab, index: number): HTMLElement {
   const headers = tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header');
   headers[index]!.click();
-  return tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section')[index]!.querySelector('.tc-settings-section-body')!;
+  return tab.containerEl
+    .querySelectorAll<HTMLElement>('.tc-settings-section')
+    [index]!.querySelector('.tc-settings-section-body')!;
 }
 
 /** Find a Setting's root element within a section body by its nameEl text.

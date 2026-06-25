@@ -17,13 +17,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      exclude: ['src/main.ts'],
-      // Raised after Phase 3 Task 10 (PanelView smoke tests — final Phase 3 task).
-      // Measured 59.55 lines / 52.24 functions / 46.51 branches; set Phase 3 target below measured.
+      // Raised after Phase 4A (RailPanel, LeftPanel, SettingsTab deep, registerCodeBlock deep, main.ts).
+      // Measured 66.09 lines / 62.54 functions / 53.87 branches; set thresholds below measured.
       thresholds: {
-        lines: 38,
-        functions: 42,
-        branches: 28,
+        lines: 55,
+        functions: 50,
+        branches: 42,
       },
     },
   },

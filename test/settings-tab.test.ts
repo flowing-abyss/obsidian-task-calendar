@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { CalendarSettingsTab } from '../src/settings/SettingsTab';
 import type { CalendarSettings } from '../src/settings/types';
+import { useRealMoment } from './helpers';
+
+useRealMoment();
 
 interface StubPlugin {
   app: App;
