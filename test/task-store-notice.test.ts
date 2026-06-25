@@ -59,7 +59,11 @@ describe('TaskStore error paths (Notice spy via vi.mock)', () => {
       taskPrefix: '',
       dailyNoteProvider: 'manual' as const,
       taskInsertionMode: 'append' as const,
-      desktop: { ...DEFAULT_SETTINGS.desktop, dailyNoteFolder: 'periodic/daily', dailyNoteFormat: 'YYYY-MM-DD' },
+      desktop: {
+        ...DEFAULT_SETTINGS.desktop,
+        dailyNoteFolder: 'periodic/daily',
+        dailyNoteFormat: 'YYYY-MM-DD',
+      },
     };
     const store = new TaskStore(app, settings);
     await store.addTask(today, 'test task');

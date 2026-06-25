@@ -30,8 +30,15 @@ export interface Task {
 export interface SubTask {
   filePath: string;
   line: number;
+  rawText: string;
   text: string;
   status: 'open' | 'done';
+  due?: string;
+  scheduled?: string;
+  start?: string;
+  time?: string;
+  priority: TaskPriority;
+  recurrence?: string;
   subtasks?: SubTask[];
   comments?: TaskComment[];
   description?: string;

@@ -6,7 +6,6 @@ import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import { TaskStore } from '../src/store/TaskStore';
-type TaskStoreType = TaskStore;
 import {
   createAppWithFiles,
   fixedToday,
@@ -16,6 +15,7 @@ import {
   task,
   useRealMoment,
 } from './helpers';
+type TaskStoreType = TaskStore;
 
 const hasAddRawLine =
   typeof (TaskStore.prototype as unknown as Record<string, unknown>).addRawLine === 'function';

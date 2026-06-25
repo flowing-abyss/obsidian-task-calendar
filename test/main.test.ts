@@ -8,9 +8,11 @@ import { useRealMoment } from './helpers';
 
 useRealMoment();
 
-const MANIFEST = { id: 'task-calendar', name: 'Task Calendar', version: '1.0.0' } as ConstructorParameters<
-  typeof TaskCalendarPlugin
->[1];
+const MANIFEST = {
+  id: 'task-calendar',
+  name: 'Task Calendar',
+  version: '1.0.0',
+} as ConstructorParameters<typeof TaskCalendarPlugin>[1];
 
 interface WorkspaceLike {
   layoutReady: boolean;
@@ -152,10 +154,9 @@ describe('TaskCalendarPlugin renderCalendar shim', () => {
     const plugin = makePlugin();
     await plugin.onload();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    (window as unknown as { renderCalendar: (dv: unknown, params: unknown) => void }).renderCalendar(
-      {},
-      {},
-    );
+    (
+      window as unknown as { renderCalendar: (dv: unknown, params: unknown) => void }
+    ).renderCalendar({}, {});
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no Dataview container'));
     warnSpy.mockRestore();
   });
@@ -164,10 +165,11 @@ describe('TaskCalendarPlugin renderCalendar shim', () => {
     const plugin = makePlugin();
     await plugin.onload();
     const container = activeDocument.createElement('div');
-    (window as unknown as { renderCalendar: (dv: { container?: HTMLElement }, params: unknown) => void }).renderCalendar(
-      { container },
-      {},
-    );
+    (
+      window as unknown as {
+        renderCalendar: (dv: { container?: HTMLElement }, params: unknown) => void;
+      }
+    ).renderCalendar({ container }, {});
     // CalendarRenderer adds the configured style class to the root element (the container itself)
     expect(container.classList.contains('style1')).toBe(true);
   });

@@ -2436,6 +2436,37 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   align-items: center;
   gap: 8px;
   padding: 3px 0;
+  cursor: grab;
+  position: relative;
+  user-select: none;
+}
+.tc-subtask-row:active {
+  cursor: grabbing;
+}
+.tc-subtask-row.is-dragging {
+  opacity: 0.4;
+}
+.tc-subtask-row.drop-above::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-accent, var(--interactive-accent));
+  border-radius: 1px;
+  pointer-events: none;
+}
+.tc-subtask-row.drop-below::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-accent, var(--interactive-accent));
+  border-radius: 1px;
+  pointer-events: none;
 }
 .tc-subtask-label {
   font-size: 13.5px;

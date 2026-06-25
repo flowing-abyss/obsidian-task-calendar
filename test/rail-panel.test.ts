@@ -17,7 +17,9 @@ describe('RailPanel', () => {
     const state = new AppState();
     const panel = new RailPanel(state, { setting: {} });
     panel.mount(freshContainer());
-    const labels = Array.from(panel['el'].querySelectorAll('button')).map((b) => b.getAttribute('aria-label'));
+    const labels = Array.from(panel['el'].querySelectorAll('button')).map((b) =>
+      b.getAttribute('aria-label'),
+    );
     expect(labels).toEqual(['Tasks', 'Calendar', 'Search', 'Settings']);
   });
 
@@ -35,7 +37,9 @@ describe('RailPanel', () => {
     state.set('mode', 'calendar');
     const panel = new RailPanel(state, { setting: {} });
     panel.mount(freshContainer());
-    const btn = Array.from(panel['el'].querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Tasks')!;
+    const btn = Array.from(panel['el'].querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === 'Tasks',
+    )!;
     btn.click();
     expect(state.get('mode')).toBe('tasks');
   });
@@ -44,7 +48,9 @@ describe('RailPanel', () => {
     const state = new AppState();
     const panel = new RailPanel(state, { setting: {} });
     panel.mount(freshContainer());
-    const btn = Array.from(panel['el'].querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Calendar')!;
+    const btn = Array.from(panel['el'].querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === 'Calendar',
+    )!;
     btn.click();
     expect(state.get('mode')).toBe('calendar');
   });
@@ -53,7 +59,9 @@ describe('RailPanel', () => {
     const state = new AppState();
     const panel = new RailPanel(state, { setting: {} });
     panel.mount(freshContainer());
-    const btn = Array.from(panel['el'].querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Search')!;
+    const btn = Array.from(panel['el'].querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === 'Search',
+    )!;
     btn.click();
     expect(state.get('mode')).toBe('search');
   });
@@ -73,7 +81,9 @@ describe('RailPanel', () => {
     const openTabById = vi.fn();
     const panel = new RailPanel(state, { setting: { open, openTabById } });
     panel.mount(freshContainer());
-    const btn = Array.from(panel['el'].querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Settings')!;
+    const btn = Array.from(panel['el'].querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === 'Settings',
+    )!;
     btn.click();
     expect(open).toHaveBeenCalledOnce();
   });
@@ -83,7 +93,9 @@ describe('RailPanel', () => {
     const openTabById = vi.fn();
     const panel = new RailPanel(state, { setting: { open: vi.fn(), openTabById } });
     panel.mount(freshContainer());
-    const btn = Array.from(panel['el'].querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Settings')!;
+    const btn = Array.from(panel['el'].querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === 'Settings',
+    )!;
     btn.click();
     expect(openTabById).toHaveBeenCalledWith('task-calendar');
   });
@@ -92,7 +104,9 @@ describe('RailPanel', () => {
     const state = new AppState();
     const panel = new RailPanel(state, { setting: undefined });
     panel.mount(freshContainer());
-    const btn = Array.from(panel['el'].querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === 'Settings')!;
+    const btn = Array.from(panel['el'].querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === 'Settings',
+    )!;
     expect(() => btn.click()).not.toThrow();
   });
 

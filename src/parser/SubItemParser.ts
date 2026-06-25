@@ -1,3 +1,4 @@
+import { extractMetadata } from './extractMetadata';
 import type { SubTask, TaskComment } from './types';
 
 export interface SubItemResult {
@@ -25,14 +26,23 @@ function parseSubtask(
   filePath: string,
   subtaskMatch: RegExpExecArray,
 ): { subtask: SubTask; nextIdx: number; rangeTo: number } {
+  const rawText = lines[i] ?? '';
   const statusChar = subtaskMatch[2] ?? ' ';
-  const text = (subtaskMatch[3] ?? '').trim();
+  const rawContent = (subtaskMatch[3] ?? '').trim();
+  const meta = extractMetadata(rawContent);
   const childResult = parseSubItems(lines, i, filePath);
   const subtask: SubTask = {
     filePath,
     line: i,
-    text,
+    rawText,
+    text: meta.cleanText,
     status: statusChar === ' ' ? 'open' : 'done',
+    priority: meta.priority,
+    ...(meta.due !== undefined && { due: meta.due }),
+    ...(meta.scheduled !== undefined && { scheduled: meta.scheduled }),
+    ...(meta.start !== undefined && { start: meta.start }),
+    ...(meta.time !== undefined && { time: meta.time }),
+    ...(meta.recurrence !== undefined && { recurrence: meta.recurrence }),
   };
   if (childResult.subtasks.length) subtask.subtasks = childResult.subtasks;
   if (childResult.comments.length) subtask.comments = childResult.comments;

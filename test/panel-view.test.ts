@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TaskStore } from '../src/store/TaskStore';
-import { PanelView, PANEL_VIEW_TYPE } from '../src/views/PanelView';
+import { PANEL_VIEW_TYPE, PanelView } from '../src/views/PanelView';
 import { createAppWithFiles, flushMicrotasks, seedTaskCache, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -48,7 +48,9 @@ describe('PanelView', () => {
     });
 
     it('tc-left shows Inbox / Today / Upcoming smart lists', () => {
-      const labels = Array.from(view.contentEl.querySelectorAll('.tc-left .tc-left-label')).map((l) => l.textContent);
+      const labels = Array.from(view.contentEl.querySelectorAll('.tc-left .tc-left-label')).map(
+        (l) => l.textContent,
+      );
       expect(labels).toContain('Inbox');
       expect(labels).toContain('Today');
       expect(labels).toContain('Upcoming');
@@ -67,9 +69,9 @@ describe('PanelView', () => {
       const state = (view as unknown as { state: AppState }).state;
       state.set('taskStack', []);
       expect(() =>
-        (store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }).listeners.forEach((l) =>
-          l({ changedFile: 'x.md' }),
-        ),
+        (
+          store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
+        ).listeners.forEach((l) => l({ changedFile: 'x.md' })),
       ).not.toThrow();
     });
 
@@ -129,9 +131,9 @@ describe('PanelView', () => {
       const root = tasks[0]!;
       state.set('taskStack', [root]);
       // emit onUpdate with matching changedFile
-      (store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }).listeners.forEach((l) =>
-        l({ changedFile: root.filePath }),
-      );
+      (
+        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
+      ).listeners.forEach((l) => l({ changedFile: root.filePath }));
       const stack = state.get('taskStack');
       expect(stack).toHaveLength(1);
       // Direct listener emission does not re-parse the file, so the store returns the
@@ -144,9 +146,9 @@ describe('PanelView', () => {
       const root = store.getTasks()[0]!;
       state.set('taskStack', [root]);
       const before = state.get('taskStack');
-      (store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }).listeners.forEach((l) =>
-        l({ changedFile: 'other.md' }),
-      );
+      (
+        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
+      ).listeners.forEach((l) => l({ changedFile: 'other.md' }));
       expect(state.get('taskStack')).toBe(before);
     });
 
@@ -157,9 +159,9 @@ describe('PanelView', () => {
       // simulate deletion: temporarily empty the store, emit
       const origTasks = (store as unknown as { taskMap: Map<string, unknown> }).taskMap;
       (store as unknown as { taskMap: Map<string, unknown> }).taskMap = new Map();
-      (store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }).listeners.forEach((l) =>
-        l({ changedFile: root.filePath }),
-      );
+      (
+        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
+      ).listeners.forEach((l) => l({ changedFile: root.filePath }));
       expect(state.get('taskStack')).toHaveLength(0);
       // restore for cleanup
       (store as unknown as { taskMap: Map<string, unknown> }).taskMap = origTasks;
@@ -168,21 +170,21 @@ describe('PanelView', () => {
     it('refresh updates left panel count badges after store change (DOM assertion)', async () => {
       // Initial: one open task due today → Today count badge = "1"
       const left = view.contentEl.querySelector('.tc-left') as HTMLElement;
-      const todayItem = Array.from(left.querySelectorAll('.tc-left-item')).find((el) =>
-        el.querySelector('.tc-left-label')?.textContent === 'Today',
+      const todayItem = Array.from(left.querySelectorAll('.tc-left-item')).find(
+        (el) => el.querySelector('.tc-left-label')?.textContent === 'Today',
       ) as HTMLElement | undefined;
       expect(todayItem?.querySelector('.tc-left-count')?.textContent).toBe('1');
       // Toggle the task done via file mutation (simulates store refresh)
       const file = app.vault.getMarkdownFiles()[0]!;
       await app.vault.process(file, (data) => data.replace('- [ ]', '- [x]'));
       // Emit store.onUpdate to trigger left.refresh() + center.refresh()
-      (store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }).listeners.forEach((l) =>
-        l({ changedFile: file.path }),
-      );
+      (
+        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
+      ).listeners.forEach((l) => l({ changedFile: file.path }));
       await flushMicrotasks();
       // After refresh: no open tasks due today → Today count badge absent (count 0 → not rendered)
-      const todayItemAfter = Array.from(left.querySelectorAll('.tc-left-item')).find((el) =>
-        el.querySelector('.tc-left-label')?.textContent === 'Today',
+      const todayItemAfter = Array.from(left.querySelectorAll('.tc-left-item')).find(
+        (el) => el.querySelector('.tc-left-label')?.textContent === 'Today',
       ) as HTMLElement | undefined;
       expect(todayItemAfter?.querySelector('.tc-left-count')?.textContent ?? '0').toBe('0');
     });

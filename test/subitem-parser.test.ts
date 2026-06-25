@@ -216,9 +216,10 @@ describe('parseSubItems', () => {
     expect(r.comments[0]?.text).toBe('[/] In-progress child');
   });
 
-  it('preserves metadata emojis in subtask text (parser does not recurse parseTask)', () => {
+  it('strips metadata emojis from subtask text and exposes them as fields', () => {
     const r = parseSubItems(['- [ ] Parent', '  - [ ] Child 📅 2026-01-01'], 0, FILE);
-    expect(r.subtasks[0]?.text).toBe('Child 📅 2026-01-01');
+    expect(r.subtasks[0]?.text).toBe('Child');
+    expect(r.subtasks[0]?.due).toBe('2026-01-01');
   });
 
   it('handles mixed tab and space indentation across parent and child', () => {
@@ -277,5 +278,79 @@ describe('parseSubItems', () => {
     expect(r.subtasks[0]?.line).toBe(1);
     expect(r.subtasks[1]?.line).toBe(3);
     expect(r.subtaskRange).toEqual({ from: 1, to: 3 });
+  });
+
+  describe('subtask metadata', () => {
+    it('preserves rawText on subtask', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Fix bug 📅 2026-07-01'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]?.rawText).toBe('  - [ ] Fix bug 📅 2026-07-01');
+    });
+
+    it('parses due date from subtask', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Fix bug 📅 2026-07-01'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]).toMatchObject({ due: '2026-07-01' });
+    });
+
+    it('parses scheduled date from subtask', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Plan ⏳ 2026-07-05'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]).toMatchObject({ scheduled: '2026-07-05' });
+    });
+
+    it('parses time from subtask', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Meeting ⏰ 14:30'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]).toMatchObject({ time: '14:30' });
+    });
+
+    it('parses priority A (🔺) from subtask', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Urgent 🔺'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]).toMatchObject({ priority: 'A' });
+    });
+
+    it('parses priority B (⏫) from subtask', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Important ⏫'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]).toMatchObject({ priority: 'B' });
+    });
+
+    it('defaults priority to D when no priority emoji', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Normal task'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]).toMatchObject({ priority: 'D' });
+    });
+
+    it('parses recurrence from subtask', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Daily standup 🔁 every day'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]).toMatchObject({ recurrence: 'every day' });
+    });
+
+    it('strips metadata emoji from subtask text', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Fix bug 📅 2026-07-01 #work'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]?.text).toBe('Fix bug');
+    });
+
+    it('retains tags in rawText but strips from text', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Write tests #dev'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]?.rawText).toContain('#dev');
+      expect(r.subtasks[0]?.text).toBe('Write tests');
+    });
+
+    it('parses all metadata simultaneously', () => {
+      const lines = ['- [ ] Parent', '  - [ ] Sprint task 🔺 ⏰ 09:00 📅 2026-07-01 #work'];
+      const r = parseSubItems(lines, 0, FILE);
+      expect(r.subtasks[0]).toMatchObject({
+        priority: 'A',
+        time: '09:00',
+        due: '2026-07-01',
+        text: 'Sprint task',
+      });
+    });
   });
 });

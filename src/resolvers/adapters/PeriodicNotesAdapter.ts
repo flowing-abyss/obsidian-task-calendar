@@ -7,8 +7,9 @@ type PeriodicPlugin = {
 };
 
 function getPlugin(app: App): PeriodicPlugin | null {
-  return (app as unknown as { plugins: { getPlugin(id: string): PeriodicPlugin | null } })
-    .plugins.getPlugin('periodic-notes');
+  return (
+    app as unknown as { plugins: { getPlugin(id: string): PeriodicPlugin | null } }
+  ).plugins.getPlugin('periodic-notes');
 }
 
 export class PeriodicNotesAdapter implements DailyNoteAdapter {

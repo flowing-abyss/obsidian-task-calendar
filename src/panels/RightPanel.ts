@@ -2,6 +2,7 @@ import type { App } from 'obsidian';
 import { TFile, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import { formatTaskLine } from '../parser/TaskParser';
+import { applySubtaskReorder } from '../parser/subtask-reorder';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
 
@@ -10,6 +11,7 @@ type TaskLike = Task | SubTask;
 export class RightPanel {
   private el!: HTMLElement;
   private off?: () => void;
+  private draggingSub: SubTask | null = null;
 
   constructor(
     private state: AppState,
@@ -51,20 +53,16 @@ export class RightPanel {
   }
 
   private renderTask(task: TaskLike, stack: TaskLike[]): void {
-    // Breadcrumb
+    // Breadcrumb — shows only the parent path (current task is in the title input)
     if (stack.length > 1) {
       const breadcrumb = this.el.createDiv({ cls: 'tc-breadcrumb' });
-      stack.forEach((item, idx) => {
+      const parents = stack.slice(0, -1);
+      parents.forEach((item, idx) => {
         if (idx > 0) breadcrumb.createEl('span', { cls: 'tc-breadcrumb-sep', text: ' › ' });
-        const crumb = breadcrumb.createEl('span', {
-          cls: `tc-breadcrumb-item${idx === stack.length - 1 ? ' is-current' : ''}`,
-          text: item.text,
+        const crumb = breadcrumb.createEl('span', { cls: 'tc-breadcrumb-item', text: item.text });
+        crumb.addEventListener('click', () => {
+          this.state.set('taskStack', stack.slice(0, idx + 1));
         });
-        if (idx < stack.length - 1) {
-          crumb.addEventListener('click', () => {
-            this.state.set('taskStack', stack.slice(0, idx + 1));
-          });
-        }
       });
     }
 
@@ -101,35 +99,36 @@ export class RightPanel {
       this.renderContextMenu(currentTask, menuBtn);
     });
 
-    // Metadata chips
-    if ('due' in task || 'priority' in task) {
-      const t = task;
+    // Metadata chips — available for both Task and SubTask
+    {
       const chips = this.el.createDiv({ cls: 'tc-chips-row' });
 
       // Date chip
-      this.renderDateChip(chips, t);
+      this.renderDateChip(chips, task);
       // Time chip
       const timeChip = chips.createEl('button', {
-        cls: `tc-chip${t.time ? '' : ' tc-chip-empty'}`,
-        text: t.time ? `⏰ ${t.time}` : '⏰',
+        cls: `tc-chip${task.time ? '' : ' tc-chip-empty'}`,
+        text: task.time ? `⏰ ${task.time}` : '⏰',
         attr: { title: 'Set time' },
       });
       timeChip.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.showTimePopover(timeChip, t);
+        this.showTimePopover(timeChip, task);
       });
       // Priority chip
-      this.renderPriorityChip(chips, t);
+      this.renderPriorityChip(chips, task);
       // Tag chips
-      const tags = t.rawText.match(/#[\w/-]+/gu) ?? [];
+      const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
       for (const tag of tags) {
-        this.renderTagChip(chips, t, tag);
+        this.renderTagChip(chips, task, tag);
       }
       // Add tag
       const addTagBtn = chips.createEl('button', { cls: 'tc-chip tc-chip-add', text: '+ tag' });
       addTagBtn.addEventListener('click', () => {
         addTagBtn.addClass('tc-chip-add--hidden');
-        this.showTagInput(chips, t, addTagBtn, () => addTagBtn.removeClass('tc-chip-add--hidden'));
+        this.showTagInput(chips, task, addTagBtn, () =>
+          addTagBtn.removeClass('tc-chip-add--hidden'),
+        );
       });
     }
 
@@ -164,7 +163,7 @@ export class RightPanel {
 
     const subList = subSection.createDiv({ cls: 'tc-subtask-list' });
     for (const sub of task.subtasks ?? []) {
-      this.renderSubTask(subList, sub);
+      this.renderSubTask(subList, sub, task);
     }
 
     // Inline add-subtask row at the bottom of the subtask list
@@ -231,8 +230,57 @@ export class RightPanel {
     });
   }
 
-  private renderSubTask(container: HTMLElement, sub: SubTask): void {
-    const row = container.createDiv({ cls: 'tc-subtask-row' });
+  private renderSubTask(container: HTMLElement, sub: SubTask, parentTask: TaskLike): void {
+    const row = container.createDiv({ cls: 'tc-subtask-row', attr: { draggable: 'true' } });
+
+    // ── Drag-and-drop ─────────────────────────────────────────
+    row.addEventListener('dragstart', (e) => {
+      this.draggingSub = sub;
+      row.addClass('is-dragging');
+      e.dataTransfer?.setData('text/plain', String(sub.line));
+    });
+
+    row.addEventListener('dragend', () => {
+      this.draggingSub = null;
+      row.removeClass('is-dragging');
+      // Clean up any lingering indicators across all rows
+      container.querySelectorAll('.drop-above,.drop-below').forEach((el) => {
+        el.removeClass('drop-above');
+        el.removeClass('drop-below');
+      });
+    });
+
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!this.draggingSub || this.draggingSub.line === sub.line) return;
+      const rect = row.getBoundingClientRect();
+      const isAbove = e.clientY < rect.top + rect.height / 2;
+      // Clear indicators on all siblings first
+      container.querySelectorAll('.drop-above,.drop-below').forEach((el) => {
+        el.removeClass('drop-above');
+        el.removeClass('drop-below');
+      });
+      row.addClass(isAbove ? 'drop-above' : 'drop-below');
+    });
+
+    row.addEventListener('dragleave', (e) => {
+      if (!row.contains(e.relatedTarget as Node)) {
+        row.removeClass('drop-above');
+        row.removeClass('drop-below');
+      }
+    });
+
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const dragged = this.draggingSub;
+      if (!dragged || dragged.line === sub.line) return;
+      const position = row.hasClass('drop-above') ? 'before' : 'after';
+      row.removeClass('drop-above');
+      row.removeClass('drop-below');
+      void this.reorderSubTask(parentTask, dragged, sub, position);
+    });
+
+    // ── Checkbox ──────────────────────────────────────────────
     const cb = row.createEl('input', {
       cls: 'tc-task-checkbox',
       attr: { type: 'checkbox' },
@@ -243,7 +291,7 @@ export class RightPanel {
       void this.toggleSubTask(sub);
     });
 
-    // Content wrapper holds the label and optional meta indicators
+    // ── Content ───────────────────────────────────────────────
     const content = row.createDiv({ cls: 'tc-subtask-content' });
     const label = content.createEl('span', {
       cls: `tc-subtask-label${sub.status === 'done' ? ' is-done' : ''}`,
@@ -254,23 +302,17 @@ export class RightPanel {
       this.state.set('taskStack', [...stack, sub]);
     });
 
-    // Show nested subtask progress and comment count if present
+    // Progress + comment count indicators
     const subCount = sub.subtasks?.length ?? 0;
     const commentCount = sub.comments?.length ?? 0;
     if (subCount > 0 || commentCount > 0) {
       const subMeta = content.createDiv({ cls: 'tc-subtask-meta' });
       if (subCount > 0) {
         const done = sub.subtasks!.filter((s) => s.status === 'done').length;
-        subMeta.createEl('span', {
-          cls: 'tc-subtask-progress',
-          text: `${done}/${subCount}`,
-        });
+        subMeta.createEl('span', { cls: 'tc-subtask-progress', text: `${done}/${subCount}` });
       }
       if (commentCount > 0) {
-        subMeta.createEl('span', {
-          cls: 'tc-subtask-comment-count',
-          text: `💬 ${commentCount}`,
-        });
+        subMeta.createEl('span', { cls: 'tc-subtask-comment-count', text: `💬 ${commentCount}` });
       }
     }
   }
@@ -323,7 +365,7 @@ export class RightPanel {
     });
   }
 
-  private renderDateChip(container: HTMLElement, task: Task): void {
+  private renderDateChip(container: HTMLElement, task: TaskLike): void {
     const d = task.due ?? task.scheduled;
     const chip = container.createEl('button', {
       cls: `tc-chip${d ? '' : ' tc-chip-empty'}`,
@@ -335,7 +377,7 @@ export class RightPanel {
     });
   }
 
-  private renderPriorityChip(container: HTMLElement, task: Task): void {
+  private renderPriorityChip(container: HTMLElement, task: TaskLike): void {
     const labels: Record<string, string> = {
       A: '🚩 Highest',
       B: '🚩 High',
@@ -355,7 +397,7 @@ export class RightPanel {
     });
   }
 
-  private renderTagChip(container: HTMLElement, task: Task, tag: string): void {
+  private renderTagChip(container: HTMLElement, task: TaskLike, tag: string): void {
     const chip = container.createEl('span', { cls: 'tc-chip tc-chip-tag' });
     const color = this.getTagColor(tag);
     if (color) chip.setCssProps({ '--tc-chip-tag-color': color });
@@ -388,7 +430,7 @@ export class RightPanel {
     this.el.querySelectorAll('.tc-popover').forEach((el) => el.remove());
   }
 
-  private showDatePopover(anchor: HTMLElement, task: Task): void {
+  private showDatePopover(anchor: HTMLElement, task: TaskLike): void {
     const already = this.el.querySelector('.tc-date-popover');
     this.clearPopovers();
     if (already) return;
@@ -424,7 +466,7 @@ export class RightPanel {
     });
   }
 
-  private showPriorityPopover(anchor: HTMLElement, task: Task): void {
+  private showPriorityPopover(anchor: HTMLElement, task: TaskLike): void {
     const already = this.el.querySelector('.tc-priority-popover');
     this.clearPopovers();
     if (already) return;
@@ -474,7 +516,7 @@ export class RightPanel {
 
   private showTagInput(
     container: HTMLElement,
-    task: Task,
+    task: TaskLike,
     _anchor: HTMLElement,
     onClose?: () => void,
   ): void {
@@ -735,7 +777,7 @@ export class RightPanel {
     });
   }
 
-  private async updateDate(task: Task, date: string): Promise<void> {
+  private async updateDate(task: TaskLike, date: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
     await this.app.vault.process(file, (data) => {
@@ -750,7 +792,7 @@ export class RightPanel {
     });
   }
 
-  private async clearDate(task: Task): Promise<void> {
+  private async clearDate(task: TaskLike): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
     await this.app.vault.process(file, (data) => {
@@ -766,7 +808,7 @@ export class RightPanel {
     });
   }
 
-  private async updatePriority(task: Task, priority: string): Promise<void> {
+  private async updatePriority(task: TaskLike, priority: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
     const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'];
@@ -784,7 +826,7 @@ export class RightPanel {
     });
   }
 
-  private async removeTag(task: Task, tag: string): Promise<void> {
+  private async removeTag(task: TaskLike, tag: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
     await this.app.vault.process(file, (data) => {
@@ -802,7 +844,7 @@ export class RightPanel {
     });
   }
 
-  private async addTag(task: Task, tag: string): Promise<void> {
+  private async addTag(task: TaskLike, tag: string): Promise<void> {
     const tagStr = tag.startsWith('#') ? tag : `#${tag}`;
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
@@ -815,7 +857,7 @@ export class RightPanel {
     });
   }
 
-  private showTimePopover(anchor: HTMLElement, task: Task): void {
+  private showTimePopover(anchor: HTMLElement, task: TaskLike): void {
     const already = this.el.querySelector('.tc-time-popover');
     this.clearPopovers();
     if (already) return;
@@ -849,7 +891,7 @@ export class RightPanel {
     });
   }
 
-  private async updateTime(task: Task, time: string): Promise<void> {
+  private async updateTime(task: TaskLike, time: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
     await this.app.vault.process(file, (data) => {
@@ -916,6 +958,24 @@ export class RightPanel {
       return lines.join('\n');
     });
     this.state.set('taskStack', []);
+  }
+
+  private async reorderSubTask(
+    _parentTask: TaskLike,
+    moved: SubTask,
+    target: SubTask,
+    position: 'before' | 'after',
+  ): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(moved.filePath);
+    if (!(file instanceof TFile)) return;
+    await this.app.vault.process(file, (data) =>
+      applySubtaskReorder(
+        data,
+        { line: moved.line, rangeTo: moved.subtaskRange?.to ?? moved.line },
+        { line: target.line, rangeTo: target.subtaskRange?.to ?? target.line },
+        position,
+      ),
+    );
   }
 
   private formatDate(d: string): string {

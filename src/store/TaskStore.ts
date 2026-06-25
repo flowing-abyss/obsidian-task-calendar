@@ -264,6 +264,10 @@ export class TaskStore {
     new Notice('No target file found for task.');
   }
 
+  async addRawLine(rawLine: string): Promise<void> {
+    await this.resolver.appendLine(rawLine);
+  }
+
   onUpdate(callback: UpdateCallback): () => void {
     this.listeners.push(callback);
     return () => {

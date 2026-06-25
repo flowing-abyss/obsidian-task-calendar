@@ -1,19 +1,13 @@
 // eslint-disable-next-line no-restricted-imports, import/no-extraneous-dependencies
 import moment from 'moment';
 import { TFile, type App } from 'obsidian';
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
 import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
-import {
-  createAppWithFiles,
-  freshContainer,
-  seedTaskCache,
-  task,
-  useRealMoment,
-} from './helpers';
+import { createAppWithFiles, freshContainer, seedTaskCache, task, useRealMoment } from './helpers';
 
 useRealMoment();
 
@@ -182,7 +176,9 @@ describe('RightPanel.updateTaskTitle', () => {
   it('file not found → no-op (no throw)', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'updateTaskTitle', t, 'renamed')).resolves.toBeUndefined();
+    await expect(
+      call<Promise<void>>(panel, 'updateTaskTitle', t, 'renamed'),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -258,7 +254,9 @@ describe('RightPanel.updateDescription', () => {
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'updateDescription', t, 'desc')).resolves.toBeUndefined();
+    await expect(
+      call<Promise<void>>(panel, 'updateDescription', t, 'desc'),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -576,7 +574,9 @@ describe('RightPanel.updateDate', () => {
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'updateDate', t, '2026-06-28')).resolves.toBeUndefined();
+    await expect(
+      call<Promise<void>>(panel, 'updateDate', t, '2026-06-28'),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -630,7 +630,13 @@ describe('RightPanel.clearDate', () => {
 describe('RightPanel.updatePriority', () => {
   it('A → appends 🔺 (highest)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task', priority: 'D' });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 'task',
+      rawText: '- [ ] task',
+      priority: 'D',
+    });
     await call<Promise<void>>(panel, 'updatePriority', t, 'A');
     const after = await readMd(app, 't.md');
     expect(after).toContain('🔺');
@@ -638,7 +644,13 @@ describe('RightPanel.updatePriority', () => {
 
   it('B → appends ⏫', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task', priority: 'D' });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 'task',
+      rawText: '- [ ] task',
+      priority: 'D',
+    });
     await call<Promise<void>>(panel, 'updatePriority', t, 'B');
     const after = await readMd(app, 't.md');
     expect(after).toContain('⏫');
@@ -688,7 +700,13 @@ describe('RightPanel.updatePriority', () => {
 
   it('E → appends 🔽', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task', priority: 'D' });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 'task',
+      rawText: '- [ ] task',
+      priority: 'D',
+    });
     await call<Promise<void>>(panel, 'updatePriority', t, 'E');
     const after = await readMd(app, 't.md');
     expect(after).toContain('🔽');
@@ -696,7 +714,13 @@ describe('RightPanel.updatePriority', () => {
 
   it('F → appends ⏬', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task', priority: 'D' });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 'task',
+      rawText: '- [ ] task',
+      priority: 'D',
+    });
     await call<Promise<void>>(panel, 'updatePriority', t, 'F');
     const after = await readMd(app, 't.md');
     expect(after).toContain('⏬');
@@ -918,9 +942,7 @@ describe('RightPanel.openInFile', () => {
     const setCursor = vi.fn();
     (leaf as unknown as { view: unknown }).view = { editor: { setCursor } };
     // getLeaf('tab') creates a new leaf each call, so spy to return our pre-seeded leaf.
-    const getLeafSpy = vi
-      .spyOn(app.workspace, 'getLeaf')
-      .mockImplementation(() => leaf);
+    const getLeafSpy = vi.spyOn(app.workspace, 'getLeaf').mockImplementation(() => leaf);
     await call<Promise<void>>(panel, 'openInFile', t);
     expect(getLeafSpy).toHaveBeenCalledWith('tab');
     expect((leaf as unknown as { file?: { path: string } }).file?.path).toBe('t.md');

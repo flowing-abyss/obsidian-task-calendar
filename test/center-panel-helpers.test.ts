@@ -72,8 +72,18 @@ describe('CenterPanel pure helpers', () => {
 
     it('today does NOT include overdue via scheduled/dailyNoteDate only (CURRENT BEHAVIOR: only due<today counts as overdue, follow-up: FU-31)', () => {
       const tasks = [
-        task({ text: 'sched-overdue', rawText: '- [ ] sched-overdue', scheduled: '2026-06-20', due: undefined }),
-        task({ text: 'dn-overdue', rawText: '- [ ] dn-overdue', dailyNoteDate: '2026-06-20', due: undefined }),
+        task({
+          text: 'sched-overdue',
+          rawText: '- [ ] sched-overdue',
+          scheduled: '2026-06-20',
+          due: undefined,
+        }),
+        task({
+          text: 'dn-overdue',
+          rawText: '- [ ] dn-overdue',
+          dailyNoteDate: '2026-06-20',
+          due: undefined,
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');

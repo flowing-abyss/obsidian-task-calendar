@@ -93,10 +93,9 @@ describe('RightPanel.renderTask', () => {
 
   it('date chip renders (non-empty) when task.due is present', async () => {
     const { state, el } = await makePanel();
-    state.set(
-      'taskStack',
-      [task({ text: 'Dated', due: '2026-06-25', rawText: '- [ ] Dated 📅 2026-06-25' })],
-    );
+    state.set('taskStack', [
+      task({ text: 'Dated', due: '2026-06-25', rawText: '- [ ] Dated 📅 2026-06-25' }),
+    ]);
     const chips = el.querySelectorAll('.tc-chips-row .tc-chip');
     const dateChip = Array.from(chips).find((c) => c.textContent?.startsWith('📅'));
     expect(dateChip).toBeDefined();
@@ -114,10 +113,7 @@ describe('RightPanel.renderTask', () => {
 
   it('tag chips render for each #tag in rawText', async () => {
     const { state, el } = await makePanel();
-    state.set(
-      'taskStack',
-      [task({ text: 'Tagged', rawText: '- [ ] Tagged #work #home/kitchen' })],
-    );
+    state.set('taskStack', [task({ text: 'Tagged', rawText: '- [ ] Tagged #work #home/kitchen' })]);
     const tagChips = el.querySelectorAll('.tc-chip-tag');
     expect(tagChips).toHaveLength(2);
     expect(tagChips[0]?.textContent).toContain('#work');
@@ -157,10 +153,7 @@ describe('RightPanel.renderSubTask', () => {
       status: 'open',
       priority: 'D',
     };
-    state.set(
-      'taskStack',
-      [task({ filePath: 'f.md', line: 0, text: 'parent', subtasks: [sub] })],
-    );
+    state.set('taskStack', [task({ filePath: 'f.md', line: 0, text: 'parent', subtasks: [sub] })]);
     const cb = el.querySelector<HTMLInputElement>('.tc-task-checkbox')!;
     change(cb);
     await flushMicrotasks(20);
@@ -194,10 +187,9 @@ describe('RightPanel.renderComment', () => {
 describe('RightPanel popovers', () => {
   it('date chip click → date popover appears', async () => {
     const { state, el } = await makePanel();
-    state.set(
-      'taskStack',
-      [task({ text: 'D', due: '2026-06-25', rawText: '- [ ] D 📅 2026-06-25' })],
-    );
+    state.set('taskStack', [
+      task({ text: 'D', due: '2026-06-25', rawText: '- [ ] D 📅 2026-06-25' }),
+    ]);
     const chips = el.querySelectorAll('.tc-chips-row .tc-chip');
     const dateChip = Array.from(chips).find((c) => c.textContent?.startsWith('📅')) as HTMLElement;
     expect(dateChip).toBeDefined();
