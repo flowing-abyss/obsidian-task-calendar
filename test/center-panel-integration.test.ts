@@ -52,7 +52,7 @@ async function makePanel(
   const store = new TaskStore(app, settings);
   await store.initialize();
   const state = new AppState();
-  const panel = new CenterPanel(state, store, app, settings);
+  const panel = new CenterPanel(state, store, app, settings, null as never);
   return { panel, state, store, app };
 }
 
@@ -274,7 +274,7 @@ describe('CenterPanel.renderGrouped', () => {
   function renderGrouped(tasks: Task[]): HTMLElement {
     const store = makeStubStore(tasks) as TaskStoreType;
     const state = new AppState();
-    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS);
+    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS, null as never);
     const container = freshContainer();
     void call<void>(panel, 'renderGrouped', container, tasks);
     return container;
@@ -326,7 +326,7 @@ describe('CenterPanel.renderSearch', () => {
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', 'milk');
-    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS);
+    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS, null as never);
     panel.mount(freshContainer());
     const cards = panel['el'].querySelectorAll('.tc-task-card');
     expect(cards).toHaveLength(1);
@@ -340,7 +340,7 @@ describe('CenterPanel.renderSearch', () => {
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', 'milk');
-    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS);
+    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS, null as never);
     panel.mount(freshContainer());
     const card = panel['el'].querySelector<HTMLElement>('.tc-task-card')!;
     card.click();
@@ -365,7 +365,7 @@ describe('CenterPanel source note chip', () => {
     const panel = new CenterPanel(state, store, {} as App, {
       ...DEFAULT_SETTINGS,
       ...settingsOverrides,
-    });
+    }, null as never);
     panel.mount(freshContainer());
     return panel;
   }

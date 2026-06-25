@@ -21,7 +21,7 @@ function makePanel(
 ): { panel: CenterPanel; state: AppState } {
   const store = makeStubStore(tasks) as TaskStore;
   const app = {} as App;
-  const panel = new CenterPanel(state, store, app, settings);
+  const panel = new CenterPanel(state, store, app, settings, null as never);
   return { panel, state };
 }
 

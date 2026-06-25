@@ -1,11 +1,12 @@
-import { Notice, TFile, setIcon, type App } from 'obsidian';
+import { Menu, Notice, TFile, setIcon, type App } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import type { Task } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { CalendarSettings, ResolvedConfig } from '../settings/types';
-import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import type { TaskStore } from '../store/TaskStore';
+import type { TagManager } from '../tags/TagManager';
 import { TaskModal } from '../ui/TaskModal';
+import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
@@ -28,6 +29,7 @@ export class CenterPanel {
     private store: TaskStore,
     private app: App,
     private settings: CalendarSettings,
+    private tagManager: TagManager,
   ) {}
 
   mount(container: HTMLElement): void {
@@ -592,6 +594,42 @@ export class CenterPanel {
       e.stopPropagation();
       void this.deleteTask(task);
     });
+
+    // Drag source
+    card.setAttribute('draggable', 'true');
+    card.addEventListener('dragstart', () => {
+      this.state.set('draggingTask', task);
+      card.classList.add('tc-dragging');
+    });
+    card.addEventListener('dragend', () => {
+      this.state.set('draggingTask', null);
+      card.classList.remove('tc-dragging');
+    });
+
+    // Right-click context menu
+    card.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const menu = new Menu();
+      for (const pinnedTag of this.settings.pinnedTags) {
+        const hasTag = task.rawText.includes(pinnedTag);
+        menu.addItem((item) =>
+          item
+            .setTitle(`${hasTag ? '✓ ' : ''}${pinnedTag}`)
+            .setIcon('tag')
+            .onClick(() => {
+              void this.tagManager.toggleTagOnTask(task, pinnedTag);
+            }),
+        );
+      }
+      if (this.settings.pinnedTags.length > 0) menu.addSeparator();
+      menu.addItem((item) =>
+        item.setTitle('Open file').setIcon('file-text').onClick(() => {
+          const pathNoExt = task.filePath.replace(/\.md$/, '');
+          void this.app.workspace.openLinkText(pathNoExt, '');
+        }),
+      );
+      menu.showAtMouseEvent(e);
+    });
   }
 
   private renderAddTaskBar(): void {
@@ -652,10 +690,8 @@ export class CenterPanel {
 
     if (sel === 'inbox') {
       taskLine =
-        // @ts-expect-error migrated
-        this.settings.inboxMode === 'tag'
-          ? // @ts-expect-error migrated
-            `- [ ] ${text} ${this.settings.inboxTag ?? '#inbox'}`
+        this.settings.inbox.mode !== 'untagged'
+          ? `- [ ] ${text} ${this.settings.inbox.tag}`
           : `- [ ] ${text}`;
       fallbackPath = this.settings.customFilePath || 'Inbox.md';
     } else if (typeof sel === 'object' && sel.type === 'tag') {
@@ -777,23 +813,29 @@ export class CenterPanel {
   }
 
   private getInboxTasks(): Task[] {
-    // @ts-expect-error migrated
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    if (this.settings.inboxMode === 'tag') {
-      // @ts-expect-error migrated
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const inboxTag = this.settings.inboxTag;
-      return this.store.getTasks().filter((t) => {
-        if (t.status !== 'open') return false;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        return t.rawText.includes(inboxTag);
+    const { inbox } = this.settings;
+    const withTag =
+      inbox.mode !== 'untagged'
+        ? this.store.getTasks().filter(
+            (t) => t.status === 'open' && t.rawText.includes(inbox.tag),
+          )
+        : [];
+    const untagged =
+      inbox.mode !== 'tag'
+        ? this.store.getTasks().filter(
+            (t) => t.status === 'open' && !/#[\w/-]+/u.test(t.rawText),
+          )
+        : [];
+    if (inbox.mode === 'both') {
+      const seen = new Set<string>();
+      return [...withTag, ...untagged].filter((t) => {
+        const key = `${t.filePath}:${t.line}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
       });
     }
-    // 'untagged' mode: tasks with no hashtags
-    return this.store.getTasks().filter((t) => {
-      if (t.status !== 'open') return false;
-      return !/#[\w/-]+/u.test(t.rawText);
-    });
+    return inbox.mode === 'tag' ? withTag : untagged;
   }
 
   private getTitle(): string {
