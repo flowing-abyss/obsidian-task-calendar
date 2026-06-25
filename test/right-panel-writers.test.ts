@@ -7,6 +7,7 @@ import { RightPanel } from '../src/panels/RightPanel';
 import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
+import { openInFile } from '../src/ui/taskNavigation';
 import { createAppWithFiles, freshContainer, seedTaskCache, task, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -933,9 +934,9 @@ describe('RightPanel.deleteTask', () => {
   });
 });
 
-describe('RightPanel.openInFile', () => {
+describe('openInFile (used by RightPanel)', () => {
   it('calls workspace.getLeaf("tab") + leaf.openFile(file) + editor.setCursor', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
+    const { app } = await makePanel({ 't.md': '- [ ] task' });
     const t = task({ filePath: 't.md', line: 3, text: 'task', rawText: '- [ ] task' });
     // Build a leaf with a view + editor so openInFile can call setCursor.
     const leaf = app.workspace.getLeaf('tab');
@@ -943,7 +944,7 @@ describe('RightPanel.openInFile', () => {
     (leaf as unknown as { view: unknown }).view = { editor: { setCursor } };
     // getLeaf('tab') creates a new leaf each call, so spy to return our pre-seeded leaf.
     const getLeafSpy = vi.spyOn(app.workspace, 'getLeaf').mockImplementation(() => leaf);
-    await call<Promise<void>>(panel, 'openInFile', t);
+    await openInFile(app, t);
     expect(getLeafSpy).toHaveBeenCalledWith('tab');
     expect((leaf as unknown as { file?: { path: string } }).file?.path).toBe('t.md');
     expect(setCursor).toHaveBeenCalledWith({ line: 3, ch: 0 });
@@ -951,8 +952,8 @@ describe('RightPanel.openInFile', () => {
   });
 
   it('file not found (not a TFile) → no-op, does not throw', async () => {
-    const { panel } = await makePanel({ 't.md': '- [ ] x' });
+    const { app } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'openInFile', t)).resolves.toBeUndefined();
+    await expect(openInFile(app, t)).resolves.toBeUndefined();
   });
 });

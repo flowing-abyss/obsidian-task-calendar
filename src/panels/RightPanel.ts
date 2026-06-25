@@ -5,6 +5,7 @@ import { formatTaskLine } from '../parser/TaskParser';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
+import { openInFile } from '../ui/taskNavigation';
 
 type TaskLike = Task | SubTask;
 
@@ -622,17 +623,6 @@ export class RightPanel {
 
   // ---- Write-back helpers ----
 
-  private async openInFile(task: TaskLike): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    const leaf = this.app.workspace.getLeaf('tab');
-    await leaf.openFile(file);
-    const view = leaf.view as {
-      editor?: { setCursor?: (pos: { line: number; ch: number }) => void };
-    };
-    view.editor?.setCursor?.({ line: task.line, ch: 0 });
-  }
-
   private async updateTaskTitle(task: TaskLike, newText: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
@@ -933,7 +923,7 @@ export class RightPanel {
     });
     openItem.addEventListener('click', () => {
       menu.remove();
-      void this.openInFile(task);
+      void openInFile(this.app, task);
     });
 
     window.setTimeout(() => {

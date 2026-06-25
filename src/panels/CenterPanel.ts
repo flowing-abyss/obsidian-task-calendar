@@ -6,6 +6,7 @@ import type { CalendarSettings, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { TaskModal } from '../ui/TaskModal';
+import { openInFile } from '../ui/taskNavigation';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
@@ -663,8 +664,7 @@ export class CenterPanel {
           .setTitle('Open file')
           .setIcon('file-text')
           .onClick(() => {
-            const pathNoExt = task.filePath.replace(/\.md$/, '');
-            void this.app.workspace.openLinkText(pathNoExt, '');
+            void openInFile(this.app, task);
           }),
       );
       menu.showAtMouseEvent(e);
