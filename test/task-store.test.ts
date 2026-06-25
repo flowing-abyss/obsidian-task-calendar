@@ -376,12 +376,8 @@ describe('TaskStore addTask', () => {
     const today = window.moment().format('YYYY-MM-DD');
     const settings = { ...DEFAULT_SETTINGS, addToToday: true };
     const app = await createAppWithFiles({ [`periodic/daily/${today}.md`]: '- [ ] existing' });
-    (app as unknown as Record<string, unknown>).plugins = {
-      'periodic-notes': { settings: { daily: { folder: 'periodic/daily', format: 'YYYY-MM-DD' } } },
-    };
-    (app as unknown as Record<string, unknown>).commands = {
-      executeCommandById: () => {},
-    };
+    (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
+    (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };
     const store = new TaskStore(app, settings);
     await store.addTask(today, 'today task');
     const file = app.vault.getAbstractFileByPath(`periodic/daily/${today}.md`);

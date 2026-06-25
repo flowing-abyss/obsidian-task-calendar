@@ -9,6 +9,7 @@ import {
 import { parseSubItems } from '../parser/SubItemParser';
 import { parseTask } from '../parser/TaskParser';
 import type { Task, TaskFilter } from '../parser/types';
+import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings } from '../settings/types';
 
 export interface StoreUpdateEvent {
@@ -44,11 +45,14 @@ export class TaskStore {
   private listeners: UpdateCallback[] = [];
   private metadataCacheRefs: EventRef[] = [];
   private vaultRefs: EventRef[] = [];
+  private resolver: DailyNoteResolver;
 
   constructor(
     private app: App,
     private settings: CalendarSettings,
-  ) {}
+  ) {
+    this.resolver = new DailyNoteResolver(app, settings);
+  }
 
   async initialize(): Promise<void> {
     const files = this.app.vault.getMarkdownFiles();
@@ -230,58 +234,34 @@ export class TaskStore {
   }
 
   async addTask(date: string, text: string): Promise<void> {
-    const s = this.settings;
-    const prefix = s.taskPrefix.trim();
-    const taskLine = `- [ ] ${prefix ? prefix + ' ' : ''}${text} 📅 ${date}`;
-    let file: TFile | null = null;
+    if (this.settings.addToToday) {
+      await this.resolver.addTask(text, date);
+      return;
+    }
 
-    if (s.addToToday) {
-      // Try periodic-notes plugin settings first
-      const appAsAny = this.app as unknown as Record<string, unknown>;
-      const plugins = appAsAny['plugins'] as Record<string, unknown> | undefined;
-      const periodicNotes = plugins?.['periodic-notes'] as
-        | { settings?: { daily?: { folder?: string; format?: string } } }
-        | undefined;
-      const folder = periodicNotes?.settings?.daily?.folder ?? s.desktop.dailyNoteFolder;
-      const format = periodicNotes?.settings?.daily?.format ?? s.desktop.dailyNoteFormat;
-      const fileName = window.moment().format(format);
-      const filePath = `${folder}/${fileName}.md`;
+    if (this.settings.customFilePath) {
+      const filePath = this.settings.customFilePath;
+      let file: TFile | null = null;
       const existing = this.app.vault.getAbstractFileByPath(filePath);
       if (existing instanceof TFile) {
         file = existing;
       } else {
-        // Open daily note via periodic-notes command, wait for it to appear
-        (
-          this.app as unknown as { commands: { executeCommandById(id: string): void } }
-        ).commands.executeCommandById('periodic-notes:open-daily-note');
-        for (let tries = 0; tries < 10; tries++) {
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 200);
-          });
-          const found = this.app.vault.getAbstractFileByPath(filePath);
-          if (found instanceof TFile) {
-            file = found;
-            break;
-          }
-        }
-      }
-    } else if (s.customFilePath) {
-      const existing = this.app.vault.getAbstractFileByPath(s.customFilePath);
-      if (existing instanceof TFile) {
-        file = existing;
-      } else {
-        await this.app.vault.create(s.customFilePath, '');
-        const found = this.app.vault.getAbstractFileByPath(s.customFilePath);
+        await this.app.vault.create(filePath, '');
+        const found = this.app.vault.getAbstractFileByPath(filePath);
         if (found instanceof TFile) file = found;
       }
-    }
-
-    if (!file) {
-      new Notice('No target file found for task.');
+      if (!file) {
+        new Notice('No target file found for task.');
+        return;
+      }
+      const prefix = this.settings.taskPrefix.trim();
+      const taskLine = `- [ ] ${prefix ? prefix + ' ' : ''}${text} 📅 ${date}`;
+      await this.app.vault.process(file, (data) => data + '\n' + taskLine);
+      new Notice('Task added to ' + file.name);
       return;
     }
-    await this.app.vault.process(file, (data) => data + '\n' + taskLine);
-    new Notice('Task added to ' + file.name);
+
+    new Notice('No target file found for task.');
   }
 
   onUpdate(callback: UpdateCallback): () => void {

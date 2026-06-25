@@ -48,27 +48,22 @@ describe('TaskStore error paths (Notice spy via vi.mock)', () => {
     expect(String(noticeCalls()[0]?.[0])).toContain('Failed to update');
   });
 
-  it('addTask polling exhausts shows Notice (fake timers)', async () => {
-    const settings = { ...DEFAULT_SETTINGS, addToToday: true };
-    const app = await createAppWithFiles({});
-    (app as unknown as Record<string, unknown>).plugins = {
-      'periodic-notes': { settings: { daily: { folder: 'periodic/daily', format: 'YYYY-MM-DD' } } },
-    };
-    (app as unknown as Record<string, unknown>).commands = {
-      executeCommandById: () => {},
+  it('addTask with addToToday true delegates to resolver and adds task', async () => {
+    const today = window.moment().format('YYYY-MM-DD');
+    const app = await createAppWithFiles({ [`periodic/daily/${today}.md`]: '# Today\n' });
+    (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
+    (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      addToToday: true,
+      taskPrefix: '',
+      dailyNoteProvider: 'manual' as const,
+      taskInsertionMode: 'append' as const,
+      desktop: { ...DEFAULT_SETTINGS.desktop, dailyNoteFolder: 'periodic/daily', dailyNoteFormat: 'YYYY-MM-DD' },
     };
     const store = new TaskStore(app, settings);
-    vi.useFakeTimers({ now: new Date('2026-06-24T10:00:00Z').getTime() });
-    const addPromise = store.addTask('2026-06-24', 'never resolves');
-    for (let i = 0; i < 11; i++) {
-      await vi.advanceTimersByTimeAsync(200);
-    }
-    await addPromise;
-    vi.useRealTimers();
-    expect(noticeCalls().length).toBeGreaterThan(0);
-    expect(
-      String(noticeCalls().find((c) => String(c[0]).includes('No target file'))?.[0]),
-    ).toContain('No target file');
+    await store.addTask(today, 'test task');
+    expect(noticeCalls().some((c) => String(c[0]).includes('Task added to'))).toBe(true);
   });
 
   it('addTask no config shows Notice', async () => {
