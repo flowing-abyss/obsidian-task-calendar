@@ -1,0 +1,434 @@
+import { App, Setting } from 'obsidian';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { CalendarSettingsTab } from '../src/settings/SettingsTab';
+import type { CalendarSettings } from '../src/settings/types';
+
+interface StubPlugin {
+  app: App;
+  settings: CalendarSettings;
+  saveSettings: ReturnType<typeof vi.fn>;
+}
+
+interface CapturedComp {
+  type: 'text' | 'dropdown' | 'toggle' | 'button' | 'color';
+  name: string;
+  comp: {
+    getValue?: () => unknown;
+    setValue: (v: unknown) => unknown;
+    clickHandler?: () => void;
+  };
+}
+
+function patchSetting(captured: CapturedComp[]): () => void {
+  const proto = Setting.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const refs: Record<string, (...args: unknown[]) => unknown> = {
+    addText: proto.addText!,
+    addDropdown: proto.addDropdown!,
+    addToggle: proto.addToggle!,
+    addButton: proto.addButton!,
+    addColorPicker: proto.addColorPicker!,
+  };
+  const wrap =
+    (orig: (...args: unknown[]) => unknown, type: CapturedComp['type']) =>
+    function (this: { components: unknown[]; nameEl?: { textContent?: string } }, cb: unknown) {
+      const result = orig.call(this, cb);
+      captured.push({
+        type,
+        name: this.nameEl?.textContent ?? '',
+        comp: this.components[this.components.length - 1] as CapturedComp['comp'],
+      });
+      return result;
+    };
+  const set = (name: string, fn: unknown) => {
+    (Setting.prototype as unknown as Record<string, unknown>)[name] = fn;
+  };
+  set('addText', wrap(refs.addText!, 'text'));
+  set('addDropdown', wrap(refs.addDropdown!, 'dropdown'));
+  set('addToggle', wrap(refs.addToggle!, 'toggle'));
+  set('addButton', wrap(refs.addButton!, 'button'));
+  set('addColorPicker', wrap(refs.addColorPicker!, 'color'));
+  return () => {
+    set('addText', refs.addText!);
+    set('addDropdown', refs.addDropdown!);
+    set('addToggle', refs.addToggle!);
+    set('addButton', refs.addButton!);
+    set('addColorPicker', refs.addColorPicker!);
+  };
+}
+
+function makeTab(
+  settingsOverrides: Partial<CalendarSettings> = {},
+): { tab: CalendarSettingsTab; plugin: StubPlugin; app: App; captured: CapturedComp[] } {
+  const app = new App();
+  const settings = { ...structuredClone(DEFAULT_SETTINGS), ...settingsOverrides };
+  const saveSettings = vi.fn().mockResolvedValue(undefined);
+  const plugin: StubPlugin = { app, settings, saveSettings };
+  const captured: CapturedComp[] = [];
+  const restore = patchSetting(captured);
+  const tab = new CalendarSettingsTab(
+    app,
+    plugin as unknown as ConstructorParameters<typeof CalendarSettingsTab>[1],
+  );
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  tab.display();
+  restore();
+  return { tab, plugin, app, captured };
+}
+
+function openSection(tab: CalendarSettingsTab, index: number): HTMLElement {
+  const headers = tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header');
+  headers[index]!.click();
+  return tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section')[index]!.querySelector(
+    '.tc-settings-section-body',
+  )!;
+}
+
+/** Find a Setting's root element within a section body by its nameEl text.
+ * Searches recursively so Settings nested inside tag-group cards are found. */
+function findSettingEl(body: HTMLElement, name: string): HTMLElement | null {
+  const allDivs = body.querySelectorAll('div');
+  for (const d of allDivs) {
+    if (d.textContent === name && d.children.length === 0) {
+      // The nameEl is the 2nd child of infoEl; the Setting root is the
+      // ancestor whose parent is either body or a .tc-settings-group-card.
+      let cur: HTMLElement | null = d;
+      while (cur && cur.parentElement !== body && !cur.classList?.contains('tc-settings-group-card')) {
+        cur = cur.parentElement;
+      }
+      // cur is the infoEl (parent of nameEl); the Setting root is cur.parentElement
+      // Actually nameEl is child of infoEl; infoEl is child of settingEl.
+      // Walk up: nameEl -> infoEl -> settingEl
+      return d.parentElement?.parentElement ?? null;
+    }
+  }
+  return null;
+}
+
+function findInput(body: HTMLElement, name: string): HTMLInputElement | null {
+  const el = findSettingEl(body, name);
+  if (!el) return null;
+  // TextComponent creates a plain <input> (no type attr); exclude color inputs.
+  const inputs = Array.from(el.querySelectorAll<HTMLInputElement>('input'));
+  return inputs.find((i) => i.type !== 'color') ?? null;
+}
+
+function findDropdown(body: HTMLElement, name: string): HTMLSelectElement | null {
+  return findSettingEl(body, name)?.querySelector<HTMLSelectElement>('select') ?? null;
+}
+
+function findColorInput(body: HTMLElement, name: string): HTMLInputElement | null {
+  const el = findSettingEl(body, name);
+  if (!el) return null;
+  return Array.from(el.querySelectorAll<HTMLInputElement>('input')).find((i) => i.type === 'color') ?? null;
+}
+
+function findComp(captured: CapturedComp[], name: string, type: CapturedComp['type']): CapturedComp | undefined {
+  return captured.find((c) => c.name === name && c.type === type);
+}
+
+describe('CalendarSettingsTab renderGeneralSettings', () => {
+  it('task prefix input reflects setting and saves on change', () => {
+    const { tab, plugin, captured } = makeTab({ taskPrefix: '#task' });
+    const body = openSection(tab, 0);
+    const input = findInput(body, 'Task prefix');
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('#task');
+    findComp(captured, 'Task prefix', 'text')!.comp.setValue('#todo');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.taskPrefix).toBe('#todo');
+  });
+
+  it("add to today toggle reflects setting and saves on change", () => {
+    const { tab, plugin, captured } = makeTab({ addToToday: true });
+    openSection(tab, 0);
+    // Toggle has no checkbox input in the mock; verify via captured component value
+    const toggleComp = findComp(captured, "Add to today's note", 'toggle')!;
+    expect(toggleComp.comp.getValue!()).toBe(true);
+    toggleComp.comp.setValue(false);
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.addToToday).toBe(false);
+  });
+
+  it('custom file path visible when addToToday is false', () => {
+    const { tab } = makeTab({ addToToday: false, customFilePath: 'inbox.md' });
+    const body = openSection(tab, 0);
+    const input = findInput(body, 'Custom file path');
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('inbox.md');
+  });
+
+  it('custom file path hidden when addToToday is true', () => {
+    const { tab } = makeTab({ addToToday: true });
+    const body = openSection(tab, 0);
+    const input = findInput(body, 'Custom file path');
+    expect(input).toBeNull();
+  });
+
+  it('custom file path change saves', () => {
+    const { tab, plugin, captured } = makeTab({ addToToday: false, customFilePath: 'old.md' });
+    openSection(tab, 0);
+    findComp(captured, 'Custom file path', 'text')!.comp.setValue('new.md');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.customFilePath).toBe('new.md');
+  });
+});
+
+describe('CalendarSettingsTab renderTagGroupSettings', () => {
+  it('inbox source dropdown has tag/untagged options', () => {
+    const { tab } = makeTab({ inboxMode: 'untagged' });
+    const body = openSection(tab, 3);
+    const dd = findDropdown(body, 'Inbox source');
+    expect(dd).not.toBeNull();
+    const options = Array.from(dd!.options).map((o) => o.value);
+    expect(options).toContain('tag');
+    expect(options).toContain('untagged');
+  });
+
+  it('inbox source switch to tag saves and re-renders', () => {
+    const { tab, plugin, captured } = makeTab({ inboxMode: 'untagged' });
+    openSection(tab, 3);
+    findComp(captured, 'Inbox source', 'dropdown')!.comp.setValue('tag');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.inboxMode).toBe('tag');
+  });
+
+  it('inbox tag field visible when inboxMode is tag', () => {
+    const { tab } = makeTab({ inboxMode: 'tag', inboxTag: '#inbox' });
+    const body = openSection(tab, 3);
+    const input = findInput(body, 'Inbox tag');
+    expect(input).not.toBeNull();
+    expect(input!.value).toBe('#inbox');
+  });
+
+  it('inbox tag field hidden when inboxMode is untagged', () => {
+    const { tab } = makeTab({ inboxMode: 'untagged' });
+    const body = openSection(tab, 3);
+    const input = findInput(body, 'Inbox tag');
+    expect(input).toBeNull();
+  });
+
+  it('inbox tag change saves (trimmed)', () => {
+    const { tab, plugin, captured } = makeTab({ inboxMode: 'tag', inboxTag: '#old' });
+    openSection(tab, 3);
+    findComp(captured, 'Inbox tag', 'text')!.comp.setValue('  #new  ');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.inboxTag).toBe('#new');
+  });
+
+  it('add group button appends new group with timestamp id', () => {
+    const { tab, plugin, captured } = makeTab({ tagGroups: [] });
+    openSection(tab, 3);
+    // Add group button is the only button with empty name (no setName called)
+    const addBtn = captured.find((c) => c.type === 'button' && c.name === '');
+    expect(addBtn).toBeDefined();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-25T10:00:00Z'));
+    addBtn!.comp.clickHandler!();
+    vi.useRealTimers();
+    expect(plugin.settings.tagGroups).toHaveLength(1);
+    expect(plugin.settings.tagGroups[0]!.id).toMatch(/^group-\d+$/);
+    expect(plugin.saveSettings).toHaveBeenCalled();
+  });
+});
+
+describe('CalendarSettingsTab renderTagGroupCard', () => {
+  const baseGroup = { id: 'g1', name: 'Work', mode: 'prefix' as const, prefix: 'work' };
+
+  it('group name input saves on change', () => {
+    const { tab, plugin, captured } = makeTab({ tagGroups: [{ ...baseGroup }] });
+    openSection(tab, 3);
+    findComp(captured, 'Group name', 'text')!.comp.setValue('Personal');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.tagGroups[0]!.name).toBe('Personal');
+  });
+
+  it('mode dropdown has prefix/manual options', () => {
+    const { tab } = makeTab({ tagGroups: [{ ...baseGroup }] });
+    const body = openSection(tab, 3);
+    const dd = findDropdown(body, 'Mode');
+    expect(dd).not.toBeNull();
+    const options = Array.from(dd!.options).map((o) => o.value);
+    expect(options).toEqual(['prefix', 'manual']);
+  });
+
+  it('prefix mode shows Prefix input', () => {
+    const { tab } = makeTab({ tagGroups: [{ ...baseGroup, mode: 'prefix', prefix: 'work' }] });
+    const body = openSection(tab, 3);
+    expect(findInput(body, 'Prefix')).not.toBeNull();
+    expect(findInput(body, 'Tags')).toBeNull();
+  });
+
+  it('manual mode shows Tags input', () => {
+    const { tab } = makeTab({ tagGroups: [{ ...baseGroup, mode: 'manual', tags: ['#a', '#b'] }] });
+    const body = openSection(tab, 3);
+    expect(findInput(body, 'Tags')).not.toBeNull();
+    expect(findInput(body, 'Prefix')).toBeNull();
+  });
+
+  it('prefix input change saves (trimmed)', () => {
+    const { tab, plugin, captured } = makeTab({ tagGroups: [{ ...baseGroup, prefix: '' }] });
+    openSection(tab, 3);
+    findComp(captured, 'Prefix', 'text')!.comp.setValue('  work  ');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.tagGroups[0]!.prefix).toBe('work');
+  });
+
+  it('tags CSV input parses to array (split, trim, filter empty)', () => {
+    const { tab, plugin, captured } = makeTab({
+      tagGroups: [{ ...baseGroup, mode: 'manual', tags: [] }],
+    });
+    openSection(tab, 3);
+    findComp(captured, 'Tags', 'text')!.comp.setValue('a, b, c');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.tagGroups[0]!.tags).toEqual(['a', 'b', 'c']);
+  });
+
+  it('tags CSV input filters out empty values', () => {
+    const { tab, plugin, captured } = makeTab({
+      tagGroups: [{ ...baseGroup, mode: 'manual', tags: [] }],
+    });
+    openSection(tab, 3);
+    findComp(captured, 'Tags', 'text')!.comp.setValue('a,, ,b');
+    expect(plugin.settings.tagGroups[0]!.tags).toEqual(['a', 'b']);
+  });
+
+  it('color picker saves on change', () => {
+    const { tab, plugin, captured } = makeTab({ tagGroups: [{ ...baseGroup, color: '#ff0000' }] });
+    const body = openSection(tab, 3);
+    const colorInput = findColorInput(body, 'Color');
+    expect(colorInput).not.toBeNull();
+    findComp(captured, 'Color', 'color')!.comp.setValue('#00ff00');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.tagGroups[0]!.color).toBe('#00ff00');
+  });
+
+  it('delete button splices group and saves', () => {
+    const { tab, plugin, captured } = makeTab({
+      tagGroups: [{ ...baseGroup }, { ...baseGroup, id: 'g2', name: 'Other' }],
+    });
+    const body = openSection(tab, 3);
+    const cards = body.querySelectorAll('.tc-settings-group-card');
+    expect(cards).toHaveLength(2);
+    // Delete buttons are the buttons in "Group name" Setting rows (one per card)
+    const groupBtns = captured.filter((c) => c.name === 'Group name' && c.type === 'button');
+    expect(groupBtns).toHaveLength(2);
+    groupBtns[0]!.comp.clickHandler!();
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.tagGroups).toHaveLength(1);
+    expect(plugin.settings.tagGroups[0]!.id).toBe('g2');
+  });
+});
+
+describe('CalendarSettingsTab renderViewConfigSettings', () => {
+  it('default view dropdown has month/week/list', () => {
+    const { tab } = makeTab();
+    const body = openSection(tab, 1); // Desktop
+    const dd = findDropdown(body, 'Default view');
+    expect(dd).not.toBeNull();
+    const options = Array.from(dd!.options).map((o) => o.value);
+    expect(options).toEqual(['month', 'week', 'list']);
+  });
+
+  it('default view change saves', () => {
+    const { tab, plugin, captured } = makeTab();
+    openSection(tab, 1);
+    findComp(captured, 'Default view', 'dropdown')!.comp.setValue('week');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.desktop.defaultView).toBe('week');
+  });
+
+  it('style dropdown has 11 options', () => {
+    const { tab } = makeTab();
+    const body = openSection(tab, 1);
+    const dd = findDropdown(body, 'Default style');
+    expect(dd).not.toBeNull();
+    expect(dd!.options).toHaveLength(11);
+  });
+
+  it('style change saves', () => {
+    const { tab, plugin, captured } = makeTab();
+    openSection(tab, 1);
+    findComp(captured, 'Default style', 'dropdown')!.comp.setValue('style3');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.desktop.style).toBe('style3');
+  });
+
+  it('first day of week dropdown parses int on change', () => {
+    const { tab, plugin, captured } = makeTab();
+    openSection(tab, 1);
+    findComp(captured, 'First day of week', 'dropdown')!.comp.setValue('1');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.desktop.firstDayOfWeek).toBe(1);
+  });
+
+  it('daily note folder input saves', () => {
+    const { tab, plugin, captured } = makeTab();
+    openSection(tab, 1);
+    findComp(captured, 'Daily note folder', 'text')!.comp.setValue('notes/daily');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.desktop.dailyNoteFolder).toBe('notes/daily');
+  });
+
+  it('daily note format input saves', () => {
+    const { tab, plugin, captured } = makeTab();
+    openSection(tab, 1);
+    findComp(captured, 'Daily note format', 'text')!.comp.setValue('DD-MM-YYYY');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.desktop.dailyNoteFormat).toBe('DD-MM-YYYY');
+  });
+
+  it('global task filter input saves', () => {
+    const { tab, plugin, captured } = makeTab();
+    openSection(tab, 1);
+    findComp(captured, 'Global task filter', 'text')!.comp.setValue('#task');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.desktop.globalTaskFilter).toBe('#task');
+  });
+
+  it('upcoming days valid number saves', () => {
+    const { tab, plugin, captured } = makeTab();
+    openSection(tab, 1);
+    findComp(captured, 'Upcoming days', 'text')!.comp.setValue('14');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.settings.desktop.upcomingDays).toBe(14);
+  });
+
+  it('upcoming days NaN input does not save (CURRENT BEHAVIOR)', () => {
+    const { tab, plugin, captured } = makeTab({
+      desktop: { ...DEFAULT_SETTINGS.desktop, upcomingDays: 7 },
+    });
+    openSection(tab, 1);
+    findComp(captured, 'Upcoming days', 'text')!.comp.setValue('abc');
+    expect(plugin.saveSettings).not.toHaveBeenCalled();
+    expect(plugin.settings.desktop.upcomingDays).toBe(7); // unchanged
+  });
+
+  it('upcoming days negative input does not save (CURRENT BEHAVIOR)', () => {
+    const { tab, plugin, captured } = makeTab({
+      desktop: { ...DEFAULT_SETTINGS.desktop, upcomingDays: 7 },
+    });
+    openSection(tab, 1);
+    findComp(captured, 'Upcoming days', 'text')!.comp.setValue('-5');
+    expect(plugin.saveSettings).not.toHaveBeenCalled();
+    expect(plugin.settings.desktop.upcomingDays).toBe(7); // unchanged
+  });
+
+  it('upcoming days zero does not save (CURRENT BEHAVIOR, n > 0 required)', () => {
+    const { tab, plugin, captured } = makeTab({
+      desktop: { ...DEFAULT_SETTINGS.desktop, upcomingDays: 7 },
+    });
+    openSection(tab, 1);
+    findComp(captured, 'Upcoming days', 'text')!.comp.setValue('0');
+    expect(plugin.saveSettings).not.toHaveBeenCalled();
+    expect(plugin.settings.desktop.upcomingDays).toBe(7);
+  });
+
+  it('mobile section has same view config settings', () => {
+    const { tab } = makeTab();
+    const body = openSection(tab, 2); // Mobile
+    expect(findDropdown(body, 'Default view')).not.toBeNull();
+    expect(findDropdown(body, 'Default style')).not.toBeNull();
+    expect(findInput(body, 'Daily note folder')).not.toBeNull();
+  });
+});
