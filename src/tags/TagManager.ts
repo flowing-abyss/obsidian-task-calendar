@@ -74,6 +74,12 @@ export class TagManager {
     }
   }
 
+  async replaceTagOnTask(task: Task, oldTag: string, newTag: string): Promise<void> {
+    if (oldTag === newTag) return;
+    await this.addTagToTask(task, newTag);
+    await this.removeTagFromTask(task, oldTag);
+  }
+
   async assignTagFromInbox(task: Task, tag: string): Promise<void> {
     await this.addTagToTask(task, tag);
     if (this.settings.inbox.removeTagOnAssign) {

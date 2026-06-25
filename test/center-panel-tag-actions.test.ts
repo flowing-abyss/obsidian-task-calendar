@@ -85,6 +85,45 @@ describe('CenterPanel tag→task drop target', () => {
   });
 });
 
+describe('CenterPanel tag chip replace on drop', () => {
+  it('dropping draggingTag onto a chip calls replaceTagOnTask, not assignTagFromInbox', () => {
+    const t = task({ rawText: '- [ ] t #work #task/inbox', status: 'open', line: 1 });
+    const { el, state, tm } = makeCenter([t], {
+      inbox: { mode: 'both', tag: '#task/inbox', showUntagged: false, removeTagOnAssign: true },
+    });
+    const replaceSpy = vi.spyOn(tm, 'replaceTagOnTask').mockResolvedValue(undefined);
+    const assignSpy = vi.spyOn(tm, 'assignTagFromInbox').mockResolvedValue(undefined);
+
+    state.set('draggingTag', '#task/next');
+    const chip = el.querySelector('.tc-task-tag') as HTMLElement;
+    expect(chip).not.toBeNull();
+
+    chip.dispatchEvent(new MouseEvent('dragover', { bubbles: true }));
+    expect(chip.classList.contains('tc-drop-target')).toBe(true);
+
+    chip.dispatchEvent(new MouseEvent('drop', { bubbles: true }));
+    expect(chip.classList.contains('tc-drop-target')).toBe(false);
+    expect(replaceSpy).toHaveBeenCalledOnce();
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it('dragging a chip onto itself is a no-op', () => {
+    const t = task({ rawText: '- [ ] t #work', status: 'open', line: 1 });
+    const { el, state, tm } = makeCenter([t], {
+      inbox: { mode: 'tag', tag: '#work', showUntagged: false, removeTagOnAssign: true },
+    });
+    const replaceSpy = vi.spyOn(tm, 'replaceTagOnTask').mockResolvedValue(undefined);
+
+    state.set('draggingTag', '#work');
+    const chip = el.querySelector('.tc-task-tag') as HTMLElement;
+    chip.dispatchEvent(new MouseEvent('dragover', { bubbles: true }));
+    expect(chip.classList.contains('tc-drop-target')).toBe(false);
+
+    chip.dispatchEvent(new MouseEvent('drop', { bubbles: true }));
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe('CenterPanel inbox tasks (new inbox object)', () => {
   it('getInboxTasks tag mode returns tasks with inbox.tag', () => {
     const tasks = [

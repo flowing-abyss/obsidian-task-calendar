@@ -1,9 +1,9 @@
 // test/tag-manager-files.test.ts
 import { describe, expect, it, vi } from 'vitest';
-import { TagManager } from '../src/tags/TagManager';
-import { DEFAULT_SETTINGS } from '../src/settings/defaults';
-import { createAppWithFiles } from './helpers';
 import type { Task } from '../src/parser/types';
+import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { TagManager } from '../src/tags/TagManager';
+import { createAppWithFiles } from './helpers';
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -35,7 +35,9 @@ describe('TagManager.addTagToTask', () => {
     const { tm, app } = await makeManager({ 'notes/tasks.md': content });
     const task = makeTask({ line: 0 });
     await tm.addTagToTask(task, '#task/next');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     expect(updated).toContain('#task/next');
   });
 
@@ -44,7 +46,9 @@ describe('TagManager.addTagToTask', () => {
     const { tm, app } = await makeManager({ 'notes/tasks.md': content });
     const task = makeTask({ line: 0, rawText: content.trim() });
     await tm.addTagToTask(task, '#task/next');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     // Should only have one occurrence
     expect(updated.split('#task/next').length - 1).toBe(1);
   });
@@ -62,7 +66,9 @@ describe('TagManager.removeTagFromTask', () => {
     const { tm, app } = await makeManager({ 'notes/tasks.md': content });
     const task = makeTask({ line: 0, rawText: content.trim() });
     await tm.removeTagFromTask(task, '#task/next');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     expect(updated).not.toContain('#task/next');
   });
 
@@ -71,7 +77,9 @@ describe('TagManager.removeTagFromTask', () => {
     const { tm, app } = await makeManager({ 'notes/tasks.md': content });
     const task = makeTask({ line: 0, rawText: content.trim() });
     await tm.removeTagFromTask(task, '#task/next');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     expect(updated).toContain('#task/next-action');
   });
 });
@@ -82,7 +90,9 @@ describe('TagManager.toggleTagOnTask', () => {
     const { tm, app } = await makeManager({ 'notes/tasks.md': content });
     const task = makeTask({ line: 0, rawText: '- [ ] do thing' });
     await tm.toggleTagOnTask(task, '#task/next');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     expect(updated).toContain('#task/next');
   });
 
@@ -91,7 +101,9 @@ describe('TagManager.toggleTagOnTask', () => {
     const { tm, app } = await makeManager({ 'notes/tasks.md': content });
     const task = makeTask({ line: 0, rawText: '- [ ] do thing #task/next' });
     await tm.toggleTagOnTask(task, '#task/next');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     expect(updated).not.toContain('#task/next');
   });
 });
@@ -102,7 +114,9 @@ describe('TagManager.assignTagFromInbox', () => {
     const { tm, app } = await makeManager({ 'notes/tasks.md': content });
     const task = makeTask({ line: 0, rawText: '- [ ] do thing #task/inbox' });
     await tm.assignTagFromInbox(task, '#task/next');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     expect(updated).toContain('#task/next');
     expect(updated).not.toContain('#task/inbox');
   });
@@ -113,9 +127,36 @@ describe('TagManager.assignTagFromInbox', () => {
     settings.inbox.removeTagOnAssign = false;
     const task = makeTask({ line: 0, rawText: '- [ ] do thing #task/inbox' });
     await tm.assignTagFromInbox(task, '#task/next');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     expect(updated).toContain('#task/next');
     expect(updated).toContain('#task/inbox');
+  });
+});
+
+describe('TagManager.replaceTagOnTask', () => {
+  it('adds new tag and removes old tag in one operation', async () => {
+    const content = '- [ ] do thing #task/inbox\n';
+    const { tm, app } = await makeManager({ 'notes/tasks.md': content });
+    const task = makeTask({ line: 0, rawText: '- [ ] do thing #task/inbox' });
+    await tm.replaceTagOnTask(task, '#task/inbox', '#task/next');
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
+    expect(updated).toContain('#task/next');
+    expect(updated).not.toContain('#task/inbox');
+  });
+
+  it('is a no-op when oldTag equals newTag', async () => {
+    const content = '- [ ] do thing #task/inbox\n';
+    const { tm, app } = await makeManager({ 'notes/tasks.md': content });
+    const task = makeTask({ line: 0, rawText: '- [ ] do thing #task/inbox' });
+    await tm.replaceTagOnTask(task, '#task/inbox', '#task/inbox');
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
+    expect(updated).toBe(content);
   });
 });
 
@@ -125,7 +166,9 @@ describe('TagManager.renameTag', () => {
     const { tm, app, settings } = await makeManager({ 'notes/tasks.md': content });
     settings.pinnedTags.push('#task/next');
     await tm.renameTag('#task/next', '#task/next-action');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     expect(updated).toContain('#task/next-action');
     expect(updated).not.toContain('#task/next ');
     expect(settings.pinnedTags).toContain('#task/next-action');
@@ -136,7 +179,9 @@ describe('TagManager.renameTag', () => {
     const content = '- [ ] do thing #task/next-action\n';
     const { tm, app } = await makeManager({ 'notes/tasks.md': content });
     await tm.renameTag('#task/next', '#task/soon');
-    const updated = await app.vault.read(app.vault.getAbstractFileByPath('notes/tasks.md') as never);
+    const updated = await app.vault.read(
+      app.vault.getAbstractFileByPath('notes/tasks.md') as never,
+    );
     // #task/next-action should NOT be changed since #task/next is a prefix
     expect(updated).toContain('#task/next-action');
     expect(updated).not.toContain('#task/soon');

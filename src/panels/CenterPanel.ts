@@ -577,6 +577,25 @@ export class CenterPanel {
           tagEl.setCssProps({ '--tc-tag-color': color });
           tagEl.addClass('tc-task-tag--colored');
         }
+        // Drop target: dragging a tag onto a chip replaces it
+        tagEl.addEventListener('dragover', (e) => {
+          const dragging = this.state.get('draggingTag');
+          if (!dragging || dragging === tag) return;
+          e.preventDefault();
+          e.stopPropagation();
+          tagEl.classList.add('tc-drop-target');
+        });
+        tagEl.addEventListener('dragleave', () => {
+          tagEl.classList.remove('tc-drop-target');
+        });
+        tagEl.addEventListener('drop', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          tagEl.classList.remove('tc-drop-target');
+          const dragging = this.state.get('draggingTag');
+          if (!dragging || dragging === tag) return;
+          void this.tagManager.replaceTagOnTask(task, tag, dragging);
+        });
       }
     }
 
