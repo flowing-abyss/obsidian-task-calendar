@@ -1,5 +1,5 @@
 // eslint-disable-next-line no-restricted-imports, import/no-extraneous-dependencies
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
@@ -7,7 +7,6 @@ import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
 import { freshContainer, makeStubStore, task, useRealMoment } from './helpers';
-import { vi } from 'vitest';
 
 useRealMoment();
 
@@ -24,9 +23,24 @@ function makeCenter(tasks: Task[]): { el: HTMLElement; state: AppState; panel: C
 }
 
 describe('CenterPanel multi-selection', () => {
-  const t1 = task({ filePath: 'a.md', line: 0, rawText: '- [ ] Task 1 #task/inbox', status: 'open' });
-  const t2 = task({ filePath: 'a.md', line: 1, rawText: '- [ ] Task 2 #task/inbox', status: 'open' });
-  const t3 = task({ filePath: 'a.md', line: 2, rawText: '- [ ] Task 3 #task/inbox', status: 'open' });
+  const t1 = task({
+    filePath: 'a.md',
+    line: 0,
+    rawText: '- [ ] Task 1 #task/inbox',
+    status: 'open',
+  });
+  const t2 = task({
+    filePath: 'a.md',
+    line: 1,
+    rawText: '- [ ] Task 2 #task/inbox',
+    status: 'open',
+  });
+  const t3 = task({
+    filePath: 'a.md',
+    line: 2,
+    rawText: '- [ ] Task 3 #task/inbox',
+    status: 'open',
+  });
 
   it('plain click selects only one card (no tc-multi-selected)', () => {
     const { el } = makeCenter([t1, t2]);

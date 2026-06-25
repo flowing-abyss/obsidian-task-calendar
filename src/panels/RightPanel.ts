@@ -5,8 +5,8 @@ import { formatTaskLine } from '../parser/TaskParser';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
-import { openInFile } from '../ui/taskNavigation';
 import { showTagDropdown } from '../ui/tagDropdown';
+import { openInFile } from '../ui/taskNavigation';
 
 type TaskLike = Task | SubTask;
 

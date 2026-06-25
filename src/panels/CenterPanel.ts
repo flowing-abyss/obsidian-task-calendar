@@ -771,34 +771,24 @@ export class CenterPanel {
         }
       }
 
-      // ── Priority ───────────────────────────────────────────
-      const PRIORITY_LEVELS: Array<{ label: string; value: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' }> = [
-        { label: '🔺 Highest', value: 'A' },
-        { label: '⏫ High', value: 'B' },
-        { label: '🔼 Medium', value: 'C' },
-        { label: 'Normal', value: 'D' },
-        { label: '🔽 Low', value: 'E' },
-        { label: '⏬ Lowest', value: 'F' },
-      ];
-      for (const level of PRIORITY_LEVELS) {
-        menu.addItem((item) =>
-          item
-            .setTitle(level.label)
-            .setSection('priority')
-            .setChecked(task.priority === level.value)
-            .onClick(() => void this.setPriority(task, level.value)),
-        );
-      }
+      // ── Priority (submenu) ────────────────────────────────
+      menu.addItem((item) => {
+        item.setTitle('Priority').setIcon('arrow-up-narrow-wide').setSection('priority');
+        const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+        this.buildPrioritySubmenu(sub, task);
+      });
 
       // ── Set tag… ───────────────────────────────────────────
-      const openTagDropdown = (): void => {
+      const clickPos = { x: e.clientX, y: e.clientY };
+      const openTagDropdown = (): void =>
         showTagDropdown(
-          card,
+          this.el,
           this.app,
           (tag) => this.getTagColor(tag),
           (tag) => void this.tagManager.addTagToTask(task, tag),
+          undefined,
+          clickPos,
         );
-      };
       menu.addItem((item) =>
         item
           .setTitle('Set tag…')
@@ -863,15 +853,6 @@ export class CenterPanel {
     );
   }
 
-  private openBulkTagDropdown(card: HTMLElement, selectedTasks: Task[]): void {
-    showTagDropdown(
-      card,
-      this.app,
-      (tag) => this.getTagColor(tag),
-      (tag) => void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, tag))),
-    );
-  }
-
   private async deleteBulkTasks(selectedTasks: Task[]): Promise<void> {
     const sorted = [...selectedTasks].sort((a, b) => b.line - a.line);
     for (const t of sorted) await this.deleteTask(t);
@@ -880,7 +861,56 @@ export class CenterPanel {
     this.updateSelectionVisuals();
   }
 
-  private showBulkContextMenu(e: MouseEvent, card: HTMLElement): void {
+  private buildPrioritySubmenu(sub: Menu, task: Task): void {
+    const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
+      { label: '🔺 Highest', value: 'A' },
+      { label: '⏫ High', value: 'B' },
+      { label: '🔼 Medium', value: 'C' },
+      { label: 'Normal', value: 'D' },
+      { label: '🔽 Low', value: 'E' },
+      { label: '⏬ Lowest', value: 'F' },
+    ];
+    for (const level of PRIORITY_LEVELS) {
+      sub.addItem((si) =>
+        si
+          .setTitle(level.label)
+          .setChecked(task.priority === level.value)
+          .onClick(() => void this.setPriority(task, level.value)),
+      );
+    }
+  }
+
+  private buildBulkPrioritySubmenu(sub: Menu, selectedTasks: Task[]): void {
+    const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
+      { label: '🔺 Highest', value: 'A' },
+      { label: '⏫ High', value: 'B' },
+      { label: '🔼 Medium', value: 'C' },
+      { label: 'Normal', value: 'D' },
+      { label: '🔽 Low', value: 'E' },
+      { label: '⏬ Lowest', value: 'F' },
+    ];
+    for (const level of PRIORITY_LEVELS) {
+      sub.addItem((si) =>
+        si
+          .setTitle(level.label)
+          .onClick(() => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value)))),
+      );
+    }
+  }
+
+  private makeBulkTagDropdownOpener(pos: { x: number; y: number }, selectedTasks: Task[]): () => void {
+    return () =>
+      showTagDropdown(
+        this.el,
+        this.app,
+        (tag) => this.getTagColor(tag),
+        (tag) => void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, tag))),
+        undefined,
+        pos,
+      );
+  }
+
+  private showBulkContextMenu(e: MouseEvent, _card: HTMLElement): void {
     const selectedKeys = Array.from(this.selectedTaskKeys);
     const allTasks = this.store.getTasks();
     const selectedTasks = selectedKeys
@@ -918,34 +948,22 @@ export class CenterPanel {
       this.addBulkTagItem(menu, pinnedTag, selectedTasks);
     }
 
-    // Priority (flat items, no setSubmenu)
-    type PriorityLevel = { label: string; value: TaskPriority };
-    const PRIORITY_LEVELS: PriorityLevel[] = [
-      { label: '🔺 Highest', value: 'A' },
-      { label: '⏫ High', value: 'B' },
-      { label: '🔼 Medium', value: 'C' },
-      { label: 'Normal', value: 'D' },
-      { label: '🔽 Low', value: 'E' },
-      { label: '⏬ Lowest', value: 'F' },
-    ];
-    for (const level of PRIORITY_LEVELS) {
-      menu.addItem((item) =>
-        item
-          .setTitle(level.label)
-          .setSection('priority')
-          .onClick(
-            () => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value))),
-          ),
-      );
-    }
+    // Priority (submenu)
+    menu.addItem((item) => {
+      item.setTitle('Priority').setIcon('arrow-up-narrow-wide').setSection('priority');
+      const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+      this.buildBulkPrioritySubmenu(sub, selectedTasks);
+    });
 
     // Set tag…
+    const clickPos = { x: e.clientX, y: e.clientY };
+    const openBulkTagDropdown = this.makeBulkTagDropdownOpener(clickPos, selectedTasks);
     menu.addItem((item) =>
       item
         .setTitle('Set tag…')
         .setIcon('hash')
         .setSection('actions')
-        .onClick(() => window.setTimeout(() => this.openBulkTagDropdown(card, selectedTasks), 50)),
+        .onClick(() => window.setTimeout(openBulkTagDropdown, 50)),
     );
 
     // Delete all

@@ -2648,6 +2648,12 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   display: inline-flex;
   flex-direction: column;
 }
+.tc-tag-dropdown-wrap--floating {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
 .tc-tag-dropdown {
   position: absolute;
   top: calc(100% + 4px);

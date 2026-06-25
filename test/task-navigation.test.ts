@@ -1,4 +1,4 @@
-import { TFile, type App } from 'obsidian';
+import { TFile } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { openInFile } from '../src/ui/taskNavigation';
 import { createAppWithFiles } from './helpers';

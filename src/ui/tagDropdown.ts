@@ -6,9 +6,11 @@ export function showTagDropdown(
   getTagColor: (tag: string) => string | undefined,
   onCommit: (tag: string) => void,
   onClose?: () => void,
+  position?: { x: number; y: number },
 ): void {
-  const existingWrap = container.querySelector('.tc-tag-dropdown-wrap');
-  if (existingWrap) existingWrap.remove();
+  // Remove any existing dropdown (in container or floating)
+  container.querySelector('.tc-tag-dropdown-wrap')?.remove();
+  activeDocument.querySelector('.tc-tag-dropdown-wrap--floating')?.remove();
 
   const rawTags = Object.keys(
     (app.metadataCache as unknown as { getTags(): Record<string, number> }).getTags(),
@@ -27,7 +29,13 @@ export function showTagDropdown(
       return aClean.localeCompare(bClean);
     });
 
-  const wrap = container.createDiv({ cls: 'tc-tag-dropdown-wrap' });
+  const mountPoint = position ? activeDocument.body : container;
+  const wrapCls = position ? 'tc-tag-dropdown-wrap tc-tag-dropdown-wrap--floating' : 'tc-tag-dropdown-wrap';
+  const wrap = mountPoint.createDiv({ cls: wrapCls });
+  if (position) {
+    wrap.style.left = `${position.x}px`;
+    wrap.style.top = `${position.y}px`;
+  }
   const input = wrap.createEl('input', {
     cls: 'tc-tag-input',
     attr: { type: 'text', placeholder: '#Tag', autocomplete: 'off' },
@@ -50,7 +58,9 @@ export function showTagDropdown(
     dropdown.empty();
     activeIdx = -1;
     const q = query.toLowerCase().replace(/^#/, '');
-    const filtered = q ? sortedTags.filter((t) => t.slice(1).toLowerCase().includes(q)) : sortedTags;
+    const filtered = q
+      ? sortedTags.filter((t) => t.slice(1).toLowerCase().includes(q))
+      : sortedTags;
     if (filtered.length === 0) {
       dropdown.addClass('tc-tag-dropdown--hidden');
       return;
@@ -79,8 +89,16 @@ export function showTagDropdown(
 
   input.addEventListener('input', () => renderOptions(input.value));
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); updateActive(1); return; }
-    if (e.key === 'ArrowUp')   { e.preventDefault(); updateActive(-1); return; }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      updateActive(1);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      updateActive(-1);
+      return;
+    }
     if (e.key === 'Enter') {
       const active = dropdown.querySelector<HTMLElement>('.tc-tag-dropdown-opt.is-active');
       commit(active ? (active.textContent ?? '') : input.value);
