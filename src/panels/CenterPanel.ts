@@ -1,6 +1,6 @@
 import { Menu, Notice, TFile, setIcon, type App } from 'obsidian';
 import type { AppState } from '../app/AppState';
-import type { Task } from '../parser/types';
+import type { Task, TaskPriority } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { CalendarSettings, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
@@ -720,6 +720,22 @@ export class CenterPanel {
     // Right-click context menu
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      const key = this.taskKey(task);
+
+      // If right-clicking an unselected card while others are selected → clear and show single menu
+      if (this.selectedTaskKeys.size > 0 && !this.selectedTaskKeys.has(key)) {
+        this.selectedTaskKeys.clear();
+        this.lastClickedTaskKey = null;
+        this.updateSelectionVisuals();
+      }
+
+      // ── BULK MENU (2+ tasks selected) ─────────────────────
+      if (this.selectedTaskKeys.size >= 2) {
+        this.showBulkContextMenu(e, card);
+        return;
+      }
+
+      // ── SINGLE TASK MENU ─────────────────────────────────
       const today = window.moment().format('YYYY-MM-DD');
       const isToday = task.due === today;
       const menu = new Menu();
@@ -808,6 +824,128 @@ export class CenterPanel {
 
       menu.showAtMouseEvent(e);
     });
+  }
+
+  private bulkTagIndicator(count: number, total: number): string {
+    if (count === total) return '✓ ';
+    if (count > 0) return '~ ';
+    return '';
+  }
+
+  private makeBulkTagRemoveHandler(selectedTasks: Task[], pinnedTag: string): () => void {
+    return () => void Promise.all(selectedTasks.map((t) => this.tagManager.toggleTagOnTask(t, pinnedTag)));
+  }
+
+  private makeBulkTagAddHandler(selectedTasks: Task[], pinnedTag: string): () => void {
+    return () => void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, pinnedTag)));
+  }
+
+  private addBulkTagItem(menu: Menu, pinnedTag: string, selectedTasks: Task[]): void {
+    const escaped = pinnedTag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    const tagRegex = new RegExp(`${escaped}(?![\\w/-])`, 'u');
+    const count = selectedTasks.filter((t) => tagRegex.test(t.rawText)).length;
+    const allHave = count === selectedTasks.length;
+    const indicator = this.bulkTagIndicator(count, selectedTasks.length);
+    const clickHandler = allHave
+      ? this.makeBulkTagRemoveHandler(selectedTasks, pinnedTag)
+      : this.makeBulkTagAddHandler(selectedTasks, pinnedTag);
+    menu.addItem((item) =>
+      item
+        .setTitle(`${indicator}${pinnedTag}  (${count}/${selectedTasks.length})`)
+        .setIcon('tag')
+        .setSection('tags')
+        .onClick(clickHandler),
+    );
+  }
+
+  private openBulkTagDropdown(card: HTMLElement, selectedTasks: Task[]): void {
+    showTagDropdown(
+      card,
+      this.app,
+      (tag) => this.getTagColor(tag),
+      (tag) => void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, tag))),
+    );
+  }
+
+  private deleteBulkTasks(selectedTasks: Task[]): void {
+    void Promise.all(selectedTasks.map((t) => this.deleteTask(t))).then(() => {
+      this.selectedTaskKeys.clear();
+      this.lastClickedTaskKey = null;
+    });
+  }
+
+  private showBulkContextMenu(e: MouseEvent, card: HTMLElement): void {
+    const selectedKeys = Array.from(this.selectedTaskKeys);
+    const allTasks = this.store.getTasks();
+    const selectedTasks = selectedKeys
+      .map((k) => {
+        const [fp, ln] = k.split(':');
+        const lineNum = parseInt(ln ?? '', 10);
+        return allTasks.find((t) => t.filePath === fp && t.line === lineNum);
+      })
+      .filter((t): t is Task => t !== undefined);
+
+    const menu = new Menu();
+    const today = window.moment().format('YYYY-MM-DD');
+    const allHaveToday = selectedTasks.every((t) => t.due === today);
+
+    // Header (non-interactive label)
+    menu.addItem((item) =>
+      item.setTitle(`${selectedTasks.length} tasks selected`).setSection('header').setDisabled(true),
+    );
+
+    // Today toggle
+    menu.addItem((item) =>
+      item
+        .setTitle(allHaveToday ? '✓ Today (remove all)' : 'Set Today')
+        .setIcon('calendar')
+        .setSection('today')
+        .onClick(() => void Promise.all(selectedTasks.map((t) => this.toggleDueToday(t)))),
+    );
+
+    // Pinned tags
+    for (const pinnedTag of this.settings.pinnedTags) {
+      this.addBulkTagItem(menu, pinnedTag, selectedTasks);
+    }
+
+    // Priority (flat items, no setSubmenu)
+    type PriorityLevel = { label: string; value: TaskPriority };
+    const PRIORITY_LEVELS: PriorityLevel[] = [
+      { label: '🔺 Highest', value: 'A' },
+      { label: '⏫ High', value: 'B' },
+      { label: '🔼 Medium', value: 'C' },
+      { label: 'Normal', value: 'D' },
+      { label: '🔽 Low', value: 'E' },
+      { label: '⏬ Lowest', value: 'F' },
+    ];
+    for (const level of PRIORITY_LEVELS) {
+      menu.addItem((item) =>
+        item
+          .setTitle(level.label)
+          .setSection('priority')
+          .onClick(() => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value)))),
+      );
+    }
+
+    // Set tag…
+    menu.addItem((item) =>
+      item
+        .setTitle('Set tag…')
+        .setIcon('hash')
+        .setSection('actions')
+        .onClick(() => window.setTimeout(() => this.openBulkTagDropdown(card, selectedTasks), 50)),
+    );
+
+    // Delete all
+    menu.addItem((item) =>
+      item
+        .setTitle('Delete all')
+        .setIcon('trash-2')
+        .setSection('danger')
+        .onClick(() => this.deleteBulkTasks(selectedTasks)),
+    );
+
+    menu.showAtMouseEvent(e);
   }
 
   private renderAddTaskBar(): void {
