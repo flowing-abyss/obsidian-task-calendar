@@ -17,12 +17,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      // Raised after Phase 4C (PanelView deep-stack + WeekView DnD/click edges).
-      // Measured 83.41 lines / 77.47 functions / 74.84 branches; set thresholds below measured.
+      // Raised after Phase 5 (contract layer coverage: parser/store/resolver deep tests).
+      // Measured 84.28 lines / 77.65 functions / 76.44 branches; set thresholds below measured.
       thresholds: {
-        lines: 75,
-        functions: 67,
-        branches: 63,
+        lines: 78,
+        functions: 70,
+        branches: 66,
       },
     },
   },
