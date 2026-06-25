@@ -1,10 +1,16 @@
 import { WorkspaceLeaf, type App } from 'obsidian';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TaskStore } from '../src/store/TaskStore';
+import { TagManager } from '../src/tags/TagManager';
 import { PANEL_VIEW_TYPE, PanelView } from '../src/views/PanelView';
 import { createAppWithFiles, flushMicrotasks, seedTaskCache, useRealMoment } from './helpers';
+
+function makeTagManager(): TagManager {
+  const save = vi.fn().mockResolvedValue(undefined);
+  return new TagManager(null as never, DEFAULT_SETTINGS, save);
+}
 
 useRealMoment();
 
@@ -21,7 +27,7 @@ describe('PanelView', () => {
       await store.initialize();
       await flushMicrotasks();
       leaf = new (WorkspaceLeaf as unknown as { new (app: App): WorkspaceLeaf })(app);
-      view = new PanelView(leaf, store, DEFAULT_SETTINGS);
+      view = new PanelView(leaf, store, DEFAULT_SETTINGS, makeTagManager());
       await view.onOpen();
     });
 
@@ -117,7 +123,7 @@ describe('PanelView', () => {
       await store.initialize();
       await flushMicrotasks();
       leaf = new (WorkspaceLeaf as unknown as { new (app: App): WorkspaceLeaf })(app);
-      view = new PanelView(leaf, store, DEFAULT_SETTINGS);
+      view = new PanelView(leaf, store, DEFAULT_SETTINGS, makeTagManager());
       await view.onOpen();
     });
 
@@ -208,7 +214,7 @@ describe('PanelView', () => {
       await store.initialize();
       await flushMicrotasks();
       leaf = new (WorkspaceLeaf as unknown as { new (app: App): WorkspaceLeaf })(app);
-      view = new PanelView(leaf, store, DEFAULT_SETTINGS);
+      view = new PanelView(leaf, store, DEFAULT_SETTINGS, makeTagManager());
       await view.onOpen();
     });
 

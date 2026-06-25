@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { LeftPanel } from '../src/panels/LeftPanel';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
+import { TagManager } from '../src/tags/TagManager';
 import { freshContainer, makeStubStore, task, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -12,14 +13,23 @@ useRealMoment();
 function makePanel(
   tasks: Task[] = [],
   settings: Partial<CalendarSettings> = {},
-): { panel: LeftPanel; state: AppState; el: HTMLElement } {
+  pinnedTags: string[] = [],
+  archivedTags: string[] = [],
+): { panel: LeftPanel; state: AppState; el: HTMLElement; tm: TagManager } {
   const state = new AppState();
   const store = makeStubStore(tasks) as TaskStore;
-  const merged = { ...DEFAULT_SETTINGS, ...settings };
-  const panel = new LeftPanel(state, store, merged);
+  const merged: CalendarSettings = {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    pinnedTags,
+    archivedTags,
+  };
+  const save = vi.fn().mockResolvedValue(undefined);
+  const tm = new TagManager(null as never, merged, save);
+  const panel = new LeftPanel(state, store, merged, tm, null as never);
   const el = freshContainer();
   panel.mount(el);
-  return { panel, state, el };
+  return { panel, state, el, tm };
 }
 
 function today(): string {
@@ -50,7 +60,9 @@ describe('LeftPanel smart lists', () => {
       task({ rawText: '- [ ] t2 #inbox', status: 'open' }),
       task({ rawText: '- [x] done #inbox', status: 'done' }),
     ];
-    const { el } = makePanel(tasks, { inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true } });
+    const { el } = makePanel(tasks, {
+      inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+    });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')?.textContent).toBe('2');
   });
@@ -61,7 +73,9 @@ describe('LeftPanel smart lists', () => {
       task({ rawText: '- [ ] #work tagged', status: 'open' }),
       task({ rawText: '- [x] done no tag', status: 'done' }),
     ];
-    const { el } = makePanel(tasks, { inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true } });
+    const { el } = makePanel(tasks, {
+      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+    });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')?.textContent).toBe('1');
   });
@@ -96,7 +110,9 @@ describe('LeftPanel smart lists', () => {
   });
 
   it('count badge absent when count is 0', () => {
-    const { el } = makePanel([], { inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true } });
+    const { el } = makePanel([], {
+      inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+    });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')).toBeNull();
   });
@@ -105,7 +121,9 @@ describe('LeftPanel smart lists', () => {
     const state = new AppState();
     state.set('selectedList', 'today');
     const store = makeStubStore([]) as TaskStore;
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
+    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     const active = el.querySelector('.tc-left-item.is-active .tc-left-label');
@@ -167,10 +185,13 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'group', groupId: 'g1' });
     const store = makeStubStore([]) as TaskStore;
-    const panel = new LeftPanel(state, store, {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
-    });
+    };
+    const tm = new TagManager(null as never, settings, save);
+    const panel = new LeftPanel(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.querySelector('.tc-tag-group-header')?.classList.contains('is-active')).toBe(true);
@@ -199,10 +220,13 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
     const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]) as TaskStore;
-    const panel = new LeftPanel(state, store, {
+    const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
-    });
+    };
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, settings, save);
+    const panel = new LeftPanel(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     // auto-expanded due to active child
@@ -215,10 +239,13 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
     const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]) as TaskStore;
-    const panel = new LeftPanel(state, store, {
+    const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
-    });
+    };
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, settings, save);
+    const panel = new LeftPanel(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.querySelector('.tc-tag-group-children')).not.toBeNull();
@@ -232,7 +259,9 @@ describe('LeftPanel tag groups (prefix mode)', () => {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
     };
-    const panel = new LeftPanel(state, store, settings);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, settings, save);
+    const panel = new LeftPanel(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     // Collapse explicitly
@@ -269,10 +298,13 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
     const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]) as TaskStore;
-    const panel = new LeftPanel(state, store, {
+    const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
-    });
+    };
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, settings, save);
+    const panel = new LeftPanel(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.querySelector('.tc-tag-child.is-active .tc-left-label')?.textContent).toBe('dev');
@@ -370,7 +402,9 @@ describe('LeftPanel lifecycle', () => {
   it('mount subscribes to selectedList changes', () => {
     const state = new AppState();
     const store = makeStubStore([]) as TaskStore;
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
+    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     state.set('selectedList', 'inbox');
@@ -381,7 +415,9 @@ describe('LeftPanel lifecycle', () => {
   it('mount subscribes to mode changes', () => {
     const state = new AppState();
     const store = makeStubStore([]) as TaskStore;
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
+    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.children.length).toBeGreaterThan(0);
@@ -401,7 +437,9 @@ describe('LeftPanel lifecycle', () => {
   it('destroy removes listeners and empties el', () => {
     const state = new AppState();
     const store = makeStubStore([]) as TaskStore;
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
+    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     panel.destroy();
@@ -415,9 +453,116 @@ describe('LeftPanel lifecycle', () => {
     const state = new AppState();
     state.set('mode', 'search');
     const store = makeStubStore([]) as TaskStore;
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
+    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.children).toHaveLength(0);
+  });
+});
+
+describe('LeftPanel Pinned section', () => {
+  it('renders Pinned section when pinnedTags is non-empty', () => {
+    const { el } = makePanel([], {}, ['#task/next']);
+    const headers = Array.from(el.querySelectorAll('.tc-left-section-header')).map(
+      (h) => h.textContent,
+    );
+    expect(headers).toContain('Pinned');
+  });
+
+  it('does not render Pinned section when pinnedTags is empty', () => {
+    const { el } = makePanel();
+    const headers = Array.from(el.querySelectorAll('.tc-left-section-header')).map(
+      (h) => h.textContent,
+    );
+    expect(headers).not.toContain('Pinned');
+  });
+
+  it('shows full tag name in Pinned section', () => {
+    const { el } = makePanel([], {}, ['#task/next_action']);
+    const items = el.querySelectorAll('.tc-pinned-tag .tc-left-label');
+    expect(items[0]?.textContent).toBe('#task/next_action');
+  });
+
+  it('clicking pinned tag sets selectedList to that tag', () => {
+    const { el, state } = makePanel([], {}, ['#task/next']);
+    const item = el.querySelector('.tc-pinned-tag') as HTMLElement;
+    item.click();
+    const sel = state.get('selectedList');
+    expect(typeof sel === 'object' && sel.type === 'tag' && sel.tag).toBe('#task/next');
+  });
+});
+
+describe('LeftPanel archived tags are hidden', () => {
+  it('does not render archived tags in Tags section', () => {
+    const tasks = [task({ rawText: '- [ ] t #work/dev', status: 'open' })];
+    const settings: Partial<CalendarSettings> = {
+      tagGroups: [{ id: 'g1', name: 'work', mode: 'prefix', prefix: 'work' }],
+    };
+    const { el } = makePanel(tasks, settings, [], ['#work/dev']);
+    const childLabels = Array.from(el.querySelectorAll('.tc-tag-child .tc-left-label')).map(
+      (l) => l.textContent,
+    );
+    expect(childLabels).not.toContain('dev');
+  });
+});
+
+describe('LeftPanel inbox logic (new inbox object)', () => {
+  it('countInbox tag mode uses inbox.tag', () => {
+    const tasks = [
+      task({ rawText: '- [ ] t #task/inbox', status: 'open' }),
+      task({ rawText: '- [ ] t2 #other', status: 'open' }),
+    ];
+    const { el } = makePanel(tasks, {
+      inbox: { mode: 'tag', tag: '#task/inbox', showUntagged: false, removeTagOnAssign: true },
+    });
+    const inboxCount = el.querySelector('.tc-left-item .tc-left-count')?.textContent;
+    expect(inboxCount).toBe('1');
+  });
+
+  it('countInbox untagged mode counts tasks without any tag', () => {
+    const tasks = [
+      task({ rawText: '- [ ] no tag', status: 'open' }),
+      task({ rawText: '- [ ] has tag #work', status: 'open' }),
+    ];
+    const { el } = makePanel(tasks, {
+      inbox: { mode: 'untagged', tag: '#task/inbox', showUntagged: true, removeTagOnAssign: true },
+    });
+    const inboxCount = el.querySelector('.tc-left-item .tc-left-count')?.textContent;
+    expect(inboxCount).toBe('1');
+  });
+
+  it('countInbox both mode counts union', () => {
+    const tasks = [
+      task({ rawText: '- [ ] no tag', status: 'open', line: 0 }),
+      task({ rawText: '- [ ] has inbox #task/inbox', status: 'open', line: 1 }),
+      task({ rawText: '- [ ] has other #work', status: 'open', line: 2 }),
+    ];
+    const { el } = makePanel(tasks, {
+      inbox: { mode: 'both', tag: '#task/inbox', showUntagged: true, removeTagOnAssign: true },
+    });
+    const inboxCount = el.querySelector('.tc-left-item .tc-left-count')?.textContent;
+    expect(inboxCount).toBe('2');
+  });
+});
+
+describe('LeftPanel drop zones', () => {
+  it('adds tc-drop-target class on dragover when draggingTask is set', () => {
+    const t = task({ rawText: '- [ ] t', status: 'open' });
+    const { el, state } = makePanel([], {}, ['#task/next']);
+    state.set('draggingTask', t);
+    const pinned = el.querySelector('.tc-pinned-tag') as HTMLElement;
+    const ev = new MouseEvent('dragover', { bubbles: true, cancelable: true });
+    pinned.dispatchEvent(ev);
+    expect(pinned.classList.contains('tc-drop-target')).toBe(true);
+  });
+
+  it('does not add tc-drop-target when no draggingTask', () => {
+    const { el } = makePanel([], {}, ['#task/next']);
+    const pinned = el.querySelector('.tc-pinned-tag') as HTMLElement;
+    const ev = new MouseEvent('dragover', { bubbles: true, cancelable: true });
+    pinned.dispatchEvent(ev);
+    expect(pinned.classList.contains('tc-drop-target')).toBe(false);
   });
 });

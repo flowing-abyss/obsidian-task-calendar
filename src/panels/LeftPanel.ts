@@ -1,8 +1,10 @@
-import { setIcon } from 'obsidian';
+import { Menu, setIcon, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import type { Task } from '../parser/types';
 import type { CalendarSettings, TagGroup } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
+import { RenameTagModal } from '../tags/RenameTagModal';
+import type { TagManager } from '../tags/TagManager';
 
 export class LeftPanel {
   private el!: HTMLElement;
@@ -14,6 +16,8 @@ export class LeftPanel {
     private state: AppState,
     private store: TaskStore,
     private settings: CalendarSettings,
+    private tagManager: TagManager,
+    private app: App,
   ) {}
 
   mount(container: HTMLElement): void {
@@ -37,7 +41,7 @@ export class LeftPanel {
   private render(): void {
     this.el.empty();
     const mode = this.state.get('mode');
-    if (mode === 'search') return; // hidden in search mode
+    if (mode === 'search') return;
 
     const allTasks = this.store.getTasks();
     const today = window.moment().format('YYYY-MM-DD');
@@ -55,6 +59,18 @@ export class LeftPanel {
       );
     });
 
+    // Pinned section
+    if (this.settings.pinnedTags.length > 0) {
+      this.el.createDiv({ cls: 'tc-left-divider' });
+      this.el.createDiv({ cls: 'tc-left-section tc-left-section--pinned' }, (section) => {
+        section.createEl('div', { cls: 'tc-left-section-header', text: 'Pinned' });
+        for (const tag of this.settings.pinnedTags) {
+          this.renderPinnedTag(section, tag, allTasks);
+        }
+      });
+    }
+
+    // Tag groups (archived tags filtered out)
     const groups = this.settings.tagGroups;
     if (groups.length > 0) {
       this.el.createDiv({ cls: 'tc-left-divider' });
@@ -65,6 +81,32 @@ export class LeftPanel {
         }
       });
     }
+  }
+
+  private renderPinnedTag(parent: HTMLElement, tag: string, allTasks: Task[]): void {
+    const sel = this.state.get('selectedList');
+    const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
+    const count = allTasks.filter((t) => t.status === 'open' && t.rawText.includes(tag)).length;
+
+    const row = parent.createDiv({
+      cls: `tc-left-item tc-pinned-tag${isActive ? ' is-active' : ''}`,
+    });
+    row.createDiv({ cls: 'tc-left-item-left' }, (l) => {
+      l.createEl('span', { cls: 'tc-left-label', text: tag });
+    });
+    if (count > 0) row.createEl('span', { cls: 'tc-left-count', text: String(count) });
+
+    row.addEventListener('click', () => {
+      this.state.set('selectedList', { type: 'tag', tag });
+      this.state.set('mode', 'tasks');
+    });
+
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.showPinnedTagMenu(e, tag);
+    });
+
+    this.attachDropZone(row, tag);
   }
 
   private renderSmartList(
@@ -98,9 +140,10 @@ export class LeftPanel {
     const isGroupActive =
       typeof sel === 'object' && sel.type === 'group' && sel.groupId === group.id;
 
-    const tags = this.resolveGroupTags(group, allTasks);
+    const tags = this.resolveGroupTags(group, allTasks).filter(
+      (t) => !this.settings.archivedTags.includes(t),
+    );
 
-    // Auto-expand when a child tag of this group is currently selected
     const hasActiveChild = tags.some(
       (t) => typeof sel === 'object' && sel.type === 'tag' && sel.tag === t,
     );
@@ -176,13 +219,102 @@ export class LeftPanel {
           l.createEl('span', { cls: 'tc-left-label', text: label });
         });
         if (tagCount > 0) child.createEl('span', { cls: 'tc-left-count', text: String(tagCount) });
+
         child.addEventListener('click', (e) => {
           e.stopPropagation();
           this.state.set('selectedList', { type: 'tag', tag });
           this.state.set('mode', 'tasks');
         });
+
+        child.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          this.showChildTagMenu(e, tag);
+        });
+
+        this.attachDropZone(child, tag);
       }
     }
+  }
+
+  private showPinnedTagMenu(e: MouseEvent, tag: string): void {
+    const menu = new Menu();
+    menu.addItem((item) =>
+      item
+        .setTitle('Unpin')
+        .setIcon('pin-off')
+        .onClick(this.makeTagOp(() => this.tagManager.unpinTag(tag))),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle('Archive')
+        .setIcon('archive')
+        .onClick(this.makeTagOp(() => this.tagManager.archiveTag(tag))),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle('Rename')
+        .setIcon('pencil')
+        .onClick(() => {
+          new RenameTagModal(this.app, this.tagManager, tag, () => this.render()).open();
+        }),
+    );
+    menu.showAtMouseEvent(e);
+  }
+
+  private showChildTagMenu(e: MouseEvent, tag: string): void {
+    const isPinned = this.settings.pinnedTags.includes(tag);
+    const menu = new Menu();
+    menu.addItem((item) =>
+      item
+        .setTitle(isPinned ? 'Unpin' : 'Pin')
+        .setIcon(isPinned ? 'pin-off' : 'pin')
+        .onClick(
+          this.makeTagOp(() =>
+            isPinned ? this.tagManager.unpinTag(tag) : this.tagManager.pinTag(tag),
+          ),
+        ),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle('Archive')
+        .setIcon('archive')
+        .onClick(this.makeTagOp(() => this.tagManager.archiveTag(tag))),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle('Rename')
+        .setIcon('pencil')
+        .onClick(() => {
+          new RenameTagModal(this.app, this.tagManager, tag, () => this.render()).open();
+        }),
+    );
+    menu.showAtMouseEvent(e);
+  }
+
+  private makeTagOp(op: () => Promise<void>): () => void {
+    return () => {
+      void op().then(() => {
+        this.render();
+      });
+    };
+  }
+
+  private attachDropZone(el: HTMLElement, tag: string): void {
+    el.addEventListener('dragover', (e) => {
+      if (!this.state.get('draggingTask')) return;
+      e.preventDefault();
+      el.classList.add('tc-drop-target');
+    });
+    el.addEventListener('dragleave', () => {
+      el.classList.remove('tc-drop-target');
+    });
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove('tc-drop-target');
+      const dragging = this.state.get('draggingTask');
+      if (!dragging) return;
+      void this.tagManager.assignTagFromInbox(dragging, tag);
+    });
   }
 
   private resolveGroupTags(group: TagGroup, allTasks: Task[]): string[] {
@@ -204,17 +336,25 @@ export class LeftPanel {
   }
 
   private countInbox(tasks: Task[]): number {
-    // @ts-expect-error migrated
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const { inboxMode, inboxTag } = this.settings;
-    if (inboxMode === 'tag') {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      return tasks.filter((t) => t.status === 'open' && t.rawText.includes(inboxTag)).length;
+    const { inbox } = this.settings;
+    const withTag =
+      inbox.mode !== 'untagged'
+        ? tasks.filter((t) => t.status === 'open' && t.rawText.includes(inbox.tag))
+        : [];
+    const untagged =
+      inbox.mode !== 'tag'
+        ? tasks.filter((t) => t.status === 'open' && !/#[\w/-]+/u.test(t.rawText))
+        : [];
+    if (inbox.mode === 'both') {
+      const seen = new Set<string>();
+      return [...withTag, ...untagged].filter((t) => {
+        const key = `${t.filePath}:${t.line}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).length;
     }
-    return tasks.filter((t) => {
-      if (t.status !== 'open') return false;
-      return !/#[\w/-]+/u.test(t.rawText);
-    }).length;
+    return inbox.mode === 'tag' ? withTag.length : untagged.length;
   }
 
   private countToday(tasks: Task[], today: string): number {

@@ -4,18 +4,24 @@ import { DEFAULT_SETTINGS } from './settings/defaults';
 import { CalendarSettingsTab } from './settings/SettingsTab';
 import type { CalendarSettings, CodeBlockParams } from './settings/types';
 import { TaskStore } from './store/TaskStore';
+import { TagManager } from './tags/TagManager';
 import { CalendarRenderer } from './ui/CalendarRenderer';
 import { PANEL_VIEW_TYPE, PanelView } from './views/PanelView';
 
 export default class TaskCalendarPlugin extends Plugin {
   store!: TaskStore;
   settings!: CalendarSettings;
+  tagManager!: TagManager;
 
   async onload(): Promise<void> {
     await this.loadSettings();
     this.store = new TaskStore(this.app, this.settings);
+    this.tagManager = new TagManager(this.app, this.settings, () => this.saveSettings());
 
-    this.registerView(PANEL_VIEW_TYPE, (leaf) => new PanelView(leaf, this.store, this.settings));
+    this.registerView(
+      PANEL_VIEW_TYPE,
+      (leaf) => new PanelView(leaf, this.store, this.settings, this.tagManager),
+    );
 
     registerCodeBlock(this, this.store, this.settings);
 

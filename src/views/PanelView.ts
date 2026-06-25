@@ -6,6 +6,7 @@ import { RailPanel } from '../panels/RailPanel';
 import { RightPanel } from '../panels/RightPanel';
 import type { CalendarSettings } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
+import type { TagManager } from '../tags/TagManager';
 
 export const PANEL_VIEW_TYPE = 'task-calendar-panel';
 
@@ -22,6 +23,7 @@ export class PanelView extends ItemView {
     leaf: WorkspaceLeaf,
     private store: TaskStore,
     private settings: CalendarSettings,
+    private tagManager: TagManager,
   ) {
     super(leaf);
   }
@@ -50,7 +52,7 @@ export class PanelView extends ItemView {
     const rightEl = layout.createDiv({ cls: 'tc-right' });
 
     this.rail = new RailPanel(this.state, this.app as never);
-    this.left = new LeftPanel(this.state, this.store, this.settings);
+    this.left = new LeftPanel(this.state, this.store, this.settings, this.tagManager, this.app);
     this.center = new CenterPanel(this.state, this.store, this.app, this.settings);
     this.right = new RightPanel(this.state, this.app, this.settings);
 
