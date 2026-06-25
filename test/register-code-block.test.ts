@@ -88,4 +88,25 @@ describe('resolveConfig', () => {
       expect(cfg.defaultView).toBe(DEFAULT_VIEW_CONFIG.defaultView);
     });
   });
+
+  describe('global settings threading', () => {
+    it('copies sourceNoteDisplay from settings', () => {
+      const s = { ...DEFAULT_SETTINGS, sourceNoteDisplay: 'always' as const };
+      expect(resolveConfig(s, {}).sourceNoteDisplay).toBe('always');
+    });
+
+    it('copies sourceNoteDisplay never', () => {
+      const s = { ...DEFAULT_SETTINGS, sourceNoteDisplay: 'never' as const };
+      expect(resolveConfig(s, {}).sourceNoteDisplay).toBe('never');
+    });
+
+    it('copies customFilePath from settings', () => {
+      const s = { ...DEFAULT_SETTINGS, customFilePath: 'Inbox/tasks.md' };
+      expect(resolveConfig(s, {}).customFilePath).toBe('Inbox/tasks.md');
+    });
+
+    it('default resolveConfig has sourceNoteDisplay non-default', () => {
+      expect(resolveConfig(DEFAULT_SETTINGS, {}).sourceNoteDisplay).toBe('non-default');
+    });
+  });
 });

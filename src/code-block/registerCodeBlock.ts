@@ -38,7 +38,12 @@ export function resolveConfig(settings: CalendarSettings, params: CodeBlockParam
   if (params.startPosition !== undefined) merged.startPosition = params.startPosition;
   if (params.tag !== undefined) merged.tag = params.tag;
   if (params.folder !== undefined) merged.folder = params.folder;
-  return { ...merged, isMobile: Platform.isMobile };
+  return {
+    ...merged,
+    isMobile: Platform.isMobile,
+    sourceNoteDisplay: settings.sourceNoteDisplay,
+    customFilePath: settings.customFilePath,
+  };
 }
 
 export function registerCodeBlock(
