@@ -50,7 +50,7 @@ describe('LeftPanel smart lists', () => {
       task({ rawText: '- [ ] t2 #inbox', status: 'open' }),
       task({ rawText: '- [x] done #inbox', status: 'done' }),
     ];
-    const { el } = makePanel(tasks, { inboxMode: 'tag', inboxTag: '#inbox' });
+    const { el } = makePanel(tasks, { inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true } });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')?.textContent).toBe('2');
   });
@@ -61,7 +61,7 @@ describe('LeftPanel smart lists', () => {
       task({ rawText: '- [ ] #work tagged', status: 'open' }),
       task({ rawText: '- [x] done no tag', status: 'done' }),
     ];
-    const { el } = makePanel(tasks, { inboxMode: 'untagged' });
+    const { el } = makePanel(tasks, { inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true } });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')?.textContent).toBe('1');
   });
@@ -96,7 +96,7 @@ describe('LeftPanel smart lists', () => {
   });
 
   it('count badge absent when count is 0', () => {
-    const { el } = makePanel([], { inboxMode: 'tag', inboxTag: '#inbox' });
+    const { el } = makePanel([], { inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true } });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')).toBeNull();
   });

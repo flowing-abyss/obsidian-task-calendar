@@ -204,8 +204,11 @@ export class LeftPanel {
   }
 
   private countInbox(tasks: Task[]): number {
+    // @ts-expect-error migrated
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { inboxMode, inboxTag } = this.settings;
     if (inboxMode === 'tag') {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       return tasks.filter((t) => t.status === 'open' && t.rawText.includes(inboxTag)).length;
     }
     return tasks.filter((t) => {

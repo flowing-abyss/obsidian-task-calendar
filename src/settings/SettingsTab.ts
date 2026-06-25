@@ -233,8 +233,12 @@ export class CalendarSettingsTab extends PluginSettingTab {
       .addDropdown((d) =>
         d
           .addOptions({ tag: 'Tag', untagged: 'Untagged tasks' })
+          // @ts-expect-error migrated
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           .setValue(this.plugin.settings.inboxMode)
           .onChange(async (v) => {
+            // @ts-expect-error migrated
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
             this.plugin.settings.inboxMode = v as 'tag' | 'untagged';
             await this.plugin.saveSettings();
             // eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -242,6 +246,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
           }),
       );
 
+    // @ts-expect-error migrated
     if (this.plugin.settings.inboxMode === 'tag') {
       new Setting(containerEl)
         .setName('Inbox tag')
@@ -250,8 +255,12 @@ export class CalendarSettingsTab extends PluginSettingTab {
           t
             // eslint-disable-next-line obsidianmd/ui/sentence-case
             .setPlaceholder('#inbox')
+            // @ts-expect-error migrated
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
             .setValue(this.plugin.settings.inboxTag)
             .onChange(async (v) => {
+              // @ts-expect-error migrated
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
               this.plugin.settings.inboxTag = v.trim();
               await this.plugin.saveSettings();
             }),

@@ -27,14 +27,22 @@ export interface TagGroup {
   tags?: string[]; // manual mode: explicit tag list
 }
 
+export interface InboxSettings {
+  mode: 'tag' | 'untagged' | 'both';
+  tag: string;
+  showUntagged: boolean;
+  removeTagOnAssign: boolean;
+}
+
 export interface CalendarSettings {
   desktop: ViewConfig;
   mobile: ViewConfig;
   taskPrefix: string;
   addToToday: boolean;
   customFilePath: string;
-  inboxMode: 'tag' | 'untagged';
-  inboxTag: string; // e.g. '#inbox', used when inboxMode === 'tag'
+  inbox: InboxSettings;
+  pinnedTags: string[];
+  archivedTags: string[];
   tagGroups: TagGroup[];
   dailyNoteProvider: 'auto' | 'periodic-notes' | 'core' | 'obsidian-journal' | 'manual';
   manualDailyNotePath: string; // e.g. 'Daily/YYYY-MM-DD' or just 'YYYY-MM-DD'

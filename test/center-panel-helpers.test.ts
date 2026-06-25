@@ -273,8 +273,7 @@ describe('CenterPanel pure helpers', () => {
     it('tag mode: includes tasks whose rawText contains inboxTag', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inboxMode: 'tag',
-        inboxTag: '#inbox',
+        inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
       };
       const tasks = [
         task({ text: 'inbox', rawText: '- [ ] inbox #inbox' }),
@@ -289,8 +288,7 @@ describe('CenterPanel pure helpers', () => {
     it('tag mode: excludes done tasks', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inboxMode: 'tag',
-        inboxTag: '#inbox',
+        inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
       };
       const tasks = [
         task({ text: 'open', rawText: '- [ ] open #inbox' }),
@@ -324,8 +322,7 @@ describe('CenterPanel pure helpers', () => {
     it('tag mode with empty inboxTag matches all tasks (CURRENT BEHAVIOR: rawText.includes("") is always true, follow-up: FU-22)', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inboxMode: 'tag',
-        inboxTag: '',
+        inbox: { mode: 'tag', tag: '', showUntagged: false, removeTagOnAssign: true },
       };
       const tasks = [
         task({ text: 'plain', rawText: '- [ ] plain' }),

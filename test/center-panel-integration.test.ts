@@ -93,8 +93,7 @@ describe('CenterPanel.createTask', () => {
       ...DEFAULT_SETTINGS,
       addToToday: false,
       customFilePath: 'Inbox.md',
-      inboxMode: 'tag',
-      inboxTag: '#inbox',
+      inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
     };
     const { panel, state, app } = await makePanel({ 'Inbox.md': '- [ ] existing' }, settings);
     state.set('selectedList', 'inbox');
@@ -108,7 +107,7 @@ describe('CenterPanel.createTask', () => {
       ...DEFAULT_SETTINGS,
       addToToday: false,
       customFilePath: 'Inbox.md',
-      inboxMode: 'untagged',
+      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
     };
     const { panel, state, app } = await makePanel({ 'Inbox.md': '- [ ] existing' }, settings);
     state.set('selectedList', 'inbox');
@@ -138,8 +137,7 @@ describe('CenterPanel.createTask', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
         addToToday: true,
-        inboxMode: 'tag',
-        inboxTag: '#inbox',
+        inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
         dailyNoteProvider: 'manual',
         manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
       };
@@ -364,12 +362,10 @@ describe('CenterPanel source note chip', () => {
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', tasks[0]?.text ?? '');
-    const panel = new CenterPanel(
-      state,
-      store,
-      {} as App,
-      { ...DEFAULT_SETTINGS, ...settingsOverrides },
-    );
+    const panel = new CenterPanel(state, store, {} as App, {
+      ...DEFAULT_SETTINGS,
+      ...settingsOverrides,
+    });
     panel.mount(freshContainer());
     return panel;
   }
