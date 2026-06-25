@@ -184,7 +184,9 @@ describe('CalendarSettingsTab renderGeneralSettings', () => {
 
 describe('CalendarSettingsTab renderTagGroupSettings', () => {
   it('inbox source dropdown has tag/untagged options', () => {
-    const { tab } = makeTab({ inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true } });
+    const { tab } = makeTab({
+      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+    });
     const body = openSection(tab, 3);
     const dd = findDropdown(body, 'Inbox source');
     expect(dd).not.toBeNull();
@@ -194,16 +196,20 @@ describe('CalendarSettingsTab renderTagGroupSettings', () => {
   });
 
   it('inbox source switch to tag saves and re-renders', () => {
-    const { tab, plugin, captured } = makeTab({ inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true } });
+    const { tab, plugin, captured } = makeTab({
+      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+    });
     openSection(tab, 3);
     findComp(captured, 'Inbox source', 'dropdown')!.comp.setValue('tag');
     expect(plugin.saveSettings).toHaveBeenCalled();
-    // @ts-expect-error migrated
+    // @ts-expect-error migrated — TODO Task 7: update to assert settings.inbox.mode / settings.inbox.tag
     expect(plugin.settings.inboxMode).toBe('tag');
   });
 
   it('inbox tag field visible when inboxMode is tag', () => {
-    const { tab } = makeTab({ inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true } });
+    const { tab } = makeTab({
+      inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+    });
     const body = openSection(tab, 3);
     const input = findInput(body, 'Inbox tag');
     expect(input).not.toBeNull();
@@ -211,18 +217,22 @@ describe('CalendarSettingsTab renderTagGroupSettings', () => {
   });
 
   it('inbox tag field hidden when inboxMode is untagged', () => {
-    const { tab } = makeTab({ inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true } });
+    const { tab } = makeTab({
+      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+    });
     const body = openSection(tab, 3);
     const input = findInput(body, 'Inbox tag');
     expect(input).toBeNull();
   });
 
   it('inbox tag change saves (trimmed)', () => {
-    const { tab, plugin, captured } = makeTab({ inbox: { mode: 'tag', tag: '#old', showUntagged: false, removeTagOnAssign: true } });
+    const { tab, plugin, captured } = makeTab({
+      inbox: { mode: 'tag', tag: '#old', showUntagged: false, removeTagOnAssign: true },
+    });
     openSection(tab, 3);
     findComp(captured, 'Inbox tag', 'text')!.comp.setValue('  #new  ');
     expect(plugin.saveSettings).toHaveBeenCalled();
-    // @ts-expect-error migrated
+    // @ts-expect-error migrated — TODO Task 7: update to assert settings.inbox.mode / settings.inbox.tag
     expect(plugin.settings.inboxTag).toBe('#new');
   });
 
