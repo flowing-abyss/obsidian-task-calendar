@@ -181,3 +181,13 @@ export function dispatchDnD(
 export function freshContainer(): HTMLElement {
   return activeDocument.createElement('div');
 }
+
+/**
+ * Minimal TaskStore stub exposing only getTasks() for panels that read tasks.
+ * Cast to TaskStore via `as unknown as TaskStore` in constructor calls.
+ */
+export function makeStubStore(tasks: Task[]): unknown {
+  return {
+    getTasks: () => tasks,
+  };
+}
