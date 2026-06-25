@@ -2759,7 +2759,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* ── Tag management: pinned section ─────────────────────── */
 
-.tc-left-section--pinned .tc-left-section-label {
+.tc-left-section--pinned .tc-left-section-header {
   color: var(--color-accent, var(--interactive-accent));
 }
 
@@ -2801,4 +2801,3 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   justify-content: flex-end;
   gap: 8px;
 }
-

@@ -43,10 +43,12 @@ export class TagManager {
   async addTagToTask(task: Task, tag: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
+    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const existsRe = new RegExp(escaped + '(?![\\w/-])', 'u');
     await this.app.vault.process(file, (content) => {
       const lines = content.split('\n');
       const line = lines[task.line];
-      if (!line || line.includes(tag)) return content;
+      if (!line || existsRe.test(line)) return content;
       lines[task.line] = line.trimEnd() + ' ' + tag;
       return lines.join('\n');
     });
