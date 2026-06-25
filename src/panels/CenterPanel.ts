@@ -606,6 +606,23 @@ export class CenterPanel {
       card.classList.remove('tc-dragging');
     });
 
+    // Drop target for tag→task drag
+    card.addEventListener('dragover', (e) => {
+      if (!this.state.get('draggingTag')) return;
+      e.preventDefault();
+      card.classList.add('tc-drop-target');
+    });
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('tc-drop-target');
+    });
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.classList.remove('tc-drop-target');
+      const tag = this.state.get('draggingTag');
+      if (!tag) return;
+      void this.tagManager.assignTagFromInbox(task, tag);
+    });
+
     // Right-click context menu
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -819,13 +836,9 @@ export class CenterPanel {
     const { inbox } = this.settings;
     const allOpen = this.store.getTasks().filter((t) => t.status === 'open');
     const withTag =
-      inbox.mode !== 'untagged'
-        ? allOpen.filter((t) => t.rawText.includes(inbox.tag))
-        : [];
+      inbox.mode !== 'untagged' ? allOpen.filter((t) => t.rawText.includes(inbox.tag)) : [];
     const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
-    const untagged = includeUntagged
-      ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText))
-      : [];
+    const untagged = includeUntagged ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
     if (withTag.length === 0) return untagged;
     if (untagged.length === 0) return withTag;
     const seen = new Set<string>();

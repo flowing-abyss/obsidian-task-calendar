@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Task } from '../src/parser/types';
 import { AppState } from '../src/app/AppState';
+import type { Task } from '../src/parser/types';
 
 describe('AppState', () => {
   it('returns initial values', () => {
@@ -149,5 +149,18 @@ describe('AppState', () => {
     expect(s.get('draggingTask')).toBe(t);
     s.set('draggingTask', null);
     expect(s.get('draggingTask')).toBeNull();
+  });
+
+  it('draggingTag initialises as null', () => {
+    const s = new AppState();
+    expect(s.get('draggingTag')).toBeNull();
+  });
+
+  it('draggingTag can be set to a tag string and back to null', () => {
+    const s = new AppState();
+    s.set('draggingTag', '#task/next');
+    expect(s.get('draggingTag')).toBe('#task/next');
+    s.set('draggingTag', null);
+    expect(s.get('draggingTag')).toBeNull();
   });
 });

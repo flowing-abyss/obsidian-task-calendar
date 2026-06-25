@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
-import { TagManager } from '../src/tags/TagManager';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
+import { TagManager } from '../src/tags/TagManager';
 import { freshContainer, makeStubStore, task, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -53,6 +53,35 @@ describe('CenterPanel drag source', () => {
     const endEv = new MouseEvent('dragend', { bubbles: true });
     card.dispatchEvent(endEv);
     expect(state.get('draggingTask')).toBeNull();
+  });
+});
+
+describe('CenterPanel tag→task drop target', () => {
+  it('task card accepts drop when draggingTag is set', () => {
+    const t = task({ rawText: '- [ ] t #task/inbox', status: 'open' });
+    const { el, state, tm } = makeCenter([t]);
+    const spy = vi.spyOn(tm, 'assignTagFromInbox').mockResolvedValue(undefined);
+    const card = el.querySelector('.tc-task-card') as HTMLElement;
+
+    state.set('draggingTag', '#task/next');
+    const overEv = new MouseEvent('dragover', { bubbles: true });
+    card.dispatchEvent(overEv);
+    expect(card.classList.contains('tc-drop-target')).toBe(true);
+
+    const dropEv = new MouseEvent('drop', { bubbles: true });
+    card.dispatchEvent(dropEv);
+    expect(card.classList.contains('tc-drop-target')).toBe(false);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ rawText: t.rawText }), '#task/next');
+  });
+
+  it('task card ignores dragover when draggingTag is null', () => {
+    const t = task({ rawText: '- [ ] t #task/inbox', status: 'open' });
+    const { el, state } = makeCenter([t]);
+    state.set('draggingTag', null);
+    const card = el.querySelector('.tc-task-card') as HTMLElement;
+    const overEv = new MouseEvent('dragover', { bubbles: true });
+    card.dispatchEvent(overEv);
+    expect(card.classList.contains('tc-drop-target')).toBe(false);
   });
 });
 

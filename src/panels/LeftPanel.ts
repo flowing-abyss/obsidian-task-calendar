@@ -106,6 +106,7 @@ export class LeftPanel {
       this.showPinnedTagMenu(e, tag);
     });
 
+    this.attachTagDragSource(row, tag);
     this.attachDropZone(row, tag);
   }
 
@@ -231,6 +232,7 @@ export class LeftPanel {
           this.showChildTagMenu(e, tag);
         });
 
+        this.attachTagDragSource(child, tag);
         this.attachDropZone(child, tag);
       }
     }
@@ -299,6 +301,19 @@ export class LeftPanel {
     };
   }
 
+  private attachTagDragSource(el: HTMLElement, tag: string): void {
+    el.setAttribute('draggable', 'true');
+    el.addEventListener('dragstart', (e) => {
+      e.stopPropagation();
+      this.state.set('draggingTag', tag);
+      el.classList.add('tc-dragging');
+    });
+    el.addEventListener('dragend', () => {
+      this.state.set('draggingTag', null);
+      el.classList.remove('tc-dragging');
+    });
+  }
+
   private attachDropZone(el: HTMLElement, tag: string): void {
     el.addEventListener('dragover', (e) => {
       if (!this.state.get('draggingTask')) return;
@@ -339,13 +354,9 @@ export class LeftPanel {
     const { inbox } = this.settings;
     const allOpen = tasks.filter((t) => t.status === 'open');
     const withTag =
-      inbox.mode !== 'untagged'
-        ? allOpen.filter((t) => t.rawText.includes(inbox.tag))
-        : [];
+      inbox.mode !== 'untagged' ? allOpen.filter((t) => t.rawText.includes(inbox.tag)) : [];
     const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
-    const untagged = includeUntagged
-      ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText))
-      : [];
+    const untagged = includeUntagged ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
     if (withTag.length === 0) return untagged.length;
     if (untagged.length === 0) return withTag.length;
     const seen = new Set<string>();
