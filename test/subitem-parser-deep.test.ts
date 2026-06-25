@@ -43,19 +43,26 @@ describe('parseSubItems deep edges', () => {
     });
   });
 
-  describe('line===undefined break', () => {
-    it('breaks when lines array is exhausted mid-parse (L77)', () => {
-      // While loop: lines[i] === undefined → break
-      // This happens normally when we reach end of array
+  // NOTE: The `if (line === undefined) break;` branch at src/parser/SubItemParser.ts:77
+  // is UNREACHABLE defensive code. The parent `while (i < lines.length)` guard guarantees
+  // that `lines[i]` is a defined string inside the loop body (arrays never yield `undefined`
+  // for in-bounds indices when elements are strings). The tests below exit via the while
+  // condition (`i < lines.length`), NOT via the L77 break.
+  // The 96%+ branch coverage target is therefore not achievable for SubItemParser without
+  // refactoring src/ to remove or restructure the unreachable L77 guard.
+  describe('while-loop exit (L75 condition, not L77 break)', () => {
+    it('exits when lines array is exhausted mid-parse (while condition, L75)', () => {
+      // The while guard `i < lines.length` becomes false once i advances past the last line.
+      // This is the normal exit path; the L77 break is never reached.
       const r = parseSubItems(['- [ ] Parent', '  - [ ] Child'], 0, FILE);
       expect(r.subtasks).toHaveLength(1);
-      // The break at L77 is the normal exit path when array ends
     });
 
-    it('breaks when taskLineIdx points beyond array end', () => {
+    it('exits immediately when taskLineIdx points beyond array end (while condition, L75)', () => {
+      // i starts at taskLineIdx+1 = 6, lines.length = 1 → `6 < 1` is false → loop body
+      // (and the L77 break) is never entered. Exit is via the while condition only.
       const r = parseSubItems(['- [ ] Parent'], 5, FILE);
       expect(r.subtasks).toEqual([]);
-      // lines[5] === undefined at the start of while loop → break immediately
     });
   });
 
