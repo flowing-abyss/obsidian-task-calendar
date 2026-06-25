@@ -38,7 +38,11 @@ describe('CenterPanel pure helpers', () => {
         task({ text: 'no tag', rawText: '- [ ] no tag' }),
         task({ text: 'tagged', rawText: '- [ ] tagged #work' }),
       ];
-      const { panel, state } = makePanel(tasks);
+      const settings: CalendarSettings = {
+        ...DEFAULT_SETTINGS,
+        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+      };
+      const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
       const result = call<Task[]>(panel, 'getFilteredTasks');
       expect(result.map((t) => t.text)).toEqual(['no tag']);
@@ -220,7 +224,11 @@ describe('CenterPanel pure helpers', () => {
         task({ text: 'Buy Milk', rawText: '- [ ] Buy Milk' }),
         task({ text: 'Walk dog', rawText: '- [ ] Walk dog' }),
       ];
-      const { panel, state } = makePanel(tasks);
+      const settings: CalendarSettings = {
+        ...DEFAULT_SETTINGS,
+        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+      };
+      const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
       state.set('centerFilter', 'milk');
       const result = call<Task[]>(panel, 'getFilteredTasks');
@@ -261,7 +269,11 @@ describe('CenterPanel pure helpers', () => {
         task({ text: 'a', rawText: '- [ ] a' }),
         task({ text: 'b', rawText: '- [ ] b' }),
       ];
-      const { panel, state } = makePanel(tasks);
+      const settings: CalendarSettings = {
+        ...DEFAULT_SETTINGS,
+        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+      };
+      const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
       state.set('centerFilter', '');
       const result = call<Task[]>(panel, 'getFilteredTasks');
@@ -300,21 +312,29 @@ describe('CenterPanel pure helpers', () => {
     });
 
     it('untagged mode: includes tasks with no hashtags', () => {
+      const settings: CalendarSettings = {
+        ...DEFAULT_SETTINGS,
+        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+      };
       const tasks = [
         task({ text: 'plain', rawText: '- [ ] plain' }),
         task({ text: 'tagged', rawText: '- [ ] tagged #work' }),
       ];
-      const { panel } = makePanel(tasks); // default inboxMode='untagged'
+      const { panel } = makePanel(tasks, settings);
       const result = call<Task[]>(panel, 'getInboxTasks');
       expect(result.map((t) => t.text)).toEqual(['plain']);
     });
 
     it('untagged mode: excludes done tasks', () => {
+      const settings: CalendarSettings = {
+        ...DEFAULT_SETTINGS,
+        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+      };
       const tasks = [
         task({ text: 'open', rawText: '- [ ] open' }),
         task({ text: 'done', rawText: '- [x] done', status: 'done' }),
       ];
-      const { panel } = makePanel(tasks);
+      const { panel } = makePanel(tasks, settings);
       const result = call<Task[]>(panel, 'getInboxTasks');
       expect(result.map((t) => t.text)).toEqual(['open']);
     });

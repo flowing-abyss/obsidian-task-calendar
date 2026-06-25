@@ -1682,11 +1682,11 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 .tc-task-source-note {
   font-size: 11px;
-  color: var(--color-blue);
+  color: var(--text-muted);
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  opacity: 0.85;
+  opacity: 0.8;
   cursor: default;
   pointer-events: none;
 }
@@ -1698,6 +1698,12 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-task-source-note-icon svg {
   width: 11px;
   height: 11px;
+}
+.tc-task-source-note-name {
+  text-decoration: underline;
+  text-decoration-color: var(--text-faint);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 .tc-task-progress {
   font-size: 11px;
@@ -2749,4 +2755,60 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   outline: 2px dashed var(--color-accent, var(--interactive-accent));
   outline-offset: -2px;
   border-radius: 4px;
+}
+
+/* ── Tag management: pinned section ─────────────────────── */
+
+.tc-left-section--pinned .tc-left-section-label {
+  color: var(--color-accent, var(--interactive-accent));
+}
+
+.tc-pinned-tag {
+  font-size: var(--font-smallest);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tc-pinned-tag:hover {
+  color: var(--text-normal);
+}
+
+/* ── Tag management: drag-to-tag ────────────────────────── */
+
+.tc-drop-target {
+  background: var(--background-modifier-hover);
+  outline: 2px dashed var(--color-accent, var(--interactive-accent));
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.tc-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+/* ── Tag management: rename modal ───────────────────────── */
+
+.tc-rename-input {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.tc-rename-btn-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Settings: archived tags ────────────────────────────── */
+
+.tc-settings-archived-header {
+  margin-top: 16px;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-smallest);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
