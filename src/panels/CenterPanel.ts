@@ -623,10 +623,13 @@ export class CenterPanel {
       }
       if (this.settings.pinnedTags.length > 0) menu.addSeparator();
       menu.addItem((item) =>
-        item.setTitle('Open file').setIcon('file-text').onClick(() => {
-          const pathNoExt = task.filePath.replace(/\.md$/, '');
-          void this.app.workspace.openLinkText(pathNoExt, '');
-        }),
+        item
+          .setTitle('Open file')
+          .setIcon('file-text')
+          .onClick(() => {
+            const pathNoExt = task.filePath.replace(/\.md$/, '');
+            void this.app.workspace.openLinkText(pathNoExt, '');
+          }),
       );
       menu.showAtMouseEvent(e);
     });
@@ -814,28 +817,24 @@ export class CenterPanel {
 
   private getInboxTasks(): Task[] {
     const { inbox } = this.settings;
+    const allOpen = this.store.getTasks().filter((t) => t.status === 'open');
     const withTag =
       inbox.mode !== 'untagged'
-        ? this.store.getTasks().filter(
-            (t) => t.status === 'open' && t.rawText.includes(inbox.tag),
-          )
+        ? allOpen.filter((t) => t.rawText.includes(inbox.tag))
         : [];
-    const untagged =
-      inbox.mode !== 'tag'
-        ? this.store.getTasks().filter(
-            (t) => t.status === 'open' && !/#[\w/-]+/u.test(t.rawText),
-          )
-        : [];
-    if (inbox.mode === 'both') {
-      const seen = new Set<string>();
-      return [...withTag, ...untagged].filter((t) => {
-        const key = `${t.filePath}:${t.line}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-    return inbox.mode === 'tag' ? withTag : untagged;
+    const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
+    const untagged = includeUntagged
+      ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText))
+      : [];
+    if (withTag.length === 0) return untagged;
+    if (untagged.length === 0) return withTag;
+    const seen = new Set<string>();
+    return [...withTag, ...untagged].filter((t) => {
+      const key = `${t.filePath}:${t.line}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   private getTitle(): string {

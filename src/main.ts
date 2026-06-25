@@ -1,6 +1,7 @@
 import { Plugin } from 'obsidian';
 import { registerCodeBlock, resolveConfig } from './code-block/registerCodeBlock';
 import { DEFAULT_SETTINGS } from './settings/defaults';
+import { migrateSettings } from './settings/migration';
 import { CalendarSettingsTab } from './settings/SettingsTab';
 import type { CalendarSettings, CodeBlockParams } from './settings/types';
 import { TaskStore } from './store/TaskStore';
@@ -65,7 +66,11 @@ export default class TaskCalendarPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as CalendarSettings;
+    const raw = (await this.loadData()) as Record<string, unknown> | null | undefined;
+    const data: Record<string, unknown> = raw ?? {};
+    migrateSettings(data);
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, data) as CalendarSettings;
   }
 
   async saveSettings(): Promise<void> {

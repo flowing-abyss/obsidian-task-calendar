@@ -1,9 +1,11 @@
 import { App, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
+import type { TagManager } from '../tags/TagManager';
 import type { CalendarSettings } from './types';
 
 interface TaskCalendarPlugin extends Plugin {
   settings: CalendarSettings;
+  tagManager: TagManager;
   saveSettings(): Promise<void>;
 }
 
@@ -250,7 +252,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
     if (this.plugin.settings.inbox.mode !== 'untagged') {
       new Setting(containerEl)
         .setName('Inbox tag')
-         
+
         .setDesc('Tasks with this tag appear in inbox.')
         .addText((t) =>
           t
@@ -293,13 +295,11 @@ export class CalendarSettingsTab extends PluginSettingTab {
 
     const archived = this.plugin.settings.archivedTags;
     if (archived.length > 0) {
-      new Setting(containerEl).setName("Archived tags").setHeading();
+      new Setting(containerEl).setName('Archived tags').setHeading();
       for (const tag of archived) {
         new Setting(containerEl).setName(tag).addButton((b) =>
           b.setButtonText('Unarchive').onClick(async () => {
-            const idx = this.plugin.settings.archivedTags.indexOf(tag);
-            if (idx >= 0) this.plugin.settings.archivedTags.splice(idx, 1);
-            await this.plugin.saveSettings();
+            await this.plugin.tagManager.unarchiveTag(tag);
             // eslint-disable-next-line @typescript-eslint/no-deprecated
             this.display();
           }),

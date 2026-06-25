@@ -339,6 +339,21 @@ describe('CenterPanel pure helpers', () => {
       expect(result.map((t) => t.text)).toEqual(['open']);
     });
 
+    it('tag mode + showUntagged=true: includes both tagged and untagged open tasks', () => {
+      const settings: CalendarSettings = {
+        ...DEFAULT_SETTINGS,
+        inbox: { mode: 'tag', tag: '#task/inbox', showUntagged: true, removeTagOnAssign: true },
+      };
+      const tasks = [
+        task({ text: 'with-inbox', rawText: '- [ ] with-inbox #task/inbox', line: 1 }),
+        task({ text: 'no-tag', rawText: '- [ ] no-tag', line: 2 }),
+        task({ text: 'other-tag', rawText: '- [ ] other-tag #work', line: 3 }),
+      ];
+      const { panel } = makePanel(tasks, settings);
+      const result = call<Task[]>(panel, 'getInboxTasks');
+      expect(result.map((t) => t.text).sort()).toEqual(['no-tag', 'with-inbox']);
+    });
+
     it('tag mode with empty inboxTag matches all tasks (CURRENT BEHAVIOR: rawText.includes("") is always true, follow-up: FU-22)', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,

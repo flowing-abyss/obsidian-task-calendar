@@ -76,6 +76,15 @@ describe('TaskCalendarPlugin loadSettings', () => {
     await plugin.loadSettings();
     expect(spy).toHaveBeenCalledOnce();
   });
+
+  it('loadSettings migrates old inboxMode/inboxTag to inbox object', async () => {
+    const plugin = makePlugin({ inboxMode: 'tag', inboxTag: '#my/inbox' });
+    await plugin.loadSettings();
+    expect(plugin.settings.inbox.mode).toBe('tag');
+    expect(plugin.settings.inbox.tag).toBe('#my/inbox');
+    expect(plugin.settings).not.toHaveProperty('inboxMode');
+    expect(plugin.settings).not.toHaveProperty('inboxTag');
+  });
 });
 
 describe('TaskCalendarPlugin saveSettings', () => {

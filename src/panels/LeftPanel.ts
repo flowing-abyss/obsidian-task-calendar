@@ -337,24 +337,24 @@ export class LeftPanel {
 
   private countInbox(tasks: Task[]): number {
     const { inbox } = this.settings;
+    const allOpen = tasks.filter((t) => t.status === 'open');
     const withTag =
       inbox.mode !== 'untagged'
-        ? tasks.filter((t) => t.status === 'open' && t.rawText.includes(inbox.tag))
+        ? allOpen.filter((t) => t.rawText.includes(inbox.tag))
         : [];
-    const untagged =
-      inbox.mode !== 'tag'
-        ? tasks.filter((t) => t.status === 'open' && !/#[\w/-]+/u.test(t.rawText))
-        : [];
-    if (inbox.mode === 'both') {
-      const seen = new Set<string>();
-      return [...withTag, ...untagged].filter((t) => {
-        const key = `${t.filePath}:${t.line}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      }).length;
-    }
-    return inbox.mode === 'tag' ? withTag.length : untagged.length;
+    const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
+    const untagged = includeUntagged
+      ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText))
+      : [];
+    if (withTag.length === 0) return untagged.length;
+    if (untagged.length === 0) return withTag.length;
+    const seen = new Set<string>();
+    return [...withTag, ...untagged].filter((t) => {
+      const key = `${t.filePath}:${t.line}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).length;
   }
 
   private countToday(tasks: Task[], today: string): number {

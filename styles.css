@@ -2802,13 +2802,3 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   gap: 8px;
 }
 
-/* ── Settings: archived tags ────────────────────────────── */
-
-.tc-settings-archived-header {
-  margin-top: 16px;
-  margin-bottom: 4px;
-  color: var(--text-muted);
-  font-size: var(--font-smallest);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
