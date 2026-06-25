@@ -18,5 +18,5 @@ export function renderSourceNoteChip(container: HTMLElement, task: Task): void {
   const chip = container.createEl('span', { cls: 'tc-task-source-note' });
   const iconEl = chip.createEl('span', { cls: 'tc-task-source-note-icon' });
   setIcon(iconEl, 'file-text');
-  chip.appendText(' ' + noteName);
+  chip.createEl('span', { cls: 'tc-task-source-note-name', text: noteName });
 }

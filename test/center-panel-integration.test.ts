@@ -362,10 +362,16 @@ describe('CenterPanel source note chip', () => {
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', tasks[0]?.text ?? '');
-    const panel = new CenterPanel(state, store, {} as App, {
-      ...DEFAULT_SETTINGS,
-      ...settingsOverrides,
-    }, null as never);
+    const panel = new CenterPanel(
+      state,
+      store,
+      {} as App,
+      {
+        ...DEFAULT_SETTINGS,
+        ...settingsOverrides,
+      },
+      null as never,
+    );
     panel.mount(freshContainer());
     return panel;
   }

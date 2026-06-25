@@ -1,7 +1,7 @@
 // test/tag-manager-settings.test.ts
 import { describe, expect, it, vi } from 'vitest';
-import { TagManager } from '../src/tags/TagManager';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { TagManager } from '../src/tags/TagManager';
 
 function makeManager(overrides: Partial<typeof DEFAULT_SETTINGS> = {}) {
   const settings = {

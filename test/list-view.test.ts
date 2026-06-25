@@ -264,7 +264,12 @@ describe('ListView', () => {
     it('sourceNoteDisplay never → no chip rendered', () => {
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: today(), status: 'open', filePath: 'Projects/alpha.md', dailyNoteDate: undefined });
+      const t = task({
+        due: today(),
+        status: 'open',
+        filePath: 'Projects/alpha.md',
+        dailyNoteDate: undefined,
+      });
       view.render(c, [t], resolvedConfig({ sourceNoteDisplay: 'never' }));
       expect(c.querySelector('.tc-task-source-note')).toBeNull();
     });
@@ -272,7 +277,12 @@ describe('ListView', () => {
     it('sourceNoteDisplay always → chip shows filename without extension', () => {
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: today(), status: 'open', filePath: 'Projects/alpha.md', dailyNoteDate: undefined });
+      const t = task({
+        due: today(),
+        status: 'open',
+        filePath: 'Projects/alpha.md',
+        dailyNoteDate: undefined,
+      });
       view.render(c, [t], resolvedConfig({ sourceNoteDisplay: 'always' }));
       const chip = c.querySelector('.tc-task-source-note');
       expect(chip).not.toBeNull();
@@ -282,7 +292,12 @@ describe('ListView', () => {
     it('sourceNoteDisplay always → chip shows for daily note too', () => {
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: today(), status: 'open', filePath: 'periodic/daily/2026-06-25.md', dailyNoteDate: '2026-06-25' });
+      const t = task({
+        due: today(),
+        status: 'open',
+        filePath: 'periodic/daily/2026-06-25.md',
+        dailyNoteDate: '2026-06-25',
+      });
       view.render(c, [t], resolvedConfig({ sourceNoteDisplay: 'always' }));
       expect(c.querySelector('.tc-task-source-note')).not.toBeNull();
     });
@@ -290,7 +305,12 @@ describe('ListView', () => {
     it('sourceNoteDisplay non-default → no chip for daily note task', () => {
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: today(), status: 'open', filePath: 'periodic/daily/2026-06-25.md', dailyNoteDate: '2026-06-25' });
+      const t = task({
+        due: today(),
+        status: 'open',
+        filePath: 'periodic/daily/2026-06-25.md',
+        dailyNoteDate: '2026-06-25',
+      });
       view.render(c, [t], resolvedConfig({ sourceNoteDisplay: 'non-default' }));
       expect(c.querySelector('.tc-task-source-note')).toBeNull();
     });
@@ -298,15 +318,29 @@ describe('ListView', () => {
     it('sourceNoteDisplay non-default → no chip when filePath matches customFilePath', () => {
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: today(), status: 'open', filePath: 'Inbox/tasks.md', dailyNoteDate: undefined });
-      view.render(c, [t], resolvedConfig({ sourceNoteDisplay: 'non-default', customFilePath: 'Inbox/tasks.md' }));
+      const t = task({
+        due: today(),
+        status: 'open',
+        filePath: 'Inbox/tasks.md',
+        dailyNoteDate: undefined,
+      });
+      view.render(
+        c,
+        [t],
+        resolvedConfig({ sourceNoteDisplay: 'non-default', customFilePath: 'Inbox/tasks.md' }),
+      );
       expect(c.querySelector('.tc-task-source-note')).toBeNull();
     });
 
     it('sourceNoteDisplay non-default → chip shown for non-default file', () => {
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: today(), status: 'open', filePath: 'Projects/beta.md', dailyNoteDate: undefined });
+      const t = task({
+        due: today(),
+        status: 'open',
+        filePath: 'Projects/beta.md',
+        dailyNoteDate: undefined,
+      });
       view.render(c, [t], resolvedConfig({ sourceNoteDisplay: 'non-default', customFilePath: '' }));
       const chip = c.querySelector('.tc-task-source-note');
       expect(chip).not.toBeNull();
@@ -316,7 +350,12 @@ describe('ListView', () => {
     it('chip text is just the filename without path or extension', () => {
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: today(), status: 'open', filePath: 'a/b/c/deep-note.md', dailyNoteDate: undefined });
+      const t = task({
+        due: today(),
+        status: 'open',
+        filePath: 'a/b/c/deep-note.md',
+        dailyNoteDate: undefined,
+      });
       view.render(c, [t], resolvedConfig({ sourceNoteDisplay: 'always' }));
       const chip = c.querySelector('.tc-task-source-note');
       expect(chip?.textContent).not.toContain('/');
@@ -327,7 +366,13 @@ describe('ListView', () => {
     it('chip appears before tag chip in the meta element', () => {
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: today(), status: 'open', filePath: 'Projects/alpha.md', dailyNoteDate: undefined, rawText: '- [ ] task #work' });
+      const t = task({
+        due: today(),
+        status: 'open',
+        filePath: 'Projects/alpha.md',
+        dailyNoteDate: undefined,
+        rawText: '- [ ] task #work',
+      });
       view.render(c, [t], resolvedConfig({ sourceNoteDisplay: 'always' }));
       const meta = c.querySelector('.tc-list-task-meta');
       expect(meta).not.toBeNull();

@@ -59,10 +59,10 @@ describe('renderSourceNoteChip', () => {
     expect(chip?.textContent).not.toContain('.md');
   });
 
-  it('chip text has space before note name', () => {
+  it('chip has .tc-task-source-note-name span with note name', () => {
     const container = freshContainer();
     renderSourceNoteChip(container, task({ filePath: 'Note.md' } as Partial<Task>));
-    const chip = container.querySelector('.tc-task-source-note');
-    expect(chip?.textContent).toBe(' Note');
+    const name = container.querySelector('.tc-task-source-note-name');
+    expect(name?.textContent).toBe('Note');
   });
 });
