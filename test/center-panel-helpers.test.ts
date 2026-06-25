@@ -320,6 +320,23 @@ describe('CenterPanel pure helpers', () => {
       const result = call<Task[]>(panel, 'getInboxTasks');
       expect(result.map((t) => t.text)).toEqual(['open']);
     });
+
+    it('tag mode with empty inboxTag matches all tasks (CURRENT BEHAVIOR: rawText.includes("") is always true, follow-up: FU-22)', () => {
+      const settings: CalendarSettings = {
+        ...DEFAULT_SETTINGS,
+        inboxMode: 'tag',
+        inboxTag: '',
+      };
+      const tasks = [
+        task({ text: 'plain', rawText: '- [ ] plain' }),
+        task({ text: 'tagged', rawText: '- [ ] tagged #work' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+      ];
+      const { panel } = makePanel(tasks, settings);
+      const result = call<Task[]>(panel, 'getInboxTasks');
+      // FU-22: empty inboxTag → rawText.includes('') returns true for all open tasks
+      expect(result.map((t) => t.text)).toEqual(['plain', 'tagged']);
+    });
   });
 
   describe('getTitle', () => {
