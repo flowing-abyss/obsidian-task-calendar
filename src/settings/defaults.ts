@@ -26,4 +26,5 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
   manualDailyNotePath: 'YYYY-MM-DD',
   taskInsertionMode: 'append',
   taskInsertionSection: '## Tasks',
+  sourceNoteDisplay: 'non-default' as const,
 };

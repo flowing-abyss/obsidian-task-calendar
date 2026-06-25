@@ -14,6 +14,8 @@ export interface ViewConfig {
 // Fully resolved view config — produced by merging defaults → platform settings → code-block params
 export interface ResolvedConfig extends ViewConfig {
   isMobile: boolean;
+  sourceNoteDisplay: 'never' | 'always' | 'non-default';
+  customFilePath: string;
 }
 
 export interface TagGroup {
@@ -38,6 +40,7 @@ export interface CalendarSettings {
   manualDailyNotePath: string; // e.g. 'Daily/YYYY-MM-DD' or just 'YYYY-MM-DD'
   taskInsertionMode: 'append' | 'section';
   taskInsertionSection: string;
+  sourceNoteDisplay: 'never' | 'always' | 'non-default';
 }
 
 // Params parsed from a task-calendar code block (all optional overrides of ViewConfig)

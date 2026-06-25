@@ -118,6 +118,8 @@ export function resolvedConfig(overrides: Partial<ResolvedConfig> = {}): Resolve
   return {
     ...DEFAULT_VIEW_CONFIG,
     isMobile: false,
+    sourceNoteDisplay: 'non-default',
+    customFilePath: '',
     ...overrides,
   };
 }
