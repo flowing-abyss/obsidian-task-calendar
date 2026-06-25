@@ -29,8 +29,7 @@ function patchSetting(captured: CapturedComp[]): () => void {
     addButton: proto.addButton!,
     addColorPicker: proto.addColorPicker!,
   };
-  const wrap =
-    (orig: (...args: unknown[]) => unknown, type: CapturedComp['type']) =>
+  const wrap = (orig: (...args: unknown[]) => unknown, type: CapturedComp['type']) =>
     function (this: { components: unknown[]; nameEl?: { textContent?: string } }, cb: unknown) {
       const result = orig.call(this, cb);
       captured.push({
@@ -57,10 +56,16 @@ function patchSetting(captured: CapturedComp[]): () => void {
   };
 }
 
-function makeTab(
-  settingsOverrides: Partial<CalendarSettings> = {},
-): { tab: CalendarSettingsTab; plugin: StubPlugin; app: App; captured: CapturedComp[] } {
+function makeTab(settingsOverrides: Partial<CalendarSettings> = {}): {
+  tab: CalendarSettingsTab;
+  plugin: StubPlugin;
+  app: App;
+  captured: CapturedComp[];
+} {
   const app = new App();
+  // Mock plugins so DailyNoteResolver adapters don't throw on app.plugins access
+  (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
+  (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };
   const settings = { ...structuredClone(DEFAULT_SETTINGS), ...settingsOverrides };
   const saveSettings = vi.fn().mockResolvedValue(undefined);
   const plugin: StubPlugin = { app, settings, saveSettings };
@@ -79,9 +84,9 @@ function makeTab(
 function openSection(tab: CalendarSettingsTab, index: number): HTMLElement {
   const headers = tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header');
   headers[index]!.click();
-  return tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section')[index]!.querySelector(
-    '.tc-settings-section-body',
-  )!;
+  return tab.containerEl
+    .querySelectorAll<HTMLElement>('.tc-settings-section')
+    [index]!.querySelector('.tc-settings-section-body')!;
 }
 
 /** Find a Setting's root element within a section body by its nameEl text.
@@ -93,7 +98,11 @@ function findSettingEl(body: HTMLElement, name: string): HTMLElement | null {
       // The nameEl is the 2nd child of infoEl; the Setting root is the
       // ancestor whose parent is either body or a .tc-settings-group-card.
       let cur: HTMLElement | null = d;
-      while (cur && cur.parentElement !== body && !cur.classList?.contains('tc-settings-group-card')) {
+      while (
+        cur &&
+        cur.parentElement !== body &&
+        !cur.classList?.contains('tc-settings-group-card')
+      ) {
         cur = cur.parentElement;
       }
       // cur is the infoEl (parent of nameEl); the Setting root is cur.parentElement
@@ -120,10 +129,17 @@ function findDropdown(body: HTMLElement, name: string): HTMLSelectElement | null
 function findColorInput(body: HTMLElement, name: string): HTMLInputElement | null {
   const el = findSettingEl(body, name);
   if (!el) return null;
-  return Array.from(el.querySelectorAll<HTMLInputElement>('input')).find((i) => i.type === 'color') ?? null;
+  return (
+    Array.from(el.querySelectorAll<HTMLInputElement>('input')).find((i) => i.type === 'color') ??
+    null
+  );
 }
 
-function findComp(captured: CapturedComp[], name: string, type: CapturedComp['type']): CapturedComp | undefined {
+function findComp(
+  captured: CapturedComp[],
+  name: string,
+  type: CapturedComp['type'],
+): CapturedComp | undefined {
   return captured.find((c) => c.name === name && c.type === type);
 }
 
@@ -139,7 +155,7 @@ describe('CalendarSettingsTab renderGeneralSettings', () => {
     expect(plugin.settings.taskPrefix).toBe('#todo');
   });
 
-  it("add to today toggle reflects setting and saves on change", () => {
+  it('add to today toggle reflects setting and saves on change', () => {
     const { tab, plugin, captured } = makeTab({ addToToday: true });
     openSection(tab, 0);
     // Toggle has no checkbox input in the mock; verify via captured component value
@@ -362,20 +378,27 @@ describe('CalendarSettingsTab renderViewConfigSettings', () => {
     expect(plugin.settings.desktop.firstDayOfWeek).toBe(1);
   });
 
-  it('daily note folder input saves', () => {
-    const { tab, plugin, captured } = makeTab();
+  it('daily note folder input saves (manual provider)', () => {
+    const { tab, plugin, captured } = makeTab({ dailyNoteProvider: 'manual' });
     openSection(tab, 1);
     findComp(captured, 'Daily note folder', 'text')!.comp.setValue('notes/daily');
     expect(plugin.saveSettings).toHaveBeenCalled();
     expect(plugin.settings.desktop.dailyNoteFolder).toBe('notes/daily');
   });
 
-  it('daily note format input saves', () => {
-    const { tab, plugin, captured } = makeTab();
+  it('daily note format input saves (manual provider)', () => {
+    const { tab, plugin, captured } = makeTab({ dailyNoteProvider: 'manual' });
     openSection(tab, 1);
     findComp(captured, 'Daily note format', 'text')!.comp.setValue('DD-MM-YYYY');
     expect(plugin.saveSettings).toHaveBeenCalled();
     expect(plugin.settings.desktop.dailyNoteFormat).toBe('DD-MM-YYYY');
+  });
+
+  it('daily note folder and format hidden when addToToday is true and provider is auto', () => {
+    const { tab } = makeTab({ addToToday: true, dailyNoteProvider: 'auto' });
+    const body = openSection(tab, 1);
+    expect(findInput(body, 'Daily note folder')).toBeNull();
+    expect(findInput(body, 'Daily note format')).toBeNull();
   });
 
   it('global task filter input saves', () => {
@@ -425,7 +448,7 @@ describe('CalendarSettingsTab renderViewConfigSettings', () => {
   });
 
   it('mobile section has same view config settings', () => {
-    const { tab } = makeTab();
+    const { tab } = makeTab({ dailyNoteProvider: 'manual' });
     const body = openSection(tab, 2); // Mobile
     expect(findDropdown(body, 'Default view')).not.toBeNull();
     expect(findDropdown(body, 'Default style')).not.toBeNull();

@@ -12,6 +12,9 @@ interface StubPlugin {
 
 function makeTab(): CalendarSettingsTab {
   const app = new App();
+  // Mock plugins so DailyNoteResolver adapters don't throw on app.plugins access
+  (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
+  (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };
   const plugin: StubPlugin = {
     app,
     settings: structuredClone(DEFAULT_SETTINGS),

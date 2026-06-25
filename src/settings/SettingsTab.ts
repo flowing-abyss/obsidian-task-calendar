@@ -1,4 +1,5 @@
 import { App, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
+import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings } from './types';
 
 interface TaskCalendarPlugin extends Plugin {
@@ -94,7 +95,66 @@ export class CalendarSettingsTab extends PluginSettingTab {
         }),
       );
 
-    if (!this.plugin.settings.addToToday) {
+    if (this.plugin.settings.addToToday) {
+      const resolver = new DailyNoteResolver(this.app, this.plugin.settings);
+      const providers = resolver.getAvailableProviders();
+      const providerOptions: Record<string, string> = {};
+      for (const p of providers) {
+        providerOptions[p.id] = p.label;
+      }
+      // Always include all providers so user can force a choice even if not detected
+      if (!providerOptions['periodic-notes']) providerOptions['periodic-notes'] = 'Periodic Notes';
+      if (!providerOptions['core']) providerOptions['core'] = 'Core Daily Notes';
+      if (!providerOptions['obsidian-journal']) providerOptions['obsidian-journal'] = 'Obsidian Journal';
+      if (!providerOptions['manual']) providerOptions['manual'] = 'Manual';
+
+      new Setting(containerEl)
+        .setName('Daily note provider')
+        .setDesc('Which plugin manages your daily notes.')
+        .addDropdown((d) =>
+          d
+            .addOptions(providerOptions)
+            .setValue(this.plugin.settings.dailyNoteProvider)
+            .onChange(async (v) => {
+              this.plugin.settings.dailyNoteProvider =
+                v as typeof this.plugin.settings.dailyNoteProvider;
+              await this.plugin.saveSettings();
+              // eslint-disable-next-line @typescript-eslint/no-deprecated
+              this.display();
+            }),
+        );
+
+      new Setting(containerEl)
+        .setName('Insert position')
+        .setDesc('Where in the daily note to add new tasks.')
+        .addDropdown((d) =>
+          d
+            .addOptions({ append: 'End of file', section: 'Under section heading' })
+            .setValue(this.plugin.settings.taskInsertionMode)
+            .onChange(async (v) => {
+              this.plugin.settings.taskInsertionMode =
+                v as typeof this.plugin.settings.taskInsertionMode;
+              await this.plugin.saveSettings();
+              // eslint-disable-next-line @typescript-eslint/no-deprecated
+              this.display();
+            }),
+        );
+
+      if (this.plugin.settings.taskInsertionMode === 'section') {
+        new Setting(containerEl)
+          .setName('Section heading')
+          .setDesc('Tasks are inserted under this heading. Created if absent.')
+          .addText((t) =>
+            t
+              .setPlaceholder('## Tasks')
+              .setValue(this.plugin.settings.taskInsertionSection)
+              .onChange(async (v) => {
+                this.plugin.settings.taskInsertionSection = v;
+                await this.plugin.saveSettings();
+              }),
+          );
+      }
+    } else {
       new Setting(containerEl)
         .setName('Custom file path')
         .setDesc('Add new tasks to this file instead.')
@@ -282,22 +342,24 @@ export class CalendarSettingsTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(container).setName('Daily note folder').addText((t) =>
-      t.setValue(cfg.dailyNoteFolder).onChange(async (v) => {
-        cfg.dailyNoteFolder = v;
-        await this.plugin.saveSettings();
-      }),
-    );
-
-    new Setting(container)
-      .setName('Daily note format')
-      .setDesc('Moment.js format, e.g. YYYY-MM-DD.')
-      .addText((t) =>
-        t.setValue(cfg.dailyNoteFormat).onChange(async (v) => {
-          cfg.dailyNoteFormat = v;
+    if (this.plugin.settings.dailyNoteProvider === 'manual' || !this.plugin.settings.addToToday) {
+      new Setting(container).setName('Daily note folder').addText((t) =>
+        t.setValue(cfg.dailyNoteFolder).onChange(async (v) => {
+          cfg.dailyNoteFolder = v;
           await this.plugin.saveSettings();
         }),
       );
+
+      new Setting(container)
+        .setName('Daily note format')
+        .setDesc('Moment.js format, e.g. YYYY-MM-DD.')
+        .addText((t) =>
+          t.setValue(cfg.dailyNoteFormat).onChange(async (v) => {
+            cfg.dailyNoteFormat = v;
+            await this.plugin.saveSettings();
+          }),
+        );
+    }
 
     new Setting(container)
       .setName('Global task filter')
