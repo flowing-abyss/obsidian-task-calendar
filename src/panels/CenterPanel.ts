@@ -833,11 +833,13 @@ export class CenterPanel {
   }
 
   private makeBulkTagRemoveHandler(selectedTasks: Task[], pinnedTag: string): () => void {
-    return () => void Promise.all(selectedTasks.map((t) => this.tagManager.toggleTagOnTask(t, pinnedTag)));
+    return () =>
+      void Promise.all(selectedTasks.map((t) => this.tagManager.toggleTagOnTask(t, pinnedTag)));
   }
 
   private makeBulkTagAddHandler(selectedTasks: Task[], pinnedTag: string): () => void {
-    return () => void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, pinnedTag)));
+    return () =>
+      void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, pinnedTag)));
   }
 
   private addBulkTagItem(menu: Menu, pinnedTag: string, selectedTasks: Task[]): void {
@@ -871,6 +873,7 @@ export class CenterPanel {
     void Promise.all(selectedTasks.map((t) => this.deleteTask(t))).then(() => {
       this.selectedTaskKeys.clear();
       this.lastClickedTaskKey = null;
+      this.updateSelectionVisuals();
     });
   }
 
@@ -879,8 +882,9 @@ export class CenterPanel {
     const allTasks = this.store.getTasks();
     const selectedTasks = selectedKeys
       .map((k) => {
-        const [fp, ln] = k.split(':');
-        const lineNum = parseInt(ln ?? '', 10);
+        const lastColon = k.lastIndexOf(':');
+        const fp = k.slice(0, lastColon);
+        const lineNum = parseInt(k.slice(lastColon + 1), 10);
         return allTasks.find((t) => t.filePath === fp && t.line === lineNum);
       })
       .filter((t): t is Task => t !== undefined);
@@ -891,7 +895,10 @@ export class CenterPanel {
 
     // Header (non-interactive label)
     menu.addItem((item) =>
-      item.setTitle(`${selectedTasks.length} tasks selected`).setSection('header').setDisabled(true),
+      item
+        .setTitle(`${selectedTasks.length} tasks selected`)
+        .setSection('header')
+        .setDisabled(true),
     );
 
     // Today toggle
@@ -923,7 +930,9 @@ export class CenterPanel {
         item
           .setTitle(level.label)
           .setSection('priority')
-          .onClick(() => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value)))),
+          .onClick(
+            () => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value))),
+          ),
       );
     }
 
