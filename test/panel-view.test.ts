@@ -189,4 +189,65 @@ describe('PanelView', () => {
       expect(todayItemAfter?.querySelector('.tc-left-count')?.textContent ?? '0').toBe('0');
     });
   });
+
+  describe('deep-stack rebuild suite', () => {
+    let app: Awaited<ReturnType<typeof createAppWithFiles>>;
+    let store: TaskStore;
+    let leaf: WorkspaceLeaf;
+    let view: PanelView;
+
+    beforeEach(async () => {
+      app = await createAppWithFiles({
+        'tasks.md': `- [ ] parent task 📅 ${window.moment().format('YYYY-MM-DD')}\n  - [ ] subtask one`,
+      });
+      seedTaskCache(app, 'tasks.md', [
+        { task: ' ', parent: -1, line: 0 },
+        { task: ' ', parent: 0, line: 1 },
+      ]);
+      store = new TaskStore(app, DEFAULT_SETTINGS);
+      await store.initialize();
+      await flushMicrotasks();
+      leaf = new (WorkspaceLeaf as unknown as { new (app: App): WorkspaceLeaf })(app);
+      view = new PanelView(leaf, store, DEFAULT_SETTINGS);
+      await view.onOpen();
+    });
+
+    afterEach(async () => {
+      await view.onClose();
+    });
+
+    it('store.onUpdate with stack.length > 1 rebuilds deep stack with fresh subtask (lines 88-99)', () => {
+      const state = (view as unknown as { state: AppState }).state;
+      const tasks = store.getTasks();
+      const root = tasks[0]!;
+      const sub = root.subtasks?.[0];
+      expect(sub).toBeDefined();
+      // Set a 2-level stack: [root, subtask]
+      state.set('taskStack', [root, sub!]);
+      // Emit onUpdate with matching changedFile → triggers deep-stack rebuild
+      (
+        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
+      ).listeners.forEach((l) => l({ changedFile: root.filePath }));
+      const stack = state.get('taskStack');
+      // Stack should still have 2 elements (root + fresh subtask found by line match)
+      expect(stack).toHaveLength(2);
+      expect((stack[0] as { filePath: string }).filePath).toBe(root.filePath);
+      expect((stack[1] as { line: number }).line).toBe(sub!.line);
+    });
+
+    it('store.onUpdate with stack.length > 1 and stale subtask line breaks early (truncates stack)', () => {
+      const state = (view as unknown as { state: AppState }).state;
+      const tasks = store.getTasks();
+      const root = tasks[0]!;
+      // Create a fake subtask with a line number that doesn't exist in fresh data
+      const fakeSub = { ...root.subtasks?.[0]!, line: 999 };
+      state.set('taskStack', [root, fakeSub]);
+      (
+        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
+      ).listeners.forEach((l) => l({ changedFile: root.filePath }));
+      const stack = state.get('taskStack');
+      // Fresh subtask not found at line 999 → break → stack truncated to [freshRoot]
+      expect(stack).toHaveLength(1);
+    });
+  });
 });

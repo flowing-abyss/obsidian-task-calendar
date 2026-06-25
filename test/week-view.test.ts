@@ -136,6 +136,47 @@ describe('WeekView', () => {
       vi.useRealTimers();
     });
 
+    it('dragover adds is-drag-over class', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-15T12:00:00'));
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [], resolvedConfig());
+      const cellContent = c.querySelector('.cell.today .cellContent') as HTMLElement;
+      expect(cellContent.classList.contains('is-drag-over')).toBe(false);
+      dispatchDnD(cellContent, 'dragover');
+      expect(cellContent.classList.contains('is-drag-over')).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it('dragleave to outside removes is-drag-over class', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-15T12:00:00'));
+      const { view } = makeView();
+      const c = freshContainer();
+      view.render(c, [], resolvedConfig());
+      const cellContent = c.querySelector('.cell.today .cellContent') as HTMLElement;
+      dispatchDnD(cellContent, 'dragover');
+      expect(cellContent.classList.contains('is-drag-over')).toBe(true);
+      dispatchDnD(cellContent, 'dragleave', undefined, null);
+      expect(cellContent.classList.contains('is-drag-over')).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('clicking a task card → onTaskClick called', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-15T12:00:00'));
+      const { view, spies } = makeView({ onTaskClick: (t) => t });
+      const c = freshContainer();
+      const t = task({ due: '2026-06-17', status: 'open', text: 'click me' });
+      view.render(c, [t], resolvedConfig());
+      const card = c.querySelector('.task') as HTMLElement;
+      card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(spies.onTaskClick).toHaveBeenCalledTimes(1);
+      expect(spies.onTaskClick.mock.calls[0]![0]).toBe(t);
+      vi.useRealTimers();
+    });
+
     it('cell click → onCellClick unless target is .task or .cellName', () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
