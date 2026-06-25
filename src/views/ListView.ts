@@ -1,6 +1,7 @@
 import type { Task } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { ResolvedConfig } from '../settings/types';
+import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { BaseView } from './BaseView';
 import { getTasksForDate, sortTasks } from './taskGrouping';
 
@@ -129,12 +130,8 @@ export class ListView extends BaseView {
     }
 
     // Source note chip — before tags
-    const showChip = this.shouldShowSourceNote(task);
-    if (showChip) {
-      const noteName = task.filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
-      const chip = meta.createEl('span', { cls: 'tc-task-source-note' });
-      chip.createEl('span', { cls: 'tc-task-source-note-icon', text: '📄' });
-      chip.appendText(' ' + noteName);
+    if (shouldShowSourceNote(task, this.config.sourceNoteDisplay, this.config.customFilePath)) {
+      renderSourceNoteChip(meta, task);
     }
 
     const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
@@ -153,17 +150,6 @@ export class ListView extends BaseView {
       if (e.target === cb) return;
       this.callbacks.onTaskClick?.(task);
     });
-  }
-
-  private shouldShowSourceNote(task: Task): boolean {
-    const { sourceNoteDisplay, customFilePath } = this.config;
-    if (sourceNoteDisplay === 'never') return false;
-    if (sourceNoteDisplay === 'always') return true;
-    // 'non-default': hide for daily notes and the configured custom file
-    const isDefault =
-      task.dailyNoteDate !== undefined ||
-      (customFilePath !== '' && task.filePath === customFilePath);
-    return !isDefault;
   }
 
   destroy(): void {}

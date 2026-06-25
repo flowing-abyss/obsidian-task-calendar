@@ -352,3 +352,83 @@ describe('CenterPanel.renderSearch', () => {
     panel.destroy();
   });
 });
+
+describe('CenterPanel source note chip', () => {
+  fixedToday('2026-06-25');
+
+  function makeSearchPanel(
+    tasks: Task[],
+    settingsOverrides: Partial<typeof DEFAULT_SETTINGS> = {},
+  ): CenterPanel {
+    const store = makeStubStore(tasks) as TaskStoreType;
+    const state = new AppState();
+    state.set('mode', 'search');
+    state.set('searchQuery', tasks[0]?.text ?? '');
+    const panel = new CenterPanel(
+      state,
+      store,
+      {} as App,
+      { ...DEFAULT_SETTINGS, ...settingsOverrides },
+    );
+    panel.mount(freshContainer());
+    return panel;
+  }
+
+  it('sourceNoteDisplay always → chip shown for daily note task', () => {
+    const t = task({
+      text: 'daily task',
+      filePath: 'periodic/daily/2026-06-25.md',
+      dailyNoteDate: '2026-06-25',
+      due: '2026-06-25',
+    });
+    const panel = makeSearchPanel([t], { sourceNoteDisplay: 'always' });
+    expect(panel['el'].querySelector('.tc-task-source-note')).not.toBeNull();
+    panel.destroy();
+  });
+
+  it('sourceNoteDisplay never → no chip', () => {
+    const t = task({ text: 'project task', filePath: 'Projects/alpha.md', due: '2026-06-25' });
+    const panel = makeSearchPanel([t], { sourceNoteDisplay: 'never' });
+    expect(panel['el'].querySelector('.tc-task-source-note')).toBeNull();
+    panel.destroy();
+  });
+
+  it('sourceNoteDisplay non-default → chip for project note', () => {
+    const t = task({ text: 'project task', filePath: 'Projects/alpha.md', due: '2026-06-25' });
+    const panel = makeSearchPanel([t], { sourceNoteDisplay: 'non-default' });
+    const chip = panel['el'].querySelector('.tc-task-source-note');
+    expect(chip).not.toBeNull();
+    expect(chip?.textContent).toContain('alpha');
+    panel.destroy();
+  });
+
+  it('sourceNoteDisplay non-default → no chip for daily note task', () => {
+    const t = task({
+      text: 'daily task',
+      filePath: 'periodic/daily/2026-06-25.md',
+      dailyNoteDate: '2026-06-25',
+      due: '2026-06-25',
+    });
+    const panel = makeSearchPanel([t], { sourceNoteDisplay: 'non-default' });
+    expect(panel['el'].querySelector('.tc-task-source-note')).toBeNull();
+    panel.destroy();
+  });
+
+  it('chip appears before tag in tc-task-meta-right', () => {
+    const t = task({
+      text: 'project task',
+      filePath: 'Projects/alpha.md',
+      rawText: '- [ ] project task #work',
+      due: '2026-06-25',
+    });
+    const panel = makeSearchPanel([t], { sourceNoteDisplay: 'always' });
+    const meta = panel['el'].querySelector('.tc-task-meta-right');
+    expect(meta).not.toBeNull();
+    const children = Array.from(meta!.children);
+    const noteIdx = children.findIndex((el) => el.classList.contains('tc-task-source-note'));
+    const tagIdx = children.findIndex((el) => el.classList.contains('tc-task-tag'));
+    expect(noteIdx).toBeGreaterThanOrEqual(0);
+    expect(tagIdx).toBeGreaterThan(noteIdx);
+    panel.destroy();
+  });
+});

@@ -3,6 +3,7 @@ import type { AppState } from '../app/AppState';
 import type { Task } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { CalendarSettings, ResolvedConfig } from '../settings/types';
+import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import type { TaskStore } from '../store/TaskStore';
 import { TaskModal } from '../ui/TaskModal';
 import { ListView } from '../views/ListView';
@@ -532,7 +533,12 @@ export class CenterPanel {
       });
     }
 
-    const hasRightMeta = (d && !suppressToday) || task.time || tags.length > 0;
+    const showSourceNote = shouldShowSourceNote(
+      task,
+      this.settings.sourceNoteDisplay,
+      this.settings.customFilePath,
+    );
+    const hasRightMeta = showSourceNote || (d && !suppressToday) || task.time || tags.length > 0;
     if (hasRightMeta) {
       const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
 
@@ -554,6 +560,11 @@ export class CenterPanel {
         const clockIcon = timeEl.createEl('span', { cls: 'tc-date-icon' });
         setIcon(clockIcon, 'clock');
         timeEl.createEl('span', { text: task.time });
+      }
+
+      // Source note chip before tags
+      if (showSourceNote) {
+        renderSourceNoteChip(metaRight, task);
       }
 
       // Tags last (max 2, with group color)
