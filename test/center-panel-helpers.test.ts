@@ -70,6 +70,19 @@ describe('CenterPanel pure helpers', () => {
       expect(result.map((t) => t.text)).toEqual(['overdue']);
     });
 
+    it('today does NOT include overdue via scheduled/dailyNoteDate only (CURRENT BEHAVIOR: only due<today counts as overdue, follow-up: FU-31)', () => {
+      const tasks = [
+        task({ text: 'sched-overdue', rawText: '- [ ] sched-overdue', scheduled: '2026-06-20', due: undefined }),
+        task({ text: 'dn-overdue', rawText: '- [ ] dn-overdue', dailyNoteDate: '2026-06-20', due: undefined }),
+      ];
+      const { panel, state } = makePanel(tasks);
+      state.set('selectedList', 'today');
+      fixedToday('2026-06-25');
+      const result = call<Task[]>(panel, 'getFilteredTasks');
+      // FU-31: only t.due < today triggers overdue inclusion; scheduled/dailyNoteDate overdue are NOT included
+      expect(result).toHaveLength(0);
+    });
+
     it('today excludes done tasks', () => {
       const tasks = [
         task({ text: 'done', rawText: '- [x] done', status: 'done', due: '2026-06-25' }),
