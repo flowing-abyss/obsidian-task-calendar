@@ -1,4 +1,4 @@
-import type { SubTask, Task } from '../parser/types';
+import type { Task, SubTask } from '../parser/types';
 
 export type ViewMode = 'tasks' | 'calendar' | 'search';
 
@@ -15,6 +15,7 @@ export interface AppStateData {
   taskStack: Array<Task | SubTask>;
   centerFilter: string;
   searchQuery: string;
+  draggingTask: Task | null;
 }
 
 type Listener<T> = (value: T, prev: T) => void;
@@ -26,6 +27,7 @@ export class AppState {
     taskStack: [],
     centerFilter: '',
     searchQuery: '',
+    draggingTask: null,
   };
 
   private listeners = new Map<keyof AppStateData, Set<Listener<unknown>>>();

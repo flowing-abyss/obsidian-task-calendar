@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Task } from '../src/parser/types';
 import { AppState } from '../src/app/AppState';
 
 describe('AppState', () => {
@@ -127,5 +128,26 @@ describe('AppState', () => {
     s.on('mode', cb);
     s.set('mode', 'calendar');
     expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it('draggingTask initialises as null', () => {
+    const s = new AppState();
+    expect(s.get('draggingTask')).toBeNull();
+  });
+
+  it('draggingTask can be set to a task and back to null', () => {
+    const s = new AppState();
+    const t: Task = {
+      filePath: 'a.md',
+      line: 0,
+      rawText: '- [ ] t',
+      text: 't',
+      status: 'open',
+      priority: 'D',
+    };
+    s.set('draggingTask', t);
+    expect(s.get('draggingTask')).toBe(t);
+    s.set('draggingTask', null);
+    expect(s.get('draggingTask')).toBeNull();
   });
 });
