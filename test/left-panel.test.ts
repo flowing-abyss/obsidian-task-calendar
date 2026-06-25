@@ -313,6 +313,24 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     (el.querySelector('.tc-group-arrow') as HTMLElement).click();
     expect(el.querySelectorAll('.tc-tag-child')).toHaveLength(0);
   });
+
+  it('group count over-counts #workplace as #work (CURRENT BEHAVIOR: substring match, follow-up: FU-21)', () => {
+    const tasks = [task({ rawText: '- [ ] #workplace task', status: 'open' })];
+    const { el } = makePanel(tasks, {
+      tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
+    });
+    // FU-21: group count uses rawText.includes('#work'), which matches '#workplace' too
+    expect(el.querySelector('.tc-tag-group-header .tc-left-count')?.textContent).toBe('1');
+  });
+
+  it('group color renders as dot', () => {
+    const { el } = makePanel([], {
+      tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#ff0000' }],
+    });
+    const dot = el.querySelector('.tc-group-dot');
+    expect(dot).not.toBeNull();
+    expect((dot as HTMLElement).style.background).toBe('rgb(255, 0, 0)');
+  });
 });
 
 describe('LeftPanel tag groups (manual mode)', () => {
