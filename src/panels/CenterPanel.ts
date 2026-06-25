@@ -8,6 +8,7 @@ import type { TagManager } from '../tags/TagManager';
 import { TaskModal } from '../ui/TaskModal';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { openInFile } from '../ui/taskNavigation';
+import { showTagDropdown } from '../ui/tagDropdown';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
@@ -646,27 +647,93 @@ export class CenterPanel {
     // Right-click context menu
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      const today = window.moment().format('YYYY-MM-DD');
+      const isToday = task.due === today;
       const menu = new Menu();
-      for (const pinnedTag of this.settings.pinnedTags) {
-        const hasTag = task.rawText.includes(pinnedTag);
-        menu.addItem((item) =>
-          item
-            .setTitle(`${hasTag ? '✓ ' : ''}${pinnedTag}`)
-            .setIcon('tag')
-            .onClick(() => {
-              void this.tagManager.toggleTagOnTask(task, pinnedTag);
-            }),
-        );
-      }
-      if (this.settings.pinnedTags.length > 0) menu.addSeparator();
+
+      // ── Today toggle ──────────────────────────────────────
       menu.addItem((item) =>
         item
-          .setTitle('Open file')
-          .setIcon('file-text')
-          .onClick(() => {
-            void openInFile(this.app, task);
-          }),
+          .setTitle(isToday ? `✓ Today  📅 ${today}` : 'Today')
+          .setIcon('calendar')
+          .setSection('today')
+          .setChecked(isToday)
+          .onClick(() => void this.toggleDueToday(task)),
       );
+
+      // ── Pinned tags ────────────────────────────────────────
+      if (this.settings.pinnedTags.length > 0) {
+        for (const pinnedTag of this.settings.pinnedTags) {
+          const hasTag = new RegExp(
+            `${pinnedTag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?![\\w/-])`,
+            'u',
+          ).test(task.rawText);
+          menu.addItem((item) =>
+            item
+              .setTitle(`${hasTag ? '✓ ' : ''}${pinnedTag}`)
+              .setIcon('tag')
+              .setSection('tags')
+              .setChecked(hasTag)
+              .onClick(() => void this.tagManager.toggleTagOnTask(task, pinnedTag)),
+          );
+        }
+      }
+
+      // ── Priority ───────────────────────────────────────────
+      const PRIORITY_LEVELS: Array<{ label: string; value: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' }> =
+        [
+          { label: '🔺 Highest', value: 'A' },
+          { label: '⏫ High', value: 'B' },
+          { label: '🔼 Medium', value: 'C' },
+          { label: 'Normal', value: 'D' },
+          { label: '🔽 Low', value: 'E' },
+          { label: '⏬ Lowest', value: 'F' },
+        ];
+      for (const level of PRIORITY_LEVELS) {
+        menu.addItem((item) =>
+          item
+            .setTitle(level.label)
+            .setSection('priority')
+            .setChecked(task.priority === level.value)
+            .onClick(() => void this.setPriority(task, level.value)),
+        );
+      }
+
+      // ── Set tag… ───────────────────────────────────────────
+      const openTagDropdown = (): void => {
+        showTagDropdown(
+          card,
+          this.app,
+          (tag) => this.getTagColor(tag),
+          (tag) => void this.tagManager.addTagToTask(task, tag),
+        );
+      };
+      menu.addItem((item) =>
+        item
+          .setTitle('Set tag…')
+          .setIcon('hash')
+          .setSection('actions')
+          .onClick(() => window.setTimeout(openTagDropdown, 50)),
+      );
+
+      // ── Open in note ──────────────────────────────────────
+      menu.addItem((item) =>
+        item
+          .setTitle('Open in note')
+          .setIcon('file-text')
+          .setSection('actions')
+          .onClick(() => void openInFile(this.app, task)),
+      );
+
+      // ── Delete ─────────────────────────────────────────────
+      menu.addItem((item) =>
+        item
+          .setTitle('Delete')
+          .setIcon('trash-2')
+          .setSection('danger')
+          .onClick(() => void this.deleteTask(task)),
+      );
+
       menu.showAtMouseEvent(e);
     });
   }
@@ -968,7 +1035,10 @@ export class CenterPanel {
       let updated: string;
       if (task.due === today) {
         // Toggle off: remove the due date
-        updated = line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, '').replace(/\s{2,}/gu, ' ').trimEnd();
+        updated = line
+          .replace(/📅\s*\d{4}-\d{2}-\d{2}/u, '')
+          .replace(/\s{2,}/gu, ' ')
+          .trimEnd();
       } else if (task.due) {
         // Replace existing due date with today
         updated = line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${today}`);
@@ -981,7 +1051,10 @@ export class CenterPanel {
     });
   }
 
-  private async setPriority(task: Task, priority: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'): Promise<void> {
+  private async setPriority(
+    task: Task,
+    priority: 'A' | 'B' | 'C' | 'D' | 'E' | 'F',
+  ): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(task.filePath);
     if (!(file instanceof TFile)) return;
     const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'] as const;
