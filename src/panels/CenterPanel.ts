@@ -779,22 +779,18 @@ export class CenterPanel {
       });
 
       // ── Set tag… ───────────────────────────────────────────
-      const clickPos = { x: e.clientX, y: e.clientY };
-      const openTagDropdown = (): void =>
-        showTagDropdown(
-          this.el,
-          this.app,
-          (tag) => this.getTagColor(tag),
-          (tag) => void this.tagManager.addTagToTask(task, tag),
-          undefined,
-          clickPos,
-        );
       menu.addItem((item) =>
         item
           .setTitle('Set tag…')
           .setIcon('hash')
           .setSection('actions')
-          .onClick(() => window.setTimeout(openTagDropdown, 50)),
+          .onClick((evt) => {
+            const pos =
+              evt instanceof MouseEvent
+                ? { x: evt.clientX, y: evt.clientY }
+                : { x: e.clientX, y: e.clientY };
+            window.setTimeout(this.makeTagDropdownOpener(pos, task), 50);
+          }),
       );
 
       // ── Open in note ──────────────────────────────────────
@@ -893,12 +889,29 @@ export class CenterPanel {
       sub.addItem((si) =>
         si
           .setTitle(level.label)
-          .onClick(() => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value)))),
+          .onClick(
+            () => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value))),
+          ),
       );
     }
   }
 
-  private makeBulkTagDropdownOpener(pos: { x: number; y: number }, selectedTasks: Task[]): () => void {
+  private makeTagDropdownOpener(pos: { x: number; y: number }, task: Task): () => void {
+    return () =>
+      showTagDropdown(
+        this.el,
+        this.app,
+        (tag) => this.getTagColor(tag),
+        (tag) => void this.tagManager.addTagToTask(task, tag),
+        undefined,
+        pos,
+      );
+  }
+
+  private makeBulkTagDropdownOpener(
+    pos: { x: number; y: number },
+    selectedTasks: Task[],
+  ): () => void {
     return () =>
       showTagDropdown(
         this.el,
@@ -956,14 +969,18 @@ export class CenterPanel {
     });
 
     // Set tag…
-    const clickPos = { x: e.clientX, y: e.clientY };
-    const openBulkTagDropdown = this.makeBulkTagDropdownOpener(clickPos, selectedTasks);
     menu.addItem((item) =>
       item
         .setTitle('Set tag…')
         .setIcon('hash')
         .setSection('actions')
-        .onClick(() => window.setTimeout(openBulkTagDropdown, 50)),
+        .onClick((evt) => {
+          const pos =
+            evt instanceof MouseEvent
+              ? { x: evt.clientX, y: evt.clientY }
+              : { x: e.clientX, y: e.clientY };
+          window.setTimeout(this.makeBulkTagDropdownOpener(pos, selectedTasks), 50);
+        }),
     );
 
     // Delete all
