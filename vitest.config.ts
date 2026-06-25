@@ -17,12 +17,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      // Raised after Phase 4A (RailPanel, LeftPanel, SettingsTab deep, registerCodeBlock deep, main.ts).
-      // Measured 66.09 lines / 62.54 functions / 53.87 branches; set thresholds below measured.
+      // Raised after Phase 4B (CenterPanel + RightPanel deep coverage).
+      // Measured 82.67 lines / 76.55 functions / 74.21 branches; set thresholds below measured.
       thresholds: {
-        lines: 55,
-        functions: 50,
-        branches: 42,
+        lines: 72,
+        functions: 65,
+        branches: 60,
       },
     },
   },
