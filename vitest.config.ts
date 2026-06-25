@@ -17,12 +17,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      // Raised after Phase 4B (CenterPanel + RightPanel deep coverage).
-      // Measured 82.67 lines / 76.55 functions / 74.21 branches; set thresholds below measured.
+      // Raised after Phase 4C (PanelView deep-stack + WeekView DnD/click edges).
+      // Measured 83.41 lines / 77.47 functions / 74.84 branches; set thresholds below measured.
       thresholds: {
-        lines: 72,
-        functions: 65,
-        branches: 60,
+        lines: 75,
+        functions: 67,
+        branches: 63,
       },
     },
   },
