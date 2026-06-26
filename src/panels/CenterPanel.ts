@@ -2,7 +2,12 @@ import { Menu, Notice, TFile, setIcon, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import type { Task, TaskPriority } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
-import type { CalendarSettings, ListViewState, PropertyFilter, ResolvedConfig } from '../settings/types';
+import type {
+  CalendarSettings,
+  ListViewState,
+  PropertyFilter,
+  ResolvedConfig,
+} from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { TagPickerModal } from '../ui/TagPickerModal';
@@ -12,7 +17,7 @@ import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
-import { sortTasksByDateTime } from '../views/taskGrouping';
+import { groupTasksByDate, groupTasksByPriority, groupTasksByTag, sortTasksByField } from '../views/taskGrouping';
 
 type CalViewType = 'month' | 'week' | 'list';
 
@@ -190,13 +195,7 @@ export class CenterPanel {
     if (tasks.length === 0) {
       scroll.createDiv({ cls: 'tc-center-empty', text: 'No tasks' });
     } else {
-      const sel = this.state.get('selectedList');
-      const needsGrouping = sel === 'today' || sel === 'upcoming';
-      if (needsGrouping) {
-        this.renderGrouped(scroll, tasks);
-      } else {
-        this.renderFlat(scroll, tasks);
-      }
+      this.renderWithGrouping(scroll, tasks);
     }
 
     this.renderAddTaskBar();
@@ -515,28 +514,23 @@ export class CenterPanel {
     });
   }
 
-  private renderGrouped(container: HTMLElement, tasks: Task[]): void {
+  private renderWithGrouping(container: HTMLElement, tasks: Task[]): void {
+    const vs = this.state.get('centerListViewState');
     const today = window.moment().format('YYYY-MM-DD');
     const tomorrow = window.moment().add(1, 'day').format('YYYY-MM-DD');
 
-    const groups: Array<{ label: string; tasks: Task[] }> = [
-      { label: 'Overdue', tasks: [] },
-      { label: 'Today', tasks: [] },
-      { label: 'Tomorrow', tasks: [] },
-      { label: 'Upcoming', tasks: [] },
-    ];
+    if (vs.groupBy === 'none') {
+      this.renderFlat(container, tasks);
+      return;
+    }
 
-    for (const task of tasks) {
-      const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
-      if (!d || d < today) {
-        groups[0]!.tasks.push(task);
-      } else if (d === today) {
-        groups[1]!.tasks.push(task);
-      } else if (d === tomorrow) {
-        groups[2]!.tasks.push(task);
-      } else {
-        groups[3]!.tasks.push(task);
-      }
+    let groups: Array<{ label: string; tasks: Task[] }>;
+    if (vs.groupBy === 'date') {
+      groups = groupTasksByDate(tasks, today, tomorrow);
+    } else if (vs.groupBy === 'priority') {
+      groups = groupTasksByPriority(tasks);
+    } else {
+      groups = groupTasksByTag(tasks);
     }
 
     let firstGroup = true;
@@ -545,7 +539,7 @@ export class CenterPanel {
       const cls = firstGroup ? 'tc-group-header tc-group-header--first' : 'tc-group-header';
       container.createDiv({ cls, text: `${group.label}  ${group.tasks.length}` });
       firstGroup = false;
-      for (const task of sortTasksByDateTime(group.tasks)) this.renderTaskCard(container, task);
+      for (const task of group.tasks) this.renderTaskCard(container, task);
     }
   }
 
@@ -636,16 +630,28 @@ export class CenterPanel {
           setIcon(clockIcon, 'clock');
           dateEl.createEl('span', { text: task.time });
         }
+        dateEl.addEventListener('click', (e) => {
+          if (!task.time) return;
+          e.stopPropagation();
+          this.addPropertyFilter({ type: 'time', value: task.time });
+        });
       } else if (!d && task.time) {
         const timeEl = metaRight.createEl('span', { cls: 'tc-task-date' });
         const clockIcon = timeEl.createEl('span', { cls: 'tc-date-icon' });
         setIcon(clockIcon, 'clock');
         timeEl.createEl('span', { text: task.time });
+        timeEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.addPropertyFilter({ type: 'time', value: task.time! });
+        });
+        timeEl.addClass('tc-cursor-pointer');
       }
 
       // Source note chip before tags
       if (showSourceNote) {
-        renderSourceNoteChip(metaRight, task);
+        renderSourceNoteChip(metaRight, task, (filePath) => {
+          this.addPropertyFilter({ type: 'file', filePath });
+        });
       }
 
       // Tags last (max 2, with group color)
@@ -656,6 +662,11 @@ export class CenterPanel {
           tagEl.setCssProps({ '--tc-tag-color': color });
           tagEl.addClass('tc-task-tag--colored');
         }
+        tagEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.addPropertyFilter({ type: 'tag', value: tag });
+        });
+        tagEl.addClass('tc-cursor-pointer');
         // Drop target: dragging a tag onto a chip replaces it
         tagEl.addEventListener('dragover', (e) => {
           const dragging = this.state.get('draggingTag');
@@ -816,6 +827,14 @@ export class CenterPanel {
         const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
         this.buildPrioritySubmenu(sub, task);
       });
+
+      menu.addItem((item) =>
+        item
+          .setTitle('Filter by this priority')
+          .setIcon('filter')
+          .setSection('priority')
+          .onClick(() => this.addPropertyFilter({ type: 'priority', value: task.priority })),
+      );
 
       // ── Set tag… ───────────────────────────────────────────
       menu.addItem((item) =>
@@ -1056,7 +1075,12 @@ export class CenterPanel {
     if (f.type === 'file') return `📄 ${f.filePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}`;
     if (f.type === 'time') return `⏰ ${f.value}`;
     const PRIORITY_EMOJIS: Record<string, string> = {
-      A: '🔺 Highest', B: '⏫ High', C: '🔼 Medium', D: 'Normal', E: '🔽 Low', F: '⏬ Lowest',
+      A: '🔺 Highest',
+      B: '⏫ High',
+      C: '🔼 Medium',
+      D: 'Normal',
+      E: '🔽 Low',
+      F: '⏬ Lowest',
     };
     return PRIORITY_EMOJIS[f.value] ?? f.value;
   }
@@ -1109,7 +1133,10 @@ export class CenterPanel {
 
   private showViewStatePopover(anchor: HTMLElement): void {
     const existing = this.el.querySelector('.tc-view-state-popover');
-    if (existing) { existing.remove(); return; }
+    if (existing) {
+      existing.remove();
+      return;
+    }
 
     const vs = this.state.get('centerListViewState');
     const popover = this.el.createDiv({ cls: 'tc-view-state-popover tc-popover' });
@@ -1156,7 +1183,12 @@ export class CenterPanel {
       { label: 'Priority', value: 'priority' },
       { label: 'Tag', value: 'tag' },
     ];
-    const GROUP_LABELS: Record<string, string> = { none: 'None', date: 'Date', priority: 'Priority', tag: 'Tag' };
+    const GROUP_LABELS: Record<string, string> = {
+      none: 'None',
+      date: 'Date',
+      priority: 'Priority',
+      tag: 'Tag',
+    };
 
     const sortDirArrow = vs.sortBy.dir === 'asc' ? '↑' : '↓';
     const sortFieldArrow = (field: string): string =>
@@ -1174,11 +1206,21 @@ export class CenterPanel {
       { label: 'Completed only', value: 'completed' },
       { label: 'All', value: 'all' },
     ];
-    const SHOW_LABELS: Record<string, string> = { active: 'Active', completed: 'Completed', all: 'All' };
+    const SHOW_LABELS: Record<string, string> = {
+      active: 'Active',
+      completed: 'Completed',
+      all: 'All',
+    };
 
-    makeRow('layout-list', 'Group by', GROUP_LABELS[vs.groupBy] ?? vs.groupBy, GROUP_BY_OPTIONS, (val) => {
-      this.updateViewState({ ...vs, groupBy: val as ListViewState['groupBy'] });
-    });
+    makeRow(
+      'layout-list',
+      'Group by',
+      GROUP_LABELS[vs.groupBy] ?? vs.groupBy,
+      GROUP_BY_OPTIONS,
+      (val) => {
+        this.updateViewState({ ...vs, groupBy: val as ListViewState['groupBy'] });
+      },
+    );
 
     makeRow('arrow-up-down', 'Sort by', sortLabel, SORT_BY_OPTIONS, (val) => {
       const field = val as ListViewState['sortBy']['field'];
@@ -1327,11 +1369,12 @@ export class CenterPanel {
 
   private getFilteredTasks(): Task[] {
     const sel = this.state.get('selectedList');
+    const vs = this.state.get('centerListViewState');
     const filter = this.state.get('centerFilter').toLowerCase();
     const today = window.moment().format('YYYY-MM-DD');
 
+    // 1. List selection filter
     let tasks: Task[];
-
     if (typeof sel === 'string') {
       switch (sel) {
         case 'inbox':
@@ -1340,56 +1383,74 @@ export class CenterPanel {
         case 'today': {
           const todayStr = window.moment().format('YYYY-MM-DD');
           tasks = this.store.getTasks().filter((t) => {
-            if (t.status !== 'open') return false;
-            if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr)
-              return true;
+            if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr) return true;
             if (t.due && t.due < todayStr) return true;
             return false;
           });
           break;
         }
         case 'upcoming': {
-          const filtered = this.store.getTasks().filter((t) => {
-            if (t.status !== 'open') return false;
+          tasks = this.store.getTasks().filter((t) => {
             const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
             return d !== undefined && d > today;
           });
-          tasks = sortTasksByDateTime(filtered);
           break;
         }
         default:
-          tasks = this.store.getTasks().filter((t) => t.status === 'open');
+          tasks = this.store.getTasks();
       }
     } else if (sel.type === 'tag') {
-      tasks = this.store.getTasks({ tag: sel.tag }).filter((t) => t.status === 'open');
+      tasks = this.store.getTasks({ tag: sel.tag });
     } else {
-      // group — gather all tags in group
       const group = this.settings.tagGroups.find((g) => g.id === sel.groupId);
       tasks = this.store.getTasks().filter((t) => {
-        if (t.status !== 'open') return false;
         if (!group) return false;
-        if (group.mode === 'prefix' && group.prefix) {
-          return t.rawText.includes(`#${group.prefix}`);
-        }
+        if (group.mode === 'prefix' && group.prefix) return t.rawText.includes(`#${group.prefix}`);
         return (group.tags ?? []).some((tag) => t.rawText.includes(tag));
       });
     }
 
+    // 2. Show status filter
+    if (vs.show === 'active') {
+      tasks = tasks.filter((t) => t.status === 'open' || t.status === 'in-progress');
+    } else if (vs.show === 'completed') {
+      tasks = tasks.filter((t) => t.status === 'done');
+    }
+    // 'all' → no filter
+
+    // 3. Property filters (AND)
+    for (const f of vs.filters) {
+      if (f.type === 'tag') {
+        const escaped = f.value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+        const re = new RegExp(`${escaped}(?![\\w/-])`, 'u');
+        tasks = tasks.filter((t) => re.test(t.rawText));
+      } else if (f.type === 'file') {
+        tasks = tasks.filter((t) => t.filePath === f.filePath);
+      } else if (f.type === 'time') {
+        tasks = tasks.filter((t) => t.time === f.value);
+      } else if (f.type === 'priority') {
+        tasks = tasks.filter((t) => t.priority === f.value);
+      }
+    }
+
+    // 4. Text filter
     if (filter) {
       tasks = tasks.filter(
         (t) => t.text.toLowerCase().includes(filter) || t.rawText.toLowerCase().includes(filter),
       );
     }
-    return tasks;
+
+    // 5. Sort
+    return sortTasksByField(tasks, vs.sortBy.field, vs.sortBy.dir);
   }
 
   private getInboxTasks(): Task[] {
     const { inbox } = this.settings;
-    const allOpen = this.store.getTasks().filter((t) => t.status === 'open');
+    const all = this.store.getTasks();
     const withTag =
-      inbox.mode !== 'untagged' ? allOpen.filter((t) => t.rawText.includes(inbox.tag)) : [];
+      inbox.mode !== 'untagged' ? all.filter((t) => t.rawText.includes(inbox.tag)) : [];
     const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
-    const untagged = includeUntagged ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
+    const untagged = includeUntagged ? all.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
     if (withTag.length === 0) return untagged;
     if (untagged.length === 0) return withTag;
     const seen = new Set<string>();

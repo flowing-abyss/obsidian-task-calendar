@@ -300,7 +300,7 @@ describe('CenterPanel pure helpers', () => {
       expect(result.map((t) => t.text)).toEqual(['inbox']);
     });
 
-    it('tag mode: excludes done tasks', () => {
+    it('tag mode: includes done tasks (status filtering is done by getFilteredTasks)', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
         inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
@@ -311,7 +311,7 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel } = makePanel(tasks, settings);
       const result = call<Task[]>(panel, 'getInboxTasks');
-      expect(result.map((t) => t.text)).toEqual(['open']);
+      expect(result.map((t) => t.text).sort()).toEqual(['done', 'open']);
     });
 
     it('untagged mode: includes tasks with no hashtags', () => {
@@ -328,7 +328,7 @@ describe('CenterPanel pure helpers', () => {
       expect(result.map((t) => t.text)).toEqual(['plain']);
     });
 
-    it('untagged mode: excludes done tasks', () => {
+    it('untagged mode: includes done tasks (status filtering is done by getFilteredTasks)', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
         inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
@@ -339,7 +339,7 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel } = makePanel(tasks, settings);
       const result = call<Task[]>(panel, 'getInboxTasks');
-      expect(result.map((t) => t.text)).toEqual(['open']);
+      expect(result.map((t) => t.text).sort()).toEqual(['done', 'open']);
     });
 
     it('tag mode + showUntagged=true: includes both tagged and untagged open tasks', () => {
@@ -369,8 +369,8 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel } = makePanel(tasks, settings);
       const result = call<Task[]>(panel, 'getInboxTasks');
-      // FU-22: empty inboxTag → rawText.includes('') returns true for all open tasks
-      expect(result.map((t) => t.text)).toEqual(['plain', 'tagged']);
+      // FU-22: empty inboxTag → rawText.includes('') returns true for all tasks (including done, since status filter moved to getFilteredTasks)
+      expect(result.map((t) => t.text).sort()).toEqual(['done', 'plain', 'tagged']);
     });
   });
 
@@ -569,5 +569,70 @@ describe('CenterPanel pure helpers', () => {
       const { panel } = makePanel([], settings);
       expect(call<string | undefined>(panel, 'getTagColor', '#work')).toBeUndefined();
     });
+  });
+});
+
+describe('getFilteredTasks respects show status', () => {
+  const untaggedSettings: CalendarSettings = {
+    ...DEFAULT_SETTINGS,
+    inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+  };
+
+  it('show=active excludes done tasks', () => {
+    const { panel, state } = makePanel([
+      task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
+      task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+    ], untaggedSettings);
+    state.set('centerListViewState', {
+      groupBy: 'none', sortBy: { field: 'date', dir: 'asc' }, show: 'active', filters: [],
+    });
+    state.set('selectedList', 'inbox');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks.every((t) => t.status !== 'done')).toBe(true);
+  });
+
+  it('show=completed returns only done tasks', () => {
+    const { panel, state } = makePanel([
+      task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
+      task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+    ], untaggedSettings);
+    state.set('centerListViewState', {
+      groupBy: 'none', sortBy: { field: 'date', dir: 'asc' }, show: 'completed', filters: [],
+    });
+    state.set('selectedList', 'inbox');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks.every((t) => t.status === 'done')).toBe(true);
+  });
+
+  it('show=all returns both', () => {
+    const { panel, state } = makePanel([
+      task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
+      task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+    ], untaggedSettings);
+    state.set('centerListViewState', {
+      groupBy: 'none', sortBy: { field: 'date', dir: 'asc' }, show: 'all', filters: [],
+    });
+    state.set('selectedList', 'inbox');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks.length).toBe(2);
+  });
+});
+
+describe('getFilteredTasks respects property filters', () => {
+  it('tag filter keeps only tasks with matching tag', () => {
+    const { panel, state } = makePanel([
+      task({ rawText: '- [ ] work task #work', text: 'work task', status: 'open' }),
+      task({ rawText: '- [ ] personal #personal', text: 'personal', status: 'open' }),
+    ]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'tag', value: '#work' }],
+    });
+    state.set('selectedList', { type: 'tag', tag: '#work' });
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.text).toBe('work task');
   });
 });

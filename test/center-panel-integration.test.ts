@@ -265,20 +265,25 @@ describe('CenterPanel.rescheduleTask', () => {
   });
 });
 
-describe('CenterPanel.renderGrouped', () => {
+describe('CenterPanel.renderWithGrouping (date grouping)', () => {
   fixedToday('2026-06-25');
 
   /**
-   * Call the private renderGrouped directly with a crafted task list so we exercise
-   * the bucketing logic in isolation (the public render() path pre-filters via
-   * getFilteredTasks, which excludes tomorrow/upcoming from the 'today' selection).
+   * Call the private renderWithGrouping directly with groupBy='date' to exercise
+   * the bucketing logic in isolation.
    */
-  function renderGrouped(tasks: Task[]): HTMLElement {
+  function renderWithGroupingByDate(tasks: Task[]): HTMLElement {
     const store = makeStubStore(tasks) as TaskStoreType;
     const state = new AppState();
+    state.set('centerListViewState', {
+      groupBy: 'date',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'all',
+      filters: [],
+    });
     const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS, null as never);
     const container = freshContainer();
-    void call<void>(panel, 'renderGrouped', container, tasks);
+    void call<void>(panel, 'renderWithGrouping', container, tasks);
     return container;
   }
 
@@ -289,7 +294,7 @@ describe('CenterPanel.renderGrouped', () => {
       task({ text: 'tomorrow', due: '2026-06-26', filePath: 't.md', line: 2 }),
       task({ text: 'upcoming', due: '2026-07-05', filePath: 't.md', line: 3 }),
     ];
-    const container = renderGrouped(tasks);
+    const container = renderWithGroupingByDate(tasks);
     const headers = container.querySelectorAll('.tc-group-header');
     const labels = Array.from(headers).map((h) => h.textContent?.trim());
     expect(labels).toContain('Overdue  1');
@@ -300,7 +305,7 @@ describe('CenterPanel.renderGrouped', () => {
 
   it('empty groups are skipped (only non-empty groups render)', () => {
     const tasks = [task({ text: 'today only', due: '2026-06-25', filePath: 't.md', line: 0 })];
-    const container = renderGrouped(tasks);
+    const container = renderWithGroupingByDate(tasks);
     const headers = container.querySelectorAll('.tc-group-header');
     const labels = Array.from(headers).map((h) => h.textContent?.trim());
     expect(labels).toEqual(['Today  1']);
@@ -308,7 +313,7 @@ describe('CenterPanel.renderGrouped', () => {
 
   it('no-date task falls into Overdue bucket (CURRENT BEHAVIOR, follow-up: FU-23)', () => {
     const tasks = [task({ text: 'no date', filePath: 't.md', line: 0 })];
-    const container = renderGrouped(tasks);
+    const container = renderWithGroupingByDate(tasks);
     const headers = container.querySelectorAll('.tc-group-header');
     const labels = Array.from(headers).map((h) => h.textContent?.trim());
     // FU-23: tasks with no date land in Overdue because `!d || d < today` is true when d is undefined
