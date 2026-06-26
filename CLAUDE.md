@@ -28,11 +28,11 @@ Exposes a `window.renderCalendar(dv, params)` API for Dataview to render tasks (
 [Obsidian CLI](https://obsidian.md/help/cli) controls the running app from the terminal.
 
 ```shell
-obsidian plugin:reload id=task-calendar           # reload after rebuild
-obsidian eval code="app.vault.getFiles().length"  # run JS in app
-obsidian devtools                                 # toggle dev tools
-obsidian dev:screenshot path=screenshot.png       # screenshot
-obsidian dev:dom selector=".tasksCalendar" text   # query DOM
+obsidian vault="dev-vault" plugin:reload id=task-calendar           # reload after rebuild
+obsidian vault="dev-vault" eval code="app.vault.getFiles().length"  # run JS in app
+obsidian vault="dev-vault" devtools                                 # toggle dev tools
+obsidian vault="dev-vault" dev:screenshot path=screenshot.png       # screenshot
+obsidian vault="dev-vault" dev:dom selector=".tasksCalendar" text   # query DOM
 ```
 
 Typical loop: `npm run dev` → `obsidian plugin:reload id=task-calendar`.
