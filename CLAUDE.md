@@ -22,6 +22,7 @@ An Obsidian sidebar plugin that renders vault tasks in month, week, and list vie
 - Tests in `test/*.test.ts` use [obsidian-test-mocks](https://github.com/mnaoumov/obsidian-test-mocks) (auto-setup in `vitest.config.ts`).
 - Conventional commits enforced by commitlint + husky hooks.
 - `npm version` runs `version-bump.mjs` (updates `manifest.json` + `versions.json`), commits, tags with **no `v` prefix**, pushes. CI publishes on `*.*.*` tags. **Never tag manually.** `manifest.json` `id` must stay `task-calendar`.
+- `docs/` is gitignored — local-only scratch space for plans/specs. **Never commit `docs/`.**
 
 ## Obsidian CLI
 
