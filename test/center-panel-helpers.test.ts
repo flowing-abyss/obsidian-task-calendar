@@ -694,7 +694,10 @@ describe('getFilteredTasks respects property filters', () => {
       filters: [{ type: 'tag', value: '#work' }],
     });
     // 'upcoming' with no dates → default branch returns all tasks via store.getTasks()
-    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
+    state.set(
+      'selectedList',
+      'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
+    );
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('exact');
@@ -711,7 +714,10 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'file', filePath: 'notes/a.md' }],
     });
-    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
+    state.set(
+      'selectedList',
+      'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
+    );
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('from a');
@@ -729,7 +735,10 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'time', value: '09:00' }],
     });
-    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
+    state.set(
+      'selectedList',
+      'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
+    );
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('morning');
@@ -746,7 +755,10 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'priority', value: 'B' }],
     });
-    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
+    state.set(
+      'selectedList',
+      'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
+    );
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('high');
@@ -765,7 +777,10 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'date', value: '2026-01-10' }],
     });
-    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
+    state.set(
+      'selectedList',
+      'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
+    );
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(3);
     expect(tasks.map((t) => t.text)).toEqual(expect.arrayContaining(['due', 'sched', 'daily']));
@@ -791,7 +806,10 @@ describe('getFilteredTasks respects property filters', () => {
         { type: 'time', value: '09:00' },
       ],
     });
-    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
+    state.set(
+      'selectedList',
+      'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
+    );
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('work morning');
