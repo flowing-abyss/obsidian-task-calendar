@@ -37,12 +37,7 @@ describe('findTaskLine – fallback scan after line shift', () => {
   });
 
   it('finds task after it was moved to another part of the same file', () => {
-    const lines = [
-      '- [ ] unrelated',
-      '# Section',
-      '- [ ] Buy milk',
-      '- [ ] other',
-    ];
+    const lines = ['- [ ] unrelated', '# Section', '- [ ] Buy milk', '- [ ] other'];
     // Task was at line 0 (old position); now at line 2.
     const result = findTaskLine(lines, { filePath: 'f.md', rawText: '- [ ] Buy milk', line: 0 });
     expect(result).toEqual({ type: 'found', line: 2 });

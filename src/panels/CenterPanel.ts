@@ -1,4 +1,4 @@
-import { Menu, Notice, TFile, setIcon, type App } from 'obsidian';
+import { Menu, Notice, setIcon, TFile, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import { locatorOf, TaskMutationService } from '../mutation';
 import type { Task, TaskPriority } from '../parser/types';

@@ -793,8 +793,7 @@ export class RightPanel {
   }
 
   private async deleteTask(task: TaskLike): Promise<void> {
-    const rangeEnd =
-      'subtaskRange' in task && task.subtaskRange ? task.subtaskRange.to : task.line;
+    const rangeEnd = 'subtaskRange' in task && task.subtaskRange ? task.subtaskRange.to : task.line;
     const result = await this.mutations.deleteTaskBlock(locatorOf(task), rangeEnd);
     if (result.type === 'ok') {
       this.state.set('taskStack', []);

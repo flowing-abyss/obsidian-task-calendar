@@ -13,8 +13,8 @@
 import moment from 'moment';
 import { App as ObsidianApp, TFile } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TaskMutationService } from '../src/mutation/TaskMutationService';
 import type { TaskLocator } from '../src/mutation/TaskLocator';
+import { TaskMutationService } from '../src/mutation/TaskMutationService';
 import { createAppWithFiles } from './helpers';
 
 // Install real moment so ✅ date logic works

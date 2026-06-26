@@ -103,13 +103,18 @@ async function runScenario(
   const totalTasks = store.getTasks().length;
 
   // Query benchmarks (repeated for stable avg)
-  const queryAllMs = await avgMs(() => { store.getTasks(); }, RUNS * 10);
-  const queryTagMs = await avgMs(() => { store.getTasks({ tag: '#tag1' }); }, RUNS * 10);
-  const queryDateMs = await avgMs(
-    () => { store.getTasks({ dateRange: { from: '2026-01-01', to: '2026-12-31' } }); },
-    RUNS * 10,
-  );
-  const queryFileMs = await avgMs(() => { store.getTasks({ filePath: 'file-0.md' }); }, RUNS * 10);
+  const queryAllMs = await avgMs(() => {
+    store.getTasks();
+  }, RUNS * 10);
+  const queryTagMs = await avgMs(() => {
+    store.getTasks({ tag: '#tag1' });
+  }, RUNS * 10);
+  const queryDateMs = await avgMs(() => {
+    store.getTasks({ dateRange: { from: '2026-01-01', to: '2026-12-31' } });
+  }, RUNS * 10);
+  const queryFileMs = await avgMs(() => {
+    store.getTasks({ filePath: 'file-0.md' });
+  }, RUNS * 10);
 
   store.destroy();
 
@@ -164,6 +169,6 @@ describe('TaskStore performance benchmark', () => {
     console.log(`   Initial index: ${metrics['initialIndexMs']} ms`);
     console.log(`   getTasks() all: ${metrics['queryAllMs']} ms`);
     console.log(`   JSON: ${JSON.stringify(metrics)}`);
-    expect((metrics['initialIndexMs'] as number)).toBeLessThan(5_000);
+    expect(metrics['initialIndexMs'] as number).toBeLessThan(5_000);
   }, 30_000);
 });

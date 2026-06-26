@@ -24,15 +24,15 @@ describe('getTaskDateCategory', () => {
   });
 
   it('cancelled overdue task is "cancelled" (not overdue)', () => {
-    expect(
-      getTaskDateCategory(task({ status: 'cancelled', due: '2020-01-01' }), TODAY),
-    ).toBe('cancelled');
+    expect(getTaskDateCategory(task({ status: 'cancelled', due: '2020-01-01' }), TODAY)).toBe(
+      'cancelled',
+    );
   });
 
   it('completed task with past due date is "completed" (not overdue)', () => {
-    expect(
-      getTaskDateCategory(task({ status: 'done', due: '2020-01-01' }), TODAY),
-    ).toBe('completed');
+    expect(getTaskDateCategory(task({ status: 'done', due: '2020-01-01' }), TODAY)).toBe(
+      'completed',
+    );
   });
 
   // ── noDate ───────────────────────────────────────────────────────────────
@@ -106,12 +106,9 @@ describe('getTaskDateCategory', () => {
 
 // ── groupTasksByDate – noDate fix ────────────────────────────────────────────
 
-import {
-  groupTasksByDate,
-} from '../src/views/taskGrouping';
+import { groupTasksByDate } from '../src/views/taskGrouping';
 
 describe('groupTasksByDate – noDate bucket fix', () => {
-
   it('task with no date falls into "No date" group, not Overdue', () => {
     const noDateTask = task({ status: 'open' }); // no due/scheduled/start/dailyNoteDate
     const groups = groupTasksByDate([noDateTask], TODAY, TOMORROW);

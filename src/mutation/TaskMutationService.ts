@@ -78,13 +78,12 @@ export class TaskMutationService {
       if (!line) return;
       const isNowOpen = /^(\s*)- \[ \]/.test(line);
       if (isNowOpen) {
-        lines[taskLine] = (
+        lines[taskLine] =
           line
             .replace(/^(\s*)- \[ \]/, '$1- [x]')
             // eslint-disable-next-line sonarjs/super-linear-regex
             .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
-            .trimEnd() + ` ✅ ${today}`
-        );
+            .trimEnd() + ` ✅ ${today}`;
       } else {
         lines[taskLine] = line
           .replace(/^(\s*)- \[.\]/, '$1- [ ]')
