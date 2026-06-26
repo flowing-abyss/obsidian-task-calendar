@@ -2648,11 +2648,8 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   display: inline-flex;
   flex-direction: column;
 }
-.tc-tag-dropdown-wrap--floating {
-  position: fixed;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
+.tc-tag-suggest-item {
+  color: var(--tc-tag-suggest-color, var(--text-normal));
 }
 .tc-tag-dropdown {
   position: absolute;

@@ -6,11 +6,8 @@ export function showTagDropdown(
   getTagColor: (tag: string) => string | undefined,
   onCommit: (tag: string) => void,
   onClose?: () => void,
-  position?: { x: number; y: number },
 ): void {
-  // Remove any existing dropdown (in container or floating)
   container.querySelector('.tc-tag-dropdown-wrap')?.remove();
-  activeDocument.querySelector('.tc-tag-dropdown-wrap--floating')?.remove();
 
   const rawTags = Object.keys(
     (app.metadataCache as unknown as { getTags(): Record<string, number> }).getTags(),
@@ -29,13 +26,7 @@ export function showTagDropdown(
       return aClean.localeCompare(bClean);
     });
 
-  const mountPoint = position ? activeDocument.body : container;
-  const wrapCls = position ? 'tc-tag-dropdown-wrap tc-tag-dropdown-wrap--floating' : 'tc-tag-dropdown-wrap';
-  const wrap = mountPoint.createDiv({ cls: wrapCls });
-  if (position) {
-    wrap.style.left = `${position.x}px`;
-    wrap.style.top = `${position.y}px`;
-  }
+  const wrap = container.createDiv({ cls: 'tc-tag-dropdown-wrap' });
   const input = wrap.createEl('input', {
     cls: 'tc-tag-input',
     attr: { type: 'text', placeholder: '#Tag', autocomplete: 'off' },

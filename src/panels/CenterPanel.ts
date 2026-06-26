@@ -7,7 +7,7 @@ import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { TaskModal } from '../ui/TaskModal';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
-import { showTagDropdown } from '../ui/tagDropdown';
+import { TagPickerModal } from '../ui/TagPickerModal';
 import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
@@ -784,13 +784,7 @@ export class CenterPanel {
           .setTitle('Set tag…')
           .setIcon('hash')
           .setSection('actions')
-          .onClick((evt) => {
-            const pos =
-              evt instanceof MouseEvent
-                ? { x: evt.clientX, y: evt.clientY }
-                : { x: e.clientX, y: e.clientY };
-            window.setTimeout(this.makeTagDropdownOpener(pos, task), 50);
-          }),
+          .onClick(() => this.openTagPicker(task)),
       );
 
       // ── Open in note ──────────────────────────────────────
@@ -896,31 +890,20 @@ export class CenterPanel {
     }
   }
 
-  private makeTagDropdownOpener(pos: { x: number; y: number }, task: Task): () => void {
-    return () =>
-      showTagDropdown(
-        this.el,
-        this.app,
-        (tag) => this.getTagColor(tag),
-        (tag) => void this.tagManager.addTagToTask(task, tag),
-        undefined,
-        pos,
-      );
+  private openTagPicker(task: Task): void {
+    new TagPickerModal(
+      this.app,
+      (tag) => this.getTagColor(tag),
+      (tag) => void this.tagManager.addTagToTask(task, tag),
+    ).open();
   }
 
-  private makeBulkTagDropdownOpener(
-    pos: { x: number; y: number },
-    selectedTasks: Task[],
-  ): () => void {
-    return () =>
-      showTagDropdown(
-        this.el,
-        this.app,
-        (tag) => this.getTagColor(tag),
-        (tag) => void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, tag))),
-        undefined,
-        pos,
-      );
+  private openBulkTagPicker(selectedTasks: Task[]): void {
+    new TagPickerModal(
+      this.app,
+      (tag) => this.getTagColor(tag),
+      (tag) => void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, tag))),
+    ).open();
   }
 
   private showBulkContextMenu(e: MouseEvent, _card: HTMLElement): void {
@@ -974,13 +957,7 @@ export class CenterPanel {
         .setTitle('Set tag…')
         .setIcon('hash')
         .setSection('actions')
-        .onClick((evt) => {
-          const pos =
-            evt instanceof MouseEvent
-              ? { x: evt.clientX, y: evt.clientY }
-              : { x: e.clientX, y: e.clientY };
-          window.setTimeout(this.makeBulkTagDropdownOpener(pos, selectedTasks), 50);
-        }),
+        .onClick(() => this.openBulkTagPicker(selectedTasks)),
     );
 
     // Delete all
