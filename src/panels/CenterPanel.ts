@@ -190,7 +190,7 @@ export class CenterPanel {
 
     const searchInput = controls.createEl('input', {
       cls: 'tc-center-search',
-      attr: { type: 'text', placeholder: 'Filter…' },
+      attr: { type: 'text', placeholder: 'Filter…', 'aria-label': 'Filter tasks' },
     });
     searchInput.value = this.state.get('centerFilter');
     searchInput.addEventListener('input', () => {
@@ -476,14 +476,18 @@ export class CenterPanel {
     header.createEl('h2', { cls: 'tc-center-title', text: 'Search' });
     const input = header.createEl('input', {
       cls: 'tc-center-search tc-search-global',
-      attr: { type: 'text', placeholder: 'Search all tasks…' },
+      attr: { type: 'text', placeholder: 'Search all tasks…', 'aria-label': 'Search all tasks' },
     });
     input.value = this.state.get('searchQuery');
     input.addEventListener('input', () => this.state.set('searchQuery', input.value));
     window.setTimeout(() => input.focus(), 0);
 
     const query = this.state.get('searchQuery').toLowerCase();
-    if (!query) return;
+    if (!query) {
+      const empty = this.el.createDiv({ cls: 'tc-center-scroll tc-search-empty' });
+      empty.createEl('p', { cls: 'tc-empty-state', text: 'Type to search tasks…' });
+      return;
+    }
 
     const results = this.store
       .getTasks()

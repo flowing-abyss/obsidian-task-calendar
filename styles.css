@@ -1,4 +1,15 @@
 /* ============================================================
+   Task Calendar — CSS custom properties
+   ============================================================ */
+:root {
+  --tc-priority-a: #c0001a;
+  --tc-priority-b: #e44332;
+  --tc-priority-c: #e87d00;
+  --tc-priority-e: #5297ff;
+  --tc-priority-f: #2255cc;
+}
+
+/* ============================================================
    Task Calendar — Three-Panel Layout
    ============================================================ */
 
@@ -370,17 +381,11 @@ body:not(.is-mobile) .tasksCalendar .cellName:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-body.theme-dark .tasksCalendar .task {
-  color: var(--light-task-text-color);
+.tasksCalendar .task {
+  color: var(--text-normal);
 }
-body.theme-light .tasksCalendar .task {
-  color: var(--dark-task-text-color);
-}
-body.theme-dark .tasksCalendar .task .note {
-  color: var(--light-task-text-color);
-}
-body.theme-light .tasksCalendar .task .note {
-  color: var(--dark-task-text-color);
+.tasksCalendar .task .note {
+  color: var(--text-muted);
 }
 body:not(.is-mobile) .tasksCalendar .task:hover {
   opacity: 1;
@@ -444,13 +449,11 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   vertical-align: middle;
 }
 .tasksCalendar .task.overdue .description:before {
-  color: white;
-  background: #ff443a;
+  color: var(--text-on-accent);
+  background: var(--tc-priority-b);
 }
 .tasksCalendar .task:not(.overdue) .description:before {
   display: none;
-  background: black;
-  color: white;
 }
 .tasksCalendar .task.dailyNote .description:before,
 .tasksCalendar .task.done .description:before,
@@ -1566,32 +1569,32 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 /* Priority coloring on task card checkbox — outline visible even when unchecked */
 .tc-task-checkbox[data-priority='A'] {
-  accent-color: #c0001a;
-  outline: 2px solid #c0001a;
+  accent-color: var(--tc-priority-a);
+  outline: 2px solid var(--tc-priority-a);
   outline-offset: 0px;
   border-radius: 2px;
 }
 .tc-task-checkbox[data-priority='B'] {
-  accent-color: #e44332;
-  outline: 2px solid #e44332;
+  accent-color: var(--tc-priority-b);
+  outline: 2px solid var(--tc-priority-b);
   outline-offset: 0px;
   border-radius: 2px;
 }
 .tc-task-checkbox[data-priority='C'] {
-  accent-color: #e87d00;
-  outline: 2px solid #e87d00;
+  accent-color: var(--tc-priority-c);
+  outline: 2px solid var(--tc-priority-c);
   outline-offset: 0px;
   border-radius: 2px;
 }
 .tc-task-checkbox[data-priority='E'] {
-  accent-color: #5297ff;
-  outline: 2px solid #5297ff;
+  accent-color: var(--tc-priority-e);
+  outline: 2px solid var(--tc-priority-e);
   outline-offset: 0px;
   border-radius: 2px;
 }
 .tc-task-checkbox[data-priority='F'] {
-  accent-color: #2255cc;
-  outline: 2px solid #2255cc;
+  accent-color: var(--tc-priority-f);
+  outline: 2px solid var(--tc-priority-f);
   outline-offset: 0px;
   border-radius: 2px;
 }
@@ -1664,13 +1667,13 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   height: 11px;
 }
 .tc-task-date.is-overdue {
-  color: #e44332;
+  color: var(--tc-priority-b);
 }
 .tc-task-date.is-today {
-  color: #e44332;
+  color: var(--interactive-accent);
 }
 .tc-task-date.is-tomorrow {
-  color: #e87d00;
+  color: var(--tc-priority-c);
 }
 .tc-task-date.is-soon {
   color: var(--interactive-accent);
@@ -1952,7 +1955,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 .tc-cal-view-btn.is-active {
   background: var(--interactive-accent);
-  color: white;
+  color: var(--text-on-accent);
   font-weight: 500;
 }
 
@@ -2010,7 +2013,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-month-picker-btn.is-active,
 .tc-year-picker-btn.is-active {
   background: var(--interactive-accent);
-  color: white;
+  color: var(--text-on-accent);
 }
 
 .tc-cal-body {
@@ -2365,19 +2368,19 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   flex-shrink: 0;
 }
 .tc-priority-option[data-priority='A']::before {
-  color: #c0001a;
+  color: var(--tc-priority-a);
 }
 .tc-priority-option[data-priority='B']::before {
-  color: #e44332;
+  color: var(--tc-priority-b);
 }
 .tc-priority-option[data-priority='C']::before {
-  color: #e87d00;
+  color: var(--tc-priority-c);
 }
 .tc-priority-option[data-priority='E']::before {
-  color: #5297ff;
+  color: var(--tc-priority-e);
 }
 .tc-priority-option[data-priority='F']::before {
-  color: #2255cc;
+  color: var(--tc-priority-f);
 }
 .tc-priority-option:hover {
   background: var(--background-modifier-hover);
@@ -2394,19 +2397,19 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* Priority chip in right panel */
 .tc-priority-chip[data-priority='A'] {
-  color: #c0001a;
+  color: var(--tc-priority-a);
 }
 .tc-priority-chip[data-priority='B'] {
-  color: #e44332;
+  color: var(--tc-priority-b);
 }
 .tc-priority-chip[data-priority='C'] {
-  color: #e87d00;
+  color: var(--tc-priority-c);
 }
 .tc-priority-chip[data-priority='E'] {
-  color: #5297ff;
+  color: var(--tc-priority-e);
 }
 .tc-priority-chip[data-priority='F'] {
-  color: #2255cc;
+  color: var(--tc-priority-f);
 }
 
 /* Right panel body */
