@@ -1163,7 +1163,9 @@ export class CenterPanel {
     const makeRow = (
       icon: string,
       label: string,
-      currentValue: string,
+      displayValue: string,
+      activeValue: string,
+      defaultValue: string,
       options: Array<{ label: string; value: string }>,
       onSelect: (value: string) => void,
     ): void => {
@@ -1172,7 +1174,7 @@ export class CenterPanel {
       const iconEl = rowMain.createEl('span', { cls: 'tc-view-state-row-icon' });
       setIcon(iconEl, icon);
       rowMain.createEl('span', { cls: 'tc-view-state-row-label', text: label });
-      rowMain.createEl('span', { cls: 'tc-view-state-row-value', text: currentValue });
+      rowMain.createEl('span', { cls: 'tc-view-state-row-value', text: displayValue });
       const chevEl = rowMain.createEl('span', { cls: 'tc-view-state-row-chevron' });
       setIcon(chevEl, 'chevron-right');
 
@@ -1193,8 +1195,15 @@ export class CenterPanel {
       });
 
       for (const opt of options) {
-        const optEl = subList.createEl('button', { cls: 'tc-view-state-option', text: opt.label });
-        if (opt.value === currentValue || opt.label === currentValue) optEl.addClass('is-active');
+        const isActive = opt.value === activeValue;
+        const isDefault = opt.value === defaultValue;
+        const optEl = subList.createEl('button', { cls: 'tc-view-state-option' });
+        const checkEl = optEl.createEl('span', { cls: 'tc-view-state-option-check' });
+        if (isActive) setIcon(checkEl, 'check');
+        optEl.createEl('span', { cls: 'tc-view-state-option-label', text: opt.label });
+        if (isDefault) {
+          optEl.createEl('span', { cls: 'tc-view-state-option-default', text: 'Default' });
+        }
         optEl.addEventListener('click', () => {
           onSelect(opt.value);
           popover.remove();
@@ -1238,29 +1247,40 @@ export class CenterPanel {
       all: 'All',
     };
 
+    const defaults = getListViewDefaults(this.currentListKey);
+
     makeRow(
       'layout-list',
       'Group by',
       GROUP_LABELS[vs.groupBy] ?? vs.groupBy,
+      vs.groupBy,
+      defaults.groupBy,
       GROUP_BY_OPTIONS,
       (val) => {
         this.updateViewState({ ...vs, groupBy: val as ListViewState['groupBy'] });
       },
     );
 
-    makeRow('arrow-up-down', 'Sort by', sortLabel, SORT_BY_OPTIONS, (val) => {
-      const field = val as ListViewState['sortBy']['field'];
-      const dir: 'asc' | 'desc' =
-        vs.sortBy.field === field && vs.sortBy.dir === 'asc' ? 'desc' : 'asc';
-      this.updateViewState({ ...vs, sortBy: { field, dir } });
-    });
+    makeRow(
+      'arrow-up-down',
+      'Sort by',
+      sortLabel,
+      vs.sortBy.field,
+      defaults.sortBy.field,
+      SORT_BY_OPTIONS,
+      (val) => {
+        const field = val as ListViewState['sortBy']['field'];
+        const dir: 'asc' | 'desc' =
+          vs.sortBy.field === field && vs.sortBy.dir === 'asc' ? 'desc' : 'asc';
+        this.updateViewState({ ...vs, sortBy: { field, dir } });
+      },
+    );
 
-    makeRow('eye', 'Show', SHOW_LABELS[vs.show] ?? vs.show, SHOW_OPTIONS, (val) => {
+    makeRow('eye', 'Show', SHOW_LABELS[vs.show] ?? vs.show, vs.show, defaults.show, SHOW_OPTIONS, (val) => {
       this.updateViewState({ ...vs, show: val as ListViewState['show'] });
     });
 
     // Reset to defaults row — only shown when state differs from defaults
-    const defaults = getListViewDefaults(this.currentListKey);
     const isNonDefault =
       vs.groupBy !== defaults.groupBy ||
       vs.sortBy.field !== defaults.sortBy.field ||
