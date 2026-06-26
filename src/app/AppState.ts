@@ -1,4 +1,6 @@
 import type { SubTask, Task } from '../parser/types';
+import { getListViewDefaults } from '../settings/defaults';
+import type { ListViewState } from '../settings/types';
 
 export type ViewMode = 'tasks' | 'calendar' | 'search';
 
@@ -17,6 +19,7 @@ export interface AppStateData {
   searchQuery: string;
   draggingTask: Task | null;
   draggingTag: string | null;
+  centerListViewState: ListViewState;
 }
 
 type Listener<T> = (value: T, prev: T) => void;
@@ -30,6 +33,7 @@ export class AppState {
     searchQuery: '',
     draggingTask: null,
     draggingTag: null,
+    centerListViewState: getListViewDefaults('today'),
   };
 
   private listeners = new Map<keyof AppStateData, Set<Listener<unknown>>>();

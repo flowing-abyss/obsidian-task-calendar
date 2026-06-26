@@ -163,4 +163,13 @@ describe('AppState', () => {
     s.set('draggingTag', null);
     expect(s.get('draggingTag')).toBeNull();
   });
+
+  it('centerListViewState defaults to today defaults', () => {
+    const s = new AppState();
+    const state = s.get('centerListViewState');
+    expect(state.groupBy).toBe('date');
+    expect(state.sortBy).toEqual({ field: 'date', dir: 'asc' });
+    expect(state.show).toBe('active');
+    expect(state.filters).toEqual([]);
+  });
 });
