@@ -1,3 +1,4 @@
+import moment from 'moment';
 import { TFile, type App } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { AppState } from '../src/app/AppState';
@@ -15,6 +16,8 @@ import {
   task,
   useRealMoment,
 } from './helpers';
+
+const TODAY = moment().format('YYYY-MM-DD');
 type TaskStoreType = TaskStore;
 
 const hasAddRawLine =
@@ -66,10 +69,10 @@ describe('CenterPanel.createTask', () => {
     };
     const { panel, state, app } = await makePanel({ 'inbox.md': '- [ ] existing' }, settings);
     state.set('selectedList', 'today');
-    fixedToday('2026-06-25');
+    fixedToday(TODAY);
     await call<void>(panel, 'createTask', 'buy milk');
     const content = await readMd(app, 'inbox.md');
-    expect(content).toContain('- [ ] buy milk 📅 2026-06-25');
+    expect(content).toContain(`- [ ] buy milk 📅 ${TODAY}`);
   });
 
   it("sel='upcoming' delegates to store.addTask (same path as today — CURRENT BEHAVIOR)", async () => {
@@ -81,11 +84,11 @@ describe('CenterPanel.createTask', () => {
     };
     const { panel, state, app } = await makePanel({ 'inbox.md': '' }, settings);
     state.set('selectedList', 'upcoming');
-    fixedToday('2026-06-25');
+    fixedToday(TODAY);
     await call<void>(panel, 'createTask', 'future task');
     const content = await readMd(app, 'inbox.md');
     // CURRENT BEHAVIOR: upcoming uses today's date as the due date (same as 'today')
-    expect(content).toContain('- [ ] future task 📅 2026-06-25');
+    expect(content).toContain(`- [ ] future task 📅 ${TODAY}`);
   });
 
   it("sel='inbox' tag mode appends task line with inboxTag to customFilePath", async () => {
@@ -133,7 +136,6 @@ describe('CenterPanel.createTask', () => {
   (hasAddRawLine ? it : it.skip)(
     'addToToday=true routes inbox task line through store.addRawLine (resolver)',
     async () => {
-      const today = '2026-06-25';
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
         addToToday: true,
@@ -142,13 +144,13 @@ describe('CenterPanel.createTask', () => {
         manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
       };
       const { panel, state, app } = await makePanel(
-        { [`periodic/daily/${today}.md`]: '# Today\n' },
+        { [`periodic/daily/${TODAY}.md`]: '# Today\n' },
         settings,
       );
       state.set('selectedList', 'inbox');
-      fixedToday(today);
+      fixedToday(TODAY);
       await call<void>(panel, 'createTask', 'today inbox task');
-      const content = await readMd(app, `periodic/daily/${today}.md`);
+      const content = await readMd(app, `periodic/daily/${TODAY}.md`);
       expect(content).toContain('- [ ] today inbox task #inbox');
     },
   );

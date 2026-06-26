@@ -1,8 +1,11 @@
+import moment from 'moment';
 import { App, TFile } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { DailyNoteResolver } from '../src/resolvers/DailyNoteResolver';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { createAppWithFiles, useRealMoment } from './helpers';
+
+const TODAY = moment().format('YYYY-MM-DD');
 
 useRealMoment();
 
@@ -122,7 +125,7 @@ describe('DailyNoteResolver.buildTaskLine', () => {
 
 describe('DailyNoteResolver.addTask — append mode', () => {
   it('appends task line to existing note', async () => {
-    const app = await createAppWithFiles({ 'periodic/daily/2026-06-25.md': '# Today\n' });
+    const app = await createAppWithFiles({ [`periodic/daily/${TODAY}.md`]: '# Today\n' });
     const settings = {
       ...DEFAULT_SETTINGS,
       taskPrefix: '',
@@ -134,10 +137,10 @@ describe('DailyNoteResolver.addTask — append mode', () => {
       manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
-    await resolver.addTask('buy milk', '2026-06-25');
-    const file = app.vault.getAbstractFileByPath('periodic/daily/2026-06-25.md');
+    await resolver.addTask('buy milk', TODAY);
+    const file = app.vault.getAbstractFileByPath(`periodic/daily/${TODAY}.md`);
     const content = await app.vault.cachedRead(file as TFile);
-    expect(content).toContain('- [ ] buy milk 📅 2026-06-25');
+    expect(content).toContain(`- [ ] buy milk 📅 ${TODAY}`);
   });
 
   it('creates note when it does not exist', async () => {
@@ -170,7 +173,7 @@ describe('DailyNoteResolver.addTask — append mode', () => {
 describe('DailyNoteResolver.addTask — section mode', () => {
   it('inserts task under existing section heading', async () => {
     const app = await createAppWithFiles({
-      'periodic/daily/2026-06-25.md': '# Today\n\n## Tasks\n\n## Notes\n',
+      [`periodic/daily/${TODAY}.md`]: '# Today\n\n## Tasks\n\n## Notes\n',
     });
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -184,8 +187,8 @@ describe('DailyNoteResolver.addTask — section mode', () => {
       manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
-    await resolver.addTask('buy milk', '2026-06-25');
-    const file = app.vault.getAbstractFileByPath('periodic/daily/2026-06-25.md');
+    await resolver.addTask('buy milk', TODAY);
+    const file = app.vault.getAbstractFileByPath(`periodic/daily/${TODAY}.md`);
     const content = await app.vault.cachedRead(file as TFile);
     const taskIdx = content.indexOf('- [ ] buy milk');
     const tasksIdx = content.indexOf('## Tasks');
@@ -196,7 +199,7 @@ describe('DailyNoteResolver.addTask — section mode', () => {
 
   it('appends section heading when not found, then inserts task', async () => {
     const app = await createAppWithFiles({
-      'periodic/daily/2026-06-25.md': '# Today\n',
+      [`periodic/daily/${TODAY}.md`]: '# Today\n',
     });
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -210,8 +213,8 @@ describe('DailyNoteResolver.addTask — section mode', () => {
       manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
-    await resolver.addTask('buy milk', '2026-06-25');
-    const file = app.vault.getAbstractFileByPath('periodic/daily/2026-06-25.md');
+    await resolver.addTask('buy milk', TODAY);
+    const file = app.vault.getAbstractFileByPath(`periodic/daily/${TODAY}.md`);
     const content = await app.vault.cachedRead(file as TFile);
     expect(content).toContain('## Tasks');
     expect(content.indexOf('- [ ] buy milk')).toBeGreaterThan(content.indexOf('## Tasks'));
@@ -219,7 +222,7 @@ describe('DailyNoteResolver.addTask — section mode', () => {
 
   it('falls back to append when taskInsertionSection is empty string', async () => {
     const app = await createAppWithFiles({
-      'periodic/daily/2026-06-25.md': '# Today\n\n\n',
+      [`periodic/daily/${TODAY}.md`]: '# Today\n\n\n',
     });
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -233,10 +236,10 @@ describe('DailyNoteResolver.addTask — section mode', () => {
       manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
-    await resolver.addTask('buy milk', '2026-06-25');
-    const file = app.vault.getAbstractFileByPath('periodic/daily/2026-06-25.md');
+    await resolver.addTask('buy milk', TODAY);
+    const file = app.vault.getAbstractFileByPath(`periodic/daily/${TODAY}.md`);
     const content = await app.vault.cachedRead(file as TFile);
     // Task should appear at end, not after first empty line
-    expect(content.trimEnd()).toMatch(/- \[ \] buy milk 📅 2026-06-25$/);
+    expect(content.trimEnd()).toMatch(new RegExp(`- \\[ \\] buy milk 📅 ${TODAY}$`));
   });
 });

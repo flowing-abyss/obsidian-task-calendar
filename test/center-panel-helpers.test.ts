@@ -1,3 +1,4 @@
+import moment from 'moment';
 import type { App } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { AppState } from '../src/app/AppState';
@@ -7,6 +8,8 @@ import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
 import { fixedToday, makeStubStore, task, useRealMoment } from './helpers';
+
+const TODAY = moment().format('YYYY-MM-DD');
 
 useRealMoment();
 
@@ -50,13 +53,13 @@ describe('CenterPanel pure helpers', () => {
 
     it('today includes tasks due/scheduled/dailyNoteDate today', () => {
       const tasks = [
-        task({ text: 'dueToday', rawText: '- [ ] dueToday', due: '2026-06-25' }),
-        task({ text: 'schedToday', rawText: '- [ ] schedToday', scheduled: '2026-06-25' }),
-        task({ text: 'dnToday', rawText: '- [ ] dnToday', dailyNoteDate: '2026-06-25' }),
+        task({ text: 'dueToday', rawText: '- [ ] dueToday', due: TODAY }),
+        task({ text: 'schedToday', rawText: '- [ ] schedToday', scheduled: TODAY }),
+        task({ text: 'dnToday', rawText: '- [ ] dnToday', dailyNoteDate: TODAY }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
-      fixedToday('2026-06-25');
+      fixedToday(TODAY);
       const result = call<Task[]>(panel, 'getFilteredTasks');
       expect(result.map((t) => t.text).sort((a, b) => a.localeCompare(b))).toEqual([
         'dnToday',

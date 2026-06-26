@@ -1,8 +1,11 @@
+import moment from 'moment';
 import { App, TFile } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { DailyNoteResolver } from '../src/resolvers/DailyNoteResolver';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { createAppWithFiles, useRealMoment } from './helpers';
+
+const TODAY = moment().format('YYYY-MM-DD');
 
 useRealMoment();
 
@@ -135,8 +138,8 @@ describe('DailyNoteResolver deep — ensureNote folder creation', () => {
       manualDailyNotePath: 'daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
-    await resolver.addTask('folder test', '2026-06-25');
-    const file = app.vault.getAbstractFileByPath('daily/2026-06-25.md');
+    await resolver.addTask('folder test', TODAY);
+    const file = app.vault.getAbstractFileByPath(`daily/${TODAY}.md`);
     expect(file).toBeInstanceOf(TFile);
   });
 
@@ -147,8 +150,8 @@ describe('DailyNoteResolver deep — ensureNote folder creation', () => {
       manualDailyNotePath: 'daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
-    await resolver.addTask('existing folder test', '2026-06-25');
-    const file = app.vault.getAbstractFileByPath('daily/2026-06-25.md');
+    await resolver.addTask('existing folder test', TODAY);
+    const file = app.vault.getAbstractFileByPath(`daily/${TODAY}.md`);
     expect(file).toBeInstanceOf(TFile);
   });
 });
