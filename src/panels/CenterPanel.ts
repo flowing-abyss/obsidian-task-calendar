@@ -78,7 +78,6 @@ export class CenterPanel {
 
         this.selectedTaskKeys.clear();
         this.lastClickedTaskKey = null;
-        this.render();
       }),
       this.state.on('centerListViewState', () => this.render()),
       this.state.on('mode', () => this.render()),
