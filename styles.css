@@ -2651,6 +2651,65 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-tag-suggest-item {
   color: var(--tc-tag-suggest-color, var(--text-normal));
 }
+
+/* Tag picker multi-select modal */
+.tc-tag-picker-modal .modal-content {
+  padding: 0;
+  overflow: hidden;
+}
+.tc-tag-picker-search {
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 1px solid var(--divider-color);
+  background: transparent;
+  font-size: var(--font-ui-medium);
+  outline: none;
+  box-sizing: border-box;
+}
+.tc-tag-picker-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.tc-tag-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  margin: 1px 6px;
+  user-select: none;
+}
+.tc-tag-picker-item:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-tag-picker-item--checked {
+  background: var(--background-modifier-active-hover);
+}
+.tc-tag-picker-item--partial {
+  opacity: 0.7;
+}
+.tc-tag-picker-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--interactive-accent);
+}
+.tc-tag-picker-item--partial .tc-tag-picker-icon {
+  color: var(--text-muted);
+}
+.tc-tag-picker-label {
+  font-size: var(--font-ui-small);
+  color: var(--tc-tag-picker-color, var(--tag-color, var(--text-normal)));
+}
+.tc-tag-picker-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
 .tc-tag-dropdown {
   position: absolute;
   top: calc(100% + 4px);

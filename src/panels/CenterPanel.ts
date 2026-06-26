@@ -5,9 +5,9 @@ import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { CalendarSettings, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
+import { TagPickerModal } from '../ui/TagPickerModal';
 import { TaskModal } from '../ui/TaskModal';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
-import { TagPickerModal } from '../ui/TagPickerModal';
 import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
@@ -890,20 +890,32 @@ export class CenterPanel {
     }
   }
 
+  private getTaskTags(task: Task): Set<string> {
+    return new Set((task.rawText.match(/#[\w/][\w/-]*/gu) ?? []));
+  }
+
   private openTagPicker(task: Task): void {
-    new TagPickerModal(
-      this.app,
-      (tag) => this.getTagColor(tag),
-      (tag) => void this.tagManager.addTagToTask(task, tag),
-    ).open();
+    const currentTags = this.getTaskTags(task);
+    const handleCommit = (toAdd: string[], toRemove: string[]): void => {
+      for (const tag of toAdd) void this.tagManager.addTagToTask(task, tag);
+      for (const tag of toRemove) void this.tagManager.removeTagFromTask(task, tag);
+    };
+    new TagPickerModal(this.app, (tag) => this.getTagColor(tag), currentTags, new Set(), handleCommit).open();
   }
 
   private openBulkTagPicker(selectedTasks: Task[]): void {
-    new TagPickerModal(
-      this.app,
-      (tag) => this.getTagColor(tag),
-      (tag) => void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, tag))),
-    ).open();
+    const tagSets = selectedTasks.map((t) => this.getTaskTags(t));
+    const allTags = new Set(tagSets.flatMap((s) => [...s]));
+    const hasAll = (tag: string): boolean => tagSets.every((s) => s.has(tag));
+    const currentTags = new Set([...allTags].filter(hasAll));
+    const partialTags = new Set([...allTags].filter((tag) => !hasAll(tag)));
+    const handleBulkCommit = (toAdd: string[], toRemove: string[]): void => {
+      for (const tag of toAdd)
+        void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, tag)));
+      for (const tag of toRemove)
+        void Promise.all(selectedTasks.map((t) => this.tagManager.removeTagFromTask(t, tag)));
+    };
+    new TagPickerModal(this.app, (tag) => this.getTagColor(tag), currentTags, partialTags, handleBulkCommit).open();
   }
 
   private showBulkContextMenu(e: MouseEvent, _card: HTMLElement): void {
