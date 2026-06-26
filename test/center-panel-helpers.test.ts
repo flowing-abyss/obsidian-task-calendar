@@ -124,9 +124,9 @@ describe('CenterPanel pure helpers', () => {
     it('upcoming returns open tasks with date > today, sorted', () => {
       const tasks = [
         task({ text: 'far', rawText: '- [ ] far', due: '2026-07-10' }),
-        task({ text: 'near', rawText: '- [ ] near', due: '2026-06-27' }),
+        task({ text: 'near', rawText: '- [ ] near', due: '2026-06-28' }),
         task({ text: 'past', rawText: '- [ ] past', due: '2026-06-20' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done', due: '2026-06-27' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done', due: '2026-06-28' }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'upcoming');

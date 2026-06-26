@@ -1327,7 +1327,8 @@ export class CenterPanel {
     const trigger = bar.createDiv({ cls: 'tc-add-task-trigger' });
     trigger.createEl('span', { cls: 'tc-add-task-plus', text: '+' });
     trigger.createEl('span', { cls: 'tc-add-task-label', text: 'Add task' });
-    trigger.addEventListener('click', () => {
+    bar.addEventListener('click', () => {
+      if (bar.querySelector('.tc-quick-capture')) return;
       trigger.remove();
       this.showQuickCapture(bar);
     });

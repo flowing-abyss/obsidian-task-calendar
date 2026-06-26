@@ -1358,6 +1358,13 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   font-size: 13.5px;
   font-weight: 500;
 }
+.tc-tag-group-header .tc-left-label {
+  flex: 1;
+  min-width: 0;
+}
+.tc-tag-group-header .tc-left-count {
+  margin-left: auto;
+}
 .tc-tag-group-header:hover {
   background: var(--nav-item-background-hover);
 }
@@ -1466,7 +1473,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* ---- Center Panel ---- */
 .tc-center-header {
-  padding: 16px 16px 8px;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -2018,9 +2025,18 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 .tc-cal-body {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
   min-height: 0;
   padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+}
+.tc-cal-body .grid,
+.tc-cal-body .list {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ── List View ────────────────────────────────────────── */
