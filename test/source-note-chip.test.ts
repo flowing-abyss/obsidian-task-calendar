@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../src/ui/sourceNoteChip';
 import { freshContainer, task } from './helpers';
@@ -64,5 +64,15 @@ describe('renderSourceNoteChip', () => {
     renderSourceNoteChip(container, task({ filePath: 'Note.md' } as Partial<Task>));
     const name = container.querySelector('.tc-task-source-note-name');
     expect(name?.textContent).toBe('Note');
+  });
+
+  it('calls onClick with filePath when chip is clicked', () => {
+    const container = freshContainer();
+    const t = task({ filePath: 'notes/2026-06-26.md' });
+    const cb = vi.fn();
+    renderSourceNoteChip(container, t, cb);
+    const chip = container.querySelector('.tc-task-source-note') as HTMLElement;
+    chip.click();
+    expect(cb).toHaveBeenCalledWith('notes/2026-06-26.md');
   });
 });
