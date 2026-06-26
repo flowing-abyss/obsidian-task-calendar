@@ -86,7 +86,9 @@ export class TaskMutationService {
             .replace(/^(\s*)- \[ \]/, '$1- [x]')
             // eslint-disable-next-line sonarjs/super-linear-regex
             .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
-            .trimEnd() + ` ✅ ${today}` + cr;
+            .trimEnd() +
+          ` ✅ ${today}` +
+          cr;
       } else {
         lines[taskLine] =
           line
