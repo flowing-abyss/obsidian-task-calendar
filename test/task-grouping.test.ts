@@ -2,9 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
 import {
   getTasksForDate,
+  groupTasksByDate,
+  groupTasksByPriority,
+  groupTasksByTag,
   renderTaskGroup,
   sortTasks,
   sortTasksByDateTime,
+  sortTasksByField,
 } from '../src/views/taskGrouping';
 import { task, useRealMoment } from './helpers';
 
@@ -235,6 +239,100 @@ describe('sortTasksByDateTime', () => {
       task({ text: 'dated', due: '2026-06-25' }),
     ]);
     expect(out.map((t) => t.text)).toEqual(['dated', 'noDate']);
+  });
+});
+
+describe('sortTasksByField', () => {
+  it('date asc: nearest first (no date sorts last)', () => {
+    const t1 = task({ due: '2026-07-01' });
+    const t2 = task({ due: '2026-06-28' });
+    const t3 = task({});
+    const out = sortTasksByField([t1, t3, t2], 'date', 'asc');
+    expect(out.map((t) => t.due)).toEqual(['2026-06-28', '2026-07-01', undefined]);
+  });
+
+  it('date desc: furthest first, no-date last', () => {
+    const t1 = task({ due: '2026-07-01' });
+    const t2 = task({ due: '2026-06-28' });
+    const out = sortTasksByField([t2, t1], 'date', 'desc');
+    expect(out[0]?.due).toBe('2026-07-01');
+  });
+
+  it('priority asc: A before F', () => {
+    const out = sortTasksByField(
+      [task({ priority: 'F' }), task({ priority: 'A' })],
+      'priority',
+      'asc',
+    );
+    expect(out[0]?.priority).toBe('A');
+  });
+
+  it('priority desc: F before A', () => {
+    const out = sortTasksByField(
+      [task({ priority: 'A' }), task({ priority: 'F' })],
+      'priority',
+      'desc',
+    );
+    expect(out[0]?.priority).toBe('F');
+  });
+
+  it('title asc: alphabetical', () => {
+    const out = sortTasksByField(
+      [task({ text: 'zebra' }), task({ text: 'apple' })],
+      'title',
+      'asc',
+    );
+    expect(out[0]?.text).toBe('apple');
+  });
+
+  it('tag asc: first tag alphabetical, untagged last', () => {
+    const t1 = task({ rawText: '- [ ] task #work' });
+    const t2 = task({ rawText: '- [ ] task #art' });
+    const t3 = task({ rawText: '- [ ] task no tag' });
+    const out = sortTasksByField([t1, t3, t2], 'tag', 'asc');
+    expect((out[0]?.rawText.match(/#[\w/-]+/u) ?? [])[0]).toBe('#art');
+    expect(out[2]?.rawText).toContain('no tag');
+  });
+});
+
+describe('groupTasksByPriority', () => {
+  it('returns groups for present priorities only', () => {
+    const tasks = [
+      task({ priority: 'A', text: 'high' }),
+      task({ priority: 'D', text: 'normal' }),
+    ];
+    const groups = groupTasksByPriority(tasks);
+    expect(groups.map((g) => g.label)).toContain('🔺 Highest');
+    expect(groups.map((g) => g.label)).toContain('Normal');
+    expect(groups.map((g) => g.label)).not.toContain('⏬ Lowest');
+  });
+
+  it('tasks with priority A appear in Highest group', () => {
+    const t = task({ priority: 'A', text: 'urgent' });
+    const groups = groupTasksByPriority([t]);
+    const highest = groups.find((g) => g.label === '🔺 Highest');
+    expect(highest?.tasks[0]?.text).toBe('urgent');
+  });
+});
+
+describe('groupTasksByTag', () => {
+  it('groups by first tag; untagged go to "No tag"', () => {
+    const t1 = task({ rawText: '- [ ] a #work' });
+    const t2 = task({ rawText: '- [ ] b #personal' });
+    const t3 = task({ rawText: '- [ ] c no tag' });
+    const groups = groupTasksByTag([t1, t2, t3]);
+    expect(groups.map((g) => g.label)).toContain('#work');
+    expect(groups.map((g) => g.label)).toContain('#personal');
+    expect(groups.map((g) => g.label)).toContain('No tag');
+  });
+});
+
+describe('groupTasksByDate', () => {
+  it('returns Overdue group for tasks with past due date', () => {
+    const t = task({ due: '2020-01-01' });
+    const groups = groupTasksByDate([t], '2026-06-26', '2026-06-27');
+    expect(groups[0]?.label).toBe('Overdue');
+    expect(groups[0]?.tasks).toHaveLength(1);
   });
 });
 
