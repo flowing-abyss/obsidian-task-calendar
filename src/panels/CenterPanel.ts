@@ -1105,6 +1105,7 @@ export class CenterPanel {
       if (f.type === 'tag' && filter.type === 'tag') return f.value === filter.value;
       if (f.type === 'time' && filter.type === 'time') return f.value === filter.value;
       if (f.type === 'priority' && filter.type === 'priority') return f.value === filter.value;
+      if (f.type === 'date' && filter.type === 'date') return f.value === filter.value;
       return false;
     });
     if (already) return;
@@ -1276,9 +1277,17 @@ export class CenterPanel {
       },
     );
 
-    makeRow('eye', 'Show', SHOW_LABELS[vs.show] ?? vs.show, vs.show, defaults.show, SHOW_OPTIONS, (val) => {
-      this.updateViewState({ ...vs, show: val as ListViewState['show'] });
-    });
+    makeRow(
+      'eye',
+      'Show',
+      SHOW_LABELS[vs.show] ?? vs.show,
+      vs.show,
+      defaults.show,
+      SHOW_OPTIONS,
+      (val) => {
+        this.updateViewState({ ...vs, show: val as ListViewState['show'] });
+      },
+    );
 
     // Reset to defaults row — only shown when state differs from defaults
     const isNonDefault =

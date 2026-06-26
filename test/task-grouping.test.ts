@@ -297,10 +297,7 @@ describe('sortTasksByField', () => {
 
 describe('groupTasksByPriority', () => {
   it('returns groups for present priorities only', () => {
-    const tasks = [
-      task({ priority: 'A', text: 'high' }),
-      task({ priority: 'D', text: 'normal' }),
-    ];
+    const tasks = [task({ priority: 'A', text: 'high' }), task({ priority: 'D', text: 'normal' })];
     const groups = groupTasksByPriority(tasks);
     expect(groups.map((g) => g.label)).toContain('🔺 Highest');
     expect(groups.map((g) => g.label)).toContain('Normal');

@@ -1,4 +1,4 @@
-import type { CalendarSettings, ViewConfig, ListViewState } from './types';
+import type { CalendarSettings, ListViewState, ViewConfig } from './types';
 
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   defaultView: 'month',

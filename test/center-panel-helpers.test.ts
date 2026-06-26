@@ -693,7 +693,8 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'tag', value: '#work' }],
     });
-    state.set('selectedList', 'all-tasks');
+    // 'upcoming' with no dates → default branch returns all tasks via store.getTasks()
+    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('exact');
@@ -710,7 +711,7 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'file', filePath: 'notes/a.md' }],
     });
-    state.set('selectedList', 'all-tasks');
+    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('from a');
@@ -728,7 +729,7 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'time', value: '09:00' }],
     });
-    state.set('selectedList', 'all-tasks');
+    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('morning');
@@ -745,7 +746,7 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'priority', value: 'B' }],
     });
-    state.set('selectedList', 'all-tasks');
+    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('high');
@@ -764,7 +765,7 @@ describe('getFilteredTasks respects property filters', () => {
       show: 'active',
       filters: [{ type: 'date', value: '2026-01-10' }],
     });
-    state.set('selectedList', 'all-tasks');
+    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(3);
     expect(tasks.map((t) => t.text)).toEqual(expect.arrayContaining(['due', 'sched', 'daily']));
@@ -774,7 +775,12 @@ describe('getFilteredTasks respects property filters', () => {
     const { panel, state } = makePanel([
       task({ rawText: '- [ ] t #work', text: 'work morning', status: 'open', time: '09:00' }),
       task({ rawText: '- [ ] t #work', text: 'work afternoon', status: 'open', time: '14:00' }),
-      task({ rawText: '- [ ] t #personal', text: 'personal morning', status: 'open', time: '09:00' }),
+      task({
+        rawText: '- [ ] t #personal',
+        text: 'personal morning',
+        status: 'open',
+        time: '09:00',
+      }),
     ]);
     state.set('centerListViewState', {
       groupBy: 'none',
@@ -785,7 +791,7 @@ describe('getFilteredTasks respects property filters', () => {
         { type: 'time', value: '09:00' },
       ],
     });
-    state.set('selectedList', 'all-tasks');
+    state.set('selectedList', 'all-tasks' as unknown as import('../src/app/AppState').ListSelection);
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('work morning');
@@ -830,6 +836,18 @@ describe('addPropertyFilter', () => {
     expect(state.get('centerListViewState').filters).toHaveLength(1);
   });
 
+  it('deduplicates date filters by value', () => {
+    const { panel, state } = makePanel([]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'date', value: '2026-01-10' }],
+    });
+    call(panel, 'addPropertyFilter', { type: 'date', value: '2026-01-10' });
+    expect(state.get('centerListViewState').filters).toHaveLength(1);
+  });
+
   it('allows different filter types with the same value', () => {
     const { panel, state } = makePanel([]);
     state.set('centerListViewState', {
@@ -870,16 +888,22 @@ describe('filterChipLabel', () => {
 
   it('file filter → filename without extension', () => {
     const { panel } = makePanel([]);
-    expect(call<string>(panel, 'filterChipLabel', { type: 'file', filePath: 'notes/Daily Note.md' })).toBe('📄 Daily Note');
+    expect(
+      call<string>(panel, 'filterChipLabel', { type: 'file', filePath: 'notes/Daily Note.md' }),
+    ).toBe('📄 Daily Note');
   });
 
   it('time filter → clock emoji + time', () => {
     const { panel } = makePanel([]);
-    expect(call<string>(panel, 'filterChipLabel', { type: 'time', value: '09:00' })).toBe('⏰ 09:00');
+    expect(call<string>(panel, 'filterChipLabel', { type: 'time', value: '09:00' })).toBe(
+      '⏰ 09:00',
+    );
   });
 
   it('priority filter → emoji label', () => {
     const { panel } = makePanel([]);
-    expect(call<string>(panel, 'filterChipLabel', { type: 'priority', value: 'B' })).toBe('⏫ High');
+    expect(call<string>(panel, 'filterChipLabel', { type: 'priority', value: 'B' })).toBe(
+      '⏫ High',
+    );
   });
 });
