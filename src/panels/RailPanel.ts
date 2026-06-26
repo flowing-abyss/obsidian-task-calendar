@@ -61,12 +61,12 @@ export class RailPanel {
       this.app.setting?.openTabById?.('task-calendar');
       settingsBtn.addClass('is-active');
       const mo = new MutationObserver(() => {
-        if (!document.querySelector('.modal-container .modal')) {
+        if (!activeDocument.querySelector('.modal-container .modal')) {
           settingsBtn.removeClass('is-active');
           mo.disconnect();
         }
       });
-      mo.observe(document.body, { childList: true, subtree: true });
+      mo.observe(activeDocument.body, { childList: true, subtree: true });
     });
   }
 }
