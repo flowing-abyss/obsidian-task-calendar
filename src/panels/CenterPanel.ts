@@ -17,7 +17,12 @@ import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
-import { groupTasksByDate, groupTasksByPriority, groupTasksByTag, sortTasksByField } from '../views/taskGrouping';
+import {
+  groupTasksByDate,
+  groupTasksByPriority,
+  groupTasksByTag,
+  sortTasksByField,
+} from '../views/taskGrouping';
 
 type CalViewType = 'month' | 'week' | 'list';
 
@@ -1141,6 +1146,14 @@ export class CenterPanel {
     const vs = this.state.get('centerListViewState');
     const popover = this.el.createDiv({ cls: 'tc-view-state-popover tc-popover' });
 
+    let dismiss: (e: MouseEvent) => void;
+    dismiss = (e: MouseEvent): void => {
+      if (!popover.contains(e.target as Node) && e.target !== anchor) {
+        popover.remove();
+        activeDocument.removeEventListener('click', dismiss, true);
+      }
+    };
+
     const makeRow = (
       icon: string,
       label: string,
@@ -1173,6 +1186,7 @@ export class CenterPanel {
         optEl.addEventListener('click', () => {
           onSelect(opt.value);
           popover.remove();
+          activeDocument.removeEventListener('click', dismiss, true);
         });
       }
     };
@@ -1235,12 +1249,6 @@ export class CenterPanel {
 
     anchor.after(popover);
     window.setTimeout(() => {
-      const dismiss = (e: MouseEvent): void => {
-        if (!popover.contains(e.target as Node) && e.target !== anchor) {
-          popover.remove();
-          activeDocument.removeEventListener('click', dismiss, true);
-        }
-      };
       activeDocument.addEventListener('click', dismiss, true);
     }, 0);
   }
@@ -1383,7 +1391,8 @@ export class CenterPanel {
         case 'today': {
           const todayStr = window.moment().format('YYYY-MM-DD');
           tasks = this.store.getTasks().filter((t) => {
-            if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr) return true;
+            if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr)
+              return true;
             if (t.due && t.due < todayStr) return true;
             return false;
           });
