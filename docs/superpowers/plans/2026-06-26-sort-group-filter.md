@@ -24,7 +24,8 @@
 | File | Action | Responsibility |
 |---|---|---|
 | `src/settings/types.ts` | Modify | Add `PropertyFilter`, `ListViewState`, `listViewStates` to `CalendarSettings` |
-| `src/settings/defaults.ts` | Modify | Add `getListViewDefaults()`, `listSelectionToKey()` |
+| `src/settings/defaults.ts` | Modify | Add `getListViewDefaults(key: string)` — takes a string, NO import from AppState |
+| `src/panels/CenterPanel.ts` (module level) | Modify | Add `listSelectionToKey()` as a module-level function to avoid circular import |
 | `src/app/AppState.ts` | Modify | Add `centerListViewState: ListViewState` |
 | `src/views/taskGrouping.ts` | Modify | Add `sortTasksByField()`, `groupTasksByPriority()`, `groupTasksByTag()`, `groupTasksByDate()` |
 | `src/ui/sourceNoteChip.ts` | Modify | Accept optional `onClick` callback |
@@ -45,7 +46,7 @@
 - Test: `test/app-state.test.ts` (add one assertion), `test/task-grouping.test.ts` (no change here, just noting)
 
 **Interfaces:**
-- Produces: `PropertyFilter`, `ListViewState`, `getListViewDefaults(key)`, `listSelectionToKey(sel)`
+- Produces: `PropertyFilter`, `ListViewState`, `getListViewDefaults(key: string)` (string param only — no ListSelection import → no circular dep)
 
 - [ ] **Step 1: Add types to `src/settings/types.ts`**
 
@@ -92,12 +93,13 @@ export interface CalendarSettings {
 
 Note: the `import type { TaskPriority }` needs to be at the top of the file (add to existing imports, not inline).
 
-- [ ] **Step 2: Add `getListViewDefaults` and `listSelectionToKey` to `src/settings/defaults.ts`**
+- [ ] **Step 2: Add `getListViewDefaults` to `src/settings/defaults.ts`**
 
-Add these imports and functions:
+**IMPORTANT: Do NOT import from `../app/AppState` — that creates a circular dependency (AppState imports getListViewDefaults from defaults). The function takes a plain `string`, not `ListSelection`.**
+
+Add to `src/settings/defaults.ts`:
 
 ```typescript
-import type { ListSelection } from '../app/AppState';
 import type { ListViewState } from './types';
 
 export function getListViewDefaults(listKey: string): ListViewState {
@@ -109,13 +111,9 @@ export function getListViewDefaults(listKey: string): ListViewState {
     filters: [],
   };
 }
-
-export function listSelectionToKey(sel: ListSelection): string {
-  if (typeof sel === 'string') return sel;
-  if (sel.type === 'tag') return `tag:${sel.tag}`;
-  return `group:${sel.groupId}`;
-}
 ```
+
+`listSelectionToKey` is a module-level function in `CenterPanel.ts` (not in defaults.ts) — added in Task 5.
 
 - [ ] **Step 3: Run tests to confirm nothing broke**
 
@@ -146,11 +144,9 @@ git commit -m "feat(types): add ListViewState, PropertyFilter, listViewStates se
 
 - [ ] **Step 1: Write a failing test in `test/app-state.test.ts`**
 
-Add inside the existing `describe('AppState', ...)` block:
+Add inside the existing `describe('AppState', ...)` block. **No import of `getListViewDefaults` needed — just assert the shape directly.**
 
 ```typescript
-import { getListViewDefaults } from '../src/settings/defaults';
-
 it('centerListViewState defaults to today defaults', () => {
   const s = new AppState();
   const state = s.get('centerListViewState');
@@ -607,8 +603,19 @@ Expected: FAIL — state not updated on list change.
 Add to the top of `src/panels/CenterPanel.ts`:
 
 ```typescript
-import { getListViewDefaults, listSelectionToKey } from '../settings/defaults';
+import { getListViewDefaults } from '../settings/defaults';
+import type { ListSelection } from '../app/AppState';
 import type { ListViewState } from '../settings/types';
+```
+
+Add this module-level helper function right after the imports (before the `class CenterPanel` declaration). This avoids a circular import that would occur if it were in `defaults.ts`:
+
+```typescript
+function listSelectionToKey(sel: ListSelection): string {
+  if (typeof sel === 'string') return sel;
+  if (sel.type === 'tag') return `tag:${sel.tag}`;
+  return `group:${sel.groupId}`;
+}
 ```
 
 Change the class to add:
@@ -801,10 +808,14 @@ private filterChipLabel(f: PropertyFilter): string {
 
 private addPropertyFilter(filter: PropertyFilter): void {
   const vs = this.state.get('centerListViewState');
-  const already = vs.filters.some(
-    (f) => f.type === filter.type && (f as { value?: string }).value === (filter as { value?: string }).value &&
-      (f as { filePath?: string }).filePath === (filter as { filePath?: string }).filePath,
-  );
+  const already = vs.filters.some((f) => {
+    if (f.type !== filter.type) return false;
+    if (f.type === 'file' && filter.type === 'file') return f.filePath === filter.filePath;
+    if (f.type === 'tag' && filter.type === 'tag') return f.value === filter.value;
+    if (f.type === 'time' && filter.type === 'time') return f.value === filter.value;
+    if (f.type === 'priority' && filter.type === 'priority') return f.value === filter.value;
+    return false;
+  });
   if (already) return;
   const next: ListViewState = { ...vs, filters: [...vs.filters, filter] };
   this.updateViewState(next);
@@ -1044,7 +1055,37 @@ describe('getFilteredTasks respects property filters', () => {
 npm run test:unit -- test/center-panel-helpers.test.ts
 ```
 
-- [ ] **Step 3: Update `getFilteredTasks()` in `CenterPanel.ts`**
+- [ ] **Step 3a: Fix `getInboxTasks()` to NOT pre-filter by status**
+
+**CRITICAL:** `getInboxTasks()` currently starts with `this.store.getTasks().filter((t) => t.status === 'open')`. This must be removed so that `show === 'completed'` and `show === 'all'` work for the inbox list. The `getFilteredTasks()` step 2 handles status filtering for all lists.
+
+Replace the first two lines of `getInboxTasks()`:
+
+**Old:**
+```typescript
+private getInboxTasks(): Task[] {
+  const { inbox } = this.settings;
+  const allOpen = this.store.getTasks().filter((t) => t.status === 'open');
+  const withTag =
+    inbox.mode !== 'untagged' ? allOpen.filter((t) => t.rawText.includes(inbox.tag)) : [];
+  const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
+  const untagged = includeUntagged ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
+```
+
+**New:**
+```typescript
+private getInboxTasks(): Task[] {
+  const { inbox } = this.settings;
+  const all = this.store.getTasks();
+  const withTag =
+    inbox.mode !== 'untagged' ? all.filter((t) => t.rawText.includes(inbox.tag)) : [];
+  const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
+  const untagged = includeUntagged ? all.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
+```
+
+The rest of the method body stays identical.
+
+- [ ] **Step 3b: Update `getFilteredTasks()` in `CenterPanel.ts`**
 
 Add imports at top of file:
 
@@ -1150,7 +1191,11 @@ With:
 this.renderWithGrouping(scroll, tasks);
 ```
 
-- [ ] **Step 5: Add `renderWithGrouping()` method, keep `renderGrouped` and `renderFlat` as private helpers**
+- [ ] **Step 5a: Delete the old `renderGrouped()` method from `CenterPanel.ts`**
+
+The old `renderGrouped()` method (which hardcodes Overdue/Today/Tomorrow/Upcoming groups for date grouping) is now replaced by `renderWithGrouping()` calling `groupTasksByDate()`. Delete the entire `private renderGrouped(...)` method. The call site was already replaced in Step 4. Leaving it as dead code will fail `npm run knip`.
+
+- [ ] **Step 5b: Add `renderWithGrouping()` method**
 
 ```typescript
 private renderWithGrouping(container: HTMLElement, tasks: Task[]): void {
