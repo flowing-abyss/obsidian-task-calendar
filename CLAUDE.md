@@ -1,6 +1,6 @@
 # Obsidian Task Calendar plugin
 
-An Obsidian sidebar plugin that renders vault tasks in month, week, and list views. Registers a custom `ItemView` (panel) with left/center/right panels — no Dataview dependency.
+An Obsidian sidebar plugin that renders vault tasks in month, week, and list views. Registers a custom `ItemView` (panel) with left/center/right sub-panels.
 
 ## Commands
 
