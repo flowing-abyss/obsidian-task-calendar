@@ -118,13 +118,14 @@ export class TagManager {
     const re = new RegExp(escaped + '(?![\\w/-])', 'gu');
     let count = 0;
     for (const file of files) {
-      const content = await this.app.vault.read(file);
-      if (!content.includes(oldTag)) continue;
-      const updated = content.replace(re, newTag);
-      if (updated !== content) {
-        await this.app.vault.modify(file, updated);
-        count++;
-      }
+      let changed = false;
+      await this.app.vault.process(file, (content) => {
+        if (!content.includes(oldTag)) return content;
+        const updated = content.replace(re, newTag);
+        if (updated !== content) changed = true;
+        return updated;
+      });
+      if (changed) count++;
     }
     // Update pinnedTags
     const pi = this.settings.pinnedTags.indexOf(oldTag);

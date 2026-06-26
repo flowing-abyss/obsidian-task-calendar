@@ -76,6 +76,9 @@ export class TaskMutationService {
     return this.applyToLines(locator, (lines, taskLine) => {
       const line = lines[taskLine];
       if (!line) return;
+      // Preserve trailing \r for CRLF files so the rawText fingerprint stays consistent.
+      const hasCR = line.endsWith('\r');
+      const cr = hasCR ? '\r' : '';
       const isNowOpen = /^(\s*)- \[ \]/.test(line);
       if (isNowOpen) {
         lines[taskLine] =
@@ -83,41 +86,58 @@ export class TaskMutationService {
             .replace(/^(\s*)- \[ \]/, '$1- [x]')
             // eslint-disable-next-line sonarjs/super-linear-regex
             .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
-            .trimEnd() + ` ✅ ${today}`;
+            .trimEnd() + ` ✅ ${today}` + cr;
       } else {
-        lines[taskLine] = line
-          .replace(/^(\s*)- \[.\]/, '$1- [ ]')
-          // eslint-disable-next-line sonarjs/super-linear-regex
-          .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
-          .trimEnd();
+        lines[taskLine] =
+          line
+            .replace(/^(\s*)- \[.\]/, '$1- [ ]')
+            // eslint-disable-next-line sonarjs/super-linear-regex
+            .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
+            .trimEnd() + cr;
       }
     });
   }
 
-  /** Insert a new line immediately after the task (or after its subtask range). */
+  /** Insert a new line immediately after the task (or after its subtask range).
+   *  When `insertAfterLine` is provided it is treated as a hint from the last index;
+   *  it is adjusted by the same drift that moved the task itself. */
   async insertLineAfter(
     locator: TaskLocator,
     newLine: string,
     insertAfterLine?: number,
   ): Promise<MutationResult> {
     return this.applyToLines(locator, (lines, taskLine) => {
-      const insertAt = insertAfterLine !== undefined ? insertAfterLine + 1 : taskLine + 1;
+      const delta = taskLine - locator.line;
+      const insertAt = insertAfterLine !== undefined ? insertAfterLine + delta + 1 : taskLine + 1;
       lines.splice(insertAt, 0, newLine);
     });
   }
 
-  /** Remove a single line by its locator (used for comment deletion). */
+  /** Remove a single line. `lineToRemove` is a hint from the last index;
+   *  it is adjusted by the same drift that moved the anchor task. */
   async removeLine(locator: TaskLocator, lineToRemove: number): Promise<MutationResult> {
-    return this.applyToLines(locator, (lines) => {
-      lines.splice(lineToRemove, 1);
+    return this.applyToLines(locator, (lines, taskLine) => {
+      const delta = taskLine - locator.line;
+      const idx = lineToRemove + delta;
+      if (idx >= 0 && idx < lines.length) lines.splice(idx, 1);
     });
   }
 
-  /** Delete the task and its sub-item block (from task line to subtaskRange.to inclusive). */
-  async deleteTaskBlock(locator: TaskLocator, rangeEndHint: number): Promise<MutationResult> {
+  /** Delete the task and its sub-item block.
+   *  Block end is determined by indentation scan on the live content (not the stale hint),
+   *  so the operation is safe even when lines were inserted or deleted inside the block. */
+  async deleteTaskBlock(locator: TaskLocator, _rangeEndHint: number): Promise<MutationResult> {
     return this.applyToLines(locator, (lines, taskLine) => {
-      const to = rangeEndHint > taskLine ? rangeEndHint : taskLine;
-      lines.splice(taskLine, to - taskLine + 1);
+      const taskIndent = (/^(\s*)/.exec(lines[taskLine] ?? '')?.[1] ?? '').length;
+      let blockEnd = taskLine;
+      for (let i = taskLine + 1; i < lines.length; i++) {
+        const lineStr = lines[i] ?? '';
+        const lineIndent = (/^(\s*)/.exec(lineStr)?.[1] ?? '').length;
+        // A non-empty line at the same or lower indentation marks the end of the block.
+        if (lineStr.trim() !== '' && lineIndent <= taskIndent) break;
+        blockEnd = i;
+      }
+      lines.splice(taskLine, blockEnd - taskLine + 1);
     });
   }
 }

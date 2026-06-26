@@ -657,29 +657,23 @@ describe('RightPanel.updatePriority', () => {
     expect(after).toContain('⏫');
   });
 
-  it('C → strips existing priority emoji (🔼), no append (replaced with 🔼)', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] task 🔼' });
+  it('C → sets Medium priority (🔼), replacing any existing emoji', async () => {
+    const { panel, app } = await makePanel({ 't.md': '- [ ] task 🔺' });
     const t = task({
       filePath: 't.md',
       line: 0,
       text: 'task',
-      rawText: '- [ ] task 🔼',
-      priority: 'C',
+      rawText: '- [ ] task 🔺',
+      priority: 'A',
     });
     await call<Promise<void>>(panel, 'updatePriority', t, 'C');
     const after = await readMd(app, 't.md');
-    // C maps to 🔼 in PRIORITY_MAP, but the code checks `priority !== 'C'` before appending.
-    // So existing 🔼 is stripped, and since priority==='C', nothing is appended.
-    expect(after).not.toContain('🔼');
-    expect(after).toBe('- [ ] task');
+    // C maps to 🔼 (Medium). The old 🔺 should be stripped and 🔼 appended.
+    expect(after).not.toContain('🔺');
+    expect(after).toContain('🔼');
   });
 
-  // CURRENT BEHAVIOR (follow-up: FU-30): updatePriority with 'D' strips all priority emojis
-  // and does NOT append anything because 'D' is not in PRIORITY_MAP (only A,B,C,E,F are).
-  // The condition `priority !== 'C' && PRIORITY_MAP[priority]` is false for 'D' since
-  // PRIORITY_MAP['D'] is undefined. Result: the line has no priority emoji, which is the
-  // intended representation for "normal" priority.
-  it('D → strips existing priority, appends nothing (CURRENT BEHAVIOR, FU-30)', async () => {
+  it('D → strips all priority emojis, appends nothing (Normal = no emoji)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task 🔺' });
     const t = task({
       filePath: 't.md',
@@ -890,10 +884,9 @@ describe('RightPanel.deleteTask', () => {
 
   // CURRENT BEHAVIOR (follow-up: FU-26): deleteTask without subtaskRange only removes
   // the single task line (from = to = task.line). If the task has descendants (subtasks,
-  // comments, description lines) that live on lines below it, they are NOT removed —
-  // they become orphaned. The method does not look up the task's children when
-  // subtaskRange is absent.
-  it('without subtaskRange: removes only the single task line, orphans descendants (CURRENT BEHAVIOR, FU-26)', async () => {
+  // deleteTaskBlock now uses indentation scanning to find the actual block end,
+  // so even without subtaskRange the entire indented block is deleted correctly.
+  it('without subtaskRange: deletes the task and all indented descendants via indentation scan', async () => {
     const content = '- [ ] parent\n    - [ ] sub\n    - > desc line\n- [ ] other';
     const { panel, state, app } = await makePanel({ 't.md': content });
     const t = task({
@@ -901,16 +894,16 @@ describe('RightPanel.deleteTask', () => {
       line: 0,
       text: 'parent',
       rawText: '- [ ] parent',
-      // No subtaskRange — caller claims this task has no children
+      // No subtaskRange — indentation scan determines block extent
     });
     state.set('taskStack', [t]);
     await call<Promise<void>>(panel, 'deleteTask', t);
     const after = await readMd(app, 't.md');
-    const lines = after.split('\n');
-    // FU-26: only line 0 is removed; the subtask and description are orphaned
-    expect(lines[0]).toBe('    - [ ] sub');
-    expect(lines[1]).toBe('    - > desc line');
-    expect(lines[2]).toBe('- [ ] other');
+    // Parent and all indented children are removed; the next sibling survives.
+    expect(after).not.toContain('- [ ] parent');
+    expect(after).not.toContain('- [ ] sub');
+    expect(after).not.toContain('- > desc line');
+    expect(after).toContain('- [ ] other');
   });
 
   it('clears taskStack after deletion', async () => {

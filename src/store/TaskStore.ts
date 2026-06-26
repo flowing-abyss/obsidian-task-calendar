@@ -144,6 +144,12 @@ export class TaskStore {
       'changed',
       (file: TFile, data: string, cache: CachedMetadata) => {
         if (file.extension !== 'md') return;
+        // Guard against stale events fired after a rename: if the vault no longer
+        // has this file at this path, clear any ghost entry and skip reindexing.
+        if (!this.app.vault.getAbstractFileByPath(file.path)) {
+          this.taskMap.delete(file.path);
+          return;
+        }
         const fm = cache.frontmatter;
         if (fm) {
           this.frontmatterMap.set(file.path, {
@@ -186,6 +192,16 @@ export class TaskStore {
   }
 
   getTasks(filter?: TaskFilter): Task[] {
+    // Fast path: file-only filter avoids flattening the entire index.
+    if (
+      filter?.filePath &&
+      !filter.folder &&
+      !filter.tag &&
+      !filter.status?.length &&
+      !filter.dateRange
+    ) {
+      return [...(this.taskMap.get(filter.filePath) ?? [])];
+    }
     let all = Array.from(this.taskMap.values()).flat();
     if (!filter) return all;
     if (filter.filePath) all = all.filter((t) => t.filePath === filter.filePath);

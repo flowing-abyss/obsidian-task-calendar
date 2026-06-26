@@ -37,8 +37,8 @@ export function getTasksForDate(tasks: Task[], date: string, today: string): Tas
 
 export function sortTasksByDateTime(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
-    const da = a.due ?? a.scheduled ?? a.dailyNoteDate ?? '';
-    const db = b.due ?? b.scheduled ?? b.dailyNoteDate ?? '';
+    const da = a.due ?? a.scheduled ?? a.start ?? a.dailyNoteDate ?? '';
+    const db = b.due ?? b.scheduled ?? b.start ?? b.dailyNoteDate ?? '';
     if (da !== db) {
       if (!da) return 1;
       if (!db) return -1;
@@ -94,8 +94,8 @@ function compareNullableLast(a: string, b: string): number {
 }
 
 function compareByDate(a: Task, b: Task): number {
-  const da = a.due ?? a.scheduled ?? a.dailyNoteDate ?? '';
-  const db = b.due ?? b.scheduled ?? b.dailyNoteDate ?? '';
+  const da = a.due ?? a.scheduled ?? a.start ?? a.dailyNoteDate ?? '';
+  const db = b.due ?? b.scheduled ?? b.start ?? b.dailyNoteDate ?? '';
   const dateCmp = compareNullableLast(da, db);
   if (dateCmp !== 0) return dateCmp;
   const ta = a.time ?? '';
@@ -176,7 +176,7 @@ export function groupTasksByDate(
   const noDate: Task[] = [];
 
   for (const t of tasks) {
-    const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
+    const d = t.due ?? t.scheduled ?? t.start ?? t.dailyNoteDate;
     // Tasks without a date are a distinct category, not overdue.
     if (!d) noDate.push(t);
     else if (d < today) overdue.push(t);

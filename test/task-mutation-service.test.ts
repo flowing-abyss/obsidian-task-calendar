@@ -316,3 +316,84 @@ describe('TaskMutationService.toggleCompletion', () => {
     expect(after).toBe('- [ ] task');
   });
 });
+
+// ── CRLF toggleCompletion regression ──────────────────────────────────────────
+
+describe('Regression – CRLF file toggleCompletion preserves \\r', () => {
+  it('toggled line in CRLF file retains trailing \\r so rawText fingerprint stays valid', async () => {
+    const crlf = '- [ ] Buy milk\r\n- [ ] other\r\n';
+    const app = await createAppWithFiles({ 'f.md': crlf });
+    // rawText as produced by split('\n') on a CRLF file
+    const locator: TaskLocator = { filePath: 'f.md', rawText: '- [ ] Buy milk\r', line: 0 };
+    const result = await svc(app).toggleCompletion(locator, '2026-06-26');
+    expect(result.type).toBe('ok');
+    const after = await readFile(app, 'f.md');
+    // The toggled line must still end with \r so the file stays CRLF-consistent
+    const lines = after.split('\n');
+    expect(lines[0]).toMatch(/\r$/);
+    expect(lines[0]).toContain('✅ 2026-06-26');
+    // Second toggle: rawText is now the completed line with \r
+    const completedRaw = lines[0]!;
+    const locator2: TaskLocator = { filePath: 'f.md', rawText: completedRaw, line: 0 };
+    const result2 = await svc(app).toggleCompletion(locator2, '2026-06-26');
+    // Must succeed — rawText fingerprint was preserved
+    expect(result2.type).toBe('ok');
+    const after2 = await readFile(app, 'f.md');
+    expect(after2.split('\n')[0]).toBe('- [ ] Buy milk\r');
+  });
+});
+
+// ── deleteTaskBlock clamped to file length ─────────────────────────────────────
+
+describe('Regression – deleteTaskBlock with stale rangeEndHint beyond file', () => {
+  it('does not delete past the file end when rangeEndHint exceeds line count', async () => {
+    const content = '- [ ] parent\n  - [ ] sub\n- [ ] next task';
+    const app = await createAppWithFiles({ 'f.md': content });
+    const locator: TaskLocator = { filePath: 'f.md', rawText: '- [ ] parent', line: 0 };
+    // rangeEndHint=999 is way past the 3-line file
+    const result = await svc(app).deleteTaskBlock(locator, 999);
+    expect(result.type).toBe('ok');
+    const after = await readFile(app, 'f.md');
+    // Only parent + sub should be deleted; next task must survive
+    expect(after).toContain('- [ ] next task');
+    expect(after).not.toContain('- [ ] parent');
+  });
+
+  it('adjusts rangeEndHint by line drift before clamping', async () => {
+    const original = '- [ ] task\n  - [ ] sub';
+    const shifted = 'inserted\n- [ ] task\n  - [ ] sub\n- [ ] after';
+    const app = await createAppWithFiles({ 'f.md': original });
+    const file = app.vault.getAbstractFileByPath('f.md') as TFile;
+    await app.vault.modify(file, shifted);
+    // Locator from original position (line 0), rangeEndHint=1 (original sub at line 1)
+    const locator: TaskLocator = { filePath: 'f.md', rawText: '- [ ] task', line: 0 };
+    const result = await svc(app).deleteTaskBlock(locator, 1);
+    expect(result.type).toBe('ok');
+    const after = await readFile(app, 'f.md');
+    expect(after).toContain('inserted');
+    expect(after).toContain('- [ ] after');
+    expect(after).not.toContain('- [ ] task');
+    expect(after).not.toContain('- [ ] sub');
+  });
+});
+
+// ── insertLineAfter drift compensation ────────────────────────────────────────
+
+describe('Regression – insertLineAfter compensates for line drift', () => {
+  it('inserts at the correct position after lines were added above the task', async () => {
+    const original = '- [ ] task\n- [ ] other';
+    const shifted = 'line A\nline B\n- [ ] task\n- [ ] other';
+    const app = await createAppWithFiles({ 'f.md': original });
+    const file = app.vault.getAbstractFileByPath('f.md') as TFile;
+    await app.vault.modify(file, shifted);
+    // Locator: task was at line 0; insertAfterLine was also 0 (the task itself)
+    const locator: TaskLocator = { filePath: 'f.md', rawText: '- [ ] task', line: 0 };
+    await svc(app).insertLineAfter(locator, '  - [ ] subtask', 0);
+    const after = await readFile(app, 'f.md');
+    const parts = after.split('\n');
+    // task is now at line 2; subtask should be at line 3
+    expect(parts[2]).toBe('- [ ] task');
+    expect(parts[3]).toBe('  - [ ] subtask');
+    expect(parts[4]).toBe('- [ ] other');
+  });
+});

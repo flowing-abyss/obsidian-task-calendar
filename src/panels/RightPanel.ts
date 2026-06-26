@@ -557,8 +557,9 @@ export class RightPanel {
       if (!tl) return;
       const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
 
-      const rangeStart = task.subtaskRange?.from ?? taskLine + 1;
-      const rangeEnd = task.subtaskRange?.to ?? taskLine;
+      const delta = taskLine - task.line;
+      const rangeStart = task.subtaskRange ? task.subtaskRange.from + delta : taskLine + 1;
+      const rangeEnd = task.subtaskRange ? task.subtaskRange.to + delta : taskLine;
 
       const before = lines.slice(0, rangeStart);
       const inside = lines.slice(rangeStart, rangeEnd + 1).filter((l) => !/^\s*- > /.test(l));
@@ -581,7 +582,8 @@ export class RightPanel {
       if (!tl) return;
       const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
       const newLine = `${indent}- [ ] ${text}`;
-      const insertAt = task.subtaskRange ? task.subtaskRange.to + 1 : taskLine + 1;
+      const delta = taskLine - task.line;
+      const insertAt = task.subtaskRange ? task.subtaskRange.to + delta + 1 : taskLine + 1;
       lines.splice(insertAt, 0, newLine);
     });
   }
@@ -617,9 +619,10 @@ export class RightPanel {
       if (!tl) return;
       const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
       const commentLine = `${indent}- ${today}: ${text}`;
+      const delta = taskLine - task.line;
       const insertAt =
         'subtaskRange' in task && task.subtaskRange
-          ? (task.subtaskRange as { to: number }).to + 1
+          ? (task.subtaskRange as { to: number }).to + delta + 1
           : taskLine + 1;
       lines.splice(insertAt, 0, commentLine);
     });
@@ -630,21 +633,24 @@ export class RightPanel {
     comment: TaskComment,
     newText: string,
   ): Promise<void> {
-    // Anchor on the task to detect file changes; then update the comment's line.
-    await this.mutations.applyToLines(locatorOf(task), (lines) => {
-      const line = lines[comment.line];
+    // Anchor on the task via rawText; adjust comment position by the same line drift.
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const delta = taskLine - task.line;
+      const commentIdx = comment.line + delta;
+      const line = lines[commentIdx];
       if (!line) return;
       const datePrefix = /^(\s*- \d{4}-\d{2}-\d{2}: )/.exec(line)?.[1];
       const barePrefix = /^(\s*- )/.exec(line)?.[1] ?? '';
       const prefix = datePrefix ?? barePrefix;
-      lines[comment.line] = prefix + newText;
+      lines[commentIdx] = prefix + newText;
     });
   }
 
   private async deleteComment(task: TaskLike, comment: TaskComment): Promise<void> {
-    // Anchor on the task to detect file changes; then remove the comment line.
-    await this.mutations.applyToLines(locatorOf(task), (lines) => {
-      lines.splice(comment.line, 1);
+    // Anchor on the task via rawText; adjust comment position by the same line drift.
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const delta = taskLine - task.line;
+      lines.splice(comment.line + delta, 1);
     });
   }
 
@@ -679,7 +685,7 @@ export class RightPanel {
       if (!line) return;
       let updated = line;
       for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
-      if (priority !== 'C' && PRIORITY_MAP[priority])
+      if (priority !== 'D' && PRIORITY_MAP[priority])
         updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
       lines[taskLine] = formatTaskLine(updated);
     });
@@ -808,12 +814,13 @@ export class RightPanel {
   ): Promise<void> {
     // applySubtaskReorder operates on the full content string; use applyToLines with
     // a full-array splice to apply it after confirming the anchor task is still present.
-    await this.mutations.applyToLines(locatorOf(moved), (lines) => {
+    await this.mutations.applyToLines(locatorOf(moved), (lines, taskLine) => {
+      const delta = taskLine - moved.line;
       const content = lines.join('\n');
       const updated = applySubtaskReorder(
         content,
-        { line: moved.line, rangeTo: moved.subtaskRange?.to ?? moved.line },
-        { line: target.line, rangeTo: target.subtaskRange?.to ?? target.line },
+        { line: moved.line + delta, rangeTo: (moved.subtaskRange?.to ?? moved.line) + delta },
+        { line: target.line + delta, rangeTo: (target.subtaskRange?.to ?? target.line) + delta },
         position,
       );
       const newLines = updated.split('\n');
