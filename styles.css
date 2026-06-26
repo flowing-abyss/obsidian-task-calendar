@@ -1685,6 +1685,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   display: inline-flex;
   align-items: center;
   opacity: 0.88;
+  cursor: pointer;
 }
 .tc-task-tag--colored {
   opacity: 1;
@@ -3057,11 +3058,6 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-task-source-note--clickable:hover .tc-task-source-note-name {
   text-decoration: underline;
   text-decoration-color: var(--text-muted);
-}
-
-/* ── Task tag clickable ──────────────────────────────────────── */
-.tc-task-tag {
-  cursor: pointer;
 }
 
 .tc-cursor-pointer {
