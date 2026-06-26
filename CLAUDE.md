@@ -32,7 +32,7 @@ obsidian vault="dev-vault" plugin:reload id=task-calendar           # reload aft
 obsidian vault="dev-vault" eval code="app.vault.getFiles().length"  # run JS in app
 obsidian vault="dev-vault" devtools                                 # toggle dev tools
 obsidian vault="dev-vault" dev:screenshot path=screenshot.png       # screenshot
-obsidian vault="dev-vault" dev:dom selector=".tasksCalendar" text   # query DOM
+obsidian vault="dev-vault" dev:dom selector=".tc-panel-view" text   # query DOM
 ```
 
 Typical loop: `npm run dev` → `obsidian plugin:reload id=task-calendar`.
