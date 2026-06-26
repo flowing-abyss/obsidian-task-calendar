@@ -2927,6 +2927,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* ── View-state (sort/group) button ─────────────────────── */
 .tc-view-state-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2947,17 +2948,31 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--color-accent);
 }
 
+.tc-view-state-btn--active::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
 /* ── View-state popover ─────────────────────────────────────── */
 .tc-view-state-popover {
   position: absolute;
+  top: 100%;
   right: 0;
   z-index: 100;
-  min-width: 220px;
+  min-width: 240px;
+  max-height: 420px;
+  overflow-y: auto;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-  overflow: hidden;
+  margin-top: 4px;
 }
 
 .tc-view-state-row {
@@ -3035,7 +3050,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   cursor: pointer;
 }
 
-.tc-task-source-note--clickable:hover {
+.tc-task-source-note--clickable:hover .tc-task-source-note-name {
   text-decoration: underline;
 }
 
@@ -3046,4 +3061,35 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 .tc-cursor-pointer {
   cursor: pointer;
+}
+
+/* ── Date / time parts — hover hint ─────────────────────────── */
+.tc-task-date-part:hover,
+.tc-task-time-part:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+/* ── View-state popover reset row ───────────────────────────── */
+.tc-view-state-reset {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 6px 8px;
+}
+
+.tc-view-state-reset-btn {
+  display: block;
+  width: 100%;
+  padding: 7px 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-radius: 4px;
+}
+
+.tc-view-state-reset-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
 }

@@ -72,7 +72,8 @@ export type PropertyFilter =
   | { type: 'tag'; value: string }
   | { type: 'file'; filePath: string }
   | { type: 'time'; value: string }
-  | { type: 'priority'; value: TaskPriority };
+  | { type: 'priority'; value: TaskPriority }
+  | { type: 'date'; value: string };
 
 export interface ListViewState {
   groupBy: 'none' | 'date' | 'priority' | 'tag';

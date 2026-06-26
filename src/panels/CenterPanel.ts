@@ -622,26 +622,33 @@ export class CenterPanel {
     if (hasRightMeta) {
       const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
 
-      // Date + optional time: use child spans for each icon to avoid setIcon replacing parent
+      // Date + optional time: date part and time part are separately clickable
       if (d && !suppressToday) {
         const dateEl = metaRight.createEl('span', {
           cls: `tc-task-date ${this.getDateClass(d)}`.trim(),
         });
-        const calIcon = dateEl.createEl('span', { cls: 'tc-date-icon' });
+        // Date part: calendar icon + date text — click to filter by date
+        const datePart = dateEl.createEl('span', { cls: 'tc-task-date-part tc-cursor-pointer' });
+        const calIcon = datePart.createEl('span', { cls: 'tc-date-icon' });
         setIcon(calIcon, 'calendar');
-        dateEl.createEl('span', { text: this.formatDate(d) });
-        if (task.time) {
-          const clockIcon = dateEl.createEl('span', { cls: 'tc-date-icon' });
-          setIcon(clockIcon, 'clock');
-          dateEl.createEl('span', { text: task.time });
-        }
-        dateEl.addEventListener('click', (e) => {
-          if (!task.time) return;
+        datePart.createEl('span', { text: this.formatDate(d) });
+        datePart.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.addPropertyFilter({ type: 'time', value: task.time });
+          this.addPropertyFilter({ type: 'date', value: d });
         });
+        // Time part: clock icon + time text — click to filter by time
+        if (task.time) {
+          const timePart = dateEl.createEl('span', { cls: 'tc-task-time-part tc-cursor-pointer' });
+          const clockIcon = timePart.createEl('span', { cls: 'tc-date-icon' });
+          setIcon(clockIcon, 'clock');
+          timePart.createEl('span', { text: task.time });
+          timePart.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.addPropertyFilter({ type: 'time', value: task.time! });
+          });
+        }
       } else if (!d && task.time) {
-        const timeEl = metaRight.createEl('span', { cls: 'tc-task-date' });
+        const timeEl = metaRight.createEl('span', { cls: 'tc-task-date tc-cursor-pointer' });
         const clockIcon = timeEl.createEl('span', { cls: 'tc-date-icon' });
         setIcon(clockIcon, 'clock');
         timeEl.createEl('span', { text: task.time });
@@ -649,7 +656,6 @@ export class CenterPanel {
           e.stopPropagation();
           this.addPropertyFilter({ type: 'time', value: task.time! });
         });
-        timeEl.addClass('tc-cursor-pointer');
       }
 
       // Source note chip before tags
@@ -1079,6 +1085,7 @@ export class CenterPanel {
     if (f.type === 'tag') return f.value;
     if (f.type === 'file') return `📄 ${f.filePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}`;
     if (f.type === 'time') return `⏰ ${f.value}`;
+    if (f.type === 'date') return `📅 ${this.formatDate(f.value)}`;
     const PRIORITY_EMOJIS: Record<string, string> = {
       A: '🔺 Highest',
       B: '⏫ High',
@@ -1246,6 +1253,27 @@ export class CenterPanel {
     makeRow('eye', 'Show', SHOW_LABELS[vs.show] ?? vs.show, SHOW_OPTIONS, (val) => {
       this.updateViewState({ ...vs, show: val as ListViewState['show'] });
     });
+
+    // Reset to defaults row — only shown when state differs from defaults
+    const defaults = getListViewDefaults(this.currentListKey);
+    const isNonDefault =
+      vs.groupBy !== defaults.groupBy ||
+      vs.sortBy.field !== defaults.sortBy.field ||
+      vs.sortBy.dir !== defaults.sortBy.dir ||
+      vs.show !== defaults.show ||
+      vs.filters.length > 0;
+    if (isNonDefault) {
+      const resetRow = popover.createDiv({ cls: 'tc-view-state-reset' });
+      const resetBtn = resetRow.createEl('button', {
+        cls: 'tc-view-state-reset-btn',
+        text: 'Reset to defaults',
+      });
+      resetBtn.addEventListener('click', () => {
+        this.updateViewState(getListViewDefaults(this.currentListKey));
+        popover.remove();
+        activeDocument.removeEventListener('click', dismiss, true);
+      });
+    }
 
     anchor.after(popover);
     window.setTimeout(() => {
@@ -1439,6 +1467,8 @@ export class CenterPanel {
         tasks = tasks.filter((t) => t.time === f.value);
       } else if (f.type === 'priority') {
         tasks = tasks.filter((t) => t.priority === f.value);
+      } else if (f.type === 'date') {
+        tasks = tasks.filter((t) => (t.due ?? t.scheduled ?? t.dailyNoteDate) === f.value);
       }
     }
 
