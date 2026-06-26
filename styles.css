@@ -2903,31 +2903,39 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px 2px 10px;
-  border-radius: 12px;
-  background: var(--background-modifier-border);
-  color: var(--text-muted);
+  height: 22px;
+  padding: 0 4px 0 10px;
+  border-radius: 11px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
   font-size: 12px;
   white-space: nowrap;
 }
 
 .tc-filter-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   background: none;
   border: none;
-  color: var(--text-faint);
+  border-radius: 50%;
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
-  padding: 0 2px;
+  padding: 0;
 }
 
 .tc-filter-chip-x:hover {
+  background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
 
 /* ── View-state (sort/group) button ─────────────────────── */
 .tc-view-state-btn {
-  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2946,17 +2954,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 .tc-view-state-btn--active {
   color: var(--color-accent);
-}
-
-.tc-view-state-btn--active::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--background-modifier-hover);
 }
 
 /* ── View-state popover ─────────────────────────────────────── */
@@ -3013,11 +3011,15 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-view-state-row-chevron {
   display: flex;
   color: var(--text-faint);
+  transition: transform 0.15s ease;
+}
+
+.tc-view-state-row-main.is-open .tc-view-state-row-chevron {
+  transform: rotate(90deg);
 }
 
 .tc-view-state-sublist {
   padding: 4px 0;
-  background: var(--background-primary);
 }
 
 .tc-view-state-option {
@@ -3048,10 +3050,13 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 /* ── Source note chip — clickable variant ────────────────────── */
 .tc-task-source-note--clickable {
   cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.9;
 }
 
 .tc-task-source-note--clickable:hover .tc-task-source-note-name {
   text-decoration: underline;
+  text-decoration-color: var(--text-muted);
 }
 
 /* ── Task tag clickable ──────────────────────────────────────── */
@@ -3073,23 +3078,22 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 /* ── View-state popover reset row ───────────────────────────── */
 .tc-view-state-reset {
   border-top: 1px solid var(--background-modifier-border);
-  padding: 6px 8px;
+  padding: 8px 14px;
+  display: flex;
+  justify-content: center;
 }
 
 .tc-view-state-reset-btn {
-  display: block;
-  width: 100%;
-  padding: 7px 14px;
-  text-align: left;
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 2px 6px;
   border-radius: 4px;
 }
 
 .tc-view-state-reset-btn:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+  color: var(--text-muted);
+  text-decoration: underline;
 }

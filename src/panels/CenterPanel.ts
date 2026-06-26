@@ -1132,8 +1132,7 @@ export class CenterPanel {
       vs.groupBy !== defaults.groupBy ||
       vs.sortBy.field !== defaults.sortBy.field ||
       vs.sortBy.dir !== defaults.sortBy.dir ||
-      vs.show !== defaults.show ||
-      vs.filters.length > 0;
+      vs.show !== defaults.show;
 
     const btn = container.createEl('button', {
       cls: `tc-view-state-btn${isNonDefault ? ' tc-view-state-btn--active' : ''}`,
@@ -1184,7 +1183,13 @@ export class CenterPanel {
         popover.querySelectorAll<HTMLElement>('.tc-view-state-sublist').forEach((el) => {
           el.addClass('tc-hidden');
         });
-        if (!isOpen) subList.removeClass('tc-hidden');
+        popover.querySelectorAll<HTMLElement>('.tc-view-state-row-main').forEach((el) => {
+          el.removeClass('is-open');
+        });
+        if (!isOpen) {
+          subList.removeClass('tc-hidden');
+          rowMain.addClass('is-open');
+        }
       });
 
       for (const opt of options) {
