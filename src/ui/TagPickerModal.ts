@@ -1,6 +1,6 @@
 import { Modal, setIcon, type App } from 'obsidian';
 
-type TagState = 'checked' | 'partial' | 'unchecked';
+type TagState = 'checked' | 'partial' | 'removing' | 'unchecked';
 
 export class TagPickerModal extends Modal {
   private readonly pending = new Map<string, boolean>(); // true=add, false=remove
@@ -11,8 +11,8 @@ export class TagPickerModal extends Modal {
   constructor(
     app: App,
     private readonly getTagColor: (tag: string) => string | undefined,
-    private readonly currentTags: Set<string>,  // tags ALL tasks have
-    private readonly partialTags: Set<string>,  // tags SOME tasks have (bulk only)
+    private readonly currentTags: Set<string>, // tags ALL tasks have
+    private readonly partialTags: Set<string>, // tags SOME tasks have (bulk only)
     private readonly onCommit: (toAdd: string[], toRemove: string[]) => void,
   ) {
     super(app);
@@ -48,7 +48,10 @@ export class TagPickerModal extends Modal {
   }
 
   private effectiveState(tag: string): TagState {
-    if (this.pending.has(tag)) return this.pending.get(tag) ? 'checked' : 'unchecked';
+    if (this.pending.has(tag)) {
+      if (this.pending.get(tag)) return 'checked';
+      return this.partialTags.has(tag) ? 'removing' : 'unchecked';
+    }
     if (this.currentTags.has(tag)) return 'checked';
     if (this.partialTags.has(tag)) return 'partial';
     return 'unchecked';
@@ -56,18 +59,19 @@ export class TagPickerModal extends Modal {
 
   private toggle(tag: string): void {
     const state = this.effectiveState(tag);
-    if (state === 'checked') {
-      if (this.currentTags.has(tag)) {
-        this.pending.set(tag, false); // will remove
-      } else {
-        this.pending.delete(tag); // undo pending add
-      }
+    if (this.currentTags.has(tag)) {
+      // Originally fully checked: checked → unchecked(remove all) → checked(undo)
+      if (state === 'checked') this.pending.set(tag, false);
+      else this.pending.delete(tag);
+    } else if (this.partialTags.has(tag)) {
+      // Originally partial: partial → checked(add missing) → removing(remove partial) → partial(undo)
+      if (state === 'partial') this.pending.set(tag, true);
+      else if (state === 'checked') this.pending.set(tag, false);
+      else this.pending.delete(tag);
     } else {
-      if (this.pending.get(tag) === false) {
-        this.pending.delete(tag); // undo pending remove
-      } else {
-        this.pending.set(tag, true); // will add
-      }
+      // Originally unchecked: unchecked → checked(add all) → unchecked(undo)
+      if (state === 'unchecked') this.pending.set(tag, true);
+      else this.pending.delete(tag);
     }
     this.renderList(this.searchEl.value);
   }
@@ -95,6 +99,7 @@ export class TagPickerModal extends Modal {
     const iconEl = item.createSpan({ cls: 'tc-tag-picker-icon' });
     if (state === 'checked') setIcon(iconEl, 'check');
     else if (state === 'partial') setIcon(iconEl, 'minus');
+    else if (state === 'removing') setIcon(iconEl, 'x');
 
     const labelEl = item.createSpan({ cls: 'tc-tag-picker-label', text: tag });
     const color = this.getTagColor(tag);

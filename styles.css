@@ -2691,6 +2691,16 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-tag-picker-item--partial {
   opacity: 0.7;
 }
+.tc-tag-picker-item--removing {
+  background: rgba(var(--color-red-rgb), 0.08);
+}
+.tc-tag-picker-item--removing .tc-tag-picker-icon {
+  color: var(--color-red);
+}
+.tc-tag-picker-item--removing .tc-tag-picker-label {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
 .tc-tag-picker-icon {
   width: 16px;
   height: 16px;
