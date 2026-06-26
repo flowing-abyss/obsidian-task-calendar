@@ -1,6 +1,7 @@
 import type { App } from 'obsidian';
-import { TFile, setIcon } from 'obsidian';
+import { setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
+import { locatorOf, TaskMutationService } from '../mutation';
 import { formatTaskLine } from '../parser/TaskParser';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
 import type { SubTask, Task, TaskComment } from '../parser/types';
@@ -14,12 +15,15 @@ export class RightPanel {
   private el!: HTMLElement;
   private off?: () => void;
   private draggingSub: SubTask | null = null;
+  private mutations: TaskMutationService;
 
   constructor(
     private state: AppState,
     private app: App,
     private settings?: CalendarSettings,
-  ) {}
+  ) {
+    this.mutations = new TaskMutationService(app);
+  }
 
   mount(container: HTMLElement): void {
     this.el = container;
@@ -534,41 +538,28 @@ export class RightPanel {
   // ---- Write-back helpers ----
 
   private async updateTaskTitle(task: TaskLike, newText: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       const prefixMatch = /^(\s*- \[[ xX/]\] )/.exec(line);
-      if (!prefixMatch) return data;
+      if (!prefixMatch) return;
       const prefix = prefixMatch[1] ?? '';
-      // Derive suffix from the raw file line (available here as `line`) rather than task.text.
-      // task.text has wikilinks collapsed and emoji stripped, so its .length differs from
-      // the raw title length. Find where metadata begins in the raw file line instead.
       const rawAfterPrefix = line.slice(prefix.length);
-      // Find where metadata begins: a space followed by a known metadata emoji or hashtag.
-      // Use a single \s (no quantifier) to avoid super-linear backtracking reported by sonarjs.
       const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁🔺⏫🔼🔽⏬#➕]/u);
       const suffix = spaceIdx >= 0 ? rawAfterPrefix.slice(spaceIdx) : '';
-      lines[task.line] = formatTaskLine(prefix + newText + suffix);
-      return lines.join('\n');
+      lines[taskLine] = formatTaskLine(prefix + newText + suffix);
     });
   }
 
   private async updateDescription(task: TaskLike, newDesc: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const taskLine = lines[task.line];
-      if (!taskLine) return data;
-      const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const tl = lines[taskLine];
+      if (!tl) return;
+      const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
 
-      const rangeStart = task.subtaskRange?.from ?? task.line + 1;
-      const rangeEnd = task.subtaskRange?.to ?? task.line; // clamp: no children = empty range
+      const rangeStart = task.subtaskRange?.from ?? taskLine + 1;
+      const rangeEnd = task.subtaskRange?.to ?? taskLine;
 
-      // Remove existing description lines, keeping track of insertion point
       const before = lines.slice(0, rangeStart);
       const inside = lines.slice(rangeStart, rangeEnd + 1).filter((l) => !/^\s*- > /.test(l));
       const after = lines.slice(rangeEnd + 1);
@@ -580,38 +571,30 @@ export class RightPanel {
             .map((l) => `${indent}- > ${l}`)
         : [];
 
-      return [...before, ...descLines, ...inside, ...after].join('\n');
+      lines.splice(0, lines.length, ...before, ...descLines, ...inside, ...after);
     });
   }
 
   private async addSubTask(task: TaskLike, text: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const taskLine = lines[task.line];
-      if (!taskLine) return data;
-      const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const tl = lines[taskLine];
+      if (!tl) return;
+      const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
       const newLine = `${indent}- [ ] ${text}`;
-      const insertAt = task.subtaskRange ? task.subtaskRange.to + 1 : task.line + 1;
+      const insertAt = task.subtaskRange ? task.subtaskRange.to + 1 : taskLine + 1;
       lines.splice(insertAt, 0, newLine);
-      return lines.join('\n');
     });
   }
 
   private async toggleSubTask(sub: SubTask): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(sub.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[sub.line];
-      if (!line) return data;
+    await this.mutations.applyToLines(locatorOf(sub), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       if (sub.status === 'open') {
-        lines[sub.line] = line.replace(/- \[ \]/, '- [x]');
+        lines[taskLine] = line.replace(/- \[ \]/, '- [x]');
       } else {
-        lines[sub.line] = line.replace(/- \[x\]/i, '- [ ]');
+        lines[taskLine] = line.replace(/- \[x\]/i, '- [ ]');
       }
-      return lines.join('\n');
     });
   }
 
@@ -628,22 +611,17 @@ export class RightPanel {
     inputEl.value = '';
     inputEl.focus();
 
-    // Write comment to vault file
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
     const today = window.moment().format('YYYY-MM-DD');
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const taskLine = lines[task.line];
-      if (!taskLine) return data;
-      const indent = (/^(\s*)/.exec(taskLine)?.[1] ?? '') + '  ';
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const tl = lines[taskLine];
+      if (!tl) return;
+      const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
       const commentLine = `${indent}- ${today}: ${text}`;
       const insertAt =
         'subtaskRange' in task && task.subtaskRange
           ? (task.subtaskRange as { to: number }).to + 1
-          : task.line + 1;
+          : taskLine + 1;
       lines.splice(insertAt, 0, commentLine);
-      return lines.join('\n');
     });
   }
 
@@ -652,108 +630,80 @@ export class RightPanel {
     comment: TaskComment,
     newText: string,
   ): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
+    // Anchor on the task to detect file changes; then update the comment's line.
+    await this.mutations.applyToLines(locatorOf(task), (lines) => {
       const line = lines[comment.line];
-      if (!line) return data;
-      // Preserve date prefix if present
+      if (!line) return;
       const datePrefix = /^(\s*- \d{4}-\d{2}-\d{2}: )/.exec(line)?.[1];
       const barePrefix = /^(\s*- )/.exec(line)?.[1] ?? '';
       const prefix = datePrefix ?? barePrefix;
       lines[comment.line] = prefix + newText;
-      return lines.join('\n');
     });
   }
 
   private async deleteComment(task: TaskLike, comment: TaskComment): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
+    // Anchor on the task to detect file changes; then remove the comment line.
+    await this.mutations.applyToLines(locatorOf(task), (lines) => {
       lines.splice(comment.line, 1);
-      return lines.join('\n');
     });
   }
 
   private async updateDate(task: TaskLike, date: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       const withDate = task.due
         ? line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${date}`)
         : line.trimEnd() + ` 📅 ${date}`;
-      lines[task.line] = formatTaskLine(withDate);
-      return lines.join('\n');
+      lines[taskLine] = formatTaskLine(withDate);
     });
   }
 
   private async clearDate(task: TaskLike): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       const stripped = line
         .replace(/[📅⏳🛫]\s*\d{4}-\d{2}-\d{2}/gu, '')
         .replace(/\s{2,}/gu, ' ')
         .trimEnd();
-      lines[task.line] = formatTaskLine(stripped);
-      return lines.join('\n');
+      lines[taskLine] = formatTaskLine(stripped);
     });
   }
 
   private async updatePriority(task: TaskLike, priority: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
     const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'];
     const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       let updated = line;
       for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
       if (priority !== 'C' && PRIORITY_MAP[priority])
         updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
-      lines[task.line] = formatTaskLine(updated);
-      return lines.join('\n');
+      lines[taskLine] = formatTaskLine(updated);
     });
   }
 
   private async removeTag(task: TaskLike, tag: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
-      // Escape the tag for regex use; match the tag not followed by word chars or subtag separator
-      const escaped = tag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       const stripped = line
         .replace(new RegExp(`${escaped}(?![\\w/-])`, 'gu'), '')
         .replace(/\s{2,}/gu, ' ')
         .trimEnd();
-      lines[task.line] = formatTaskLine(stripped);
-      return lines.join('\n');
+      lines[taskLine] = formatTaskLine(stripped);
     });
   }
 
   private async addTag(task: TaskLike, tag: string): Promise<void> {
     const tagStr = tag.startsWith('#') ? tag : `#${tag}`;
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
-      lines[task.line] = formatTaskLine(line.trimEnd() + ` ${tagStr}`);
-      return lines.join('\n');
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      lines[taskLine] = formatTaskLine(line.trimEnd() + ` ${tagStr}`);
     });
   }
 
@@ -792,17 +742,12 @@ export class RightPanel {
   }
 
   private async updateTime(task: TaskLike, time: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
-
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       const withoutTime = line.replace(/⏰\s*\d{1,2}:\d{2}/gu, '').replace(/\s{2,}/gu, ' ');
       const withTime = time ? `${withoutTime.trimEnd()} ⏰ ${time}` : withoutTime.trim();
-      lines[task.line] = formatTaskLine(withTime);
-      return lines.join('\n');
+      lines[taskLine] = formatTaskLine(withTime);
     });
   }
 
@@ -848,16 +793,12 @@ export class RightPanel {
   }
 
   private async deleteTask(task: TaskLike): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const from = task.line;
-      const to = 'subtaskRange' in task && task.subtaskRange ? task.subtaskRange.to : task.line;
-      lines.splice(from, to - from + 1);
-      return lines.join('\n');
-    });
-    this.state.set('taskStack', []);
+    const rangeEnd =
+      'subtaskRange' in task && task.subtaskRange ? task.subtaskRange.to : task.line;
+    const result = await this.mutations.deleteTaskBlock(locatorOf(task), rangeEnd);
+    if (result.type === 'ok') {
+      this.state.set('taskStack', []);
+    }
   }
 
   private async reorderSubTask(
@@ -866,16 +807,19 @@ export class RightPanel {
     target: SubTask,
     position: 'before' | 'after',
   ): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(moved.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) =>
-      applySubtaskReorder(
-        data,
+    // applySubtaskReorder operates on the full content string; use applyToLines with
+    // a full-array splice to apply it after confirming the anchor task is still present.
+    await this.mutations.applyToLines(locatorOf(moved), (lines) => {
+      const content = lines.join('\n');
+      const updated = applySubtaskReorder(
+        content,
         { line: moved.line, rangeTo: moved.subtaskRange?.to ?? moved.line },
         { line: target.line, rangeTo: target.subtaskRange?.to ?? target.line },
         position,
-      ),
-    );
+      );
+      const newLines = updated.split('\n');
+      lines.splice(0, lines.length, ...newLines);
+    });
   }
 
   private formatDate(d: string): string {

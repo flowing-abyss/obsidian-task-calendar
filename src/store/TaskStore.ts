@@ -6,6 +6,7 @@ import {
   type EventRef,
   type TAbstractFile,
 } from 'obsidian';
+import { locatorOf, TaskMutationService } from '../mutation';
 import { parseSubItems } from '../parser/SubItemParser';
 import { parseTask } from '../parser/TaskParser';
 import type { Task, TaskFilter } from '../parser/types';
@@ -46,12 +47,14 @@ export class TaskStore {
   private metadataCacheRefs: EventRef[] = [];
   private vaultRefs: EventRef[] = [];
   private resolver: DailyNoteResolver;
+  private mutations: TaskMutationService;
 
   constructor(
     private app: App,
     private settings: CalendarSettings,
   ) {
     this.resolver = new DailyNoteResolver(app, settings);
+    this.mutations = new TaskMutationService(app);
   }
 
   async initialize(): Promise<void> {
@@ -200,34 +203,9 @@ export class TaskStore {
   }
 
   async toggleTask(task: Task): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) {
-      new Notice('File not found: ' + task.filePath);
-      return;
-    }
     const today = window.moment().format('YYYY-MM-DD');
     try {
-      await this.app.vault.process(file, (data) => {
-        const lines = data.split('\n');
-        const line = lines[task.line];
-        if (!line) return data;
-        const isNowChecked = /^(\s*)- \[ \]/.test(line);
-        if (isNowChecked) {
-          lines[task.line] =
-            line
-              .replace(/^(\s*)- \[ \]/, '$1- [x]')
-              // eslint-disable-next-line sonarjs/super-linear-regex
-              .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
-              .trimEnd() + ` ✅ ${today}`;
-        } else {
-          lines[task.line] = line
-            .replace(/^(\s*)- \[.\]/, '$1- [ ]')
-            // eslint-disable-next-line sonarjs/super-linear-regex
-            .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
-            .trimEnd();
-        }
-        return lines.join('\n');
-      });
+      await this.mutations.toggleCompletion(locatorOf(task), today);
     } catch {
       new Notice('Failed to update task. Please try again.');
     }

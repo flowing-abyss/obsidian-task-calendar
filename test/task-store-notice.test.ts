@@ -31,7 +31,7 @@ describe('TaskStore error paths (Notice spy via vi.mock)', () => {
     const task = store.getTasks()[0]!;
     await store.toggleTask({ ...task, filePath: 'nonexistent.md' });
     expect(noticeCalls().length).toBeGreaterThan(0);
-    expect(noticeCalls()[0]?.[0]).toContain('File not found');
+    expect(noticeCalls()[0]?.[0]).toContain('file not found');
     const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);
     expect(content).toBe('- [ ] task');
   });

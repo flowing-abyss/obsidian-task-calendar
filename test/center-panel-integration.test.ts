@@ -311,13 +311,12 @@ describe('CenterPanel.renderWithGrouping (date grouping)', () => {
     expect(labels).toEqual(['Today  1']);
   });
 
-  it('no-date task falls into Overdue bucket (CURRENT BEHAVIOR, follow-up: FU-23)', () => {
+  it('no-date task falls into "No date" bucket (not Overdue)', () => {
     const tasks = [task({ text: 'no date', filePath: 't.md', line: 0 })];
     const container = renderWithGroupingByDate(tasks);
     const headers = container.querySelectorAll('.tc-group-header');
     const labels = Array.from(headers).map((h) => h.textContent?.trim());
-    // FU-23: tasks with no date land in Overdue because `!d || d < today` is true when d is undefined
-    expect(labels).toEqual(['Overdue  1']);
+    expect(labels).toEqual(['No date  1']);
   });
 });
 

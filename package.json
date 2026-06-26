@@ -15,6 +15,7 @@
     "postversion": "git push origin master && git push origin --tags",
     "test": "npm run review:obsidian && npm run test:unit",
     "test:unit": "vitest run",
+    "bench": "vitest run --config vitest.bench.config.ts --reporter=verbose",
     "coverage": "vitest run --coverage",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

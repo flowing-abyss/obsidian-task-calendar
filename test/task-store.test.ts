@@ -321,7 +321,9 @@ describe('TaskStore toggleTask', () => {
     expect(content).toBe('- [ ] cancelled task');
   });
 
-  it('out-of-bounds task.line is a no-op (CURRENT BEHAVIOR)', async () => {
+  it('out-of-bounds task.line falls back to rawText scan and toggles the task', async () => {
+    // The mutation service uses rawText as a fingerprint: even if the line hint (999) is wrong,
+    // findTaskLine scans all lines and finds the unique match at line 0, so the toggle succeeds.
     const app = await createAppWithFiles({ 't.md': '- [ ] task' });
     seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
     const store = new TaskStore(app, DEFAULT_SETTINGS);
@@ -329,7 +331,7 @@ describe('TaskStore toggleTask', () => {
     const task = store.getTasks()[0]!;
     await store.toggleTask({ ...task, line: 999 });
     const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);
-    expect(content).toBe('- [ ] task');
+    expect(content).toContain('- [x] task');
   });
 });
 

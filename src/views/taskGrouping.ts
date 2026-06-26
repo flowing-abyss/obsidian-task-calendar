@@ -173,10 +173,13 @@ export function groupTasksByDate(
   const todayTasks: Task[] = [];
   const tomorrowTasks: Task[] = [];
   const upcoming: Task[] = [];
+  const noDate: Task[] = [];
 
   for (const t of tasks) {
     const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
-    if (!d || d < today) overdue.push(t);
+    // Tasks without a date are a distinct category, not overdue.
+    if (!d) noDate.push(t);
+    else if (d < today) overdue.push(t);
     else if (d === today) todayTasks.push(t);
     else if (d === tomorrow) tomorrowTasks.push(t);
     else upcoming.push(t);
@@ -187,6 +190,7 @@ export function groupTasksByDate(
   if (todayTasks.length) result.push({ label: 'Today', tasks: todayTasks });
   if (tomorrowTasks.length) result.push({ label: 'Tomorrow', tasks: tomorrowTasks });
   if (upcoming.length) result.push({ label: 'Upcoming', tasks: upcoming });
+  if (noDate.length) result.push({ label: 'No date', tasks: noDate });
   return result;
 }
 

@@ -1,15 +1,20 @@
 // src/tags/TagManager.ts
 import type { App } from 'obsidian';
-import { Notice, TFile } from 'obsidian';
+import { Notice } from 'obsidian';
+import { locatorOf, TaskMutationService } from '../mutation';
 import type { Task } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
 
 export class TagManager {
+  private mutations: TaskMutationService;
+
   constructor(
     private app: App,
     private settings: CalendarSettings,
     private saveSettings: () => Promise<void>,
-  ) {}
+  ) {
+    this.mutations = new TaskMutationService(app);
+  }
 
   async pinTag(tag: string): Promise<void> {
     if (this.settings.pinnedTags.includes(tag)) return;
@@ -41,30 +46,22 @@ export class TagManager {
   }
 
   async addTagToTask(task: Task, tag: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
     const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const existsRe = new RegExp(escaped + '(?![\\w/-])', 'u');
-    await this.app.vault.process(file, (content) => {
-      const lines = content.split('\n');
-      const line = lines[task.line];
-      if (!line || existsRe.test(line)) return content;
-      lines[task.line] = line.trimEnd() + ' ' + tag;
-      return lines.join('\n');
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line || existsRe.test(line)) return;
+      lines[taskLine] = line.trimEnd() + ' ' + tag;
     });
   }
 
   async removeTagFromTask(task: Task, tag: string): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
     const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const re = new RegExp('\\s*' + escaped + '(?![\\w/-])', 'gu');
-    await this.app.vault.process(file, (content) => {
-      const lines = content.split('\n');
-      const line = lines[task.line];
-      if (!line) return content;
-      lines[task.line] = line.replace(re, '');
-      return lines.join('\n');
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      lines[taskLine] = line.replace(re, '');
     });
   }
 
@@ -78,17 +75,40 @@ export class TagManager {
 
   async replaceTagOnTask(task: Task, oldTag: string, newTag: string): Promise<void> {
     if (oldTag === newTag) return;
-    await this.addTagToTask(task, newTag);
-    await this.removeTagFromTask(task, oldTag);
+    // Atomic: add new and remove old in one vault.process to avoid stale-rawText issues.
+    const escapedOld = oldTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedNew = newTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const removeRe = new RegExp('\\s*' + escapedOld + '(?![\\w/-])', 'gu');
+    const existsRe = new RegExp(escapedNew + '(?![\\w/-])', 'u');
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      let updated = line.replace(removeRe, '');
+      if (!existsRe.test(updated)) updated = updated.trimEnd() + ' ' + newTag;
+      lines[taskLine] = updated;
+    });
   }
 
   async assignTagFromInbox(task: Task, tag: string): Promise<void> {
-    await this.addTagToTask(task, tag);
-    if (this.settings.inbox.removeTagOnAssign) {
-      const inboxTag = this.settings.inbox.tag;
-      if (task.rawText.includes(inboxTag)) {
-        await this.removeTagFromTask(task, inboxTag);
-      }
+    const inboxTag = this.settings.inbox.tag;
+    const shouldRemoveInbox =
+      this.settings.inbox.removeTagOnAssign && task.rawText.includes(inboxTag);
+
+    if (shouldRemoveInbox) {
+      // Atomic: add new tag and remove inbox tag in a single vault.process.
+      const escapedInbox = inboxTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const removeRe = new RegExp('\\s*' + escapedInbox + '(?![\\w/-])', 'gu');
+      const escapedNew = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const existsRe = new RegExp(escapedNew + '(?![\\w/-])', 'u');
+      await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+        const line = lines[taskLine];
+        if (!line) return;
+        let updated = line.replace(removeRe, '');
+        if (!existsRe.test(updated)) updated = updated.trimEnd() + ' ' + tag;
+        lines[taskLine] = updated;
+      });
+    } else {
+      await this.addTagToTask(task, tag);
     }
   }
 

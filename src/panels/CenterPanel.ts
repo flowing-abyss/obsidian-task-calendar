@@ -1,5 +1,6 @@
 import { Menu, Notice, TFile, setIcon, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
+import { locatorOf, TaskMutationService } from '../mutation';
 import type { Task, TaskPriority } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
 import type {
@@ -45,6 +46,7 @@ export class CenterPanel {
   private lastClickedTaskKey: string | null = null;
   private currentListKey: string = 'today';
   private onSaveSettings: () => Promise<void>;
+  private mutations: TaskMutationService;
 
   constructor(
     private state: AppState,
@@ -55,6 +57,7 @@ export class CenterPanel {
     onSaveSettings: () => Promise<void> = async () => {},
   ) {
     this.onSaveSettings = onSaveSettings;
+    this.mutations = new TaskMutationService(app);
   }
 
   mount(container: HTMLElement): void {
@@ -1416,15 +1419,8 @@ export class CenterPanel {
   }
 
   private async deleteTask(task: Task): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const from = task.line;
-      const to = task.subtaskRange ? task.subtaskRange.to : task.line;
-      lines.splice(from, to - from + 1);
-      return lines.join('\n');
-    });
+    const rangeEnd = task.subtaskRange ? task.subtaskRange.to : task.line;
+    await this.mutations.deleteTaskBlock(locatorOf(task), rangeEnd);
     const stack = this.state.get('taskStack');
     const current = stack[stack.length - 1];
     if (
@@ -1596,57 +1592,38 @@ export class CenterPanel {
     const task = this.store.getTasks().find((t) => t.filePath === filePath && t.line === line);
     if (!task) return;
 
-    const file = this.app.vault.getAbstractFileByPath(filePath);
-    if (!(file instanceof TFile)) return;
-
-    await this.app.vault.process(file, (content) => {
-      const lines = content.split('\n');
-      const taskLine = lines[line];
-      if (!taskLine) return content;
-
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const tl = lines[taskLine];
+      if (!tl) return;
       let updated: string;
       if (task.due) {
-        updated = taskLine.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${targetDate}`);
+        updated = tl.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${targetDate}`);
       } else if (task.scheduled) {
-        updated = taskLine.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${targetDate}`);
+        updated = tl.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${targetDate}`);
       } else {
-        updated = taskLine.trimEnd() + ` 📅 ${targetDate}`;
+        updated = tl.trimEnd() + ` 📅 ${targetDate}`;
       }
-
-      if (updated === taskLine && (task.due || task.scheduled)) {
-        // Regex didn't match — task likely shifted lines; abort silently with no-op
-        return content;
-      }
-
-      lines[line] = updated;
-      return lines.join('\n');
+      lines[taskLine] = updated;
     });
   }
 
   private async toggleDueToday(task: Task): Promise<void> {
     const today = window.moment().format('YYYY-MM-DD');
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       let updated: string;
       if (task.due === today) {
-        // Toggle off: remove the due date
         updated = line
           .replace(/📅\s*\d{4}-\d{2}-\d{2}/u, '')
           .replace(/\s{2,}/gu, ' ')
           .trimEnd();
       } else if (task.due) {
-        // Replace existing due date with today
         updated = line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${today}`);
       } else {
-        // No due date — append today
         updated = line.trimEnd() + ` 📅 ${today}`;
       }
-      lines[task.line] = updated;
-      return lines.join('\n');
+      lines[taskLine] = updated;
     });
   }
 
@@ -1683,20 +1660,16 @@ export class CenterPanel {
     task: Task,
     priority: 'A' | 'B' | 'C' | 'D' | 'E' | 'F',
   ): Promise<void> {
-    const file = this.app.vault.getAbstractFileByPath(task.filePath);
-    if (!(file instanceof TFile)) return;
     const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'] as const;
     const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
-    await this.app.vault.process(file, (data) => {
-      const lines = data.split('\n');
-      const line = lines[task.line];
-      if (!line) return data;
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
       let updated = line;
       for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
       if (priority !== 'D' && PRIORITY_MAP[priority])
         updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
-      lines[task.line] = updated.replace(/\s{2,}/gu, ' ').trimEnd();
-      return lines.join('\n');
+      lines[taskLine] = updated.replace(/\s{2,}/gu, ' ').trimEnd();
     });
   }
 }
