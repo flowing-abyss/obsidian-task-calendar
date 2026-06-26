@@ -2,7 +2,7 @@ import { Menu, Notice, TFile, setIcon, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import type { Task, TaskPriority } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
-import type { CalendarSettings, ListViewState, ResolvedConfig } from '../settings/types';
+import type { CalendarSettings, ListViewState, PropertyFilter, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { TagPickerModal } from '../ui/TagPickerModal';
@@ -167,10 +167,15 @@ export class CenterPanel {
       return;
     }
 
-    // Header: list name + local search
+    // Header: title + right-aligned [chips] [↕] [search]
     const header = this.el.createDiv({ cls: 'tc-center-header' });
     header.createEl('h2', { cls: 'tc-center-title', text: this.getTitle() });
-    const searchInput = header.createEl('input', {
+
+    const controls = header.createDiv({ cls: 'tc-center-controls' });
+    this.renderPropertyChips(controls);
+    this.renderViewStateButton(controls);
+
+    const searchInput = controls.createEl('input', {
       cls: 'tc-center-search',
       attr: { type: 'text', placeholder: 'Filter…' },
     });
@@ -1028,6 +1033,174 @@ export class CenterPanel {
     );
 
     menu.showAtMouseEvent(e);
+  }
+
+  private renderPropertyChips(container: HTMLElement): void {
+    const vs = this.state.get('centerListViewState');
+    for (let i = 0; i < vs.filters.length; i++) {
+      const f = vs.filters[i]!;
+      const label = this.filterChipLabel(f);
+      const chip = container.createEl('span', { cls: 'tc-filter-chip' });
+      chip.createEl('span', { cls: 'tc-filter-chip-label', text: label });
+      const x = chip.createEl('button', { cls: 'tc-filter-chip-x', text: '×' });
+      const idx = i;
+      x.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.removePropertyFilter(idx);
+      });
+    }
+  }
+
+  private filterChipLabel(f: PropertyFilter): string {
+    if (f.type === 'tag') return f.value;
+    if (f.type === 'file') return `📄 ${f.filePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}`;
+    if (f.type === 'time') return `⏰ ${f.value}`;
+    const PRIORITY_EMOJIS: Record<string, string> = {
+      A: '🔺 Highest', B: '⏫ High', C: '🔼 Medium', D: 'Normal', E: '🔽 Low', F: '⏬ Lowest',
+    };
+    return PRIORITY_EMOJIS[f.value] ?? f.value;
+  }
+
+  private addPropertyFilter(filter: PropertyFilter): void {
+    const vs = this.state.get('centerListViewState');
+    const already = vs.filters.some((f) => {
+      if (f.type !== filter.type) return false;
+      if (f.type === 'file' && filter.type === 'file') return f.filePath === filter.filePath;
+      if (f.type === 'tag' && filter.type === 'tag') return f.value === filter.value;
+      if (f.type === 'time' && filter.type === 'time') return f.value === filter.value;
+      if (f.type === 'priority' && filter.type === 'priority') return f.value === filter.value;
+      return false;
+    });
+    if (already) return;
+    const next: ListViewState = { ...vs, filters: [...vs.filters, filter] };
+    this.updateViewState(next);
+  }
+
+  private removePropertyFilter(idx: number): void {
+    const vs = this.state.get('centerListViewState');
+    const next: ListViewState = { ...vs, filters: vs.filters.filter((_, i) => i !== idx) };
+    this.updateViewState(next);
+  }
+
+  private updateViewState(next: ListViewState): void {
+    if (!this.settings.listViewStates) this.settings.listViewStates = {};
+    this.settings.listViewStates[this.currentListKey] = next;
+    void this.onSaveSettings();
+    this.state.set('centerListViewState', next);
+  }
+
+  private renderViewStateButton(container: HTMLElement): void {
+    const vs = this.state.get('centerListViewState');
+    const defaults = getListViewDefaults(this.currentListKey);
+    const isNonDefault =
+      vs.groupBy !== defaults.groupBy ||
+      vs.sortBy.field !== defaults.sortBy.field ||
+      vs.sortBy.dir !== defaults.sortBy.dir ||
+      vs.show !== defaults.show ||
+      vs.filters.length > 0;
+
+    const btn = container.createEl('button', {
+      cls: `tc-view-state-btn${isNonDefault ? ' tc-view-state-btn--active' : ''}`,
+      attr: { 'aria-label': 'Sort & group options' },
+    });
+    setIcon(btn, 'arrow-up-down');
+    btn.addEventListener('click', () => this.showViewStatePopover(btn));
+  }
+
+  private showViewStatePopover(anchor: HTMLElement): void {
+    const existing = this.el.querySelector('.tc-view-state-popover');
+    if (existing) { existing.remove(); return; }
+
+    const vs = this.state.get('centerListViewState');
+    const popover = this.el.createDiv({ cls: 'tc-view-state-popover tc-popover' });
+
+    const makeRow = (
+      icon: string,
+      label: string,
+      currentValue: string,
+      options: Array<{ label: string; value: string }>,
+      onSelect: (value: string) => void,
+    ): void => {
+      const row = popover.createDiv({ cls: 'tc-view-state-row' });
+      const rowMain = row.createDiv({ cls: 'tc-view-state-row-main' });
+      const iconEl = rowMain.createEl('span', { cls: 'tc-view-state-row-icon' });
+      setIcon(iconEl, icon);
+      rowMain.createEl('span', { cls: 'tc-view-state-row-label', text: label });
+      rowMain.createEl('span', { cls: 'tc-view-state-row-value', text: currentValue });
+      const chevEl = rowMain.createEl('span', { cls: 'tc-view-state-row-chevron' });
+      setIcon(chevEl, 'chevron-right');
+
+      const subList = row.createDiv({ cls: 'tc-view-state-sublist tc-hidden' });
+
+      rowMain.addEventListener('click', () => {
+        const isOpen = !subList.hasClass('tc-hidden');
+        popover.querySelectorAll<HTMLElement>('.tc-view-state-sublist').forEach((el) => {
+          el.addClass('tc-hidden');
+        });
+        if (!isOpen) subList.removeClass('tc-hidden');
+      });
+
+      for (const opt of options) {
+        const optEl = subList.createEl('button', { cls: 'tc-view-state-option', text: opt.label });
+        if (opt.value === currentValue || opt.label === currentValue) optEl.addClass('is-active');
+        optEl.addEventListener('click', () => {
+          onSelect(opt.value);
+          popover.remove();
+        });
+      }
+    };
+
+    const GROUP_BY_OPTIONS = [
+      { label: 'None', value: 'none' },
+      { label: 'Date', value: 'date' },
+      { label: 'Priority', value: 'priority' },
+      { label: 'Tag', value: 'tag' },
+    ];
+    const GROUP_LABELS: Record<string, string> = { none: 'None', date: 'Date', priority: 'Priority', tag: 'Tag' };
+
+    const sortDirArrow = vs.sortBy.dir === 'asc' ? '↑' : '↓';
+    const sortFieldArrow = (field: string): string =>
+      vs.sortBy.field === field ? sortDirArrow : '';
+    const SORT_BY_OPTIONS = [
+      { label: `Date ${sortFieldArrow('date')}`.trim(), value: 'date' },
+      { label: `Priority ${sortFieldArrow('priority')}`.trim(), value: 'priority' },
+      { label: `Title ${sortFieldArrow('title')}`.trim(), value: 'title' },
+      { label: `Tag ${sortFieldArrow('tag')}`.trim(), value: 'tag' },
+    ];
+    const sortLabel = `${vs.sortBy.field.charAt(0).toUpperCase() + vs.sortBy.field.slice(1)} ${vs.sortBy.dir === 'asc' ? '↑' : '↓'}`;
+
+    const SHOW_OPTIONS = [
+      { label: 'Active only', value: 'active' },
+      { label: 'Completed only', value: 'completed' },
+      { label: 'All', value: 'all' },
+    ];
+    const SHOW_LABELS: Record<string, string> = { active: 'Active', completed: 'Completed', all: 'All' };
+
+    makeRow('layout-list', 'Group by', GROUP_LABELS[vs.groupBy] ?? vs.groupBy, GROUP_BY_OPTIONS, (val) => {
+      this.updateViewState({ ...vs, groupBy: val as ListViewState['groupBy'] });
+    });
+
+    makeRow('arrow-up-down', 'Sort by', sortLabel, SORT_BY_OPTIONS, (val) => {
+      const field = val as ListViewState['sortBy']['field'];
+      const dir: 'asc' | 'desc' =
+        vs.sortBy.field === field && vs.sortBy.dir === 'asc' ? 'desc' : 'asc';
+      this.updateViewState({ ...vs, sortBy: { field, dir } });
+    });
+
+    makeRow('eye', 'Show', SHOW_LABELS[vs.show] ?? vs.show, SHOW_OPTIONS, (val) => {
+      this.updateViewState({ ...vs, show: val as ListViewState['show'] });
+    });
+
+    anchor.after(popover);
+    window.setTimeout(() => {
+      const dismiss = (e: MouseEvent): void => {
+        if (!popover.contains(e.target as Node) && e.target !== anchor) {
+          popover.remove();
+          activeDocument.removeEventListener('click', dismiss, true);
+        }
+      };
+      activeDocument.addEventListener('click', dismiss, true);
+    }, 0);
   }
 
   private renderAddTaskBar(): void {
