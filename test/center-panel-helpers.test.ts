@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
-import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { DEFAULT_SETTINGS, getListViewDefaults } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
 import { fixedToday, makeStubStore, task, useRealMoment } from './helpers';
@@ -478,6 +478,34 @@ describe('CenterPanel pure helpers', () => {
     });
   });
 
+  describe('getListViewDefaults', () => {
+    it('today list uses date grouping', () => {
+      expect(getListViewDefaults('today').groupBy).toBe('date');
+    });
+
+    it('upcoming list uses date grouping', () => {
+      expect(getListViewDefaults('upcoming').groupBy).toBe('date');
+    });
+
+    it('inbox list uses no grouping', () => {
+      expect(getListViewDefaults('inbox').groupBy).toBe('none');
+    });
+
+    it('tag list uses no grouping', () => {
+      expect(getListViewDefaults('tag:#work').groupBy).toBe('none');
+    });
+
+    it('all lists default to active show and date sort ascending', () => {
+      for (const key of ['today', 'upcoming', 'inbox', 'tag:#work']) {
+        const d = getListViewDefaults(key);
+        expect(d.show).toBe('active');
+        expect(d.sortBy.field).toBe('date');
+        expect(d.sortBy.dir).toBe('asc');
+        expect(d.filters).toHaveLength(0);
+      }
+    });
+  });
+
   describe('per-list state management', () => {
     it('loads default state for today list on mount', () => {
       const { state, panel } = makePanel([]);
@@ -579,12 +607,18 @@ describe('getFilteredTasks respects show status', () => {
   };
 
   it('show=active excludes done tasks', () => {
-    const { panel, state } = makePanel([
-      task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
-      task({ text: 'done', rawText: '- [x] done', status: 'done' }),
-    ], untaggedSettings);
+    const { panel, state } = makePanel(
+      [
+        task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+      ],
+      untaggedSettings,
+    );
     state.set('centerListViewState', {
-      groupBy: 'none', sortBy: { field: 'date', dir: 'asc' }, show: 'active', filters: [],
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [],
     });
     state.set('selectedList', 'inbox');
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
@@ -592,12 +626,18 @@ describe('getFilteredTasks respects show status', () => {
   });
 
   it('show=completed returns only done tasks', () => {
-    const { panel, state } = makePanel([
-      task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
-      task({ text: 'done', rawText: '- [x] done', status: 'done' }),
-    ], untaggedSettings);
+    const { panel, state } = makePanel(
+      [
+        task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+      ],
+      untaggedSettings,
+    );
     state.set('centerListViewState', {
-      groupBy: 'none', sortBy: { field: 'date', dir: 'asc' }, show: 'completed', filters: [],
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'completed',
+      filters: [],
     });
     state.set('selectedList', 'inbox');
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
@@ -605,12 +645,18 @@ describe('getFilteredTasks respects show status', () => {
   });
 
   it('show=all returns both', () => {
-    const { panel, state } = makePanel([
-      task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
-      task({ text: 'done', rawText: '- [x] done', status: 'done' }),
-    ], untaggedSettings);
+    const { panel, state } = makePanel(
+      [
+        task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+      ],
+      untaggedSettings,
+    );
     state.set('centerListViewState', {
-      groupBy: 'none', sortBy: { field: 'date', dir: 'asc' }, show: 'all', filters: [],
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'all',
+      filters: [],
     });
     state.set('selectedList', 'inbox');
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
@@ -634,5 +680,206 @@ describe('getFilteredTasks respects property filters', () => {
     const tasks = call<Task[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.text).toBe('work task');
+  });
+
+  it('tag filter does not match partial tags (#work does not match #work/deep)', () => {
+    const { panel, state } = makePanel([
+      task({ rawText: '- [ ] task #work', text: 'exact', status: 'open' }),
+      task({ rawText: '- [ ] task #work/deep', text: 'sub', status: 'open' }),
+    ]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'tag', value: '#work' }],
+    });
+    state.set('selectedList', 'all-tasks');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.text).toBe('exact');
+  });
+
+  it('file filter keeps only tasks from that file', () => {
+    const { panel, state } = makePanel([
+      task({ filePath: 'notes/a.md', text: 'from a', status: 'open' }),
+      task({ filePath: 'notes/b.md', text: 'from b', status: 'open' }),
+    ]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'file', filePath: 'notes/a.md' }],
+    });
+    state.set('selectedList', 'all-tasks');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.text).toBe('from a');
+  });
+
+  it('time filter keeps only tasks with matching time', () => {
+    const { panel, state } = makePanel([
+      task({ text: 'morning', status: 'open', time: '09:00' }),
+      task({ text: 'afternoon', status: 'open', time: '14:00' }),
+      task({ text: 'no time', status: 'open' }),
+    ]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'time', value: '09:00' }],
+    });
+    state.set('selectedList', 'all-tasks');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.text).toBe('morning');
+  });
+
+  it('priority filter keeps only tasks with matching priority', () => {
+    const { panel, state } = makePanel([
+      task({ text: 'high', status: 'open', priority: 'B' }),
+      task({ text: 'normal', status: 'open', priority: 'D' }),
+    ]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'priority', value: 'B' }],
+    });
+    state.set('selectedList', 'all-tasks');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.text).toBe('high');
+  });
+
+  it('date filter matches due, scheduled, or dailyNoteDate', () => {
+    const { panel, state } = makePanel([
+      task({ text: 'due', status: 'open', due: '2026-01-10' }),
+      task({ text: 'sched', status: 'open', scheduled: '2026-01-10' }),
+      task({ text: 'daily', status: 'open', dailyNoteDate: '2026-01-10' }),
+      task({ text: 'other', status: 'open', due: '2026-01-11' }),
+    ]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'date', value: '2026-01-10' }],
+    });
+    state.set('selectedList', 'all-tasks');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks).toHaveLength(3);
+    expect(tasks.map((t) => t.text)).toEqual(expect.arrayContaining(['due', 'sched', 'daily']));
+  });
+
+  it('multiple property filters are combined with AND', () => {
+    const { panel, state } = makePanel([
+      task({ rawText: '- [ ] t #work', text: 'work morning', status: 'open', time: '09:00' }),
+      task({ rawText: '- [ ] t #work', text: 'work afternoon', status: 'open', time: '14:00' }),
+      task({ rawText: '- [ ] t #personal', text: 'personal morning', status: 'open', time: '09:00' }),
+    ]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [
+        { type: 'tag', value: '#work' },
+        { type: 'time', value: '09:00' },
+      ],
+    });
+    state.set('selectedList', 'all-tasks');
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.text).toBe('work morning');
+  });
+});
+
+describe('addPropertyFilter', () => {
+  it('adds a filter to the current list view state', () => {
+    const { panel, state } = makePanel([]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [],
+    });
+    call(panel, 'addPropertyFilter', { type: 'tag', value: '#work' });
+    expect(state.get('centerListViewState').filters).toHaveLength(1);
+    expect(state.get('centerListViewState').filters[0]).toEqual({ type: 'tag', value: '#work' });
+  });
+
+  it('deduplicates tag filters by value', () => {
+    const { panel, state } = makePanel([]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'tag', value: '#work' }],
+    });
+    call(panel, 'addPropertyFilter', { type: 'tag', value: '#work' });
+    expect(state.get('centerListViewState').filters).toHaveLength(1);
+  });
+
+  it('deduplicates file filters by filePath', () => {
+    const { panel, state } = makePanel([]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'file', filePath: 'a.md' }],
+    });
+    call(panel, 'addPropertyFilter', { type: 'file', filePath: 'a.md' });
+    expect(state.get('centerListViewState').filters).toHaveLength(1);
+  });
+
+  it('allows different filter types with the same value', () => {
+    const { panel, state } = makePanel([]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'tag', value: '#work' }],
+    });
+    call(panel, 'addPropertyFilter', { type: 'time', value: '#work' });
+    expect(state.get('centerListViewState').filters).toHaveLength(2);
+  });
+});
+
+describe('removePropertyFilter', () => {
+  it('removes filter at given index', () => {
+    const { panel, state } = makePanel([]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [
+        { type: 'tag', value: '#work' },
+        { type: 'tag', value: '#personal' },
+      ],
+    });
+    call(panel, 'removePropertyFilter', 0);
+    const filters = state.get('centerListViewState').filters;
+    expect(filters).toHaveLength(1);
+    expect(filters[0]).toEqual({ type: 'tag', value: '#personal' });
+  });
+});
+
+describe('filterChipLabel', () => {
+  it('tag filter → tag value', () => {
+    const { panel } = makePanel([]);
+    expect(call<string>(panel, 'filterChipLabel', { type: 'tag', value: '#work' })).toBe('#work');
+  });
+
+  it('file filter → filename without extension', () => {
+    const { panel } = makePanel([]);
+    expect(call<string>(panel, 'filterChipLabel', { type: 'file', filePath: 'notes/Daily Note.md' })).toBe('📄 Daily Note');
+  });
+
+  it('time filter → clock emoji + time', () => {
+    const { panel } = makePanel([]);
+    expect(call<string>(panel, 'filterChipLabel', { type: 'time', value: '09:00' })).toBe('⏰ 09:00');
+  });
+
+  it('priority filter → emoji label', () => {
+    const { panel } = makePanel([]);
+    expect(call<string>(panel, 'filterChipLabel', { type: 'priority', value: 'B' })).toBe('⏫ High');
   });
 });
