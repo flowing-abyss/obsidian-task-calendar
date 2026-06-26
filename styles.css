@@ -2961,7 +2961,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-view-state-btn--active::after {
   content: '';
   position: absolute;
-  bottom: 1px;
+  top: 2px;
   right: 2px;
   width: 4px;
   height: 4px;
