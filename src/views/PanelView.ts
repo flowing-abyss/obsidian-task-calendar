@@ -24,6 +24,7 @@ export class PanelView extends ItemView {
     private store: TaskStore,
     private settings: CalendarSettings,
     private tagManager: TagManager,
+    private onSaveSettings: () => Promise<void> = async () => {},
   ) {
     super(leaf);
   }
@@ -53,7 +54,7 @@ export class PanelView extends ItemView {
 
     this.rail = new RailPanel(this.state, this.app as never);
     this.left = new LeftPanel(this.state, this.store, this.settings, this.tagManager, this.app);
-    this.center = new CenterPanel(this.state, this.store, this.app, this.settings, this.tagManager);
+    this.center = new CenterPanel(this.state, this.store, this.app, this.settings, this.tagManager, this.onSaveSettings);
     this.right = new RightPanel(this.state, this.app, this.settings);
 
     this.rail.mount(railEl);

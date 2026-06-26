@@ -478,6 +478,26 @@ describe('CenterPanel pure helpers', () => {
     });
   });
 
+  describe('per-list state management', () => {
+    it('loads default state for today list on mount', () => {
+      const { state, panel } = makePanel([]);
+      const container = document.createElement('div');
+      panel.mount(container);
+      const vs = state.get('centerListViewState');
+      expect(vs.groupBy).toBe('date');
+      expect(vs.show).toBe('active');
+    });
+
+    it('switches to inbox defaults when selectedList changes to inbox', () => {
+      const { state, panel } = makePanel([]);
+      const container = document.createElement('div');
+      panel.mount(container);
+      state.set('selectedList', 'inbox');
+      const vs = state.get('centerListViewState');
+      expect(vs.groupBy).toBe('none');
+    });
+  });
+
   describe('getTagColor', () => {
     it('prefix mode: exact match returns group.color', () => {
       const group: TagGroup = {

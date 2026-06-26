@@ -1,8 +1,8 @@
 import { Menu, Notice, TFile, setIcon, type App } from 'obsidian';
-import type { AppState } from '../app/AppState';
+import type { AppState, ListSelection } from '../app/AppState';
 import type { Task, TaskPriority } from '../parser/types';
-import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
-import type { CalendarSettings, ResolvedConfig } from '../settings/types';
+import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
+import type { CalendarSettings, ListViewState, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { TagPickerModal } from '../ui/TagPickerModal';
@@ -16,6 +16,12 @@ import { sortTasksByDateTime } from '../views/taskGrouping';
 
 type CalViewType = 'month' | 'week' | 'list';
 
+function listSelectionToKey(sel: ListSelection): string {
+  if (typeof sel === 'string') return sel;
+  if (sel.type === 'tag') return `tag:${sel.tag}`;
+  return `group:${sel.groupId}`;
+}
+
 export class CenterPanel {
   private el!: HTMLElement;
   private offs: Array<() => void> = [];
@@ -27,6 +33,8 @@ export class CenterPanel {
   private calStyle: string = 'style1';
   private selectedTaskKeys = new Set<string>();
   private lastClickedTaskKey: string | null = null;
+  private currentListKey: string = 'today';
+  private onSaveSettings: () => Promise<void>;
 
   constructor(
     private state: AppState,
@@ -34,18 +42,45 @@ export class CenterPanel {
     private app: App,
     private settings: CalendarSettings,
     private tagManager: TagManager,
-  ) {}
+    onSaveSettings: () => Promise<void> = async () => {},
+  ) {
+    this.onSaveSettings = onSaveSettings;
+  }
 
   mount(container: HTMLElement): void {
     this.el = container;
     this.taskModal = new TaskModal(this.app, this.settings);
     this.calStyle = this.settings.desktop.style ?? 'style1';
+
+    // Initialize per-list state before first render
+    const initialKey = listSelectionToKey(this.state.get('selectedList'));
+    this.currentListKey = initialKey;
+    const initialVs: ListViewState =
+      this.settings.listViewStates?.[initialKey] ?? getListViewDefaults(initialKey);
+    this.state.set('centerListViewState', initialVs);
+
     this.offs.push(
-      this.state.on('selectedList', () => {
+      this.state.on('selectedList', (newSel) => {
+        // Save current state for the old list key
+        const oldKey = this.currentListKey;
+        const currentVs = this.state.get('centerListViewState');
+        if (!this.settings.listViewStates) this.settings.listViewStates = {};
+        this.settings.listViewStates[oldKey] = currentVs;
+        void this.onSaveSettings();
+
+        // Load state for new list
+        const newKey = listSelectionToKey(newSel);
+        this.currentListKey = newKey;
+        const saved = this.settings.listViewStates?.[newKey];
+        const nextVs = saved ?? getListViewDefaults(newKey);
+        this.state.set('centerListViewState', nextVs);
+        this.state.set('centerFilter', '');
+
         this.selectedTaskKeys.clear();
         this.lastClickedTaskKey = null;
         this.render();
       }),
+      this.state.on('centerListViewState', () => this.render()),
       this.state.on('mode', () => this.render()),
       this.state.on('centerFilter', () => this.render()),
       this.state.on('searchQuery', () => this.render()),
@@ -891,7 +926,7 @@ export class CenterPanel {
   }
 
   private getTaskTags(task: Task): Set<string> {
-    return new Set((task.rawText.match(/#[\w/][\w/-]*/gu) ?? []));
+    return new Set(task.rawText.match(/#[\w/][\w/-]*/gu) ?? []);
   }
 
   private openTagPicker(task: Task): void {
@@ -900,7 +935,13 @@ export class CenterPanel {
       for (const tag of toAdd) void this.tagManager.addTagToTask(task, tag);
       for (const tag of toRemove) void this.tagManager.removeTagFromTask(task, tag);
     };
-    new TagPickerModal(this.app, (tag) => this.getTagColor(tag), currentTags, new Set(), handleCommit).open();
+    new TagPickerModal(
+      this.app,
+      (tag) => this.getTagColor(tag),
+      currentTags,
+      new Set(),
+      handleCommit,
+    ).open();
   }
 
   private openBulkTagPicker(selectedTasks: Task[]): void {
@@ -915,7 +956,13 @@ export class CenterPanel {
       for (const tag of toRemove)
         void Promise.all(selectedTasks.map((t) => this.tagManager.removeTagFromTask(t, tag)));
     };
-    new TagPickerModal(this.app, (tag) => this.getTagColor(tag), currentTags, partialTags, handleBulkCommit).open();
+    new TagPickerModal(
+      this.app,
+      (tag) => this.getTagColor(tag),
+      currentTags,
+      partialTags,
+      handleBulkCommit,
+    ).open();
   }
 
   private showBulkContextMenu(e: MouseEvent, _card: HTMLElement): void {
