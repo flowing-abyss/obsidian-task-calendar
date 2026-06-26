@@ -1,3 +1,5 @@
+import type { TaskPriority } from '../parser/types';
+
 export interface ViewConfig {
   defaultView: 'month' | 'week' | 'list';
   firstDayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -49,6 +51,7 @@ export interface CalendarSettings {
   taskInsertionMode: 'append' | 'section';
   taskInsertionSection: string;
   sourceNoteDisplay: 'never' | 'always' | 'non-default';
+  listViewStates?: Record<string, ListViewState>;
 }
 
 // Params parsed from a task-calendar code block (all optional overrides of ViewConfig)
@@ -63,4 +66,17 @@ export interface CodeBlockParams {
   startPosition?: string;
   tag?: string;
   folder?: string;
+}
+
+export type PropertyFilter =
+  | { type: 'tag'; value: string }
+  | { type: 'file'; filePath: string }
+  | { type: 'time'; value: string }
+  | { type: 'priority'; value: TaskPriority };
+
+export interface ListViewState {
+  groupBy: 'none' | 'date' | 'priority' | 'tag';
+  sortBy: { field: 'date' | 'priority' | 'title' | 'tag'; dir: 'asc' | 'desc' };
+  show: 'active' | 'completed' | 'all';
+  filters: PropertyFilter[];
 }

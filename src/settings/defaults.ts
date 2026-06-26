@@ -1,4 +1,4 @@
-import type { CalendarSettings, ViewConfig } from './types';
+import type { CalendarSettings, ViewConfig, ListViewState } from './types';
 
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   defaultView: 'month',
@@ -34,3 +34,13 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
   taskInsertionSection: '## Tasks',
   sourceNoteDisplay: 'non-default' as const,
 };
+
+export function getListViewDefaults(listKey: string): ListViewState {
+  const useDateGrouping = listKey === 'today' || listKey === 'upcoming';
+  return {
+    groupBy: useDateGrouping ? 'date' : 'none',
+    sortBy: { field: 'date', dir: 'asc' },
+    show: 'active',
+    filters: [],
+  };
+}
