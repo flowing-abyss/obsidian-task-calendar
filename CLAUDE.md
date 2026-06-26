@@ -1,6 +1,6 @@
 # Obsidian Task Calendar plugin
 
-Exposes a `window.renderCalendar(dv, params)` API for Dataview to render tasks (month/week/list views) from vault pages.
+An Obsidian sidebar plugin that renders vault tasks in month, week, and list views. Registers a custom `ItemView` (panel) with left/center/right panels — no Dataview dependency.
 
 ## Commands
 
