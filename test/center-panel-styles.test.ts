@@ -52,7 +52,9 @@ describe('Shared popover styles', () => {
     expect(priorityPopover).toContain('min-width: 0');
     expect(priorityPopover).toContain('display: grid');
     expect(priorityPopover).toContain('inline-size: max-content');
-    expect(priorityPopover).toContain('max-inline-size: calc(100% - (var(--tc-popover-edge-gap, 0.5rem) * 2))');
+    expect(priorityPopover).toContain(
+      'max-inline-size: calc(100% - (var(--tc-popover-edge-gap, 0.5rem) * 2))',
+    );
     expect(priorityPopover).toContain('padding: 0');
     expect(priorityPopover).toContain('border-radius: 0.5rem');
     expect(priorityPopover).toContain('border: 0');
