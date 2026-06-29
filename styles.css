@@ -1,12 +1,14 @@
 /* ============================================================
    Task Calendar — CSS custom properties
    ============================================================ */
-:root {
-  --tc-priority-a: #c0001a;
-  --tc-priority-b: #e44332;
-  --tc-priority-c: #e87d00;
-  --tc-priority-e: #5297ff;
-  --tc-priority-f: #2255cc;
+.tc-panel-view {
+  --tc-priority-a: var(--color-red);
+  --tc-priority-b: var(--color-orange);
+  --tc-priority-c: var(--color-yellow);
+  --tc-priority-e: var(--color-blue);
+  --tc-priority-f: var(--color-purple);
+  --tc-date-overdue: var(--color-red);
+  --tc-date-tomorrow: var(--color-orange);
 }
 
 /* ============================================================
@@ -1667,20 +1669,23 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-date-icon {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  line-height: 0;
 }
 .tc-date-icon svg {
   width: 11px;
   height: 11px;
+  display: block;
 }
 .tc-task-date.is-overdue {
-  color: var(--tc-priority-b);
+  color: var(--tc-date-overdue);
 }
 .tc-task-date.is-today {
   color: var(--interactive-accent);
 }
 .tc-task-date.is-tomorrow {
-  color: var(--tc-priority-c);
+  color: var(--tc-date-tomorrow);
 }
 .tc-task-date.is-soon {
   color: var(--interactive-accent);
@@ -1698,6 +1703,11 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   cursor: pointer;
 }
 .tc-task-tag--colored {
+  opacity: 1;
+}
+.tc-center .tc-task-tag:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
   opacity: 1;
 }
 .tc-task-source-note {
@@ -2315,38 +2325,40 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   position: absolute;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow-s);
   z-index: 100;
-  padding: 8px;
-  min-width: 160px;
+  padding: 0.5rem;
+  min-width: 10rem;
 }
 .tc-popover-input-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.5rem;
+  height: 2rem;
 }
 .tc-date-input,
 .tc-time-input {
   flex: 1;
   min-width: 0;
+  height: 100%;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  padding: 4px 6px;
-  background: var(--background-primary);
+  border-radius: 0.375rem;
+  padding: 0 0.5rem;
+  background: transparent;
   color: var(--text-normal);
   font-size: 13px;
 }
 .tc-popover-clear-icon-btn {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 0;
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 0.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2356,46 +2368,74 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-normal);
 }
 .tc-popover-clear-icon-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 0.75rem;
+  height: 0.75rem;
+}
+.tc-date-popover,
+.tc-time-popover {
+  border: 0;
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow-s);
+}
+.tc-date-popover .tc-date-input,
+.tc-time-popover .tc-time-input {
+  border: 1px solid var(--background-modifier-border);
+  background: transparent;
+  box-shadow: none;
 }
 .tc-priority-popover {
-  min-width: 140px;
-  padding: 4px;
+  display: grid;
+  min-width: 0;
+  inline-size: max-content;
+  max-inline-size: calc(100% - (var(--tc-popover-edge-gap, 0.5rem) * 2));
+  padding: 0;
+  border-radius: 0.5rem;
+  border: 0;
+  overflow: hidden;
+  box-shadow: var(--shadow-s);
 }
 .tc-priority-option {
-  display: flex;
+  display: grid;
+  grid-template-columns: 0.8em 0.9em max-content;
   align-items: center;
-  gap: 8px;
+  justify-content: start;
+  column-gap: 0.35em;
   width: 100%;
   text-align: left;
   background: transparent;
   border: none;
-  padding: 7px 10px;
+  padding: 0.5em 0.65em 0.5em 0.45em;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--text-normal);
-  font-size: 13px;
+  font-size: var(--font-ui-medium);
+  line-height: 1.25;
 }
-.tc-priority-option::before {
-  content: '⚑';
-  font-size: 14px;
-  color: var(--text-muted);
+.tc-priority-option-flag {
+  width: 0.9em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
-.tc-priority-option[data-priority='A']::before {
+.tc-priority-option-flag::before {
+  content: '⚑';
+  font-size: 0.95em;
+  color: var(--text-muted);
+}
+.tc-priority-option[data-priority='A'] .tc-priority-option-flag::before {
   color: var(--tc-priority-a);
 }
-.tc-priority-option[data-priority='B']::before {
+.tc-priority-option[data-priority='B'] .tc-priority-option-flag::before {
   color: var(--tc-priority-b);
 }
-.tc-priority-option[data-priority='C']::before {
+.tc-priority-option[data-priority='C'] .tc-priority-option-flag::before {
   color: var(--tc-priority-c);
 }
-.tc-priority-option[data-priority='E']::before {
+.tc-priority-option[data-priority='E'] .tc-priority-option-flag::before {
   color: var(--tc-priority-e);
 }
-.tc-priority-option[data-priority='F']::before {
+.tc-priority-option[data-priority='F'] .tc-priority-option-flag::before {
   color: var(--tc-priority-f);
 }
 .tc-priority-option:hover {
@@ -2404,11 +2444,20 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-priority-option.is-active {
   font-weight: 600;
 }
-.tc-priority-option.is-active::after {
-  content: '✓';
-  margin-left: auto;
-  color: var(--interactive-accent);
-  font-size: 12px;
+.tc-priority-option-label {
+  white-space: nowrap;
+}
+.tc-priority-option-check {
+  width: 0.8em;
+  height: 0.8em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+}
+.tc-priority-option-check svg {
+  width: 0.75em;
+  height: 0.75em;
 }
 
 /* Priority chip in right panel */
@@ -2806,6 +2855,8 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 
 /* Anchor-positioned popover: uses CSS custom properties set via setCssProps */
 .tc-popover-anchored {
+  --tc-popover-anchor-gap: 0.25rem;
+  --tc-popover-edge-gap: 0.5rem;
   position: absolute;
   top: var(--tc-pop-top, 100%);
   left: var(--tc-pop-left, 0);
@@ -3118,6 +3169,13 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 }
 
 /* ── Date / time parts — hover hint ─────────────────────────── */
+.tc-task-date-part,
+.tc-task-time-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .tc-task-date-part:hover,
 .tc-task-time-part:hover {
   text-decoration: underline;

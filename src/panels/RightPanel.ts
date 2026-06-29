@@ -442,11 +442,6 @@ export class RightPanel {
     if (already) return;
 
     const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover tc-popover-anchored' });
-    // Use setCssProps for dynamic offset values (position/z-index are in the CSS class)
-    pop.setCssProps({
-      '--tc-pop-top': `${anchor.offsetTop + anchor.offsetHeight + 4}px`,
-      '--tc-pop-left': `${anchor.offsetLeft}px`,
-    });
 
     const inputRow = pop.createDiv({ cls: 'tc-popover-input-row' });
     const input = inputRow.createEl('input', {
@@ -470,6 +465,7 @@ export class RightPanel {
       void this.clearDate(task);
       pop.remove();
     });
+    this.positionAnchoredPopover(pop, anchor);
   }
 
   private showPriorityPopover(anchor: HTMLElement, task: TaskLike): void {
@@ -478,10 +474,6 @@ export class RightPanel {
     if (already) return;
 
     const pop = this.el.createDiv({ cls: 'tc-popover tc-priority-popover tc-popover-anchored' });
-    pop.setCssProps({
-      '--tc-pop-top': `${anchor.offsetTop + anchor.offsetHeight + 4}px`,
-      '--tc-pop-left': `${anchor.offsetLeft}px`,
-    });
 
     const currentPriority = anchor.getAttribute('data-priority') ?? task.priority ?? 'D';
     const options: Array<{ value: string; label: string }> = [
@@ -493,11 +485,15 @@ export class RightPanel {
       { value: 'F', label: 'Lowest' },
     ];
     for (const opt of options) {
+      const isActive = currentPriority === opt.value;
       const btn = pop.createEl('button', {
-        cls: `tc-priority-option${currentPriority === opt.value ? ' is-active' : ''}`,
-        text: opt.label,
+        cls: `tc-priority-option${isActive ? ' is-active' : ''}`,
         attr: { 'data-priority': opt.value },
       });
+      const checkEl = btn.createEl('span', { cls: 'tc-priority-option-check' });
+      if (isActive) setIcon(checkEl, 'check');
+      btn.createEl('span', { cls: 'tc-priority-option-flag' });
+      btn.createEl('span', { cls: 'tc-priority-option-label', text: opt.label });
       btn.addEventListener('click', () => {
         // Optimistic update on the chip
         const chipLabels: Record<string, string> = {
@@ -515,9 +511,54 @@ export class RightPanel {
         void this.updatePriority(task, opt.value);
       });
     }
+    this.positionAnchoredPopover(pop, anchor);
     window.setTimeout(() => {
       this.el.addEventListener('click', () => pop.remove(), { once: true });
     }, 0);
+  }
+
+  private positionAnchoredPopover(popover: HTMLElement, anchor: HTMLElement): void {
+    const panelWidth = this.el.getBoundingClientRect().width || this.el.clientWidth;
+    const minWidth = parseFloat(getComputedStyle(popover).minWidth);
+    const popoverWidth =
+      popover.offsetWidth ||
+      popover.getBoundingClientRect().width ||
+      (Number.isFinite(minWidth) ? minWidth : 160);
+    const edgeGap = this.cssLengthToPx(
+      getComputedStyle(popover).getPropertyValue('--tc-popover-edge-gap'),
+      popover,
+      8,
+    );
+    const anchorGap = this.cssLengthToPx(
+      getComputedStyle(popover).getPropertyValue('--tc-popover-anchor-gap'),
+      popover,
+      4,
+    );
+    const maxLeft =
+      panelWidth > 0 ? Math.max(edgeGap, panelWidth - popoverWidth - edgeGap) : anchor.offsetLeft;
+    const left = Math.min(Math.max(anchor.offsetLeft, edgeGap), maxLeft);
+
+    popover.style.setProperty(
+      '--tc-pop-top',
+      `${anchor.offsetTop + anchor.offsetHeight + anchorGap}px`,
+    );
+    popover.style.setProperty('--tc-pop-left', `${left}px`);
+  }
+
+  private cssLengthToPx(value: string, relativeTo: HTMLElement, fallback: number): number {
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    if (trimmed.endsWith('px')) return parseFloat(trimmed);
+    if (trimmed.endsWith('rem')) {
+      const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      return parseFloat(trimmed) * rootFontSize;
+    }
+    if (trimmed.endsWith('em')) {
+      const fontSize = parseFloat(getComputedStyle(relativeTo).fontSize) || 16;
+      return parseFloat(trimmed) * fontSize;
+    }
+    const numeric = parseFloat(trimmed);
+    return Number.isFinite(numeric) ? numeric : fallback;
   }
 
   private showTagInput(
@@ -719,11 +760,6 @@ export class RightPanel {
     if (already) return;
 
     const pop = this.el.createDiv({ cls: 'tc-popover tc-time-popover tc-popover-anchored' });
-    // Use setCssProps for dynamic offset values (position/z-index are in the CSS class)
-    pop.setCssProps({
-      '--tc-pop-top': `${anchor.offsetTop + anchor.offsetHeight + 4}px`,
-      '--tc-pop-left': `${anchor.offsetLeft}px`,
-    });
 
     const inputRow = pop.createDiv({ cls: 'tc-popover-input-row' });
     const input = inputRow.createEl('input', {
@@ -745,6 +781,7 @@ export class RightPanel {
     clearBtn.addEventListener('click', () => {
       void this.updateTime(task, '').then(() => pop.remove());
     });
+    this.positionAnchoredPopover(pop, anchor);
   }
 
   private async updateTime(task: TaskLike, time: string): Promise<void> {

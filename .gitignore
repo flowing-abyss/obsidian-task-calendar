@@ -29,6 +29,7 @@ AGENTS.md
 
 .opencode/
 .claude/
+.agents/
 
 # Dev vault for local testing (not for repo)
 dev-vault/

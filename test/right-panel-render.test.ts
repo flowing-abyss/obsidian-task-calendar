@@ -31,6 +31,12 @@ function click(el: HTMLElement): void {
   el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
+/** Bracket-access helper to call private methods (preserves `this` binding). */
+function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
+  const fn = (panel as unknown as Record<string, (...a: unknown[]) => T>)[method]!;
+  return fn.call(panel, ...args);
+}
+
 /** Dispatch a change event on an input. */
 function change(el: HTMLInputElement): void {
   el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -206,6 +212,45 @@ describe('RightPanel popovers', () => {
     const pop = el.querySelector('.tc-priority-popover');
     expect(pop).not.toBeNull();
     expect(pop?.querySelectorAll('.tc-priority-option').length).toBe(6);
+  });
+
+  it('priority popover options use the shared menu option structure', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [task({ text: 'P', priority: 'F' })]);
+    const chip = el.querySelector<HTMLElement>('.tc-priority-chip')!;
+    click(chip);
+
+    const active = el.querySelector<HTMLElement>('.tc-priority-option.is-active');
+
+    const children = Array.from(active?.children ?? []).map((el) => el.className);
+
+    expect(children).toEqual([
+      'tc-priority-option-check',
+      'tc-priority-option-flag',
+      'tc-priority-option-label',
+    ]);
+    expect(active?.querySelector('.tc-priority-option-flag')).not.toBeNull();
+    expect(active?.querySelector('.tc-priority-option-label')?.textContent).toBe('Lowest');
+    expect(active?.querySelector('.tc-priority-option-check')).not.toBeNull();
+  });
+
+  it('priority popover is shifted left when it would overflow the right panel', async () => {
+    const { panel, el } = await makePanel();
+    const anchor = document.createElement('button');
+    const popover = document.createElement('div');
+
+    Object.defineProperty(el, 'clientWidth', { configurable: true, value: 320 });
+    Object.defineProperty(anchor, 'offsetLeft', { configurable: true, value: 173 });
+    Object.defineProperty(anchor, 'offsetTop', { configurable: true, value: 57 });
+    Object.defineProperty(anchor, 'offsetHeight', { configurable: true, value: 24 });
+    Object.defineProperty(popover, 'offsetWidth', { configurable: true, value: 180 });
+    popover.style.setProperty('--tc-popover-anchor-gap', '0.25rem');
+    popover.style.setProperty('--tc-popover-edge-gap', '1rem');
+
+    call<void>(panel, 'positionAnchoredPopover', popover, anchor);
+
+    expect(popover.style.getPropertyValue('--tc-pop-top')).toBe('85px');
+    expect(popover.style.getPropertyValue('--tc-pop-left')).toBe('124px');
   });
 
   it('outside click dismisses the priority popover', async () => {
