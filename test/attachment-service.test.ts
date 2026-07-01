@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
 import type { App, TFile } from 'obsidian';
+import { describe, expect, it, vi } from 'vitest';
 import {
   aliasForExtension,
   aliasForName,
-  saveExternalFile,
   buildAttachmentLink,
+  saveExternalFile,
 } from '../src/attachments/AttachmentService';
 
 describe('aliasForExtension', () => {
@@ -45,7 +45,10 @@ describe('saveExternalFile', () => {
 
     const result = await saveExternalFile(app, file, 'Tasks/T.md');
 
-    expect(app.fileManager.getAvailablePathForAttachment).toHaveBeenCalledWith('a.png', 'Tasks/T.md');
+    expect(app.fileManager.getAvailablePathForAttachment).toHaveBeenCalledWith(
+      'a.png',
+      'Tasks/T.md',
+    );
     expect(app.vault.createBinary).toHaveBeenCalledWith('attach/a.png', bytes);
     expect(result).toBe(created);
   });
@@ -58,7 +61,12 @@ describe('buildAttachmentLink', () => {
       fileManager: { generateMarkdownLink: vi.fn().mockReturnValue('[[attach/a.png|image]]') },
     } as unknown as App;
     const link = buildAttachmentLink(app, file, 'Tasks/T.md', 'image');
-    expect(app.fileManager.generateMarkdownLink).toHaveBeenCalledWith(file, 'Tasks/T.md', undefined, 'image');
+    expect(app.fileManager.generateMarkdownLink).toHaveBeenCalledWith(
+      file,
+      'Tasks/T.md',
+      undefined,
+      'image',
+    );
     expect(link).toBe('[[attach/a.png|image]]');
   });
 });
