@@ -14,7 +14,7 @@ export interface MonthViewCallbacks {
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
   onOpenNote: (task: Task) => void;
-  onEditLink: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
+  onEditLink?: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
 }
 
 export class MonthView extends BaseView {
@@ -139,13 +139,14 @@ export class MonthView extends BaseView {
     today: string,
   ): void {
     const groups = getTasksForDate(tasks, date, today);
+    const onEditLink = this.callbacks.onEditLink;
     renderTaskGroup(container, groups, date, today, (task, cls) => {
       const card = createTaskCard(task, cls, {
         app: this.callbacks.app,
         component: this.md,
         onToggle: this.callbacks.onToggle,
         onOpenNote: this.callbacks.onOpenNote,
-        onEditLink: (occ, token) => this.callbacks.onEditLink(task, occ, token),
+        onEditLink: onEditLink ? (occ, token) => onEditLink(task, occ, token) : undefined,
       });
 
       // Drag source

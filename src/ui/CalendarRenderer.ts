@@ -161,7 +161,6 @@ export class CalendarRenderer {
           onTaskClick: () => {},
           onDrop: () => {},
           onOpenNote: (t) => void openInFile(this.app, t),
-          onEditLink: () => {},
         });
       } else if (this.activeViewType === 'week') {
         this.activeView = new WeekView({
@@ -171,7 +170,6 @@ export class CalendarRenderer {
           onTaskClick: () => {},
           onDrop: () => {},
           onOpenNote: (t) => void openInFile(this.app, t),
-          onEditLink: () => {},
         });
       } else {
         this.activeView = new ListView({
