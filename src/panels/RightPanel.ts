@@ -582,7 +582,7 @@ export class RightPanel {
     await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
       const line = lines[taskLine];
       if (!line) return;
-      const prefixMatch = /^(\s*- \[[ xX/]\] )/.exec(line);
+      const prefixMatch = /^([\s>]*- \[[ xX/]\] )/.exec(line);
       if (!prefixMatch) return;
       const prefix = prefixMatch[1] ?? '';
       const rawAfterPrefix = line.slice(prefix.length);
@@ -596,14 +596,16 @@ export class RightPanel {
     await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
       const tl = lines[taskLine];
       if (!tl) return;
-      const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
+      // Leading prefix includes blockquote/callout markers so nested items stay
+      // inside the quote (e.g. "> - [ ]" → child ">   - [ ]").
+      const indent = (/^([\s>]*)/.exec(tl)?.[1] ?? '') + '  ';
 
       const delta = taskLine - task.line;
       const rangeStart = task.subtaskRange ? task.subtaskRange.from + delta : taskLine + 1;
       const rangeEnd = task.subtaskRange ? task.subtaskRange.to + delta : taskLine;
 
       const before = lines.slice(0, rangeStart);
-      const inside = lines.slice(rangeStart, rangeEnd + 1).filter((l) => !/^\s*- > /.test(l));
+      const inside = lines.slice(rangeStart, rangeEnd + 1).filter((l) => !/^[\s>]*- > /.test(l));
       const after = lines.slice(rangeEnd + 1);
 
       const descLines = newDesc.trim()
@@ -621,7 +623,9 @@ export class RightPanel {
     await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
       const tl = lines[taskLine];
       if (!tl) return;
-      const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
+      // Leading prefix includes blockquote/callout markers so nested items stay
+      // inside the quote (e.g. "> - [ ]" → child ">   - [ ]").
+      const indent = (/^([\s>]*)/.exec(tl)?.[1] ?? '') + '  ';
       const newLine = `${indent}- [ ] ${text}`;
       const delta = taskLine - task.line;
       const insertAt = task.subtaskRange ? task.subtaskRange.to + delta + 1 : taskLine + 1;
@@ -658,7 +662,9 @@ export class RightPanel {
     await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
       const tl = lines[taskLine];
       if (!tl) return;
-      const indent = (/^(\s*)/.exec(tl)?.[1] ?? '') + '  ';
+      // Leading prefix includes blockquote/callout markers so nested items stay
+      // inside the quote (e.g. "> - [ ]" → child ">   - [ ]").
+      const indent = (/^([\s>]*)/.exec(tl)?.[1] ?? '') + '  ';
       const commentLine = `${indent}- ${today}: ${text}`;
       const delta = taskLine - task.line;
       const insertAt =
@@ -680,8 +686,8 @@ export class RightPanel {
       const commentIdx = comment.line + delta;
       const line = lines[commentIdx];
       if (!line) return;
-      const datePrefix = /^(\s*- \d{4}-\d{2}-\d{2}: )/.exec(line)?.[1];
-      const barePrefix = /^(\s*- )/.exec(line)?.[1] ?? '';
+      const datePrefix = /^([\s>]*- \d{4}-\d{2}-\d{2}: )/.exec(line)?.[1];
+      const barePrefix = /^([\s>]*- )/.exec(line)?.[1] ?? '';
       const prefix = datePrefix ?? barePrefix;
       lines[commentIdx] = prefix + newText;
     });

@@ -950,3 +950,58 @@ describe('openInFile (used by RightPanel)', () => {
     await expect(openInFile(app, t)).resolves.toBeUndefined();
   });
 });
+
+describe('RightPanel — blockquote write-path preserves "> " formatting', () => {
+  it('updateTaskTitle preserves the blockquote prefix and metadata', async () => {
+    const { panel, app } = await makePanel({ 't.md': '> - [ ] old 📅 2026-06-20' });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 'old',
+      rawText: '> - [ ] old 📅 2026-06-20',
+      due: '2026-06-20',
+    });
+    await call<Promise<void>>(panel, 'updateTaskTitle', t, 'new');
+    const after = await readMd(app, 't.md');
+    expect(after).toBe('> - [ ] new 📅 2026-06-20');
+  });
+
+  it('addSubTask nests a quoted child under a blockquote parent', async () => {
+    const { panel, app } = await makePanel({ 't.md': '> - [ ] parent\n> - [ ] other' });
+    const t = task({ filePath: 't.md', line: 0, text: 'parent', rawText: '> - [ ] parent' });
+    await call<Promise<void>>(panel, 'addSubTask', t, 'child');
+    const lines = (await readMd(app, 't.md')).split('\n');
+    expect(lines[1]).toBe('>   - [ ] child');
+    expect(lines[2]).toBe('> - [ ] other');
+  });
+
+  it('updateDescription writes a quoted description line', async () => {
+    const { panel, app } = await makePanel({ 't.md': '> - [ ] task\n> - [ ] other' });
+    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
+    await call<Promise<void>>(panel, 'updateDescription', t, 'a desc');
+    const after = await readMd(app, 't.md');
+    expect(after).toContain('>   - > a desc');
+    expect(after).toContain('> - [ ] other');
+  });
+
+  it('addComment writes a quoted comment line under a blockquote task', async () => {
+    const today = window.moment().format('YYYY-MM-DD');
+    const { panel, app } = await makePanel({ 't.md': '> - [ ] task\n> - [ ] other' });
+    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
+    const commentList = freshContainer();
+    const inputEl = freshContainer().createEl('textarea');
+    await call<Promise<void>>(panel, 'addComment', t, 'note', commentList, inputEl);
+    const lines = (await readMd(app, 't.md')).split('\n');
+    expect(lines[1]).toBe(`>   - ${today}: note`);
+  });
+
+  it('updateComment preserves the blockquote prefix on a quoted comment', async () => {
+    const content = '> - [ ] task\n>   - 2026-06-20: old\n> - [ ] other';
+    const { panel, app } = await makePanel({ 't.md': content });
+    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
+    const comment: TaskComment = { line: 1, date: '2026-06-20', text: 'old' };
+    await call<Promise<void>>(panel, 'updateComment', t, comment, 'new');
+    const lines = (await readMd(app, 't.md')).split('\n');
+    expect(lines[1]).toBe('>   - 2026-06-20: new');
+  });
+});
