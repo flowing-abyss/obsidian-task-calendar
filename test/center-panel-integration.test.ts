@@ -336,7 +336,11 @@ describe('CenterPanel.renderSearch', () => {
     panel.mount(freshContainer());
     const cards = panel['el'].querySelectorAll('.tc-task-card');
     expect(cards).toHaveLength(1);
-    expect(cards[0]?.querySelector('.tc-task-title')?.textContent).toContain('buy milk');
+    // Title renders via MarkdownRenderer (mocked as a noop in tests), so identity
+    // is asserted via the card's stable file-path/line dataset instead of title text.
+    expect(cards[0]?.querySelector('.tc-task-title')).toBeTruthy();
+    expect((cards[0] as HTMLElement).dataset['filePath']).toBe('a.md');
+    expect((cards[0] as HTMLElement).dataset['line']).toBe('0');
     panel.destroy();
   });
 

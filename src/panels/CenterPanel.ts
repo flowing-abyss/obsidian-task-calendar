@@ -1,4 +1,4 @@
-import { Menu, Notice, setIcon, TFile, type App } from 'obsidian';
+import { Component, Menu, Notice, setIcon, TFile, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
@@ -15,6 +15,7 @@ import type { TagManager } from '../tags/TagManager';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { TagPickerModal } from '../ui/TagPickerModal';
 import { TaskModal } from '../ui/TaskModal';
+import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
@@ -49,6 +50,7 @@ export class CenterPanel {
   private currentListKey: string = 'today';
   private onSaveSettings: () => Promise<void>;
   private mutations: TaskMutationService;
+  private md = new Component();
 
   constructor(
     private state: AppState,
@@ -152,6 +154,7 @@ export class CenterPanel {
     this.taskModal?.close();
     this.offs.forEach((f) => f());
     this.destroyCalendarView();
+    this.md.unload();
     this.el?.empty();
   }
 
@@ -163,6 +166,10 @@ export class CenterPanel {
   }
 
   private render(): void {
+    this.md.unload();
+    this.md = new Component();
+    this.md.load();
+
     const mode = this.state.get('mode');
 
     if (mode === 'calendar') {
@@ -622,7 +629,13 @@ export class CenterPanel {
       badge.createEl('span', { text: String(commentCount) });
     }
 
-    titleRow.createEl('span', { cls: 'tc-task-title', text: task.text });
+    const titleEl = titleRow.createEl('span', { cls: 'tc-task-title' });
+    renderTaskText(titleEl, task.markdownText, {
+      app: this.app,
+      sourcePath: task.filePath,
+      component: this.md,
+      onEditLink: (occ, token) => this.editTaskLink(task, occ, token),
+    });
     if (task.description) {
       body.createDiv({
         cls: 'tc-task-desc',
