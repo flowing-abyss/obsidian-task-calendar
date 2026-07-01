@@ -176,7 +176,6 @@ export class CalendarRenderer {
           app: this.app,
           onToggle: cb.onToggle,
           onDateClick: cb.onDateClick,
-          onEditLink: () => {},
         });
       }
     }

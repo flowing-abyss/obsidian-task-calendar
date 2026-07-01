@@ -13,7 +13,7 @@ export interface ListViewCallbacks {
   onToggle: (task: Task) => void;
   onDateClick: (date: string) => void;
   onTaskClick?: (task: Task) => void;
-  onEditLink: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
+  onEditLink?: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
 }
 
 export class ListView extends BaseView {
@@ -130,11 +130,12 @@ export class ListView extends BaseView {
       statusClass = ' is-cancelled';
     }
     const titleEl = row.createEl('span', { cls: `tc-list-task-title${statusClass}` });
+    const onEditLink = this.callbacks.onEditLink;
     renderTaskText(titleEl, task.markdownText, {
       app: this.callbacks.app,
       sourcePath: task.filePath,
       component: this.md,
-      onEditLink: (occ, token) => this.callbacks.onEditLink(task, occ, token),
+      onEditLink: onEditLink ? (occ, token) => onEditLink(task, occ, token) : undefined,
     });
 
     const meta = row.createDiv({ cls: 'tc-list-task-meta' });
