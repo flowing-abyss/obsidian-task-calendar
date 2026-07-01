@@ -1,5 +1,6 @@
 import { App, Modal, Setting } from 'obsidian';
 import { buildLinkRaw, type LinkToken } from '../parser/links';
+import { NoteSuggest } from './NoteSuggest';
 
 export class LinkEditModal extends Modal {
   private display: string;
@@ -9,6 +10,7 @@ export class LinkEditModal extends Modal {
     app: App,
     private token: LinkToken,
     private onSave: (newRaw: string) => void,
+    private sourcePath = '',
   ) {
     super(app);
     this.display = token.display;
@@ -19,11 +21,21 @@ export class LinkEditModal extends Modal {
     const { contentEl, token } = this;
     contentEl.createEl('h3', { text: token.type === 'wiki' ? 'Edit wiki link' : 'Edit link' });
 
-    new Setting(contentEl).setName(token.type === 'wiki' ? 'Note' : 'URL').addText((t) =>
+    new Setting(contentEl).setName(token.type === 'wiki' ? 'Note' : 'URL').addText((t) => {
       t.setValue(this.target).onChange((v) => {
         this.target = v;
-      }),
-    );
+      });
+      // Wiki links get a note-search dropdown honouring Obsidian's excluded files.
+      if (token.type === 'wiki') {
+        t.inputEl.setAttribute('spellcheck', 'false');
+        // AbstractInputSuggest registers itself onto the input via its constructor.
+        // eslint-disable-next-line sonarjs/constructor-for-side-effects
+        new NoteSuggest(this.app, t.inputEl, (file) => {
+          this.target = this.app.metadataCache.fileToLinktext(file, this.sourcePath, true);
+          t.setValue(this.target);
+        });
+      }
+    });
 
     new Setting(contentEl)
       .setName(token.type === 'wiki' ? 'Display (alias)' : 'Display text')

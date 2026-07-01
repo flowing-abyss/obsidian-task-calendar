@@ -2241,6 +2241,10 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-right-title-view:hover {
   background: var(--background-modifier-hover);
 }
+.tc-suggest-path {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
 .tc-right-title-edit {
   width: 100%;
   min-height: var(--input-height, 30px);

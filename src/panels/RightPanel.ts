@@ -56,9 +56,14 @@ export class RightPanel {
   }
 
   private editLink(task: TaskLike, occ: number, token: LinkToken): void {
-    new LinkEditModal(this.app, token, (newRaw) => {
-      void rewriteLinkInTask(this.mutations, task, occ, newRaw);
-    }).open();
+    new LinkEditModal(
+      this.app,
+      token,
+      (newRaw) => {
+        void rewriteLinkInTask(this.mutations, task, occ, newRaw);
+      },
+      task.filePath,
+    ).open();
   }
 
   private renderEmpty(): void {
@@ -266,13 +271,17 @@ export class RightPanel {
     task: TaskLike,
     renderView: () => void,
   ): void {
+    // Preserve the height the user stretched the read-mode block to (measure first).
+    const startHeight = view.offsetHeight;
     view.hide();
     const ta = header.createEl('textarea', { cls: 'tc-right-title tc-right-title-edit' });
+    // Keep the textarea in the title's slot so the ⋯/× action buttons stay on the right.
+    view.insertAdjacentElement('afterend', ta);
     ta.value = task.markdownText;
-    // Auto-grow to content.
+    // Auto-grow to content, but never below the stretched height.
     const grow = (): void => {
       ta.setCssStyles({ height: 'auto' });
-      ta.setCssStyles({ height: `${ta.scrollHeight}px` });
+      ta.setCssStyles({ height: `${Math.max(ta.scrollHeight, startHeight)}px` });
     };
     ta.addEventListener('input', grow);
     window.setTimeout(() => {
@@ -284,6 +293,8 @@ export class RightPanel {
     const finish = (save: boolean): void => {
       if (done) return;
       done = true;
+      // Carry the current height back to the read-mode block so the stretch persists.
+      view.setCssStyles({ height: `${ta.offsetHeight}px` });
       if (save && ta.value !== task.markdownText) {
         void this.updateTaskTitle(task, ta.value.trim());
       }

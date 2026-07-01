@@ -1,4 +1,4 @@
-import { Component, MarkdownRenderer, Menu, MenuItem, type App } from 'obsidian';
+import { Component, Keymap, MarkdownRenderer, Menu, MenuItem, type App } from 'obsidian';
 import { pairAnchorsToTokens, parseLinks, type LinkToken } from '../parser/links';
 
 export interface RenderTaskTextOptions {
@@ -29,8 +29,32 @@ export function renderTaskText(
 
 function wireLinks(holder: HTMLElement, markdownText: string, opts: RenderTaskTextOptions): void {
   const anchors = Array.from(holder.querySelectorAll('a'));
-  // Link click navigates; never bubble to the card/row handler.
-  anchors.forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
+  // Link click navigates; never bubble to the card/row handler. Obsidian's global
+  // internal-link handler is bypassed by stopPropagation, so open the note ourselves.
+  anchors.forEach((a) => {
+    a.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!a.hasClass('internal-link')) return; // external links keep their default nav
+      e.preventDefault();
+      const href = a.getAttribute('data-href') ?? a.getAttribute('href') ?? '';
+      if (href) void opts.app.workspace.openLinkText(href, opts.sourcePath, Keymap.isModEvent(e));
+    });
+    // Arm Obsidian's page-preview (hover) popover for internal links.
+    a.addEventListener('mouseover', (e) => {
+      if (!a.hasClass('internal-link')) return;
+      const href = a.getAttribute('data-href') ?? '';
+      if (href) {
+        opts.app.workspace.trigger('hover-link', {
+          event: e,
+          source: 'task-calendar',
+          hoverParent: holder,
+          targetEl: a,
+          linktext: href,
+          sourcePath: opts.sourcePath,
+        });
+      }
+    });
+  });
   if (!opts.onEditLink) return;
   const tokens = parseLinks(markdownText);
   const descriptors = anchors.map((a) => ({

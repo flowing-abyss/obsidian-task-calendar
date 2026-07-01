@@ -837,7 +837,7 @@ export class CenterPanel {
       // ── Today toggle ──────────────────────────────────────
       menu.addItem((item) =>
         item
-          .setTitle(isToday ? `Today  📅 ${today}` : 'Today')
+          .setTitle('Today')
           .setIcon('calendar')
           .setSection('today')
           .setChecked(isToday)
@@ -1636,9 +1636,14 @@ export class CenterPanel {
   }
 
   private editTaskLink(task: Task, occ: number, token: LinkToken): void {
-    new LinkEditModal(this.app, token, (newRaw) => {
-      void rewriteLinkInTask(this.mutations, task, occ, newRaw);
-    }).open();
+    new LinkEditModal(
+      this.app,
+      token,
+      (newRaw) => {
+        void rewriteLinkInTask(this.mutations, task, occ, newRaw);
+      },
+      task.filePath,
+    ).open();
   }
 
   private async toggleDueToday(task: Task): Promise<void> {
