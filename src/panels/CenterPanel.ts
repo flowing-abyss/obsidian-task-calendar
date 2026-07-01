@@ -637,9 +637,13 @@ export class CenterPanel {
       onEditLink: (occ, token) => this.editTaskLink(task, occ, token),
     });
     if (task.description) {
-      body.createDiv({
-        cls: 'tc-task-desc',
-        text: task.description.split('\n')[0] ?? '',
+      const descEl = body.createDiv({ cls: 'tc-task-desc' });
+      // Render the first description line as markdown so links are clickable here too.
+      // No onEditLink: the card is a compact preview; link editing happens in the panel.
+      renderTaskText(descEl, task.description.split('\n')[0] ?? '', {
+        app: this.app,
+        sourcePath: task.filePath,
+        component: this.md,
       });
     }
 
