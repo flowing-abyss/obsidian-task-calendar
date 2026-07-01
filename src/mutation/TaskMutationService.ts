@@ -131,13 +131,27 @@ export class TaskMutationService {
    *  so the operation is safe even when lines were inserted or deleted inside the block. */
   async deleteTaskBlock(locator: TaskLocator, _rangeEndHint: number): Promise<MutationResult> {
     return this.applyToLines(locator, (lines, taskLine) => {
-      const taskIndent = (/^(\s*)/.exec(lines[taskLine] ?? '')?.[1] ?? '').length;
+      // Leading prefix includes blockquote/callout markers (`>`) so a quoted child
+      // (`> \t- [ ]`) is measured as deeper than its quoted parent (`> - [ ]`),
+      // and a differing quote depth marks a separate block (a sibling container).
+      const prefixOf = (s: string) => /^[\s>]*/.exec(s)?.[0] ?? '';
+      const indentOf = (s: string) => prefixOf(s).replace(/\t/g, '    ').length;
+      const quoteOf = (s: string) => {
+        let depth = 0;
+        for (const ch of prefixOf(s)) if (ch === '>') depth++;
+        return depth;
+      };
+      const taskLineStr = lines[taskLine] ?? '';
+      const taskIndent = indentOf(taskLineStr);
+      const taskQuote = quoteOf(taskLineStr);
       let blockEnd = taskLine;
       for (let i = taskLine + 1; i < lines.length; i++) {
         const lineStr = lines[i] ?? '';
-        const lineIndent = (/^(\s*)/.exec(lineStr)?.[1] ?? '').length;
-        // A non-empty line at the same or lower indentation marks the end of the block.
-        if (lineStr.trim() !== '' && lineIndent <= taskIndent) break;
+        // A quote-only line (">", "> ") is "blank" inside a blockquote — absorb it.
+        const isBlank = /^[\s>]*$/u.test(lineStr);
+        // A non-blank line ends the block once it leaves the parent's quote depth or
+        // is no longer more indented than the parent.
+        if (!isBlank && (quoteOf(lineStr) !== taskQuote || indentOf(lineStr) <= taskIndent)) break;
         blockEnd = i;
       }
       lines.splice(taskLine, blockEnd - taskLine + 1);

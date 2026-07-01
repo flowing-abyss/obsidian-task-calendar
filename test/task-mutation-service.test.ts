@@ -377,6 +377,51 @@ describe('Regression – deleteTaskBlock with stale rangeEndHint beyond file', (
   });
 });
 
+// ── blockquote / callout write-path integrity ─────────────────────────────────
+
+describe('Blockquote tasks – toggle & delete preserve formatting', () => {
+  it('toggling a blockquote parent leaves its sub-items untouched', async () => {
+    const content = '> - [ ] parent\n> \t- [ ] child\n> - [ ] sibling';
+    const app = await createAppWithFiles({ 'f.md': content });
+    const locator: TaskLocator = { filePath: 'f.md', rawText: '> - [ ] parent', line: 0 };
+    await svc(app).toggleCompletion(locator, '2026-07-01');
+    const after = await readFile(app, 'f.md');
+    const parts = after.split('\n');
+    expect(parts[0]).toBe('> - [x] parent ✅ 2026-07-01');
+    expect(parts[1]).toBe('> \t- [ ] child');
+    expect(parts[2]).toBe('> - [ ] sibling');
+  });
+
+  it('deleting a blockquote parent removes its blockquote sub-items too', async () => {
+    const content = '> - [ ] parent\n> \t- [ ] child\n> \t- [ ] child2\n> - [ ] sibling';
+    const app = await createAppWithFiles({ 'f.md': content });
+    const locator: TaskLocator = { filePath: 'f.md', rawText: '> - [ ] parent', line: 0 };
+    const result = await svc(app).deleteTaskBlock(locator, 2);
+    expect(result.type).toBe('ok');
+    const after = await readFile(app, 'f.md');
+    expect(after).toBe('> - [ ] sibling');
+    expect(after).not.toContain('child');
+  });
+
+  it('deleting one task in a flat blockquote list keeps its siblings intact', async () => {
+    const content = '> - [ ] A\n> - [ ] B\n> - [ ] C';
+    const app = await createAppWithFiles({ 'f.md': content });
+    const locator: TaskLocator = { filePath: 'f.md', rawText: '> - [ ] B', line: 1 };
+    await svc(app).deleteTaskBlock(locator, 1);
+    const after = await readFile(app, 'f.md');
+    expect(after).toBe('> - [ ] A\n> - [ ] C');
+  });
+
+  it('does not delete a following plain-list block when deleting a blockquote task', async () => {
+    const content = '> - [ ] quoted\n- [ ] plain next\n  - [ ] plain sub';
+    const app = await createAppWithFiles({ 'f.md': content });
+    const locator: TaskLocator = { filePath: 'f.md', rawText: '> - [ ] quoted', line: 0 };
+    await svc(app).deleteTaskBlock(locator, 0);
+    const after = await readFile(app, 'f.md');
+    expect(after).toBe('- [ ] plain next\n  - [ ] plain sub');
+  });
+});
+
 // ── insertLineAfter drift compensation ────────────────────────────────────────
 
 describe('Regression – insertLineAfter compensates for line drift', () => {
