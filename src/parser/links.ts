@@ -25,8 +25,7 @@ export interface LinkToken {
 export function parseLinks(input: string): LinkToken[] {
   const tokens: LinkToken[] = [];
   // Single combined scan preserves ordering; wiki matched before md at same spot.
-  const combined =
-    /(?<!!)\[\[([^|[\]]+)(?:\|([^[\]]+))?\]\]|(?<!!)\[([^[\]]+)\]\(([^)]+)\)/gu;
+  const combined = /(?<!!)\[\[([^|[\]]+)(?:\|([^[\]]+))?\]\]|(?<!!)\[([^[\]]+)\]\(([^)]+)\)/gu;
   let m: RegExpExecArray | null;
   while ((m = combined.exec(input)) !== null) {
     if (m[1] !== undefined) {
