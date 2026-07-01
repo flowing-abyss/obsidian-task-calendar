@@ -25,7 +25,8 @@ export interface LinkToken {
 export function parseLinks(input: string): LinkToken[] {
   const tokens: LinkToken[] = [];
   // Single combined scan preserves ordering; wiki matched before md at same spot.
-  const combined = /\[\[([^|[\]]+)(?:\|([^[\]]+))?\]\]|\[([^[\]]+)\]\(([^)]+)\)/gu;
+  const combined =
+    /(?<!!)\[\[([^|[\]]+)(?:\|([^[\]]+))?\]\]|(?<!!)\[([^[\]]+)\]\(([^)]+)\)/gu;
   let m: RegExpExecArray | null;
   while ((m = combined.exec(input)) !== null) {
     if (m[1] !== undefined) {
@@ -64,4 +65,41 @@ export function buildLinkRaw(type: 'wiki' | 'md', target: string, display: strin
   if (type === 'md') return `[${display}](${target})`;
   const basename = target.replace(/\.[^.]*$/u, '').replace(/^.*\//u, '');
   return display && display !== basename ? `[[${target}|${display}]]` : `[[${target}]]`;
+}
+
+export interface AnchorDescriptor {
+  text: string;
+  href: string;
+}
+
+/**
+ * For each anchor (in document order), find the parseLinks token it represents.
+ * Returns, per anchor index, the matched token's occurrence index (its index in
+ * `tokens`) or -1 if the anchor matches no token (e.g. an auto-linked bare URL).
+ * Each token is consumed by at most one anchor; matching is by display text or
+ * link target, scanning the first not-yet-consumed matching token.
+ */
+export function pairAnchorsToTokens(anchors: AnchorDescriptor[], tokens: LinkToken[]): number[] {
+  const consumed = new Array(tokens.length).fill(false) as boolean[];
+  return anchors.map((a) => {
+    for (let k = 0; k < tokens.length; k++) {
+      if (consumed[k]) continue;
+      if (anchorMatchesToken(a, tokens[k]!)) {
+        consumed[k] = true;
+        return k;
+      }
+    }
+    return -1;
+  });
+}
+
+function anchorMatchesToken(a: AnchorDescriptor, token: LinkToken): boolean {
+  const text = a.text.trim();
+  if (text && text === token.display) return true;
+  if (!a.href) return false;
+  if (token.type === 'wiki') {
+    const base = (s: string): string => s.replace(/\.[^.]*$/u, '').replace(/^.*\//u, '');
+    return a.href === token.target || base(a.href) === base(token.target);
+  }
+  return a.href === token.target;
 }

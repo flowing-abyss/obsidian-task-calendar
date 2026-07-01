@@ -1,5 +1,5 @@
 import { Component, MarkdownRenderer, Menu, MenuItem, type App } from 'obsidian';
-import { parseLinks, type LinkToken } from '../parser/links';
+import { pairAnchorsToTokens, parseLinks, type LinkToken } from '../parser/links';
 
 export interface RenderTaskTextOptions {
   app: App;
@@ -29,17 +29,24 @@ export function renderTaskText(
 
 function wireLinks(holder: HTMLElement, markdownText: string, opts: RenderTaskTextOptions): void {
   const anchors = Array.from(holder.querySelectorAll('a'));
+  // Link click navigates; never bubble to the card/row handler.
+  anchors.forEach((a) => a.addEventListener('click', (e) => e.stopPropagation()));
+  if (!opts.onEditLink) return;
   const tokens = parseLinks(markdownText);
+  const descriptors = anchors.map((a) => ({
+    text: a.textContent ?? '',
+    href: a.getAttribute('data-href') ?? a.getAttribute('href') ?? '',
+  }));
+  const occurrences = pairAnchorsToTokens(descriptors, tokens);
   anchors.forEach((a, i) => {
-    // Link click navigates; never bubble to the card/row handler.
-    a.addEventListener('click', (e) => e.stopPropagation());
-    const token = tokens[i];
-    if (!token || !opts.onEditLink) return;
+    const occurrenceIndex = occurrences[i]!;
+    if (occurrenceIndex < 0) return;
+    const token = tokens[occurrenceIndex]!;
     a.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
       const menu = new Menu();
-      menu.addItem(buildEditLinkItem(i, token, opts));
+      menu.addItem(buildEditLinkItem(occurrenceIndex, token, opts));
       menu.showAtMouseEvent(e);
     });
   });
