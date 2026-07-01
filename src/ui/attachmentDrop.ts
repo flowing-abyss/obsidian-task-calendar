@@ -1,5 +1,9 @@
 import { Notice, type App, type TFile } from 'obsidian';
-import { aliasForName, buildAttachmentLink, saveExternalFile } from '../attachments/AttachmentService';
+import {
+  aliasForName,
+  buildAttachmentLink,
+  saveExternalFile,
+} from '../attachments/AttachmentService';
 
 export interface DraggedItems {
   externalFiles: File[];

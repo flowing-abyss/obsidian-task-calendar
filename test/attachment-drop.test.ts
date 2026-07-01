@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import type { TFile } from 'obsidian';
+import { describe, expect, it } from 'vitest';
 import { resolveDraggedItems } from '../src/ui/attachmentDrop';
 
 const file = (name: string): File => ({ name }) as unknown as File;
