@@ -1,6 +1,7 @@
 import { Menu, Notice, setIcon, TFile, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
-import { locatorOf, TaskMutationService } from '../mutation';
+import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
+import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
 import type {
@@ -11,6 +12,7 @@ import type {
 } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
+import { LinkEditModal } from '../ui/LinkEditModal';
 import { TagPickerModal } from '../ui/TagPickerModal';
 import { TaskModal } from '../ui/TaskModal';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
@@ -324,6 +326,7 @@ export class CenterPanel {
       };
       if (this.calViewType === 'month') {
         this.calViewInstance = new MonthView({
+          app: this.app,
           onToggle: (t) => {
             void this.store.toggleTask(t);
           },
@@ -339,15 +342,20 @@ export class CenterPanel {
           },
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
+          onOpenNote: (t) => void openInFile(this.app, t),
+          onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
         });
       } else if (this.calViewType === 'week') {
         this.calViewInstance = new WeekView({
+          app: this.app,
           onToggle: (t) => {
             void this.store.toggleTask(t);
           },
           onCellClick: () => {},
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
+          onOpenNote: (t) => void openInFile(this.app, t),
+          onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
         });
       } else {
         this.calViewInstance = new ListView({
@@ -1610,6 +1618,12 @@ export class CenterPanel {
       }
       lines[taskLine] = updated;
     });
+  }
+
+  private editTaskLink(task: Task, occ: number, token: LinkToken): void {
+    new LinkEditModal(this.app, token, (newRaw) => {
+      void rewriteLinkInTask(this.mutations, task, occ, newRaw);
+    }).open();
   }
 
   private async toggleDueToday(task: Task): Promise<void> {

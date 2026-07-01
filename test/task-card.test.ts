@@ -1,14 +1,28 @@
+import { Component, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
-import { createTaskCard } from '../src/ui/TaskCard';
+import { createTaskCard, type TaskCardOptions } from '../src/ui/TaskCard';
 import { task, useRealMoment, withMobile } from './helpers';
 
 useRealMoment();
 
+function fakeApp(): App {
+  return {} as App;
+}
+
+function baseOptions(overrides: Partial<TaskCardOptions> = {}): TaskCardOptions {
+  return {
+    app: fakeApp(),
+    component: new Component(),
+    onOpenNote: vi.fn(),
+    ...overrides,
+  };
+}
+
 describe('createTaskCard', () => {
   describe('color styling (transColor via style attribute)', () => {
     it('noteColor only: derives dark/light via transColor (pinned values)', () => {
-      const el = createTaskCard(task({ noteColor: '#3a3a3a' }), 'due');
+      const el = createTaskCard(task({ noteColor: '#3a3a3a' }), 'due', baseOptions());
       const style = el.getAttribute('style');
       expect(style).toBe(
         '--task-background:#3a3a3a33;--task-color:#3a3a3a;--dark-task-text-color:#000000;--light-task-text-color:#7a7a7a',
@@ -16,21 +30,25 @@ describe('createTaskCard', () => {
     });
 
     it('noteTextColor only: gray background, text colors via transColor of noteTextColor', () => {
-      const el = createTaskCard(task({ noteTextColor: '#ff8800' }), 'due');
+      const el = createTaskCard(task({ noteTextColor: '#ff8800' }), 'due', baseOptions());
       expect(el.getAttribute('style')).toBe(
         '--task-background:#7D7D7D33;--task-color:#7D7D7D;--dark-task-text-color:#992200;--light-task-text-color:#ffc840',
       );
     });
 
     it('both noteColor and noteTextColor: text colors set directly, no transColor call', () => {
-      const el = createTaskCard(task({ noteColor: '#abcdef', noteTextColor: '#123456' }), 'due');
+      const el = createTaskCard(
+        task({ noteColor: '#abcdef', noteTextColor: '#123456' }),
+        'due',
+        baseOptions(),
+      );
       expect(el.getAttribute('style')).toBe(
         '--task-background:#abcdef33;--task-color:#abcdef;--dark-task-text-color:#123456;--light-task-text-color:#123456',
       );
     });
 
     it('neither: fixed defaults', () => {
-      const el = createTaskCard(task(), 'due');
+      const el = createTaskCard(task(), 'due', baseOptions());
       expect(el.getAttribute('style')).toBe(
         '--task-background:#7D7D7D33;--task-color:#7D7D7D;--dark-task-text-color:#4d4d4d;--light-task-text-color:#a8a8a8',
       );
@@ -39,31 +57,31 @@ describe('createTaskCard', () => {
 
   describe('DOM structure', () => {
     it('returns an HTMLElement', () => {
-      const el = createTaskCard(task(), 'due');
+      const el = createTaskCard(task(), 'due', baseOptions());
       expect(el).toBeInstanceOf(HTMLElement);
     });
 
     it('root div has class "task {cls} noNoteIcon" when no noteIcon', () => {
-      const el = createTaskCard(task(), 'due');
+      const el = createTaskCard(task(), 'due', baseOptions());
       expect(el.className).toBe('task due noNoteIcon');
     });
 
     it('root div has class "task {cls}" (no noNoteIcon) when noteIcon present', () => {
-      const el = createTaskCard(task({ noteIcon: '🔵' }), 'due');
+      const el = createTaskCard(task({ noteIcon: '🔵' }), 'due', baseOptions());
       expect(el.className).toBe('task due');
     });
 
     it('sets data-task-text and title to task.text', () => {
-      const el = createTaskCard(task({ text: 'Buy milk' }), 'due');
+      const el = createTaskCard(task({ text: 'Buy milk' }), 'due', baseOptions());
       expect(el.getAttribute('data-task-text')).toBe('Buy milk');
       expect(el.getAttribute('title')).toBe('Buy milk');
     });
 
     it('sets data-due iff task.due', () => {
-      expect(createTaskCard(task({ due: '2026-06-24' }), 'due').getAttribute('data-due')).toBe(
-        '2026-06-24',
-      );
-      expect(createTaskCard(task(), 'due').getAttribute('data-due')).toBeNull();
+      expect(
+        createTaskCard(task({ due: '2026-06-24' }), 'due', baseOptions()).getAttribute('data-due'),
+      ).toBe('2026-06-24');
+      expect(createTaskCard(task(), 'due', baseOptions()).getAttribute('data-due')).toBeNull();
     });
   });
 
@@ -72,23 +90,25 @@ describe('createTaskCard', () => {
       const openCb = createTaskCard(
         task({ status: 'open' }),
         'due',
+        baseOptions(),
       ).querySelector<HTMLInputElement>('input.calendar-task-checkbox');
       expect(openCb?.checked).toBe(false);
       const doneCb = createTaskCard(
         task({ status: 'done' }),
         'due',
+        baseOptions(),
       ).querySelector<HTMLInputElement>('input.calendar-task-checkbox');
       expect(doneCb?.checked).toBe(true);
     });
 
     it('omits the checkbox in timeblock mode', () => {
-      const el = createTaskCard(task(), 'due', { mode: 'timeblock' });
+      const el = createTaskCard(task(), 'due', baseOptions({ mode: 'timeblock' }));
       expect(el.querySelector('input.calendar-task-checkbox')).toBeNull();
     });
 
     it('invokes onToggle once on change', () => {
       const onToggle = vi.fn();
-      const el = createTaskCard(task({ text: 'x' }), 'due', { onToggle });
+      const el = createTaskCard(task({ text: 'x' }), 'due', baseOptions({ onToggle }));
       const cb = el.querySelector('input.calendar-task-checkbox') as HTMLInputElement;
       cb.dispatchEvent(new Event('change'));
       expect(onToggle).toHaveBeenCalledTimes(1);
@@ -96,18 +116,22 @@ describe('createTaskCard', () => {
     });
   });
 
-  describe('internal link', () => {
-    it('href is the file path with .md stripped', () => {
-      expect(
-        createTaskCard(task({ filePath: 'notes/x.md' }), 'due')
-          .querySelector('a.internal-link')
-          ?.getAttribute('href'),
-      ).toBe('notes/x');
-      expect(
-        createTaskCard(task({ filePath: 'notes/x' }), 'due')
-          .querySelector('a.internal-link')
-          ?.getAttribute('href'),
-      ).toBe('notes/x');
+  describe('note link (de-anchored)', () => {
+    it('renders a non-anchor .inner-link wrapper (no nested <a> for the card itself)', () => {
+      const el = createTaskCard(task({ filePath: 'notes/x.md' }), 'due', baseOptions());
+      const link = el.querySelector('.inner-link');
+      expect(link).not.toBeNull();
+      expect(link?.tagName).not.toBe('A');
+    });
+
+    it('clicking the card content invokes onOpenNote with the task', () => {
+      const onOpenNote = vi.fn();
+      const t = task({ filePath: 'notes/x.md' });
+      const el = createTaskCard(t, 'due', baseOptions({ onOpenNote }));
+      const link = el.querySelector<HTMLElement>('.inner-link');
+      link?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(onOpenNote).toHaveBeenCalledTimes(1);
+      expect(onOpenNote.mock.calls[0]?.[0]).toBe(t);
     });
   });
 
@@ -125,13 +149,13 @@ describe('createTaskCard', () => {
         dailyNote: '📄',
       };
       for (const [cls, icon] of Object.entries(expected)) {
-        const el = createTaskCard(task(), cls);
+        const el = createTaskCard(task(), cls, baseOptions());
         expect(el.querySelector('.icon')?.textContent).toBe(icon);
       }
     });
 
     it('uses empty string for an unknown taskClass', () => {
-      const el = createTaskCard(task(), 'unknownClass');
+      const el = createTaskCard(task(), 'unknownClass', baseOptions());
       expect(el.querySelector('.icon')?.textContent).toBe('');
     });
   });
@@ -139,14 +163,14 @@ describe('createTaskCard', () => {
   describe('data-relative', () => {
     it('populates data-relative from window.moment(due).fromNow() when due', () => {
       vi.useFakeTimers({ now: new Date('2026-06-24T10:00:00Z').getTime() });
-      const el = createTaskCard(task({ due: '2026-06-24' }), 'due');
+      const el = createTaskCard(task({ due: '2026-06-24' }), 'due', baseOptions());
       // exact phrasing depends on locale/timezone; assert it is non-empty
       expect(el.querySelector<HTMLElement>('.description')?.dataset.relative).toBeTruthy();
       vi.useRealTimers();
     });
 
     it('sets data-relative to empty string when no due', () => {
-      const el = createTaskCard(task(), 'due');
+      const el = createTaskCard(task(), 'due', baseOptions());
       expect(el.querySelector<HTMLElement>('.description')?.dataset.relative).toBe('');
     });
   });
@@ -155,7 +179,7 @@ describe('createTaskCard', () => {
     withMobile(true);
 
     it('attaches long-press and sets userSelect styles', () => {
-      const el = createTaskCard(task(), 'due');
+      const el = createTaskCard(task(), 'due', baseOptions());
       expect(el.style.userSelect).toBe('none');
       // eslint-disable-next-line @typescript-eslint/no-deprecated
       expect(el.style.webkitUserSelect).toBe('none');

@@ -1,9 +1,15 @@
+import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
+import type { LinkToken } from '../src/parser/links';
 import type { Task } from '../src/parser/types';
 import { WeekView } from '../src/views/WeekView';
 import { dispatchDnD, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
+
+function fakeApp(): App {
+  return {} as App;
+}
 
 function makeView(
   callbacks: Partial<{
@@ -11,13 +17,18 @@ function makeView(
     onCellClick: (d: string) => void;
     onTaskClick: (t: Task) => void;
     onDrop: (d: string, date: string) => void;
+    onOpenNote: (t: Task) => void;
+    onEditLink: (t: Task, occ: number, token: LinkToken) => void;
   }> = {},
 ) {
   const spies = {
+    app: fakeApp(),
     onToggle: vi.fn(callbacks.onToggle),
     onCellClick: vi.fn(callbacks.onCellClick),
     onTaskClick: vi.fn(callbacks.onTaskClick),
     onDrop: vi.fn(callbacks.onDrop),
+    onOpenNote: vi.fn(callbacks.onOpenNote),
+    onEditLink: vi.fn(callbacks.onEditLink),
   };
   return { view: new WeekView(spies), spies };
 }

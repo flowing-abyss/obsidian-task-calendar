@@ -1,3 +1,5 @@
+import { Component, type App } from 'obsidian';
+import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import { createTaskCard } from '../ui/TaskCard';
@@ -5,20 +7,28 @@ import { BaseView } from './BaseView';
 import { getTasksForDate, renderTaskGroup } from './taskGrouping';
 
 export interface WeekViewCallbacks {
+  app: App;
   onToggle: (task: Task) => void;
   onCellClick: (date: string) => void;
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
+  onOpenNote: (task: Task) => void;
+  onEditLink: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
 }
 
 export class WeekView extends BaseView {
   private containerEl: HTMLElement | null = null;
+  private md = new Component();
 
   constructor(private callbacks: WeekViewCallbacks) {
     super();
   }
 
   render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+    this.md.unload();
+    this.md = new Component();
+    this.md.load();
+
     this.containerEl = container;
     container.empty();
 
@@ -53,7 +63,13 @@ export class WeekView extends BaseView {
       const cellContent = cell.createDiv('cellContent');
       const groups = getTasksForDate(tasks, currentDate, today);
       renderTaskGroup(cellContent, groups, currentDate, today, (task, cls) => {
-        const card = createTaskCard(task, cls, { onToggle: this.callbacks.onToggle });
+        const card = createTaskCard(task, cls, {
+          app: this.callbacks.app,
+          component: this.md,
+          onToggle: this.callbacks.onToggle,
+          onOpenNote: this.callbacks.onOpenNote,
+          onEditLink: (occ, token) => this.callbacks.onEditLink(task, occ, token),
+        });
 
         card.setAttribute('draggable', 'true');
         card.addEventListener('dragstart', (e) => {
@@ -98,5 +114,6 @@ export class WeekView extends BaseView {
 
   destroy(): void {
     this.containerEl = null;
+    this.md.unload();
   }
 }

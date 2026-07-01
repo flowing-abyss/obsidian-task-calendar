@@ -6,6 +6,7 @@ import { BaseView } from '../views/BaseView';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
+import { openInFile } from './taskNavigation';
 import { Toolbar, type ViewEntry } from './Toolbar';
 
 const VIEWS: ViewEntry[] = [
@@ -153,18 +154,24 @@ export class CalendarRenderer {
       this.activeView?.destroy();
       if (this.activeViewType === 'month') {
         this.activeView = new MonthView({
+          app: this.app,
           onToggle: cb.onToggle,
           onCellClick: cb.onCellClick,
           onWeekClick: cb.onWeekClick,
           onTaskClick: () => {},
           onDrop: () => {},
+          onOpenNote: (t) => void openInFile(this.app, t),
+          onEditLink: () => {},
         });
       } else if (this.activeViewType === 'week') {
         this.activeView = new WeekView({
+          app: this.app,
           onToggle: cb.onToggle,
           onCellClick: cb.onCellClick,
           onTaskClick: () => {},
           onDrop: () => {},
+          onOpenNote: (t) => void openInFile(this.app, t),
+          onEditLink: () => {},
         });
       } else {
         this.activeView = new ListView({

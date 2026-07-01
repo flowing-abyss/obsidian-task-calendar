@@ -1,3 +1,5 @@
+import { Component, type App } from 'obsidian';
+import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import { createTaskCard } from '../ui/TaskCard';
@@ -5,21 +7,29 @@ import { BaseView } from './BaseView';
 import { getTasksForDate, renderTaskGroup } from './taskGrouping';
 
 export interface MonthViewCallbacks {
+  app: App;
   onToggle: (task: Task) => void;
   onCellClick: (date: string) => void;
   onWeekClick: (weekNr: string, year: string) => void;
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
+  onOpenNote: (task: Task) => void;
+  onEditLink: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
 }
 
 export class MonthView extends BaseView {
   private containerEl: HTMLElement | null = null;
+  private md = new Component();
 
   constructor(private callbacks: MonthViewCallbacks) {
     super();
   }
 
   render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+    this.md.unload();
+    this.md = new Component();
+    this.md.load();
+
     this.containerEl = container;
     container.empty();
 
@@ -130,7 +140,13 @@ export class MonthView extends BaseView {
   ): void {
     const groups = getTasksForDate(tasks, date, today);
     renderTaskGroup(container, groups, date, today, (task, cls) => {
-      const card = createTaskCard(task, cls, { onToggle: this.callbacks.onToggle });
+      const card = createTaskCard(task, cls, {
+        app: this.callbacks.app,
+        component: this.md,
+        onToggle: this.callbacks.onToggle,
+        onOpenNote: this.callbacks.onOpenNote,
+        onEditLink: (occ, token) => this.callbacks.onEditLink(task, occ, token),
+      });
 
       // Drag source
       card.setAttribute('draggable', 'true');
@@ -172,5 +188,6 @@ export class MonthView extends BaseView {
 
   destroy(): void {
     this.containerEl = null;
+    this.md.unload();
   }
 }

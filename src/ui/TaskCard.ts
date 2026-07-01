@@ -1,13 +1,19 @@
-import { Notice, Platform } from 'obsidian';
+import { Notice, Platform, type App, type Component } from 'obsidian';
+import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import { attachLongPress } from './MobileTouch';
+import { renderTaskText } from './renderTaskText';
 
 type TaskCardMode = 'default' | 'timeblock';
 
 export interface TaskCardOptions {
   mode?: TaskCardMode;
+  app: App;
+  component: Component;
+  onOpenNote: (task: Task) => void;
   onToggle?: (task: Task) => void;
   onMove?: (task: Task, newDate: string, newTime: string) => void;
+  onEditLink?: (occurrenceIndex: number, token: LinkToken) => void;
 }
 
 const TASK_ICONS: Record<string, string> = {
@@ -34,7 +40,7 @@ function transColor(hex: string, percent: number): string {
 export function createTaskCard(
   task: Task,
   taskClass: string,
-  options: TaskCardOptions = {},
+  options: TaskCardOptions,
 ): HTMLElement {
   const { mode = 'default', onToggle } = options;
   const lighter = 25;
@@ -56,7 +62,6 @@ export function createTaskCard(
   const taskIcon = TASK_ICONS[taskClass] ?? '';
   const relative = task.due ? window.moment(task.due).fromNow() : '';
   const cls = task.noteIcon ? taskClass : taskClass + ' noNoteIcon';
-  const filePathNoExt = task.filePath.replace(/\.md$/, '');
 
   // Root div
   const div = activeDocument.createElement('div');
@@ -84,10 +89,9 @@ export function createTaskCard(
     inner.appendChild(checkbox);
   }
 
-  // Link wrapping note + description
-  const link = activeDocument.createElement('a');
-  link.className = 'internal-link';
-  link.setAttribute('href', filePathNoExt);
+  // Content wrapper (was an <a>; nested <a> is invalid so this is a div now)
+  const content = activeDocument.createElement('div');
+  content.className = 'inner-link';
 
   const iconEl = activeDocument.createElement('div');
   iconEl.className = 'icon';
@@ -96,11 +100,18 @@ export function createTaskCard(
   const descEl = activeDocument.createElement('div');
   descEl.className = 'description';
   descEl.dataset['relative'] = relative;
-  descEl.textContent = task.text;
+  renderTaskText(descEl, task.markdownText, {
+    app: options.app,
+    sourcePath: task.filePath,
+    component: options.component,
+    onEditLink: options.onEditLink,
+  });
 
-  link.appendChild(iconEl);
-  link.appendChild(descEl);
-  inner.appendChild(link);
+  content.appendChild(iconEl);
+  content.appendChild(descEl);
+  // Clicking anywhere on the card (except a link) opens the source note.
+  content.addEventListener('click', () => options.onOpenNote(task));
+  inner.appendChild(content);
   div.appendChild(inner);
 
   // Mobile long-press

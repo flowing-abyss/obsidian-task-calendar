@@ -419,6 +419,10 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tasksCalendar a {
   text-decoration: none !important;
 }
+.tasksCalendar .task .inner .inner-link {
+  display: inline;
+  cursor: pointer;
+}
 .tasksCalendar .task .note {
   display: block;
   width: 100%;
