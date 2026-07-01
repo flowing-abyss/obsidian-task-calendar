@@ -1,7 +1,9 @@
 import type { ParseContext, Task, TaskPriority, TaskStatus } from './types';
 
-// Matches task lines: optional indent, "- [char] rest"
-const CHECKBOX_RE = /^(\s*)- \[(.)\]\s*(.*)/;
+// Matches task lines: optional indent and blockquote/callout markers (spaces, tabs,
+// and `>`), then "- [char] rest". The `[\s>]*` prefix lets tasks inside blockquotes
+// and callouts (`> - [ ]`, `> > - [ ]`) parse like plain list tasks.
+const CHECKBOX_RE = /^([\s>]*)- \[(.)\]\s*(.*)/;
 
 const DUE_RE = /📅\s*(\d{4}-\d{2}-\d{2})/u;
 const SCHEDULED_RE = /⏳\s*(\d{4}-\d{2}-\d{2})/u;
@@ -149,8 +151,9 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
   };
 }
 
-// Checkbox prefix including trailing space: "  - [x] "
-const FMT_PREFIX_RE = /^(\s*-\s\[[^\]]\]\s)/u;
+// Checkbox prefix including trailing space and any blockquote/callout markers:
+// "  - [x] ", "> - [x] ", "> > - [x] ".
+const FMT_PREFIX_RE = /^([\s>]*-\s\[[^\]]\]\s)/u;
 
 /**
  * Rewrite a raw task line so its metadata emojis appear in the canonical order

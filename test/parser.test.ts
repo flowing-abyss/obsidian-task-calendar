@@ -52,6 +52,28 @@ describe('parseTask', () => {
     expect(t?.text).toBe('Review PR');
   });
 
+  it('parses a task inside a blockquote (> - [ ])', () => {
+    const t = parseTask('> - [ ] Quoted task 📅 2026-07-01', { filePath: 'f.md', line: 2 });
+    expect(t).not.toBeNull();
+    expect(t?.status).toBe('open');
+    expect(t?.text).toBe('Quoted task');
+    expect(t?.due).toBe('2026-07-01');
+    expect(t?.rawText).toBe('> - [ ] Quoted task 📅 2026-07-01');
+  });
+
+  it('parses a done task inside a blockquote', () => {
+    const t = parseTask('> - [x] Quoted done ✅ 2026-06-22', { filePath: 'f.md', line: 0 });
+    expect(t?.status).toBe('done');
+    expect(t?.completion).toBe('2026-06-22');
+    expect(t?.text).toBe('Quoted done');
+  });
+
+  it('parses a task inside a nested/callout blockquote (> > - [ ])', () => {
+    const t = parseTask('> > - [ ] Deeply quoted', { filePath: 'f.md', line: 0 });
+    expect(t?.status).toBe('open');
+    expect(t?.text).toBe('Deeply quoted');
+  });
+
   it('parses start date', () => {
     const t = parseTask('- [ ] Long task 🛫 2026-06-20 📅 2026-06-30', {
       filePath: 'f.md',
@@ -289,6 +311,11 @@ describe('formatTaskLine', () => {
   it('moves tags before emoji metadata', () => {
     const input = '- [ ] Task 📅 2026-07-01 #work #urgent';
     expect(formatTaskLine(input)).toBe('- [ ] Task #work #urgent 📅 2026-07-01');
+  });
+
+  it('preserves the blockquote prefix when reordering metadata', () => {
+    const input = '> - [ ] Task 📅 2026-07-01 #work';
+    expect(formatTaskLine(input)).toBe('> - [ ] Task #work 📅 2026-07-01');
   });
 
   it('preserves created date (➕) between recurrence and start date', () => {

@@ -301,6 +301,17 @@ describe('TaskStore toggleTask', () => {
     expect(content).toBe(`- [x] task 📅 ${today} ✅ ${today}`);
   });
 
+  it('toggles a blockquote task and preserves the "> " prefix', async () => {
+    const today = window.moment().format('YYYY-MM-DD');
+    const app = await createAppWithFiles({ 't.md': '> - [ ] quoted task' });
+    seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    await store.toggleTask(store.getTasks()[0]!);
+    const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);
+    expect(content).toBe(`> - [x] quoted task ✅ ${today}`);
+  });
+
   it('toggles done to open, strips ✅ date', async () => {
     const app = await createAppWithFiles({ 't.md': '- [x] task ✅ 2026-06-22' });
     seedTaskCache(app, 't.md', [{ task: 'x', parent: -1, line: 0 }]);

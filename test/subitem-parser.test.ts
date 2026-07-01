@@ -21,6 +21,21 @@ describe('parseSubItems', () => {
     expect(r.subtaskRange).toEqual({ from: 1, to: 1 });
   });
 
+  it('parses a blockquote sub-task nested under a blockquote parent', () => {
+    // Blockquote nesting: parent "> - [x]" (prefix length 2), child "> \t- [x]"
+    // (prefix "> " + tab → deeper indent), matching Obsidian's cache layout.
+    const lines = ['> - [x] Parent', '> \t- [x] Quoted child'];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks).toHaveLength(1);
+    expect(r.subtasks[0]).toMatchObject({ text: 'Quoted child', status: 'done', line: 1 });
+  });
+
+  it('does not consume a sibling blockquote task as a sub-task', () => {
+    const lines = ['> - [ ] First', '> - [ ] Second'];
+    const r = parseSubItems(lines, 0, FILE);
+    expect(r.subtasks).toHaveLength(0);
+  });
+
   it('parses done sub-task', () => {
     const lines = ['- [ ] Parent', '  - [x] Done child'];
     const r = parseSubItems(lines, 0, FILE);

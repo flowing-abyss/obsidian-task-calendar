@@ -8,16 +8,31 @@ export interface SubItemResult {
   subtaskRange: { from: number; to: number } | undefined;
 }
 
-const SUBTASK_RE = /^(\s*)- \[([ xX])\]\s+(.*)/;
-const DESCRIPTION_RE = /^(\s*)- > (.*)/;
-const COMMENT_DATE_RE = /^(\s*)- (\d{4}-\d{2}-\d{2}):\s*(.*)/;
-const COMMENT_RE = /^(\s*)- (.+)/;
-const INDENT_RE = /^(\s*)/;
+// Leading group allows blockquote/callout markers (`>`) alongside whitespace so
+// sub-items inside a blockquote (`> \t- [ ]`) nest correctly under their parent.
+const SUBTASK_RE = /^([\s>]*)- \[([ xX])\]\s+(.*)/;
+const DESCRIPTION_RE = /^([\s>]*)- > (.*)/;
+const COMMENT_DATE_RE = /^([\s>]*)- (\d{4}-\d{2}-\d{2}):\s*(.*)/;
+const COMMENT_RE = /^([\s>]*)- (.+)/;
+const INDENT_RE = /^[\s>]*/;
+
+function leadingPrefix(line: string): string {
+  return INDENT_RE.exec(line)?.[0] ?? '';
+}
 
 function getIndent(line: string): number {
-  const raw = INDENT_RE.exec(line)?.[1] ?? '';
-  // Normalize: each tab counts as 4 spaces so mixed indent still compares correctly
-  return raw.replace(/\t/g, '    ').length;
+  // Normalize: each tab counts as 4 spaces so mixed indent still compares correctly.
+  // Blockquote markers (`>`) count toward depth, so a quoted child indents past its
+  // quoted parent just as a plain-list child does.
+  return leadingPrefix(line).replace(/\t/g, '    ').length;
+}
+
+/** Number of blockquote/callout `>` markers in the line's leading prefix. */
+function getQuoteDepth(line: string): number {
+  const prefix = leadingPrefix(line);
+  let depth = 0;
+  for (const ch of prefix) if (ch === '>') depth++;
+  return depth;
 }
 
 function parseSubtask(
@@ -64,6 +79,7 @@ export function parseSubItems(
 ): SubItemResult {
   const taskLine = lines[taskLineIdx] ?? '';
   const taskIndent = getIndent(taskLine);
+  const taskQuote = getQuoteDepth(taskLine);
 
   const subtasks: SubTask[] = [];
   const comments: TaskComment[] = [];
@@ -75,13 +91,19 @@ export function parseSubItems(
   while (i < lines.length) {
     const line = lines[i];
     if (line === undefined) break;
-    if (line.trim() === '') {
+    // A blank line inside a blockquote still carries its `>` marker(s) ("> ", ">"),
+    // so treat any whitespace-and-`>`-only line as blank — otherwise it would be read
+    // as content and terminate the scan, dropping sub-items that follow it.
+    if (/^[\s>]*$/u.test(line)) {
       i++;
       continue;
     }
 
     const lineIndent = getIndent(line);
-    if (lineIndent <= taskIndent) break;
+    // A sub-item must sit at the same blockquote depth as its parent AND be more
+    // indented. A differing quote depth marks a new container (e.g. a plain-list
+    // task followed by a `>` blockquote task), which is a sibling block, not a child.
+    if (getQuoteDepth(line) !== taskQuote || lineIndent <= taskIndent) break;
 
     if (rangeFrom === undefined) rangeFrom = i;
     rangeTo = i;

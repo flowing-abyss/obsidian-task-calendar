@@ -79,11 +79,12 @@ export class TaskMutationService {
       // Preserve trailing \r for CRLF files so the rawText fingerprint stays consistent.
       const hasCR = line.endsWith('\r');
       const cr = hasCR ? '\r' : '';
-      const isNowOpen = /^(\s*)- \[ \]/.test(line);
+      // `[\s>]*` preserves any leading blockquote/callout markers on write-back.
+      const isNowOpen = /^([\s>]*)- \[ \]/.test(line);
       if (isNowOpen) {
         lines[taskLine] =
           line
-            .replace(/^(\s*)- \[ \]/, '$1- [x]')
+            .replace(/^([\s>]*)- \[ \]/, '$1- [x]')
             // eslint-disable-next-line sonarjs/super-linear-regex
             .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
             .trimEnd() +
@@ -92,7 +93,7 @@ export class TaskMutationService {
       } else {
         lines[taskLine] =
           line
-            .replace(/^(\s*)- \[.\]/, '$1- [ ]')
+            .replace(/^([\s>]*)- \[.\]/, '$1- [ ]')
             // eslint-disable-next-line sonarjs/super-linear-regex
             .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
             .trimEnd() + cr;

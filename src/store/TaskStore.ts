@@ -106,11 +106,31 @@ export class TaskStore {
 
     const tasks: Task[] = [];
     const fm = this.frontmatterMap.get(filePath);
+    // Index list items by their start line so we can walk the parent chain.
+    // Obsidian's `parent` is the line of the parent list item (≥ 0), or a negative
+    // value for root-level items.
+    const itemByLine = new Map<number, (typeof cache.listItems)[number]>();
+    for (const item of cache.listItems) itemByLine.set(item.position.start.line, item);
+    const hasTaskAncestor = (item: (typeof cache.listItems)[number]): boolean => {
+      let parentLine = item.parent;
+      // `seen` guards against malformed/cyclic cache data (e.g. a self- or
+      // mutually-referential `parent`), which would otherwise spin forever.
+      const seen = new Set<number>();
+      while (parentLine >= 0 && !seen.has(parentLine)) {
+        seen.add(parentLine);
+        const parent = itemByLine.get(parentLine);
+        if (!parent) break;
+        if (parent.task !== undefined) return true;
+        parentLine = parent.parent;
+      }
+      return false;
+    };
     for (const item of cache.listItems) {
       if (item.task === undefined) continue;
-      // Skip child items — they are parsed as sub-tasks by parseSubItems.
-      // Root-level items have a negative parent (negated line of list start); children have parent ≥ 0
-      if (item.parent >= 0) continue;
+      // Skip child items only when they descend from an actual task — those are
+      // parsed as sub-tasks by parseSubItems. A checkbox nested under a plain
+      // (non-task) bullet has no task ancestor, so it is an independent task.
+      if (hasTaskAncestor(item)) continue;
       const lineIdx = item.position.start.line;
       const rawText = lines[lineIdx] ?? '';
       const task = parseTask(rawText, {

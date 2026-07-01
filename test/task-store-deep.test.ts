@@ -153,4 +153,42 @@ describe('TaskStore deep — parseFileTasks edge cases', () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.subtasks).toHaveLength(1);
   });
+
+  it('checkbox task nested under a plain (non-task) bullet is still a top-level task', async () => {
+    // Obsidian lists ALL list items; a plain bullet has task undefined. A checkbox
+    // task nested under it has parent >= 0 but no task ancestor, so it must NOT be
+    // dropped — it is an independent task (matches obsidian-tasks behaviour).
+    const app = await createAppWithFiles({
+      't.md': '- plain bullet\n\t- [ ] nested #category/public',
+    });
+    (
+      app.metadataCache as unknown as { setCache__: (path: string, cache: unknown) => void }
+    ).setCache__('t.md', {
+      listItems: [
+        {
+          // plain bullet, not a task
+          parent: -1,
+          position: {
+            start: { line: 0, col: 0, offset: 0 },
+            end: { line: 0, col: 14, offset: 14 },
+          },
+        },
+        {
+          task: ' ',
+          parent: 0, // child of the plain bullet (line 0)
+          position: {
+            start: { line: 1, col: 0, offset: 0 },
+            end: { line: 1, col: 40, offset: 40 },
+          },
+        },
+      ],
+    });
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    await flushMicrotasks(20);
+    const tasks = store.getTasks();
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.line).toBe(1);
+    expect(tasks[0]?.text).toBe('nested');
+  });
 });
