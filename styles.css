@@ -2558,6 +2558,18 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-right-desc:focus {
   border-color: var(--interactive-accent);
 }
+.tc-right-desc-view {
+  cursor: text;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tc-right-desc-view:hover {
+  border-color: var(--background-modifier-border-hover);
+}
+.tc-right-desc-empty {
+  color: var(--text-faint);
+}
 
 /* Sub-tasks */
 .tc-subtask-list {

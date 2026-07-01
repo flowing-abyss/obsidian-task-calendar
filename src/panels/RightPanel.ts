@@ -3,7 +3,7 @@ import { Component, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import { formatTaskLine } from '../parser/TaskParser';
-import type { LinkToken } from '../parser/links';
+import { rewriteNthLink, type LinkToken } from '../parser/links';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
@@ -64,6 +64,89 @@ export class RightPanel {
       },
       task.filePath,
     ).open();
+  }
+
+  /**
+   * Edit a link that lives inside a free-form string (a description or a comment),
+   * rewriting the Nth occurrence within that string and persisting via `save`.
+   */
+  private editLinkInString(
+    source: string,
+    occ: number,
+    token: LinkToken,
+    sourcePath: string,
+    save: (newText: string) => void,
+  ): void {
+    new LinkEditModal(
+      this.app,
+      token,
+      (newRaw) => save(rewriteNthLink(source, occ, newRaw)),
+      sourcePath,
+    ).open();
+  }
+
+  /** Description block: rendered markdown (clickable links) that becomes a textarea on click. */
+  private renderDescriptionBlock(section: HTMLElement, task: TaskLike): void {
+    const view = section.createDiv({ cls: 'tc-right-desc tc-right-desc-view' });
+    let showView: () => void = () => {};
+
+    const enterEdit = (): void => {
+      const start = view.offsetHeight;
+      view.hide();
+      const ta = section.createEl('textarea', { cls: 'tc-right-desc tc-right-desc-edit' });
+      view.insertAdjacentElement('afterend', ta);
+      ta.value = task.description ?? '';
+      ta.setCssStyles({ height: `${Math.max(start, 60)}px` });
+      window.setTimeout(() => ta.focus(), 0);
+      let done = false;
+      const finish = (save: boolean): void => {
+        if (done) return;
+        done = true;
+        if (save && ta.value !== (task.description ?? '')) {
+          void this.updateDescription(task, ta.value);
+        }
+        ta.remove();
+        view.show();
+        showView();
+      };
+      ta.addEventListener('blur', () => finish(true));
+      ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          finish(false);
+        }
+      });
+    };
+
+    showView = (): void => {
+      const desc = task.description ?? '';
+      if (desc.trim()) {
+        view.removeClass('tc-right-desc-empty');
+        renderTaskText(view, desc, {
+          app: this.app,
+          sourcePath: task.filePath,
+          component: this.md,
+          onEditLink: (occ, token) =>
+            this.editLinkInString(
+              desc,
+              occ,
+              token,
+              task.filePath,
+              (t) => void this.updateDescription(task, t),
+            ),
+        });
+      } else {
+        view.empty();
+        view.addClass('tc-right-desc-empty');
+        view.setText('Add a description…');
+      }
+    };
+
+    view.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('a')) return; // let links navigate
+      enterEdit();
+    });
+    showView();
   }
 
   private renderEmpty(): void {
@@ -155,14 +238,7 @@ export class RightPanel {
     const descSection = this.el.createDiv({ cls: 'tc-right-section' });
     const descHeader = descSection.createDiv({ cls: 'tc-right-section-header' });
     descHeader.createEl('span', { cls: 'tc-right-section-label', text: 'Description' });
-    const descArea = descSection.createEl('textarea', {
-      cls: 'tc-right-desc',
-      attr: { placeholder: 'Add a description…', rows: '3' },
-    });
-    descArea.value = task.description ?? '';
-    descArea.addEventListener('blur', () => {
-      void this.updateDescription(task, descArea.value);
-    });
+    this.renderDescriptionBlock(descSection, task);
 
     // Sub-tasks
     const subSection = this.el.createDiv({ cls: 'tc-right-section' });
@@ -415,9 +491,10 @@ export class RightPanel {
       const label = Math.abs(diff) < 7 ? m.fromNow() : m.format('D MMM YYYY');
       row.createEl('span', { cls: 'tc-comment-date', text: label });
     }
-    const textEl = row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
-    textEl.addEventListener('click', () => {
-      textEl.remove();
+    let showText: () => void = () => {};
+
+    const enterEdit = (): void => {
+      row.querySelector('.tc-comment-text')?.remove();
       const textarea = row.createEl('textarea', { cls: 'tc-comment-edit-input' });
       textarea.value = comment.text;
       textarea.focus();
@@ -429,15 +506,11 @@ export class RightPanel {
         const val = textarea.value.trim();
         textarea.remove();
         if (val === '') {
-          this.deleteComment(task, comment).catch(() => {
-            row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
-          });
+          this.deleteComment(task, comment).catch(() => showText());
         } else if (val !== comment.text) {
-          this.updateComment(task, comment, val).catch(() => {
-            row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
-          });
+          this.updateComment(task, comment, val).catch(() => showText());
         } else {
-          row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
+          showText();
         }
       };
       textarea.addEventListener('blur', () => window.setTimeout(finish, 150));
@@ -449,10 +522,33 @@ export class RightPanel {
         if (e.key === 'Escape') {
           saved = true;
           textarea.remove();
-          row.createEl('p', { cls: 'tc-comment-text', text: comment.text });
+          showText();
         }
       });
-    });
+    };
+
+    showText = (): void => {
+      const textEl = row.createEl('p', { cls: 'tc-comment-text' });
+      renderTaskText(textEl, comment.text, {
+        app: this.app,
+        sourcePath: task.filePath,
+        component: this.md,
+        onEditLink: (occ, token) =>
+          this.editLinkInString(
+            comment.text,
+            occ,
+            token,
+            task.filePath,
+            (t) => void this.updateComment(task, comment, t),
+          ),
+      });
+      textEl.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('a')) return; // let links navigate
+        enterEdit();
+      });
+    };
+
+    showText();
   }
 
   private renderDateChip(container: HTMLElement, task: TaskLike): void {
