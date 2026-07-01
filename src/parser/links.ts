@@ -50,3 +50,18 @@ export function parseLinks(input: string): LinkToken[] {
   }
   return tokens;
 }
+
+/** Replace the Nth link occurrence in `line` with `newRaw`; returns `line` unchanged if absent. */
+export function rewriteNthLink(line: string, occurrenceIndex: number, newRaw: string): string {
+  const tokens = parseLinks(line);
+  const tok = tokens[occurrenceIndex];
+  if (!tok) return line;
+  return line.slice(0, tok.index) + newRaw + line.slice(tok.index + tok.raw.length);
+}
+
+/** Build the raw markup for a link, omitting the wiki alias when it equals the basename. */
+export function buildLinkRaw(type: 'wiki' | 'md', target: string, display: string): string {
+  if (type === 'md') return `[${display}](${target})`;
+  const basename = target.replace(/\.[^.]*$/u, '').replace(/^.*\//u, '');
+  return display && display !== basename ? `[[${target}|${display}]]` : `[[${target}]]`;
+}

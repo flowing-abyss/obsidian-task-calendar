@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { parseLinks } from '../src/parser/links';
+import { describe, expect, it } from 'vitest';
+import { buildLinkRaw, parseLinks, rewriteNthLink } from '../src/parser/links';
 
 describe('parseLinks', () => {
   it('returns wiki, alias and markdown links in document order', () => {
@@ -14,5 +14,25 @@ describe('parseLinks', () => {
 
   it('returns [] when there are no links', () => {
     expect(parseLinks('plain text')).toEqual([]);
+  });
+});
+
+describe('rewriteNthLink', () => {
+  it('replaces the Nth link occurrence only', () => {
+    const line = '- [ ] see [[A]] and [[B]] 📅 2026-07-01';
+    expect(rewriteNthLink(line, 1, '[[B|beta]]')).toBe(
+      '- [ ] see [[A]] and [[B|beta]] 📅 2026-07-01',
+    );
+    expect(rewriteNthLink(line, 0, '[[A|alpha]]')).toBe(
+      '- [ ] see [[A|alpha]] and [[B]] 📅 2026-07-01',
+    );
+  });
+});
+
+describe('buildLinkRaw', () => {
+  it('omits the alias when display equals target basename', () => {
+    expect(buildLinkRaw('wiki', 'Note', 'Note')).toBe('[[Note]]');
+    expect(buildLinkRaw('wiki', 'Path/Note', 'alias')).toBe('[[Path/Note|alias]]');
+    expect(buildLinkRaw('md', 'https://x.io', 'text')).toBe('[text](https://x.io)');
   });
 });
