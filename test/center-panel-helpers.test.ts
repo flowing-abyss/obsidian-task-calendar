@@ -113,36 +113,42 @@ describe('CenterPanel pure helpers', () => {
     });
 
     it('today excludes future tasks (due > today, not overdue)', () => {
-      const tasks = [task({ text: 'future', rawText: '- [ ] future', due: '2026-06-30' })];
+      // Date relative to "now" so the test stays correct as real time passes.
+      const future = moment().add(5, 'days').format('YYYY-MM-DD');
+      const tasks = [task({ text: 'future', rawText: '- [ ] future', due: future })];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
-      fixedToday('2026-06-25');
       const result = call<Task[]>(panel, 'getFilteredTasks');
       expect(result).toHaveLength(0);
     });
 
     it('upcoming returns open tasks with date > today, sorted', () => {
+      // Dates relative to "now" so the test stays correct as real time passes.
+      const near = moment().add(3, 'days').format('YYYY-MM-DD');
+      const far = moment().add(15, 'days').format('YYYY-MM-DD');
+      const past = moment().subtract(5, 'days').format('YYYY-MM-DD');
       const tasks = [
-        task({ text: 'far', rawText: '- [ ] far', due: '2026-07-10' }),
-        task({ text: 'near', rawText: '- [ ] near', due: '2026-06-28' }),
-        task({ text: 'past', rawText: '- [ ] past', due: '2026-06-20' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done', due: '2026-06-28' }),
+        task({ text: 'far', rawText: '- [ ] far', due: far }),
+        task({ text: 'near', rawText: '- [ ] near', due: near }),
+        task({ text: 'past', rawText: '- [ ] past', due: past }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done', due: near }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'upcoming');
-      fixedToday('2026-06-25');
       const result = call<Task[]>(panel, 'getFilteredTasks');
       expect(result.map((t) => t.text)).toEqual(['near', 'far']);
     });
 
     it('upcoming uses due ?? scheduled ?? dailyNoteDate', () => {
+      // Dates relative to "now" so the test stays correct as real time passes.
+      const sched = moment().add(3, 'days').format('YYYY-MM-DD');
+      const dn = moment().add(4, 'days').format('YYYY-MM-DD');
       const tasks = [
-        task({ text: 'sched', rawText: '- [ ] sched', scheduled: '2026-06-28' }),
-        task({ text: 'dn', rawText: '- [ ] dn', dailyNoteDate: '2026-06-29' }),
+        task({ text: 'sched', rawText: '- [ ] sched', scheduled: sched }),
+        task({ text: 'dn', rawText: '- [ ] dn', dailyNoteDate: dn }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'upcoming');
-      fixedToday('2026-06-25');
       const result = call<Task[]>(panel, 'getFilteredTasks');
       expect(result.map((t) => t.text)).toEqual(['sched', 'dn']);
     });
