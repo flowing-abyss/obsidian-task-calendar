@@ -94,22 +94,7 @@ export class RightPanel {
 
     // Header
     const header = this.el.createDiv({ cls: 'tc-right-header' });
-    const titleInput = header.createEl('input', {
-      cls: 'tc-right-title',
-      attr: { type: 'text', value: task.text },
-    });
-    titleInput.addEventListener('blur', () => {
-      if (titleInput.value !== task.text) {
-        void this.updateTaskTitle(task, titleInput.value);
-      }
-    });
-    titleInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') titleInput.blur();
-      if (e.key === 'Escape') {
-        titleInput.value = task.text;
-        titleInput.blur();
-      }
-    });
+    this.renderTitleBlock(header, task);
 
     const headerActions = header.createDiv({ cls: 'tc-right-header-actions' });
 
@@ -252,6 +237,69 @@ export class RightPanel {
         if (text) {
           void this.addComment(task, text, commentList, commentInput);
         }
+      }
+    });
+  }
+
+  private renderTitleBlock(header: HTMLElement, task: TaskLike): void {
+    const view = header.createDiv({ cls: 'tc-right-title tc-right-title-view' });
+    const renderView = (): void => {
+      renderTaskText(view, task.markdownText, {
+        app: this.app,
+        sourcePath: task.filePath,
+        component: this.md,
+        onEditLink: (occ, token) => this.editLink(task, occ, token),
+      });
+    };
+    renderView();
+
+    // Click on empty space / non-link text enters edit mode.
+    view.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('a')) return; // let links navigate
+      this.enterTitleEdit(header, view, task, renderView);
+    });
+  }
+
+  private enterTitleEdit(
+    header: HTMLElement,
+    view: HTMLElement,
+    task: TaskLike,
+    renderView: () => void,
+  ): void {
+    view.hide();
+    const ta = header.createEl('textarea', { cls: 'tc-right-title-edit' });
+    ta.value = task.markdownText;
+    // Auto-grow to content.
+    const grow = (): void => {
+      ta.setCssStyles({ height: 'auto' });
+      ta.setCssStyles({ height: `${ta.scrollHeight}px` });
+    };
+    ta.addEventListener('input', grow);
+    window.setTimeout(() => {
+      ta.focus();
+      grow();
+    }, 0);
+
+    let done = false;
+    const finish = (save: boolean): void => {
+      if (done) return;
+      done = true;
+      if (save && ta.value !== task.markdownText) {
+        void this.updateTaskTitle(task, ta.value.trim());
+      }
+      ta.remove();
+      view.show();
+      renderView();
+    };
+    ta.addEventListener('blur', () => finish(true));
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        finish(true);
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(false);
       }
     });
   }

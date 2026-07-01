@@ -2228,6 +2228,26 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-right-title:focus {
   background: var(--background-modifier-hover);
 }
+.tc-right-title-view {
+  min-height: var(--input-height, 30px);
+  padding: 4px 6px;
+  border-radius: var(--radius-s);
+  cursor: text;
+  overflow: auto;
+  resize: vertical; /* user can stretch the block */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tc-right-title-view:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-right-title-edit {
+  width: 100%;
+  min-height: var(--input-height, 30px);
+  resize: vertical;
+  font: inherit;
+  line-height: inherit;
+}
 .tc-right-header-actions {
   display: flex;
   gap: 4px;

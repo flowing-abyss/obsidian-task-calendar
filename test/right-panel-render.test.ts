@@ -60,18 +60,17 @@ async function makePanel(
 describe('RightPanel render lifecycle', () => {
   it('mount subscribes to taskStack → re-renders when stack changes', async () => {
     const { state, el } = await makePanel();
-    expect(el.querySelector('.tc-right-title')).toBeNull();
+    expect(el.querySelector('.tc-right-title-view')).toBeNull();
     state.set('taskStack', [task({ text: 'Hello' })]);
-    const input = el.querySelector<HTMLInputElement>('.tc-right-title');
-    expect(input).not.toBeNull();
-    expect(input!.value).toBe('Hello');
+    const view = el.querySelector('.tc-right-title-view');
+    expect(view).not.toBeNull();
   });
 
   it('destroy removes the taskStack listener (no re-render after destroy)', async () => {
     const { panel, state, el } = await makePanel();
     panel.destroy();
     state.set('taskStack', [task({ text: 'After destroy' })]);
-    expect(el.querySelector('.tc-right-title')).toBeNull();
+    expect(el.querySelector('.tc-right-title-view')).toBeNull();
     expect(el.children).toHaveLength(0);
   });
 
@@ -93,10 +92,34 @@ describe('RightPanel.renderTask', () => {
     expect(breadcrumb?.querySelector('.tc-breadcrumb-item')).not.toBeNull();
   });
 
-  it('title input value === task.text', async () => {
+  it('title view renders idle; clicking it enters edit mode with markdownText', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [task({ text: 'My task' })]);
-    expect(el.querySelector<HTMLInputElement>('.tc-right-title')?.value).toBe('My task');
+    const view = el.querySelector<HTMLElement>('.tc-right-title-view')!;
+    expect(view).not.toBeNull();
+    expect(el.querySelector('.tc-right-title-edit')).toBeNull();
+
+    click(view);
+    const ta = el.querySelector<HTMLTextAreaElement>('.tc-right-title-edit');
+    expect(ta).not.toBeNull();
+    expect(ta!.value).toBe('My task');
+  });
+
+  it('editing the title and blurring writes back via updateTaskTitle', async () => {
+    const fileContent = '- [ ] My task\n';
+    const { state, el, app } = await makePanel({ 'f.md': fileContent });
+    state.set('taskStack', [task({ text: 'My task', rawText: '- [ ] My task' })]);
+    const view = el.querySelector<HTMLElement>('.tc-right-title-view')!;
+    click(view);
+    const ta = el.querySelector<HTMLTextAreaElement>('.tc-right-title-edit')!;
+    ta.value = 'Updated task';
+    ta.dispatchEvent(new Event('blur', { bubbles: true }));
+    await flushMicrotasks();
+
+    const written = await readMd(app, 'f.md');
+    expect(written).toContain('Updated task');
+    expect(el.querySelector('.tc-right-title-edit')).toBeNull();
+    expect(el.querySelector('.tc-right-title-view')).not.toBeNull();
   });
 
   it('date chip renders (non-empty) when task.due is present', async () => {
@@ -267,8 +290,8 @@ describe('RightPanel popovers', () => {
     expect(el.querySelector('.tc-priority-popover')).not.toBeNull();
     // The outside-click listener is registered via setTimeout(0); wait for it.
     await tick(5);
-    // Click on an unrelated element (the title input) — bubbles to el → once:click removes pop.
-    const title = el.querySelector<HTMLInputElement>('.tc-right-title')!;
+    // Click on an unrelated element (the title view) — bubbles to el → once:click removes pop.
+    const title = el.querySelector<HTMLElement>('.tc-right-title-view')!;
     click(title);
     expect(el.querySelector('.tc-priority-popover')).toBeNull();
   });
