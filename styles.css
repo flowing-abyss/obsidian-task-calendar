@@ -3247,3 +3247,10 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-muted);
   text-decoration: underline;
 }
+
+.tc-drop-active {
+  outline: 2px dashed var(--interactive-accent);
+  outline-offset: -2px;
+  background: var(--interactive-accent-hover);
+  border-radius: var(--radius-s);
+}

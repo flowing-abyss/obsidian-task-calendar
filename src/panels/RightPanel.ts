@@ -2,11 +2,12 @@ import type { App } from 'obsidian';
 import { Component, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
-import { formatTaskLine } from '../parser/TaskParser';
 import { rewriteNthLink, type LinkToken } from '../parser/links';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
+import { formatTaskLine } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
+import { enableAttachmentDrop } from '../ui/attachmentDrop';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderTaskText } from '../ui/renderTaskText';
 import { showTagDropdown } from '../ui/tagDropdown';
@@ -88,6 +89,14 @@ export class RightPanel {
   /** Description block: rendered markdown (clickable links) that becomes a textarea on click. */
   private renderDescriptionBlock(section: HTMLElement, task: TaskLike): void {
     const view = section.createDiv({ cls: 'tc-right-desc tc-right-desc-view' });
+    enableAttachmentDrop(view, {
+      app: this.app,
+      sourcePath: task.filePath,
+      onLinks: (links) => {
+        const cur = task.description ?? '';
+        void this.updateDescription(task, cur.trim() ? `${cur} ${links}` : links);
+      },
+    });
     let showView: () => void = () => {};
 
     const enterEdit = (): void => {
@@ -311,6 +320,14 @@ export class RightPanel {
       cls: 'tc-comment-input',
       attr: { placeholder: 'Write a comment…', rows: '2' },
     });
+    enableAttachmentDrop(commentInput, {
+      app: this.app,
+      sourcePath: task.filePath,
+      onLinks: (links) => {
+        commentInput.value = commentInput.value ? `${commentInput.value} ${links}` : links;
+        commentInput.focus();
+      },
+    });
     commentInput.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -324,6 +341,11 @@ export class RightPanel {
 
   private renderTitleBlock(header: HTMLElement, task: TaskLike): void {
     const view = header.createDiv({ cls: 'tc-right-title tc-right-title-view' });
+    enableAttachmentDrop(view, {
+      app: this.app,
+      sourcePath: task.filePath,
+      onLinks: (links) => void this.appendToTitle(task, links),
+    });
     const renderView = (): void => {
       renderTaskText(view, task.markdownText, {
         app: this.app,
@@ -485,6 +507,11 @@ export class RightPanel {
 
   private renderComment(container: HTMLElement, comment: TaskComment, task: TaskLike): void {
     const row = container.createDiv({ cls: 'tc-comment-row' });
+    enableAttachmentDrop(row, {
+      app: this.app,
+      sourcePath: task.filePath,
+      onLinks: (links) => void this.updateComment(task, comment, `${comment.text} ${links}`.trim()),
+    });
     if (comment.date) {
       const m = window.moment(comment.date, 'YYYY-MM-DD');
       const diff = m.diff(window.moment(), 'days');
@@ -769,6 +796,21 @@ export class RightPanel {
       const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁🔺⏫🔼🔽⏬#➕]/u);
       const suffix = spaceIdx >= 0 ? rawAfterPrefix.slice(spaceIdx) : '';
       lines[taskLine] = formatTaskLine(prefix + newText + suffix);
+    });
+  }
+
+  private async appendToTitle(task: TaskLike, text: string): Promise<void> {
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const prefixMatch = /^([\s>]*- \[[ xX/]\] )/.exec(line);
+      if (!prefixMatch) return;
+      const prefix = prefixMatch[1] ?? '';
+      const rawAfterPrefix = line.slice(prefix.length);
+      const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁🔺⏫🔼🔽⏬#➕]/u);
+      const body = (spaceIdx >= 0 ? rawAfterPrefix.slice(0, spaceIdx) : rawAfterPrefix).trimEnd();
+      const suffix = spaceIdx >= 0 ? rawAfterPrefix.slice(spaceIdx) : '';
+      lines[taskLine] = formatTaskLine(`${prefix}${body} ${text}${suffix}`);
     });
   }
 
