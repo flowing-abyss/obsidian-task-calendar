@@ -1,11 +1,14 @@
 import type { App } from 'obsidian';
-import { setIcon } from 'obsidian';
+import { Component, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
-import { locatorOf, TaskMutationService } from '../mutation';
+import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import { formatTaskLine } from '../parser/TaskParser';
+import type { LinkToken } from '../parser/links';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
+import { LinkEditModal } from '../ui/LinkEditModal';
+import { renderTaskText } from '../ui/renderTaskText';
 import { showTagDropdown } from '../ui/tagDropdown';
 import { openInFile } from '../ui/taskNavigation';
 
@@ -16,6 +19,7 @@ export class RightPanel {
   private off?: () => void;
   private draggingSub: SubTask | null = null;
   private mutations: TaskMutationService;
+  private md = new Component();
 
   constructor(
     private state: AppState,
@@ -34,9 +38,13 @@ export class RightPanel {
   destroy(): void {
     this.off?.();
     this.el?.empty();
+    this.md.unload();
   }
 
   private render(): void {
+    this.md.unload();
+    this.md = new Component();
+    this.md.load();
     this.el.empty();
     const stack = this.state.get('taskStack');
     if (stack.length === 0) {
@@ -45,6 +53,12 @@ export class RightPanel {
     }
     const task = stack[stack.length - 1]!;
     this.renderTask(task, stack);
+  }
+
+  private editLink(task: TaskLike, occ: number, token: LinkToken): void {
+    new LinkEditModal(this.app, token, (newRaw) => {
+      void rewriteLinkInTask(this.mutations, task, occ, newRaw);
+    }).open();
   }
 
   private renderEmpty(): void {
@@ -65,7 +79,13 @@ export class RightPanel {
       const parents = stack.slice(0, -1);
       parents.forEach((item, idx) => {
         if (idx > 0) breadcrumb.createEl('span', { cls: 'tc-breadcrumb-sep', text: ' › ' });
-        const crumb = breadcrumb.createEl('span', { cls: 'tc-breadcrumb-item', text: item.text });
+        const crumb = breadcrumb.createEl('span', { cls: 'tc-breadcrumb-item' });
+        renderTaskText(crumb, item.markdownText, {
+          app: this.app,
+          sourcePath: item.filePath,
+          component: this.md,
+          onEditLink: (occ, token) => this.editLink(item, occ, token),
+        });
         crumb.addEventListener('click', () => {
           this.state.set('taskStack', stack.slice(0, idx + 1));
         });
@@ -301,7 +321,12 @@ export class RightPanel {
     const content = row.createDiv({ cls: 'tc-subtask-content' });
     const label = content.createEl('span', {
       cls: `tc-subtask-label${sub.status === 'done' ? ' is-done' : ''}`,
-      text: sub.text,
+    });
+    renderTaskText(label, sub.markdownText, {
+      app: this.app,
+      sourcePath: sub.filePath,
+      component: this.md,
+      onEditLink: (occ, token) => this.editLink(sub, occ, token),
     });
     label.addEventListener('click', () => {
       const stack = this.state.get('taskStack');
