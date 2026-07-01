@@ -2,16 +2,7 @@ import type { App, TFile } from 'obsidian';
 
 export type AttachmentAlias = 'image' | 'PDF' | 'file';
 
-export const IMAGE_EXTENSIONS = new Set([
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'svg',
-  'bmp',
-  'avif',
-]);
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
 
 /** Map a file extension (dot optional, case-insensitive) to a compact alias. */
 export function aliasForExtension(extension: string): AttachmentAlias {
