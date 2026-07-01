@@ -22,9 +22,17 @@ export function aliasForName(name: string): AttachmentAlias {
   return aliasForExtension(dot >= 0 ? name.slice(dot + 1) : '');
 }
 
-/** Save an external (OS) File into Obsidian's configured attachment location. */
-export async function saveExternalFile(app: App, file: File, sourcePath: string): Promise<TFile> {
-  const path = await app.fileManager.getAvailablePathForAttachment(file.name, sourcePath);
+/**
+ * Save an external (OS/clipboard) File into Obsidian's configured attachment location.
+ * `fileName` defaults to `file.name` but can be overridden for nameless clipboard blobs.
+ */
+export async function saveExternalFile(
+  app: App,
+  file: File,
+  sourcePath: string,
+  fileName: string = file.name,
+): Promise<TFile> {
+  const path = await app.fileManager.getAvailablePathForAttachment(fileName, sourcePath);
   const bytes = await file.arrayBuffer();
   return app.vault.createBinary(path, bytes);
 }

@@ -2918,6 +2918,12 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   justify-content: center;
 }
 
+/* While the task-detail modal is open, lift Obsidian's hover-preview popover above
+   the modal backdrop (z-index 1000) so Cmd-hover previews aren't hidden behind it. */
+body.tc-modal-open .popover.hover-popover {
+  z-index: 1001;
+}
+
 .tc-modal {
   position: relative;
   background: var(--background-primary);

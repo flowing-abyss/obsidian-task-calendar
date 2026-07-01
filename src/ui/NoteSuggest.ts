@@ -49,19 +49,24 @@ export class NoteSuggest extends AbstractInputSuggest<TFile> {
 
   getSuggestions(query: string): TFile[] {
     const q = query.toLowerCase();
+    // All files (not just markdown) so a wiki link can target attachments/images too,
+    // honouring Obsidian's excluded-files setting.
     return this.app.vault
-      .getMarkdownFiles()
+      .getFiles()
       .filter((file) => !this.isIgnored(file.path))
       .filter(
-        (file) =>
-          !q || file.basename.toLowerCase().includes(q) || file.path.toLowerCase().includes(q),
+        (file) => !q || file.name.toLowerCase().includes(q) || file.path.toLowerCase().includes(q),
       )
-      .sort((a, b) => a.basename.localeCompare(b.basename))
+      .sort((a, b) => a.name.localeCompare(b.name))
       .slice(0, 50);
   }
 
   renderSuggestion(file: TFile, el: HTMLElement): void {
-    el.createDiv({ cls: 'tc-suggest-title', text: file.basename });
+    // Show the extension for non-note files (e.g. 001.png) so attachments are recognizable.
+    el.createDiv({
+      cls: 'tc-suggest-title',
+      text: file.extension === 'md' ? file.basename : file.name,
+    });
     const parent = file.parent?.path;
     if (parent && parent !== '/') {
       el.createDiv({ cls: 'tc-suggest-path', text: parent });

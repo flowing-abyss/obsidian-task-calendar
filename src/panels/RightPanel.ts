@@ -7,7 +7,7 @@ import { applySubtaskReorder } from '../parser/subtask-reorder';
 import { formatTaskLine, insertIntoTitleBody } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
-import { enableAttachmentDrop } from '../ui/attachmentDrop';
+import { enableAttachmentDrop, enableAttachmentPaste, insertAtCaret } from '../ui/attachmentDrop';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderTaskText } from '../ui/renderTaskText';
 import { showTagDropdown } from '../ui/tagDropdown';
@@ -54,6 +54,15 @@ export class RightPanel {
     }
     const task = stack[stack.length - 1]!;
     this.renderTask(task, stack);
+  }
+
+  /** Wire clipboard paste-to-attach onto an editable textarea, inserting links at the caret. */
+  private enablePaste(el: HTMLTextAreaElement, task: TaskLike): void {
+    enableAttachmentPaste(el, {
+      app: this.app,
+      sourcePath: task.filePath,
+      onInsert: (links) => insertAtCaret(el, links),
+    });
   }
 
   private editLink(task: TaskLike, occ: number, token: LinkToken): void {
@@ -108,6 +117,7 @@ export class RightPanel {
       const ta = section.createEl('textarea', { cls: 'tc-right-desc tc-right-desc-edit' });
       view.insertAdjacentElement('afterend', ta);
       ta.value = task.description ?? '';
+      this.enablePaste(ta, task);
       ta.setCssStyles({ height: `${Math.max(start, 60)}px` });
       window.setTimeout(() => ta.focus(), 0);
       let done = false;
@@ -331,6 +341,7 @@ export class RightPanel {
         commentInput.focus();
       },
     });
+    this.enablePaste(commentInput, task);
     commentInput.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -379,6 +390,7 @@ export class RightPanel {
     // Keep the textarea in the title's slot so the ⋯/× action buttons stay on the right.
     view.insertAdjacentElement('afterend', ta);
     ta.value = task.markdownText;
+    this.enablePaste(ta, task);
     // Auto-grow to content, but never below the stretched height.
     const grow = (): void => {
       ta.setCssStyles({ height: 'auto' });
@@ -527,6 +539,7 @@ export class RightPanel {
       row.querySelector('.tc-comment-text')?.remove();
       const textarea = row.createEl('textarea', { cls: 'tc-comment-edit-input' });
       textarea.value = comment.text;
+      this.enablePaste(textarea, task);
       textarea.focus();
       textarea.select();
       let saved = false;

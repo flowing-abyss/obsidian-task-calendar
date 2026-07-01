@@ -25,6 +25,8 @@ export class TaskModal {
 
     const backdrop = this.ownerDoc.body.createDiv({ cls: 'tc-modal-backdrop' });
     this.backdropEl = backdrop;
+    // Marks the document so hover-preview popovers can stack above the modal (see styles.css).
+    this.ownerDoc.body.addClass('tc-modal-open');
 
     const modal = backdrop.createDiv({ cls: 'tc-modal' });
 
@@ -61,6 +63,7 @@ export class TaskModal {
       this.ownerDoc.removeEventListener('keydown', this.keyHandler);
       this.keyHandler = null;
     }
+    this.ownerDoc?.body.removeClass('tc-modal-open');
     this.ownerDoc = null;
     this.innerPanel?.destroy();
     this.innerPanel = null;

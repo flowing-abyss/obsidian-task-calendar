@@ -1,9 +1,82 @@
-import type { TFile } from 'obsidian';
-import { describe, expect, it } from 'vitest';
-import { resolveDraggedItems } from '../src/ui/attachmentDrop';
+import type { App, TFile } from 'obsidian';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  attachFilesAsLinks,
+  defaultPastedName,
+  insertAtCaret,
+  resolveDraggedItems,
+} from '../src/ui/attachmentDrop';
 
 const file = (name: string): File => ({ name }) as unknown as File;
 const tfile = (path: string): TFile => ({ path }) as TFile;
+
+describe('defaultPastedName', () => {
+  it('derives a filename from the image MIME type', () => {
+    expect(defaultPastedName('image/png')).toBe('pasted-image.png');
+    expect(defaultPastedName('image/jpeg')).toBe('pasted-image.jpg');
+    expect(defaultPastedName('image/svg+xml')).toBe('pasted-image.svg');
+  });
+  it('falls back to the raw image subtype when unmapped', () => {
+    expect(defaultPastedName('image/tiff')).toBe('pasted-image.tiff');
+  });
+  it('uses pasted-file for non-image blobs', () => {
+    expect(defaultPastedName('application/pdf')).toBe('pasted-file');
+    expect(defaultPastedName('')).toBe('pasted-file');
+  });
+});
+
+describe('insertAtCaret', () => {
+  const ta = (value: string, start: number, end = start): HTMLTextAreaElement => {
+    const el = document.createElement('textarea');
+    el.value = value;
+    el.setSelectionRange(start, end);
+    return el;
+  };
+
+  it('inserts into an empty textarea without a leading space', () => {
+    const el = ta('', 0);
+    insertAtCaret(el, '[[a.png|image]]');
+    expect(el.value).toBe('[[a.png|image]]');
+  });
+  it('adds a separating space after existing non-space text', () => {
+    const el = ta('note', 4);
+    insertAtCaret(el, '[[a.png|image]]');
+    expect(el.value).toBe('note [[a.png|image]]');
+  });
+  it('inserts at the caret between existing text', () => {
+    // value 'a b', caret at index 2 (right after the space) → no extra sep, insert 'X'
+    const el = ta('a b', 2);
+    insertAtCaret(el, 'X');
+    expect(el.value).toBe('a Xb');
+  });
+});
+
+describe('attachFilesAsLinks', () => {
+  it('names a nameless clipboard blob from its MIME type before saving', async () => {
+    const bytes = new Uint8Array([1]).buffer;
+    const pasted = {
+      name: '',
+      type: 'image/png',
+      arrayBuffer: () => Promise.resolve(bytes),
+    } as unknown as File;
+    const saved = { name: 'pasted-image.png' } as TFile;
+    const app = {
+      fileManager: {
+        getAvailablePathForAttachment: vi.fn().mockResolvedValue('pasted-image.png'),
+        generateMarkdownLink: vi.fn().mockReturnValue('[[pasted-image.png|image]]'),
+      },
+      vault: { createBinary: vi.fn().mockResolvedValue(saved) },
+    } as unknown as App;
+
+    const links = await attachFilesAsLinks(app, [pasted], 'Tasks/T.md');
+
+    expect(app.fileManager.getAvailablePathForAttachment).toHaveBeenCalledWith(
+      'pasted-image.png',
+      'Tasks/T.md',
+    );
+    expect(links).toEqual(['[[pasted-image.png|image]]']);
+  });
+});
 
 describe('resolveDraggedItems', () => {
   it('returns external files when the drop carries OS files', () => {
