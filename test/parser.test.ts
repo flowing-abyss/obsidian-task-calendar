@@ -400,7 +400,8 @@ describe('markdownText preserves link markup', () => {
   const ctx = { filePath: 'n.md', line: 0 };
 
   it('keeps wiki, alias and markdown links verbatim while stripping metadata + tags', () => {
-    const raw = '- [ ] Read [[Sources|secondary sources]] and [docs](https://x.io) #task/reference 📅 2026-07-01 🔼';
+    const raw =
+      '- [ ] Read [[Sources|secondary sources]] and [docs](https://x.io) #task/reference 📅 2026-07-01 🔼';
     const t = parseTask(raw, ctx)!;
     expect(t.markdownText).toBe('Read [[Sources|secondary sources]] and [docs](https://x.io)');
     // text keeps the collapsed, human-readable form (note name, not alias — matches
