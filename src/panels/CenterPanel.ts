@@ -48,6 +48,8 @@ export class CenterPanel {
   private selectedTaskKeys = new Set<string>();
   private lastClickedTaskKey: string | null = null;
   private currentListKey: string = 'today';
+  private filterDebounce = 0;
+  private refocusSearch = false;
   private onSaveSettings: () => Promise<void>;
   private mutations: TaskMutationService;
   private md = new Component();
@@ -152,6 +154,7 @@ export class CenterPanel {
 
   destroy(): void {
     this.taskModal?.close();
+    window.clearTimeout(this.filterDebounce);
     this.offs.forEach((f) => f());
     this.destroyCalendarView();
     this.md.unload();
@@ -202,8 +205,22 @@ export class CenterPanel {
       attr: { type: 'text', placeholder: 'Filter…', 'aria-label': 'Filter tasks' },
     });
     searchInput.value = this.state.get('centerFilter');
+    // Restore focus + caret after a debounced filter re-render so typing stays smooth.
+    if (this.refocusSearch) {
+      this.refocusSearch = false;
+      window.setTimeout(() => {
+        searchInput.focus();
+        searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+      }, 0);
+    }
+    // Debounce: each keystroke would otherwise re-render the whole list (running the
+    // markdown pipeline per task) — costly at hundreds of tasks. Apply after a pause.
     searchInput.addEventListener('input', () => {
-      this.state.set('centerFilter', searchInput.value);
+      window.clearTimeout(this.filterDebounce);
+      this.filterDebounce = window.setTimeout(() => {
+        this.refocusSearch = true;
+        this.state.set('centerFilter', searchInput.value);
+      }, 150);
     });
 
     const tasks = this.getFilteredTasks();

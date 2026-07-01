@@ -14,20 +14,31 @@ export function renderTaskText(
   opts: RenderTaskTextOptions,
 ): void {
   el.empty();
+  // Fast path: the vast majority of tasks have no links. Skip the whole Obsidian
+  // MarkdownRenderer pipeline (+ its deferred wiring) and just set text — this keeps
+  // large lists at roughly the old `textContent` cost so they don't jank.
+  const tokens = parseLinks(markdownText);
+  if (tokens.length === 0) {
+    el.setText(markdownText);
+    return;
+  }
   const holder = el.createSpan({ cls: 'tc-md' });
   void MarkdownRenderer.render(opts.app, markdownText, holder, opts.sourcePath, opts.component);
   // Unwrap the single wrapping <p> MarkdownRenderer emits so titles stay inline.
   window.setTimeout(() => {
+    // The list may have re-rendered (filter keystroke, store update) and detached this
+    // node before the macrotask ran — skip the wasted work in that case.
+    if (!holder.isConnected) return;
     const p = holder.querySelector(':scope > p');
     if (p && holder.childElementCount === 1) {
       while (p.firstChild) holder.appendChild(p.firstChild);
       p.remove();
     }
-    wireLinks(holder, markdownText, opts);
+    wireLinks(holder, tokens, opts);
   }, 0);
 }
 
-function wireLinks(holder: HTMLElement, markdownText: string, opts: RenderTaskTextOptions): void {
+function wireLinks(holder: HTMLElement, tokens: LinkToken[], opts: RenderTaskTextOptions): void {
   const anchors = Array.from(holder.querySelectorAll('a'));
   // Link click navigates; never bubble to the card/row handler. Obsidian's global
   // internal-link handler is bypassed by stopPropagation, so open the note ourselves.
@@ -56,7 +67,6 @@ function wireLinks(holder: HTMLElement, markdownText: string, opts: RenderTaskTe
     });
   });
   if (!opts.onEditLink) return;
-  const tokens = parseLinks(markdownText);
   const descriptors = anchors.map((a) => ({
     text: a.textContent ?? '',
     href: a.getAttribute('data-href') ?? a.getAttribute('href') ?? '',

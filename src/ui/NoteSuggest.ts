@@ -10,34 +10,41 @@ interface VaultWithConfig {
  * reports the picked file back to the caller.
  */
 export class NoteSuggest extends AbstractInputSuggest<TFile> {
+  // Compiled once per suggester (the modal lifetime) rather than per keystroke per file.
+  private readonly ignoreMatchers: Array<(path: string) => boolean>;
+
   constructor(
     app: App,
     private readonly inputElement: HTMLInputElement,
     private readonly onPick: (file: TFile) => void,
   ) {
     super(app, inputElement);
-  }
-
-  private ignoreFilters(): string[] {
-    const raw = (this.app.vault as unknown as VaultWithConfig).getConfig('userIgnoreFilters');
-    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+    this.ignoreMatchers = this.buildIgnoreMatchers();
   }
 
   /** Mirrors Obsidian's Excluded-files matching: `/regex/` entries or folder-path prefixes. */
-  private isIgnored(path: string): boolean {
-    for (const filter of this.ignoreFilters()) {
+  private buildIgnoreMatchers(): Array<(path: string) => boolean> {
+    const raw = (this.app.vault as unknown as VaultWithConfig).getConfig('userIgnoreFilters');
+    const filters = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+    const matchers: Array<(path: string) => boolean> = [];
+    for (const filter of filters) {
       if (filter.length > 2 && filter.startsWith('/') && filter.endsWith('/')) {
         try {
-          if (new RegExp(filter.slice(1, -1)).test(path)) return true;
+          const re = new RegExp(filter.slice(1, -1));
+          matchers.push((p) => re.test(p));
         } catch {
-          // Ignore a malformed regex filter rather than breaking the whole suggester.
+          // Skip a malformed regex filter rather than breaking the whole suggester.
         }
       } else {
-        const prefix = filter.endsWith('/') ? filter : `${filter}/`;
-        if (path === filter || path.toLowerCase().startsWith(prefix.toLowerCase())) return true;
+        const prefix = (filter.endsWith('/') ? filter : `${filter}/`).toLowerCase();
+        matchers.push((p) => p === filter || p.toLowerCase().startsWith(prefix));
       }
     }
-    return false;
+    return matchers;
+  }
+
+  private isIgnored(path: string): boolean {
+    return this.ignoreMatchers.some((match) => match(path));
   }
 
   getSuggestions(query: string): TFile[] {
