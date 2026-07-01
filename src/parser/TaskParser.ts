@@ -160,6 +160,22 @@ const FMT_PREFIX_RE = /^([\s>]*-\s\[[^\]]\]\s)/u;
  * Created-date (➕) is preserved if present, placed between recurrence and startDate
  * to match Tasks plugin ordering.
  */
+/**
+ * Insert `insertText` into a task line's title body, before the metadata suffix
+ * (dates/priority/time/recurrence/tags), then re-canonicalize via `formatTaskLine`.
+ * Returns the line unchanged if it is not a task line. Pure — unit-tested.
+ */
+export function insertIntoTitleBody(line: string, insertText: string): string {
+  const prefixMatch = /^([\s>]*- \[[ xX/]\] )/u.exec(line);
+  if (!prefixMatch) return line;
+  const prefix = prefixMatch[1] ?? '';
+  const rawAfterPrefix = line.slice(prefix.length);
+  const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁🔺⏫🔼🔽⏬#➕]/u);
+  const body = (spaceIdx >= 0 ? rawAfterPrefix.slice(0, spaceIdx) : rawAfterPrefix).trimEnd();
+  const suffix = spaceIdx >= 0 ? rawAfterPrefix.slice(spaceIdx) : '';
+  return formatTaskLine(`${prefix}${body} ${insertText}${suffix}`);
+}
+
 export function formatTaskLine(line: string): string {
   const prefixMatch = FMT_PREFIX_RE.exec(line);
   if (!prefixMatch) return line;

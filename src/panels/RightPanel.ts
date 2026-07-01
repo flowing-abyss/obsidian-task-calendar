@@ -4,7 +4,7 @@ import type { AppState } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import { rewriteNthLink, type LinkToken } from '../parser/links';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
-import { formatTaskLine } from '../parser/TaskParser';
+import { formatTaskLine, insertIntoTitleBody } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
 import { enableAttachmentDrop } from '../ui/attachmentDrop';
@@ -93,6 +93,9 @@ export class RightPanel {
       app: this.app,
       sourcePath: task.filePath,
       onLinks: (links) => {
+        // Reads the closure-captured description snapshot; updateDescription rewrites the
+        // whole block from it. Safe for normal single-drop use (the panel isn't re-rendered
+        // mid-drag); a concurrent external edit landing mid-drag is the only stale case.
         const cur = task.description ?? '';
         void this.updateDescription(task, cur.trim() ? `${cur} ${links}` : links);
       },
@@ -803,14 +806,7 @@ export class RightPanel {
     await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
       const line = lines[taskLine];
       if (!line) return;
-      const prefixMatch = /^([\s>]*- \[[ xX/]\] )/.exec(line);
-      if (!prefixMatch) return;
-      const prefix = prefixMatch[1] ?? '';
-      const rawAfterPrefix = line.slice(prefix.length);
-      const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁🔺⏫🔼🔽⏬#➕]/u);
-      const body = (spaceIdx >= 0 ? rawAfterPrefix.slice(0, spaceIdx) : rawAfterPrefix).trimEnd();
-      const suffix = spaceIdx >= 0 ? rawAfterPrefix.slice(spaceIdx) : '';
-      lines[taskLine] = formatTaskLine(`${prefix}${body} ${text}${suffix}`);
+      lines[taskLine] = insertIntoTitleBody(line, text);
     });
   }
 

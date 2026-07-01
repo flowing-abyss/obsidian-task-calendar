@@ -1,5 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { formatTaskLine, parseTask } from '../src/parser/TaskParser';
+import { formatTaskLine, insertIntoTitleBody, parseTask } from '../src/parser/TaskParser';
+
+describe('insertIntoTitleBody', () => {
+  const LINK = '[[att.png|image]]';
+
+  it('appends to a title with no metadata', () => {
+    expect(insertIntoTitleBody('- [ ] Buy milk', LINK)).toBe(`- [ ] Buy milk ${LINK}`);
+  });
+
+  it('inserts before the metadata suffix, preserving date + priority', () => {
+    const out = insertIntoTitleBody('- [ ] Buy milk 📅 2026-07-02 🔼', LINK);
+    expect(out).toContain(LINK);
+    expect(out).toContain('📅 2026-07-02');
+    expect(out).toContain('🔼');
+    // link stays in the title body, before the date metadata
+    expect(out.indexOf(LINK)).toBeLessThan(out.indexOf('📅'));
+    expect(out.indexOf('Buy milk')).toBeLessThan(out.indexOf(LINK));
+  });
+
+  it('keeps the tag and inserts the link in the body for a tag-suffixed title', () => {
+    const out = insertIntoTitleBody('- [ ] Buy milk #shop', LINK);
+    expect(out).toContain(LINK);
+    expect(out).toContain('#shop');
+    expect(out.indexOf('Buy milk')).toBeLessThan(out.indexOf(LINK));
+  });
+
+  it('handles a blockquote/callout-prefixed task', () => {
+    const out = insertIntoTitleBody('> - [ ] Buy milk 📅 2026-07-02', LINK);
+    expect(out.startsWith('> - [ ] ')).toBe(true);
+    expect(out).toContain(LINK);
+    expect(out).toContain('📅 2026-07-02');
+  });
+
+  it('handles a done/in-progress checkbox', () => {
+    expect(insertIntoTitleBody('- [x] Done thing', LINK)).toBe(`- [x] Done thing ${LINK}`);
+    expect(insertIntoTitleBody('- [/] WIP', LINK)).toBe(`- [/] WIP ${LINK}`);
+  });
+
+  it('returns the line unchanged when it is not a task line', () => {
+    expect(insertIntoTitleBody('- plain list item', LINK)).toBe('- plain list item');
+    expect(insertIntoTitleBody('# heading', LINK)).toBe('# heading');
+  });
+});
 
 describe('parseTask deep edges', () => {
   it('returns null when checkbox matches but rest is undefined (line 27)', () => {
