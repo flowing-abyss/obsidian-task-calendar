@@ -1,14 +1,19 @@
+import { Component, type App } from 'obsidian';
+import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { ResolvedConfig } from '../settings/types';
+import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { BaseView } from './BaseView';
 import { getTasksForDate, sortTasks } from './taskGrouping';
 
 export interface ListViewCallbacks {
+  app: App;
   onToggle: (task: Task) => void;
   onDateClick: (date: string) => void;
   onTaskClick?: (task: Task) => void;
+  onEditLink: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
 }
 
 export class ListView extends BaseView {
@@ -18,12 +23,17 @@ export class ListView extends BaseView {
     sourceNoteDisplay: 'non-default',
     customFilePath: '',
   };
+  private md = new Component();
 
   constructor(private callbacks: ListViewCallbacks) {
     super();
   }
 
   render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+    this.md.unload();
+    this.md = new Component();
+    this.md.load();
+
     this.config = config;
     container.empty();
 
@@ -119,9 +129,12 @@ export class ListView extends BaseView {
     } else if (task.status === 'cancelled') {
       statusClass = ' is-cancelled';
     }
-    row.createEl('span', {
-      cls: `tc-list-task-title${statusClass}`,
-      text: task.text,
+    const titleEl = row.createEl('span', { cls: `tc-list-task-title${statusClass}` });
+    renderTaskText(titleEl, task.markdownText, {
+      app: this.callbacks.app,
+      sourcePath: task.filePath,
+      component: this.md,
+      onEditLink: (occ, token) => this.callbacks.onEditLink(task, occ, token),
     });
 
     const meta = row.createDiv({ cls: 'tc-list-task-meta' });
@@ -152,5 +165,7 @@ export class ListView extends BaseView {
     });
   }
 
-  destroy(): void {}
+  destroy(): void {
+    this.md.unload();
+  }
 }

@@ -173,8 +173,10 @@ export class CalendarRenderer {
         });
       } else {
         this.activeView = new ListView({
+          app: this.app,
           onToggle: cb.onToggle,
           onDateClick: cb.onDateClick,
+          onEditLink: () => {},
         });
       }
     }

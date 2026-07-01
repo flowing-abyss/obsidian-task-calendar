@@ -359,11 +359,13 @@ export class CenterPanel {
         });
       } else {
         this.calViewInstance = new ListView({
+          app: this.app,
           onToggle: (t) => {
             void this.store.toggleTask(t);
           },
           onDateClick: () => {},
           onTaskClick: handleTaskClick,
+          onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
         });
       }
       this.calViewInstance.render(viewContainer, tasks, cfg);

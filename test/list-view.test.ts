@@ -1,4 +1,6 @@
+import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
+import type { LinkToken } from '../src/parser/links';
 import type { Task } from '../src/parser/types';
 import { ListView } from '../src/views/ListView';
 import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
@@ -8,17 +10,24 @@ useRealMoment();
 const today = () => window.moment().format('YYYY-MM-DD');
 const yesterday = () => window.moment().subtract(1, 'day').format('YYYY-MM-DD');
 
+function fakeApp(): App {
+  return {} as App;
+}
+
 function makeView(
   callbacks: Partial<{
     onToggle: (t: Task) => void;
     onDateClick: (d: string) => void;
     onTaskClick: (t: Task) => void;
+    onEditLink: (t: Task, occ: number, token: LinkToken) => void;
   }> = {},
 ) {
   const spies = {
+    app: fakeApp(),
     onToggle: vi.fn(callbacks.onToggle),
     onDateClick: vi.fn(callbacks.onDateClick),
     onTaskClick: vi.fn(callbacks.onTaskClick),
+    onEditLink: vi.fn(callbacks.onEditLink),
   };
   const view = new ListView(spies);
   return { view, spies };
@@ -120,16 +129,16 @@ describe('ListView', () => {
       const c = freshContainer();
       const d = today();
       // Distinct filePath/line so dedup doesn't collapse rows (task() defaults to line 0).
+      // Titles render via MarkdownRenderer (mocked as a noop in tests), so row order is
+      // asserted via the plain-text time badge instead of the title's textContent.
       const tasks = [
-        task({ text: 'zzz', due: d, priority: 'D', status: 'open', line: 1 }),
-        task({ text: 'aaa', due: d, priority: 'A', status: 'open', line: 2 }),
+        task({ text: 'zzz', due: d, priority: 'D', status: 'open', line: 1, time: '23:00' }),
+        task({ text: 'aaa', due: d, priority: 'A', status: 'open', line: 2, time: '10:00' }),
         task({ text: 'bbb', due: d, priority: 'A', time: '09:00', status: 'open', line: 3 }),
       ];
       view.render(c, tasks, resolvedConfig());
-      const rows = Array.from(c.querySelectorAll('.tc-list-task-title'));
-      expect(rows[0]?.textContent).toBe('bbb');
-      expect(rows[1]?.textContent).toBe('aaa');
-      expect(rows[2]?.textContent).toBe('zzz');
+      const times = Array.from(c.querySelectorAll('.tc-task-time')).map((el) => el.textContent);
+      expect(times).toEqual(['09:00', '10:00', '23:00']);
     });
   });
 
