@@ -17,10 +17,20 @@ describe('aliasForExtension', () => {
     expect(aliasForExtension('pdf')).toBe('PDF');
     expect(aliasForExtension('.PDF')).toBe('PDF');
   });
+  it('maps word-processing docs to doc', () => {
+    for (const ext of ['doc', 'DOCX', '.odt', 'rtf', 'pages']) {
+      expect(aliasForExtension(ext)).toBe('doc');
+    }
+  });
+  it('maps spreadsheets to table', () => {
+    for (const ext of ['xls', 'XLSX', '.xlsm', 'csv', 'ods', 'numbers']) {
+      expect(aliasForExtension(ext)).toBe('table');
+    }
+  });
   it('maps anything else (incl. empty) to file', () => {
     expect(aliasForExtension('zip')).toBe('file');
     expect(aliasForExtension('')).toBe('file');
-    expect(aliasForExtension('docx')).toBe('file');
+    expect(aliasForExtension('exe')).toBe('file');
   });
 });
 
@@ -28,6 +38,8 @@ describe('aliasForName', () => {
   it('derives alias from the filename extension', () => {
     expect(aliasForName('photo.PNG')).toBe('image');
     expect(aliasForName('report.pdf')).toBe('PDF');
+    expect(aliasForName('spec.docx')).toBe('doc');
+    expect(aliasForName('budget.xlsx')).toBe('table');
     expect(aliasForName('archive.tar.gz')).toBe('file');
     expect(aliasForName('noext')).toBe('file');
   });

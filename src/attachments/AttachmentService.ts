@@ -1,14 +1,18 @@
 import type { App, TFile } from 'obsidian';
 
-export type AttachmentAlias = 'image' | 'PDF' | 'file';
+export type AttachmentAlias = 'image' | 'PDF' | 'doc' | 'table' | 'file';
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'avif']);
+const DOC_EXTENSIONS = new Set(['doc', 'docx', 'odt', 'rtf', 'pages']);
+const TABLE_EXTENSIONS = new Set(['xls', 'xlsx', 'xlsm', 'csv', 'ods', 'numbers']);
 
 /** Map a file extension (dot optional, case-insensitive) to a compact alias. */
 export function aliasForExtension(extension: string): AttachmentAlias {
   const ext = extension.replace(/^\./u, '').toLowerCase();
   if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (ext === 'pdf') return 'PDF';
+  if (DOC_EXTENSIONS.has(ext)) return 'doc';
+  if (TABLE_EXTENSIONS.has(ext)) return 'table';
   return 'file';
 }
 
