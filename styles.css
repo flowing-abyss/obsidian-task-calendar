@@ -2245,7 +2245,10 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   width: 100%;
   min-height: var(--input-height, 30px);
   resize: vertical;
-  font: inherit;
+  /* font-size/weight come from the shared .tc-right-title class; inherit the
+     UI font-family so the textarea doesn't fall back to the UA monospace and
+     read/edit modes match visually. */
+  font-family: inherit;
   line-height: inherit;
 }
 .tc-right-header-actions {

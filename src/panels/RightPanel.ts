@@ -267,7 +267,7 @@ export class RightPanel {
     renderView: () => void,
   ): void {
     view.hide();
-    const ta = header.createEl('textarea', { cls: 'tc-right-title-edit' });
+    const ta = header.createEl('textarea', { cls: 'tc-right-title tc-right-title-edit' });
     ta.value = task.markdownText;
     // Auto-grow to content.
     const grow = (): void => {
