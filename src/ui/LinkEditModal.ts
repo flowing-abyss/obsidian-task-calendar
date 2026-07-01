@@ -19,13 +19,11 @@ export class LinkEditModal extends Modal {
     const { contentEl, token } = this;
     contentEl.createEl('h3', { text: token.type === 'wiki' ? 'Edit wiki link' : 'Edit link' });
 
-    new Setting(contentEl)
-      .setName(token.type === 'wiki' ? 'Note' : 'URL')
-      .addText((t) =>
-        t.setValue(this.target).onChange((v) => {
-          this.target = v;
-        }),
-      );
+    new Setting(contentEl).setName(token.type === 'wiki' ? 'Note' : 'URL').addText((t) =>
+      t.setValue(this.target).onChange((v) => {
+        this.target = v;
+      }),
+    );
 
     new Setting(contentEl)
       .setName(token.type === 'wiki' ? 'Display (alias)' : 'Display text')

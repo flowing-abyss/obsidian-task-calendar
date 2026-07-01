@@ -1,5 +1,5 @@
-import type { SubTask, Task } from '../parser/types';
 import { rewriteNthLink } from '../parser/links';
+import type { SubTask, Task } from '../parser/types';
 import { locatorOf } from './TaskLocator';
 import type { TaskMutationService } from './TaskMutationService';
 

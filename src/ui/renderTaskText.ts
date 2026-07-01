@@ -1,4 +1,4 @@
-import { Component, Menu, MenuItem, MarkdownRenderer, type App } from 'obsidian';
+import { Component, MarkdownRenderer, Menu, MenuItem, type App } from 'obsidian';
 import { parseLinks, type LinkToken } from '../parser/links';
 
 export interface RenderTaskTextOptions {
