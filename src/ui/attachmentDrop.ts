@@ -106,14 +106,12 @@ export async function attachFilesAsLinks(
   const links: string[] = [];
   // Sequential so getAvailablePathForAttachment resolves name collisions deterministically.
   for (const file of files) {
+    const name = file.name || defaultPastedName(file.type);
     try {
-      const name = file.name || defaultPastedName(file.type);
       const saved = await saveExternalFile(app, file, sourcePath, name);
       links.push(buildAttachmentLink(app, saved, sourcePath, aliasForName(saved.name)));
     } catch (err) {
-      new Notice(
-        `Could not attach ${file.name || 'pasted file'}: ${err instanceof Error ? err.message : 'error'}`,
-      );
+      new Notice(`Could not attach ${name}: ${err instanceof Error ? err.message : 'error'}`);
     }
   }
   return links;
@@ -152,6 +150,19 @@ export interface AttachmentPasteOptions {
   onInsert: (linkMarkdown: string) => void;
 }
 
+// Tracks an in-flight paste-attach per element so a caller that finalizes on blur
+// (an edit textarea removed on save) can await it before reading/removing the element.
+const pendingPastes = new WeakMap<HTMLElement, Promise<unknown>>();
+
+/**
+ * Resolve once any in-flight paste-attach for `el` has inserted its link. Callers that
+ * destroy the element on blur/save must await this first, or a paste that resolves after
+ * removal is silently lost (the file is saved but its link never persisted).
+ */
+export function whenPasteSettled(el: HTMLElement): Promise<void> {
+  return Promise.resolve(pendingPastes.get(el)).then(() => undefined);
+}
+
 /** Wire clipboard paste-to-attach onto a textarea. Returns a disposer. */
 export function enableAttachmentPaste(el: HTMLElement, opts: AttachmentPasteOptions): () => void {
   const onPaste = (e: ClipboardEvent): void => {
@@ -159,11 +170,16 @@ export function enableAttachmentPaste(el: HTMLElement, opts: AttachmentPasteOpti
     if (files.length === 0) return; // no files → let the normal (text) paste happen
     e.preventDefault();
     e.stopPropagation();
-    void attachFilesAsLinks(opts.app, files, opts.sourcePath).then((links) => {
+    const done = attachFilesAsLinks(opts.app, files, opts.sourcePath).then((links) => {
       if (links.length === 0) return;
       opts.onInsert(links.join(' '));
       new Notice(`Attached ${links.length} file${links.length > 1 ? 's' : ''}`);
     });
+    const tracked = done.finally(() => {
+      if (pendingPastes.get(el) === tracked) pendingPastes.delete(el);
+    });
+    pendingPastes.set(el, tracked);
+    void tracked;
   };
   el.addEventListener('paste', onPaste);
   return () => el.removeEventListener('paste', onPaste);

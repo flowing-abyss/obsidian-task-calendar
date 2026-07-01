@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   attachFilesAsLinks,
   defaultPastedName,
+  enableAttachmentPaste,
   insertAtCaret,
   resolveDraggedItems,
+  whenPasteSettled,
 } from '../src/ui/attachmentDrop';
 
 const file = (name: string): File => ({ name }) as unknown as File;
@@ -75,6 +77,62 @@ describe('attachFilesAsLinks', () => {
       'Tasks/T.md',
     );
     expect(links).toEqual(['[[pasted-image.png|image]]']);
+  });
+});
+
+describe('enableAttachmentPaste + whenPasteSettled', () => {
+  const pngApp = (): App =>
+    ({
+      fileManager: {
+        getAvailablePathForAttachment: vi.fn().mockResolvedValue('a.png'),
+        generateMarkdownLink: vi.fn().mockReturnValue('[[a.png|image]]'),
+      },
+      vault: { createBinary: vi.fn().mockResolvedValue({ name: 'a.png' }) },
+    }) as unknown as App;
+
+  const pasteEvent = (files: File[]): Event => {
+    const ev = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'clipboardData', { value: { files } });
+    return ev;
+  };
+
+  it('whenPasteSettled resolves immediately when nothing is pending', async () => {
+    const el = document.createElement('textarea');
+    await expect(whenPasteSettled(el)).resolves.toBeUndefined();
+  });
+
+  it('inserts only after the async attach settles; whenPasteSettled awaits it', async () => {
+    const el = document.createElement('textarea');
+    const inserted: string[] = [];
+    const f = {
+      name: 'a.png',
+      type: 'image/png',
+      arrayBuffer: () => Promise.resolve(new Uint8Array([1]).buffer),
+    } as unknown as File;
+    enableAttachmentPaste(el, {
+      app: pngApp(),
+      sourcePath: 'T.md',
+      onInsert: (l) => inserted.push(l),
+    });
+
+    el.dispatchEvent(pasteEvent([f]));
+    expect(inserted).toEqual([]); // not inserted synchronously
+
+    await whenPasteSettled(el);
+    expect(inserted).toEqual(['[[a.png|image]]']); // settled → link inserted
+  });
+
+  it('ignores a paste with no files (lets normal text paste proceed)', async () => {
+    const el = document.createElement('textarea');
+    const inserted: string[] = [];
+    enableAttachmentPaste(el, {
+      app: pngApp(),
+      sourcePath: 'T.md',
+      onInsert: (l) => inserted.push(l),
+    });
+    el.dispatchEvent(pasteEvent([]));
+    await whenPasteSettled(el);
+    expect(inserted).toEqual([]);
   });
 });
 

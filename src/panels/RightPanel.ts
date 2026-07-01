@@ -7,7 +7,12 @@ import { applySubtaskReorder } from '../parser/subtask-reorder';
 import { formatTaskLine, insertIntoTitleBody } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
-import { enableAttachmentDrop, enableAttachmentPaste, insertAtCaret } from '../ui/attachmentDrop';
+import {
+  enableAttachmentDrop,
+  enableAttachmentPaste,
+  insertAtCaret,
+  whenPasteSettled,
+} from '../ui/attachmentDrop';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderTaskText } from '../ui/renderTaskText';
 import { showTagDropdown } from '../ui/tagDropdown';
@@ -121,7 +126,10 @@ export class RightPanel {
       ta.setCssStyles({ height: `${Math.max(start, 60)}px` });
       window.setTimeout(() => ta.focus(), 0);
       let done = false;
-      const finish = (save: boolean): void => {
+      const finish = async (save: boolean): Promise<void> => {
+        if (done) return;
+        // Let any in-flight paste insert its link into the value before we save/remove.
+        await whenPasteSettled(ta);
         if (done) return;
         done = true;
         if (save && ta.value !== (task.description ?? '')) {
@@ -131,11 +139,11 @@ export class RightPanel {
         view.show();
         showView();
       };
-      ta.addEventListener('blur', () => finish(true));
+      ta.addEventListener('blur', () => void finish(true));
       ta.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           e.preventDefault();
-          finish(false);
+          void finish(false);
         }
       });
     };
@@ -403,7 +411,10 @@ export class RightPanel {
     }, 0);
 
     let done = false;
-    const finish = (save: boolean): void => {
+    const finish = async (save: boolean): Promise<void> => {
+      if (done) return;
+      // Let any in-flight paste insert its link into the value before we save/remove.
+      await whenPasteSettled(ta);
       if (done) return;
       done = true;
       // Carry the current height back to the read-mode block so the stretch persists.
@@ -415,15 +426,15 @@ export class RightPanel {
       view.show();
       renderView();
     };
-    ta.addEventListener('blur', () => finish(true));
+    ta.addEventListener('blur', () => void finish(true));
     ta.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        finish(true);
+        void finish(true);
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        finish(false);
+        void finish(false);
       }
     });
   }
@@ -543,7 +554,10 @@ export class RightPanel {
       textarea.focus();
       textarea.select();
       let saved = false;
-      const finish = (): void => {
+      const finish = async (): Promise<void> => {
+        if (saved) return;
+        // Let any in-flight paste insert its link into the value before we save/remove.
+        await whenPasteSettled(textarea);
         if (saved) return;
         saved = true;
         const val = textarea.value.trim();
@@ -556,7 +570,7 @@ export class RightPanel {
           showText();
         }
       };
-      textarea.addEventListener('blur', () => window.setTimeout(finish, 150));
+      textarea.addEventListener('blur', () => window.setTimeout(() => void finish(), 150));
       textarea.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
