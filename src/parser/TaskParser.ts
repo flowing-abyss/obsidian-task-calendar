@@ -1,3 +1,4 @@
+import { collapseLinks } from './links';
 import type { ParseContext, Task, TaskPriority, TaskStatus } from './types';
 
 // Matches task lines: optional indent and blockquote/callout markers (spaces, tabs,
@@ -14,10 +15,6 @@ const TIME_RE = /⏰\s*(\d{1,2}:\d{2})/u;
 // Recurrence: capture text after 🔁 until another metadata emoji (includes 🔺⏬ for Tasks compat)
 const RECURRENCE_RE = /🔁\s*([^📅⏳🛫✅❌⏰🔺⏫🔼🔽⏬\n]*)/u;
 
-const WIKILINK_ALIAS_RE = /\[\[([^|[\]]+)\|[^[\]]+\]\]/gu;
-const WIKILINK_RE = /\[\[([^[\]]+)\]\]/gu;
-const MD_LINK_RE = /\[([^[\]]+)\]\([^)]+\)/gu;
-const BRACKETS_RE = /\[([^[\]]*)\]/gu;
 const TAGS_RE = /#[\w/-]+/gu;
 
 export function parseTask(rawText: string, ctx: ParseContext): Task | null {
@@ -118,26 +115,22 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
     text = text.replace(/⏬/gu, '');
   }
 
-  // Collapse links to readable form
-  text = text.replace(WIKILINK_ALIAS_RE, '🔗$1');
-  text = text.replace(WIKILINK_RE, (_, link: string) => '🔗 ' + link.replace(/\.[^.]*$/u, ''));
-  text = text.replace(MD_LINK_RE, '🌐 $1');
-  text = text.replace(BRACKETS_RE, '$1');
-
   // Strip tags
   if (ctx.globalTaskFilter) {
     text = text.split(ctx.globalTaskFilter).join('');
   }
-  text = text
+  const markdownText = text
     .replace(TAGS_RE, '')
     .replace(/\s{2,}/gu, ' ')
     .trim();
+  text = collapseLinks(markdownText);
 
   return {
     filePath: ctx.filePath,
     line: ctx.line,
     rawText,
     text,
+    markdownText,
     status,
     due,
     scheduled,

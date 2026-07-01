@@ -1,4 +1,5 @@
 import { extractMetadata } from './extractMetadata';
+import { collapseLinks } from './links';
 import type { SubTask, TaskComment } from './types';
 
 export interface SubItemResult {
@@ -50,7 +51,8 @@ function parseSubtask(
     filePath,
     line: i,
     rawText,
-    text: meta.cleanText,
+    text: collapseLinks(meta.cleanText),
+    markdownText: meta.cleanText,
     status: statusChar === ' ' ? 'open' : 'done',
     priority: meta.priority,
     ...(meta.due !== undefined && { due: meta.due }),

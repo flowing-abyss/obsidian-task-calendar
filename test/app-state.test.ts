@@ -142,6 +142,7 @@ describe('AppState', () => {
       line: 0,
       rawText: '- [ ] t',
       text: 't',
+      markdownText: 't',
       status: 'open',
       priority: 'D',
     };

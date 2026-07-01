@@ -7,6 +7,7 @@ export interface Task {
   line: number; // 0-based line index
   rawText: string; // full original line, for write-back
   text: string; // display text: metadata emoji and tags stripped
+  markdownText: string; // display text with link markup ([[…]], [](…)) preserved
   status: TaskStatus; // 'in-progress' from checkbox '/' only; derived date logic lives in views
   due?: string; // YYYY-MM-DD from 📅
   scheduled?: string; // YYYY-MM-DD from ⏳
@@ -32,6 +33,7 @@ export interface SubTask {
   line: number;
   rawText: string;
   text: string;
+  markdownText: string; // display text with link markup ([[…]], [](…)) preserved
   status: 'open' | 'done';
   due?: string;
   scheduled?: string;

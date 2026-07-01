@@ -11,6 +11,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     line: 0,
     rawText: '- [ ] do thing #task/inbox',
     text: 'do thing #task/inbox',
+    markdownText: 'do thing #task/inbox',
     status: 'open',
     priority: 'D',
     ...overrides,

@@ -135,6 +135,7 @@ describe('RightPanel.renderSubTask', () => {
       line: 1,
       rawText: '  - [ ] sub one',
       text: 'sub one',
+      markdownText: 'sub one',
       status: 'open',
       priority: 'D',
     };
@@ -156,6 +157,7 @@ describe('RightPanel.renderSubTask', () => {
       line: 1,
       rawText: '  - [ ] sub one',
       text: 'sub one',
+      markdownText: 'sub one',
       status: 'open',
       priority: 'D',
     };

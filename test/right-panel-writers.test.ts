@@ -306,6 +306,7 @@ describe('RightPanel.toggleSubTask', () => {
       line: 0,
       rawText: '  - [ ] sub',
       text: 'sub',
+      markdownText: 'sub',
       status: 'open',
       priority: 'D',
     };
@@ -325,6 +326,7 @@ describe('RightPanel.toggleSubTask', () => {
       line: 0,
       rawText: '  - [X] sub',
       text: 'sub',
+      markdownText: 'sub',
       status: 'open', // caller claims open, but file has uppercase X
       priority: 'D',
     };
@@ -341,6 +343,7 @@ describe('RightPanel.toggleSubTask', () => {
       line: 0,
       rawText: '  - [x] sub',
       text: 'sub',
+      markdownText: 'sub',
       status: 'done',
       priority: 'D',
     };
@@ -357,6 +360,7 @@ describe('RightPanel.toggleSubTask', () => {
       line: 0,
       rawText: '  - [X] sub',
       text: 'sub',
+      markdownText: 'sub',
       status: 'done',
       priority: 'D',
     };
@@ -372,6 +376,7 @@ describe('RightPanel.toggleSubTask', () => {
       line: 0,
       rawText: '  - [ ] sub',
       text: 'sub',
+      markdownText: 'sub',
       status: 'open',
       priority: 'D',
     };

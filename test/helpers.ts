@@ -32,11 +32,13 @@ export function withMobile(value: boolean): void {
 
 /** Build a minimal Task satisfying the Task type; overrides win. */
 export function task(overrides: Partial<Task> = {}): Task {
+  const text = overrides.text ?? 't';
   return {
     filePath: 'f.md',
     line: 0,
     rawText: '- [ ] t',
-    text: 't',
+    text,
+    markdownText: text,
     status: 'open',
     priority: 'D',
     ...overrides,
