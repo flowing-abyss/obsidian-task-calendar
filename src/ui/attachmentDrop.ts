@@ -117,15 +117,17 @@ export async function attachFilesAsLinks(
   return links;
 }
 
-/** Insert text at the textarea's caret (with a leading space if needed) and refocus. */
+/** Insert text at the textarea's caret, padding with spaces so it never fuses with
+ * adjacent text, and place the caret right after the inserted text. */
 export function insertAtCaret(textarea: HTMLTextAreaElement, text: string): void {
   const start = textarea.selectionStart ?? textarea.value.length;
   const end = textarea.selectionEnd ?? textarea.value.length;
   const before = textarea.value.slice(0, start);
   const after = textarea.value.slice(end);
-  const sep = before && !before.endsWith(' ') && !before.endsWith('\n') ? ' ' : '';
-  textarea.value = `${before}${sep}${text}${after}`;
-  const pos = before.length + sep.length + text.length;
+  const lead = before && !/\s$/u.test(before) ? ' ' : '';
+  const trail = after && !/^\s/u.test(after) ? ' ' : '';
+  textarea.value = `${before}${lead}${text}${trail}${after}`;
+  const pos = before.length + lead.length + text.length;
   textarea.setSelectionRange(pos, pos);
   textarea.focus();
 }

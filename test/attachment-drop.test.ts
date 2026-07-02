@@ -45,11 +45,16 @@ describe('insertAtCaret', () => {
     insertAtCaret(el, '[[a.png|image]]');
     expect(el.value).toBe('note [[a.png|image]]');
   });
-  it('inserts at the caret between existing text', () => {
-    // value 'a b', caret at index 2 (right after the space) → no extra sep, insert 'X'
+  it('pads both sides when inserting between existing words so nothing fuses', () => {
+    // value 'a b', caret at index 2 (after the space) → no lead space, trailing space added
     const el = ta('a b', 2);
     insertAtCaret(el, 'X');
-    expect(el.value).toBe('a Xb');
+    expect(el.value).toBe('a X b');
+  });
+  it('adds a trailing space when following text is non-space (caret before it)', () => {
+    const el = ta('after', 0);
+    insertAtCaret(el, '[[a.png|image]]');
+    expect(el.value).toBe('[[a.png|image]] after');
   });
 });
 
