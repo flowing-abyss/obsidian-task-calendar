@@ -1,11 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildLinkRaw,
+  countLinksIn,
   pairAnchorsToTokens,
   parseLinks,
   rewriteNthLink,
   type LinkToken,
 } from '../src/parser/links';
+
+describe('countLinksIn', () => {
+  it('sums wiki + markdown links across all given texts, skipping undefined', () => {
+    const count = countLinksIn([
+      'title [[Note]] and [ext](http://x)', // 2
+      undefined,
+      'desc [[Other]]', // 1
+      'a comment with no links', // 0
+      '![[embed.png]] is not a link', // 0 (embeds excluded)
+    ]);
+    expect(count).toBe(3);
+  });
+  it('is 0 for empty input', () => {
+    expect(countLinksIn([])).toBe(0);
+    expect(countLinksIn([undefined, ''])).toBe(0);
+  });
+});
 
 describe('parseLinks', () => {
   it('returns wiki, alias and markdown links in document order', () => {

@@ -51,6 +51,15 @@ export function parseLinks(input: string): LinkToken[] {
   return tokens;
 }
 
+/** Total number of links (wiki + markdown) across the given texts. */
+export function countLinksIn(texts: Array<string | undefined>): number {
+  let total = 0;
+  for (const text of texts) {
+    if (text) total += parseLinks(text).length;
+  }
+  return total;
+}
+
 /** Replace the Nth link occurrence in `line` with `newRaw`; returns `line` unchanged if absent. */
 export function rewriteNthLink(line: string, occurrenceIndex: number, newRaw: string): string {
   const tokens = parseLinks(line);
