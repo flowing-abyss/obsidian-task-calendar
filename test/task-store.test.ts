@@ -54,6 +54,21 @@ describe('TaskStore initialize + getTasks', () => {
     expect(tasks[0]?.line).toBe(0);
   });
 
+  it('precomputes linkCount across title, description and comments', async () => {
+    const content = [
+      '- [ ] see [[Note]] and [ext](http://x) 📅 2026-06-24',
+      '  - > desc with [[Other]]',
+      '  - 2026-06-24: a comment [[Third]]',
+    ].join('\n');
+    const app = await createAppWithFiles({ 'a.md': content });
+    seedTaskCache(app, 'a.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const tasks = store.getTasks();
+    // 2 in title + 1 in description + 1 in comment
+    expect(tasks[0]?.linkCount).toBe(4);
+  });
+
   it('multiple files flatten tasks with filePath/line preserved', async () => {
     const app = await createAppWithFiles({
       'a.md': '- [ ] task a\n- [x] done a',

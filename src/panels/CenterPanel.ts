@@ -1,7 +1,7 @@
 import { Component, Menu, Notice, setIcon, TFile, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
-import { countLinksIn, type LinkToken } from '../parser/links';
+import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
 import type {
@@ -645,12 +645,8 @@ export class CenterPanel {
       setIcon(badge, 'message-square');
       badge.createEl('span', { text: String(commentCount) });
     }
-    // Attached materials: count of links (files/notes) across title, description and comments.
-    const linkCount = countLinksIn([
-      task.markdownText,
-      task.description,
-      ...(task.comments?.map((c) => c.text) ?? []),
-    ]);
+    // Attached materials: link count precomputed by TaskStore (no per-render parsing).
+    const linkCount = task.linkCount ?? 0;
     if (linkCount > 0) {
       const badge = titleRow.createEl('span', { cls: 'tc-task-count-badge' });
       setIcon(badge, 'paperclip');

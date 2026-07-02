@@ -22,6 +22,7 @@ export interface Task {
   comments?: TaskComment[];
   description?: string;
   subtaskRange?: { from: number; to: number };
+  linkCount?: number; // count of links (files/notes) in title+description+comments, precomputed by TaskStore
   dailyNoteDate?: string; // YYYY-MM-DD pre-computed by TaskStore if file is a daily note
   noteColor?: string; // from file frontmatter `color`
   noteTextColor?: string; // from file frontmatter `textColor`

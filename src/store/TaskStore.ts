@@ -7,6 +7,7 @@ import {
   type TAbstractFile,
 } from 'obsidian';
 import { locatorOf, TaskMutationService } from '../mutation';
+import { countLinksIn } from '../parser/links';
 import { parseSubItems } from '../parser/SubItemParser';
 import { parseTask } from '../parser/TaskParser';
 import type { Task, TaskFilter } from '../parser/types';
@@ -149,6 +150,12 @@ export class TaskStore {
         if (sub.comments.length) task.comments = sub.comments;
         if (sub.description) task.description = sub.description;
         if (sub.subtaskRange) task.subtaskRange = sub.subtaskRange;
+        // Precompute the attached-materials link count once (not per render).
+        task.linkCount = countLinksIn([
+          task.markdownText,
+          sub.description,
+          ...sub.comments.map((c) => c.text),
+        ]);
         tasks.push(task);
       }
     }

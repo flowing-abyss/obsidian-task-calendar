@@ -154,6 +154,8 @@ export interface AttachmentPasteOptions {
 
 // Tracks an in-flight paste-attach per element so a caller that finalizes on blur
 // (an edit textarea removed on save) can await it before reading/removing the element.
+// The stored promise never rejects: attachFilesAsLinks catches per-file errors internally,
+// so awaiting it in a blur handler cannot turn into an unhandled rejection.
 const pendingPastes = new WeakMap<HTMLElement, Promise<unknown>>();
 
 /**
