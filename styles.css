@@ -3484,6 +3484,8 @@ body.tc-modal-open .popover.hover-popover {
 }
 .tc-project-back {
   display: inline-flex;
+  align-self: flex-start;
+  width: fit-content;
   align-items: center;
   gap: 6px;
   background: transparent;
