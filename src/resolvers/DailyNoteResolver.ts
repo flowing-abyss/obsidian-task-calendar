@@ -92,6 +92,18 @@ export class DailyNoteResolver {
     return this.createNoteWithTemplate(filePath, ps.template, fileName);
   }
 
+  /**
+   * Public wrapper so other subsystems (e.g. Projects) can create a note from
+   * a template using the same Templater-aware path as daily notes.
+   */
+  async createNoteFromTemplate(
+    filePath: string,
+    templatePath: string,
+    title: string,
+  ): Promise<TFile> {
+    return this.createNoteWithTemplate(filePath, templatePath, title);
+  }
+
   private async createNoteWithTemplate(
     filePath: string,
     templatePath: string,

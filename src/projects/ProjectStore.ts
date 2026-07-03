@@ -35,7 +35,7 @@ export class ProjectStore {
   private byPath = new Map<string, Project>();
   private listeners: Array<() => void> = [];
   private refs: EventRef[] = [];
-  private debounce?: ReturnType<typeof setTimeout>;
+  private debounce = 0;
 
   constructor(
     private app: App,
