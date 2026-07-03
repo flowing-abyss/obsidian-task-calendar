@@ -1,0 +1,91 @@
+import { TFile, type App } from 'obsidian';
+import type { AppState } from '../../app/AppState';
+import type { ProjectManager } from '../../projects/ProjectManager';
+import type { ProjectStore } from '../../projects/ProjectStore';
+import type { CalendarSettings } from '../../settings/types';
+import { renderProjectDashboard } from './ProjectsDashboardView';
+import { renderProjectsList } from './ProjectsListView';
+
+export interface ProjectsPanelOptions {
+  /** Render a project's tasks into `host` (PanelView wires this to reuse task rendering). */
+  renderTasks?: (host: HTMLElement, path: string) => void;
+  /** Open the create-project flow. */
+  onNewProject?: () => void;
+}
+
+/**
+ * The `projects` mode surface. Self-contained deep mode: switches internally
+ * between the List overview and a single-project Dashboard via `projectsPanel`
+ * state, never touching the global `mode`.
+ */
+export class ProjectsPanel {
+  private el!: HTMLElement;
+  private offs: Array<() => void> = [];
+  private readonly renderTasks: (host: HTMLElement, path: string) => void;
+  private readonly onNewProject: () => void;
+
+  constructor(
+    private state: AppState,
+    private projectStore: ProjectStore,
+    private projectManager: ProjectManager,
+    private settings: CalendarSettings,
+    private app: App,
+    opts: ProjectsPanelOptions = {},
+  ) {
+    this.renderTasks = opts.renderTasks ?? ((): void => {});
+    this.onNewProject = opts.onNewProject ?? ((): void => {});
+  }
+
+  mount(el: HTMLElement): void {
+    this.el = el;
+    this.offs.push(this.state.on('projectsPanel', () => this.render()));
+    this.offs.push(this.projectStore.onUpdate(() => this.render()));
+    this.render();
+  }
+
+  refresh(): void {
+    if (this.el) this.render();
+  }
+
+  private setStatus(path: string, statusId: string): void {
+    void this.projectManager.setStatus(path, statusId).then(() => this.projectStore.refresh());
+  }
+
+  private openNote(path: string): void {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) void this.app.workspace.getLeaf(false).openFile(file);
+  }
+
+  private render(): void {
+    this.el.empty();
+    this.el.addClass('tc-projects-panel');
+    const view = this.state.get('projectsPanel');
+
+    if (view.view === 'dashboard') {
+      const container = this.el.createDiv();
+      renderProjectDashboard(container, this.projectStore.get(view.path), {
+        state: this.state,
+        settings: this.settings,
+        onSetStatus: (p, id) => this.setStatus(p, id),
+        openNote: (p) => this.openNote(p),
+        renderTasks: this.renderTasks,
+      });
+      return;
+    }
+
+    const container = this.el.createDiv();
+    renderProjectsList(container, this.projectStore.list(), {
+      state: this.state,
+      settings: this.settings,
+      onNew: () => this.onNewProject(),
+      onSetStatus: (p, id) => this.setStatus(p, id),
+      openNote: (p) => this.openNote(p),
+    });
+  }
+
+  destroy(): void {
+    this.offs.forEach((f) => f());
+    this.offs = [];
+    this.el?.empty();
+  }
+}

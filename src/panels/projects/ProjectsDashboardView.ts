@@ -1,0 +1,80 @@
+import { Menu, setIcon } from 'obsidian';
+import type { Project } from '../../projects/types';
+import { renderProgressBar } from './progressBar';
+import type { ProjectsDashboardContext } from './viewContext';
+
+function formatMinutes(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** Detail view for a single project: header, stats, description, its tasks. */
+export function renderProjectDashboard(
+  container: HTMLElement,
+  project: Project | undefined,
+  ctx: ProjectsDashboardContext,
+): void {
+  container.addClass('tc-projects-dashboard');
+
+  const back = container.createEl('button', { cls: 'tc-project-back' });
+  setIcon(back, 'arrow-left');
+  back.createSpan({ text: 'Back to projects' });
+  back.addEventListener('click', () => ctx.state.set('projectsPanel', { view: 'list' }));
+
+  if (!project) {
+    container.createDiv({ cls: 'tc-projects-empty', text: 'Project not found' });
+    return;
+  }
+
+  const statuses = ctx.settings.projects.statuses;
+  const status = project.statusId ? statuses.find((s) => s.id === project.statusId) : undefined;
+
+  const header = container.createDiv({ cls: 'tc-project-dashboard-header' });
+  header.createEl('h2', { cls: 'tc-project-dashboard-title', text: project.name });
+
+  const pill = header.createEl('button', { cls: 'tc-status-pill' });
+  if (status?.color) pill.style.background = status.color;
+  pill.setText(status?.label ?? project.rawStatus ?? 'No status');
+  pill.addEventListener('click', (e) => {
+    const menu = new Menu();
+    for (const s of statuses) {
+      menu.addItem((item) =>
+        item
+          .setTitle(s.label)
+          .setChecked(s.id === project.statusId)
+          .onClick(() => ctx.onSetStatus(project.path, s.id)),
+      );
+    }
+    menu.showAtMouseEvent(e);
+  });
+
+  const open = header.createEl('button', {
+    cls: 'tc-project-open-btn',
+    attr: { 'aria-label': 'Open note' },
+  });
+  setIcon(open, 'file-text');
+  open.addEventListener('click', () => ctx.openNote(project.path));
+
+  const stats = container.createDiv({ cls: 'tc-project-dashboard-stats' });
+  renderProgressBar(stats, project.stats.done, project.stats.total);
+  // Time slots render only when a future tracker has populated them.
+  if (project.stats.estimateMin !== undefined || project.stats.spentMin !== undefined) {
+    const time = stats.createDiv({ cls: 'tc-project-time' });
+    const spent = project.stats.spentMin ?? 0;
+    const est = project.stats.estimateMin ?? 0;
+    time.createSpan({
+      cls: 'tc-project-time-label',
+      text: `${formatMinutes(spent)} / ${formatMinutes(est)}`,
+    });
+  }
+
+  const rawDesc = project.frontmatter['description'];
+  const desc = typeof rawDesc === 'string' ? rawDesc.trim() : '';
+  if (desc) {
+    container.createDiv({ cls: 'tc-project-description', text: desc });
+  }
+
+  const taskHost = container.createDiv({ cls: 'tc-project-tasks' });
+  ctx.renderTasks(taskHost, project.path);
+}

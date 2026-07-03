@@ -48,9 +48,9 @@ describe('PanelView', () => {
       expect(layout?.querySelector('.tc-right')).not.toBeNull();
     });
 
-    it('tc-rail has 3 rail buttons (tasks/calendar/search) + 1 settings button', () => {
+    it('tc-rail has 4 rail buttons (tasks/projects/calendar/search) + 1 settings button', () => {
       const railBtns = view.contentEl.querySelectorAll('.tc-rail .tc-rail-btn');
-      expect(railBtns).toHaveLength(4);
+      expect(railBtns).toHaveLength(5);
     });
 
     it('tc-left shows Inbox / Today / Upcoming smart lists', () => {
