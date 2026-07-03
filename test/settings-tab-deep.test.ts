@@ -570,3 +570,31 @@ describe('CalendarSettingsTab collapsible cards + default status', () => {
     expect(plugin.settings.projects.defaultStatusId).toBe(survivorId);
   });
 });
+
+describe('CalendarSettingsTab card badges (manual/prefix, property/tag)', () => {
+  it('tag-group card headers show a mode badge distinguishing manual vs prefix', () => {
+    const { tab } = makeTab({
+      tagGroups: [
+        { id: 'p', name: 'Pre', mode: 'prefix', prefix: 'work' },
+        { id: 'm', name: 'Man', mode: 'manual', tags: ['#x'] },
+      ],
+    });
+    const body = openSection(tab, 4);
+    const badges = Array.from(body.querySelectorAll('.tc-settings-card-badge')).map(
+      (b) => b.textContent,
+    );
+    expect(badges).toContain('prefix');
+    expect(badges).toContain('manual');
+  });
+
+  it('status card headers show a property/tag badge', () => {
+    const { tab } = makeTab();
+    const body = openSection(tab, 5);
+    const badges = Array.from(body.querySelectorAll('.tc-settings-card-badge')).map(
+      (b) => b.textContent,
+    );
+    // Default statuses are all property-defined.
+    expect(badges.every((b) => b === 'property')).toBe(true);
+    expect(badges.length).toBeGreaterThan(0);
+  });
+});

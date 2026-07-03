@@ -3547,25 +3547,34 @@ body.tc-modal-open .popover.hover-popover {
 }
 
 /* ── Settings: collapsible drag-to-reorder cards (statuses + tag groups) ────── */
+/* Cards share the filled-row look of native setting items for a consistent feel;
+   grip + chevron are the only added affordances. */
 .tc-settings-card {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  margin-bottom: 8px;
+  border-radius: 10px;
+  margin-bottom: 6px;
   background: var(--background-secondary);
 }
 .tc-settings-card.tc-dragging {
   opacity: 0.5;
 }
 .tc-settings-card.tc-drag-over {
-  border-color: var(--interactive-accent);
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
 }
 .tc-settings-card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 12px 14px;
   cursor: pointer;
   user-select: none;
+}
+.tc-settings-card-badge {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  background: var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 1px 7px;
 }
 .tc-settings-card-grip {
   display: inline-flex;
@@ -3596,4 +3605,9 @@ body.tc-modal-open .popover.hover-popover {
 .tc-settings-card-body {
   padding: 0 12px 8px;
   border-top: 1px solid var(--background-modifier-border);
+}
+
+.tc-tag-group-header.tc-reorder-target,
+.tc-tag-leaf.tc-reorder-target {
+  box-shadow: inset 0 -2px 0 0 var(--interactive-accent);
 }

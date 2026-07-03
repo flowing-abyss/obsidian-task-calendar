@@ -401,14 +401,16 @@ describe('LeftPanel tag groups (manual mode)', () => {
     expect(el.querySelector('.tc-tag-child .tc-left-label')?.textContent).toBe('#work/dev');
   });
 
-  it('single-tag manual group renders flat (leaf, no expand chevron)', () => {
+  it('single-tag manual group renders flat (leaf: color dot + group name, no #, no chevron)', () => {
     const { el, state } = makePanel([], {
-      tagGroups: [{ id: 'g1', name: 'next', mode: 'manual', tags: ['#next'] }],
+      tagGroups: [{ id: 'g1', name: 'next', mode: 'manual', color: '#ff0000', tags: ['#next'] }],
     });
     expect(el.querySelector('.tc-group-arrow')).toBeNull();
     const leaf = el.querySelector('.tc-tag-leaf');
     expect(leaf).toBeTruthy();
-    expect(leaf!.querySelector('.tc-left-label')?.textContent).toBe('#next');
+    // Consistent with group rows: name without '#', plus a color dot.
+    expect(leaf!.querySelector('.tc-left-label')?.textContent).toBe('next');
+    expect(leaf!.querySelector('.tc-group-dot')).toBeTruthy();
     (leaf as HTMLElement).click();
     expect(state.get('selectedList')).toEqual({ type: 'tag', tag: '#next' });
   });
@@ -676,6 +678,30 @@ describe('LeftPanel collapsible sections, projects, and tags +', () => {
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
     input.dispatchEvent(new FocusEvent('blur'));
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('drag-reorders tag groups on the left panel and persists the order', () => {
+    const { el, merged, save } = makeFull({
+      settings: {
+        tagGroups: [
+          { id: 'g1', name: 'A', mode: 'manual', tags: ['#a', '#x'] },
+          { id: 'g2', name: 'B', mode: 'manual', tags: ['#b', '#y'] },
+        ],
+      },
+    });
+    const headers = el.querySelectorAll('.tc-tag-group-header');
+    expect(headers.length).toBe(2);
+    // Drop group g1 onto g2's header → g1 moves to g2's slot.
+    const dt = {
+      getData: (t: string) => (t === 'application/x-tc-taggroup' ? 'g1' : ''),
+      types: ['application/x-tc-taggroup'],
+      setData: () => {},
+    };
+    const drop = new Event('drop', { bubbles: true });
+    Object.defineProperty(drop, 'dataTransfer', { value: dt });
+    headers[1]!.dispatchEvent(drop);
+    expect(merged.tagGroups.map((g) => g.id)).toEqual(['g2', 'g1']);
+    expect(save).toHaveBeenCalled();
   });
 
   it('tags + input is placed directly under the header (not at the bottom)', () => {

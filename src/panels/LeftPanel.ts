@@ -332,7 +332,7 @@ export class LeftPanel {
   }
 
   /** A flat, non-expandable tag row (used for manual single-tag groups). */
-  private renderTagLeaf(parent: HTMLElement, tag: string, allTasks: Task[]): void {
+  private renderTagLeaf(parent: HTMLElement, group: TagGroup, tag: string, allTasks: Task[]): void {
     const sel = this.state.get('selectedList');
     const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
     const count = allTasks.filter((t) => t.status === 'open' && t.rawText.includes(tag)).length;
@@ -341,7 +341,12 @@ export class LeftPanel {
       cls: `tc-left-item tc-tag-leaf${isActive ? ' is-active' : ''}`,
     });
     row.createDiv({ cls: 'tc-left-item-left' }, (l) => {
-      l.createEl('span', { cls: 'tc-left-label', text: tag });
+      // Match group rows: a color dot + the group name (no leading '#').
+      if (group.color) {
+        const dot = l.createEl('span', { cls: 'tc-group-dot' });
+        dot.style.background = group.color;
+      }
+      l.createEl('span', { cls: 'tc-left-label', text: group.name });
     });
     if (count > 0) row.createEl('span', { cls: 'tc-left-count', text: String(count) });
 
@@ -355,6 +360,7 @@ export class LeftPanel {
     });
     this.attachTagDragSource(row, tag);
     this.attachDropZone(row, tag);
+    this.attachGroupReorder(row, group.id);
   }
 
   private renderSmartList(
@@ -391,7 +397,7 @@ export class LeftPanel {
     if (group.mode === 'manual' && (group.tags?.length ?? 0) === 1) {
       const soleTag = group.tags![0]!;
       if (!this.settings.archivedTags.includes(soleTag)) {
-        this.renderTagLeaf(parent, soleTag, allTasks);
+        this.renderTagLeaf(parent, group, soleTag, allTasks);
       }
       return;
     }
@@ -417,6 +423,7 @@ export class LeftPanel {
     const header = container.createDiv({
       cls: `tc-tag-group-header${isGroupActive ? ' is-active' : ''}`,
     });
+    this.attachGroupReorder(header, group.id);
 
     // Chevron: toggles expand/collapse only, does NOT select the group
     const chevron = header.createEl('span', {
@@ -557,6 +564,48 @@ export class LeftPanel {
         this.render();
       });
     };
+  }
+
+  private static readonly GROUP_DND = 'application/x-tc-taggroup';
+
+  /**
+   * Makes a tag-group row a drag source AND drop target for reordering groups on
+   * the left panel, persisting the new order. Uses a dedicated dataTransfer type
+   * so it never collides with the tag→task assignment drag (`draggingTag`).
+   */
+  private attachGroupReorder(el: HTMLElement, groupId: string): void {
+    el.setAttribute('draggable', 'true');
+    el.addEventListener('dragstart', (e) => {
+      e.stopPropagation();
+      e.dataTransfer?.setData(LeftPanel.GROUP_DND, groupId);
+      el.classList.add('tc-dragging');
+    });
+    el.addEventListener('dragend', () => el.classList.remove('tc-dragging'));
+    el.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes(LeftPanel.GROUP_DND)) return;
+      e.preventDefault();
+      el.classList.add('tc-reorder-target');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('tc-reorder-target'));
+    el.addEventListener('drop', (e) => {
+      const draggedId = e.dataTransfer?.getData(LeftPanel.GROUP_DND);
+      el.classList.remove('tc-reorder-target');
+      if (!draggedId || draggedId === groupId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void this.reorderTagGroups(draggedId, groupId);
+    });
+  }
+
+  private async reorderTagGroups(draggedId: string, targetId: string): Promise<void> {
+    const groups = this.settings.tagGroups;
+    const from = groups.findIndex((g) => g.id === draggedId);
+    const to = groups.findIndex((g) => g.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [item] = groups.splice(from, 1);
+    if (item) groups.splice(to, 0, item);
+    await this.onSaveSettings();
+    this.render();
   }
 
   private attachTagDragSource(el: HTMLElement, tag: string): void {

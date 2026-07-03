@@ -32,6 +32,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
       id: (item: T) => string;
       title: (item: T) => string;
       accent?: (item: T) => string | undefined;
+      badge?: (item: T) => string | undefined;
       body: (bodyEl: HTMLElement, idx: number) => void;
       onReorder: (from: number, to: number) => void;
     },
@@ -70,6 +71,8 @@ export class CalendarSettingsTab extends PluginSettingTab {
         dot.style.background = accent;
       }
       header.createSpan({ cls: 'tc-settings-card-title', text: opts.title(item) });
+      const badge = opts.badge?.(item);
+      if (badge) header.createSpan({ cls: 'tc-settings-card-badge', text: badge });
       const chevron = header.createSpan({ cls: 'tc-settings-card-chevron' });
       setIcon(chevron, expanded ? 'chevron-down' : 'chevron-right');
       header.addEventListener('click', () => {
@@ -362,6 +365,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
       id: (g) => g.id,
       title: (g) => g.name,
       accent: (g) => g.color,
+      badge: (g) => (g.mode === 'prefix' ? 'prefix' : 'manual'),
       body: (bodyEl, idx) => this.renderTagGroupCard(bodyEl, idx),
       onReorder: (from, to) => {
         this.moveItem(groups, from, to);
@@ -536,6 +540,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
       id: (s) => s.id,
       title: (s) => s.label,
       accent: (s) => s.color,
+      badge: (s) => (s.match.kind === 'tag' ? 'tag' : 'property'),
       body: (bodyEl, idx) => this.renderStatusCard(bodyEl, idx),
       onReorder: (from, to) => {
         this.moveItem(projects.statuses, from, to);
