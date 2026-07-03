@@ -1,10 +1,7 @@
 import { App } from 'obsidian';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import TaskCalendarPlugin from '../src/main';
-import {
-  DEFAULT_SETTINGS,
-  buildDefaultProjectsSettings,
-} from '../src/settings/defaults';
+import { DEFAULT_SETTINGS, buildDefaultProjectsSettings } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import { PANEL_VIEW_TYPE } from '../src/views/PanelView';
 import { useRealMoment } from './helpers';

@@ -38,7 +38,9 @@ export function resolveStatus(
   }
   // discovered: property-kind only
   const statusProps = new Set(
-    statuses.filter((s) => s.match.kind === 'property').map((s) => (s.match as { property: string }).property),
+    statuses
+      .filter((s) => s.match.kind === 'property')
+      .map((s) => (s.match as { property: string }).property),
   );
   for (const prop of statusProps) {
     const v = frontmatter[prop];
@@ -52,7 +54,10 @@ export function resolveStatus(
 
 export function orderedGroups(statuses: ProjectStatus[], projects: Project[]): StatusGroup[] {
   const groups: StatusGroup[] = statuses.map((s) => ({
-    key: `id:${s.id}`, label: s.label, color: s.color, statusId: s.id,
+    key: `id:${s.id}`,
+    label: s.label,
+    color: s.color,
+    statusId: s.id,
   }));
   const discovered = new Set<string>();
   let hasNone = false;

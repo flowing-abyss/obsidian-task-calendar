@@ -4,14 +4,32 @@ import type { Project } from '../src/projects/types';
 import type { ProjectStatus } from '../src/settings/types';
 
 const S: ProjectStatus[] = [
-  { id: 'a', label: 'Active', onLeftPanel: true, match: { kind: 'property', property: 'status', value: 'active' } },
+  {
+    id: 'a',
+    label: 'Active',
+    onLeftPanel: true,
+    match: { kind: 'property', property: 'status', value: 'active' },
+  },
   { id: 'w', label: 'WIP', onLeftPanel: true, match: { kind: 'tag', tag: 'wip' } },
-  { id: 'd', label: 'Done', onLeftPanel: false, match: { kind: 'property', property: 'status', value: 'done' } },
+  {
+    id: 'd',
+    label: 'Done',
+    onLeftPanel: false,
+    match: { kind: 'property', property: 'status', value: 'done' },
+  },
 ];
 
 function proj(over: Partial<Project>): Project {
-  return { path: 'P.md', name: 'P', frontmatter: {}, tags: [], statusId: null, rawStatus: null,
-    stats: { total: 0, done: 0, cancelled: 0, inProgress: 0 }, ...over };
+  return {
+    path: 'P.md',
+    name: 'P',
+    frontmatter: {},
+    tags: [],
+    statusId: null,
+    rawStatus: null,
+    stats: { total: 0, done: 0, cancelled: 0, inProgress: 0 },
+    ...over,
+  };
 }
 
 describe('resolveStatus', () => {
@@ -23,10 +41,16 @@ describe('resolveStatus', () => {
   });
   it('first-in-order wins on ambiguity', () => {
     // both active (property) and wip (tag) present → property 'a' is earlier
-    expect(resolveStatus(S, ['#wip'], { status: 'active' })).toEqual({ statusId: 'a', rawStatus: null });
+    expect(resolveStatus(S, ['#wip'], { status: 'active' })).toEqual({
+      statusId: 'a',
+      rawStatus: null,
+    });
   });
   it('surfaces a discovered status under a known status property', () => {
-    expect(resolveStatus(S, [], { status: 'archive' })).toEqual({ statusId: null, rawStatus: 'archive' });
+    expect(resolveStatus(S, [], { status: 'archive' })).toEqual({
+      statusId: null,
+      rawStatus: 'archive',
+    });
   });
   it('returns null/null when nothing matches', () => {
     expect(resolveStatus(S, [], {})).toEqual({ statusId: null, rawStatus: null });
@@ -36,8 +60,10 @@ describe('resolveStatus', () => {
 describe('orderedGroups', () => {
   it('defined order, then discovered, then No status', () => {
     const projects = [
-      proj({ statusId: 'a' }), proj({ statusId: 'd' }),
-      proj({ rawStatus: 'archive' }), proj({ statusId: null, rawStatus: null }),
+      proj({ statusId: 'a' }),
+      proj({ statusId: 'd' }),
+      proj({ rawStatus: 'archive' }),
+      proj({ statusId: null, rawStatus: null }),
     ];
     const keys = orderedGroups(S, projects).map((g) => g.label);
     expect(keys).toEqual(['Active', 'WIP', 'Done', 'archive', 'No status']);
