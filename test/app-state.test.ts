@@ -10,6 +10,22 @@ describe('AppState', () => {
     expect(s.get('taskStack')).toEqual([]);
     expect(s.get('centerFilter')).toBe('');
     expect(s.get('searchQuery')).toBe('');
+    expect(s.get('projectsPanel')).toEqual({ view: 'list' });
+  });
+
+  it('notifies on projectsPanel change with a fresh object', () => {
+    const s = new AppState();
+    const cb = vi.fn();
+    s.on('projectsPanel', cb);
+    s.set('projectsPanel', { view: 'dashboard', path: 'Projects/A.md' });
+    expect(cb).toHaveBeenCalledOnce();
+    expect(s.get('projectsPanel')).toEqual({ view: 'dashboard', path: 'Projects/A.md' });
+  });
+
+  it('accepts a project selection', () => {
+    const s = new AppState();
+    s.set('selectedList', { type: 'project', path: 'Projects/A.md' });
+    expect(s.get('selectedList')).toEqual({ type: 'project', path: 'Projects/A.md' });
   });
 
   it('set updates value', () => {

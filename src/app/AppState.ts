@@ -2,14 +2,17 @@ import type { SubTask, Task } from '../parser/types';
 import { getListViewDefaults } from '../settings/defaults';
 import type { ListViewState } from '../settings/types';
 
-export type ViewMode = 'tasks' | 'calendar' | 'search';
+export type ViewMode = 'tasks' | 'calendar' | 'search' | 'projects';
 
 export type ListSelection =
   | 'inbox'
   | 'today'
   | 'upcoming'
   | { type: 'tag'; tag: string }
-  | { type: 'group'; groupId: string };
+  | { type: 'group'; groupId: string }
+  | { type: 'project'; path: string };
+
+export type ProjectsPanelState = { view: 'list' } | { view: 'dashboard'; path: string };
 
 export interface AppStateData {
   mode: ViewMode;
@@ -20,6 +23,7 @@ export interface AppStateData {
   draggingTask: Task | null;
   draggingTag: string | null;
   centerListViewState: ListViewState;
+  projectsPanel: ProjectsPanelState;
 }
 
 type Listener<T> = (value: T, prev: T) => void;
@@ -34,6 +38,7 @@ export class AppState {
     draggingTask: null,
     draggingTag: null,
     centerListViewState: getListViewDefaults('today'),
+    projectsPanel: { view: 'list' },
   };
 
   private listeners = new Map<keyof AppStateData, Set<Listener<unknown>>>();
