@@ -12,7 +12,7 @@ export type ListSelection =
   | { type: 'group'; groupId: string }
   | { type: 'project'; path: string };
 
-export type ProjectsPanelState = { view: 'list' } | { view: 'dashboard'; path: string };
+type ProjectsPanelState = { view: 'list' } | { view: 'dashboard'; path: string };
 
 export interface AppStateData {
   mode: ViewMode;

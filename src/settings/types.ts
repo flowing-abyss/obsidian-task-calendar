@@ -35,7 +35,7 @@ interface InboxSettings {
   removeTagOnAssign: boolean;
 }
 
-export type StatusMatch =
+type StatusMatch =
   | { kind: 'property'; property: string; value: string }
   | { kind: 'tag'; tag: string };
 

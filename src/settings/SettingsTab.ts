@@ -38,6 +38,9 @@ export class CalendarSettingsTab extends PluginSettingTab {
     );
     this.addSection(containerEl, 'Inbox', 'inbox', (body) => this.renderInboxSettings(body));
     this.addSection(containerEl, 'Tag groups', 'tags', (body) => this.renderTagGroupSettings(body));
+    this.addSection(containerEl, 'Projects', 'folder-kanban', (body) =>
+      this.renderProjectsSettings(body),
+    );
 
     containerEl.querySelectorAll('.tc-settings-section').forEach((el, i) => {
       if (openIndices.has(i)) el.classList.add('is-open');
@@ -396,6 +399,219 @@ export class CalendarSettingsTab extends PluginSettingTab {
             }),
         );
     }
+  }
+
+  private renderProjectsSettings(containerEl: HTMLElement): void {
+    const projects = this.plugin.settings.projects;
+
+    new Setting(containerEl)
+      .setName('Membership query')
+      // eslint-disable-next-line obsidianmd/ui/sentence-case
+      .setDesc('What counts as a project. Syntax: folder/, #tag, key=value, AND / OR / NOT / ( ).')
+      .addText((t) =>
+        t
+
+          .setPlaceholder('Projects/')
+          .setValue(projects.membershipQuery)
+          .onChange(async (v) => {
+            projects.membershipQuery = v;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName('Create folder')
+      .setDesc('Where new project notes are created.')
+      .addText((t) =>
+        t
+
+          .setPlaceholder('Projects')
+          .setValue(projects.createFolder)
+          .onChange(async (v) => {
+            projects.createFolder = v;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName('Template path')
+      .setDesc('Optional template for new projects. Templater is used when installed.')
+      .addText((t) =>
+        t
+          .setPlaceholder('Templates/Project.md')
+          .setValue(projects.templatePath)
+          .onChange(async (v) => {
+            projects.templatePath = v;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl).setName('Statuses').setHeading();
+    for (let idx = 0; idx < projects.statuses.length; idx++) {
+      this.renderStatusCard(containerEl, idx);
+    }
+
+    new Setting(containerEl).addButton((b) =>
+      b
+        // eslint-disable-next-line obsidianmd/ui/sentence-case
+        .setButtonText('+ Add status')
+        .setCta()
+        .onClick(async () => {
+          projects.statuses.push({
+            id: `status-${Date.now()}`,
+            label: 'New status',
+            color: '#888888',
+            onLeftPanel: false,
+            match: { kind: 'property', property: 'status', value: '' },
+          });
+          await this.plugin.saveSettings();
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
+          this.display();
+        }),
+    );
+  }
+
+  private renderStatusCard(containerEl: HTMLElement, idx: number): void {
+    const projects = this.plugin.settings.projects;
+    const statuses = projects.statuses;
+    const status = statuses[idx];
+    if (!status) return;
+
+    const card = containerEl.createDiv({ cls: 'tc-settings-group-card tc-settings-status-card' });
+
+    new Setting(card)
+      .setName('Label')
+      .addText((t) =>
+        t.setValue(status.label).onChange(async (v) => {
+          status.label = v;
+          await this.plugin.saveSettings();
+        }),
+      )
+      .addExtraButton((b) =>
+        b
+          .setIcon('arrow-up')
+          .setTooltip('Move up')
+          .setDisabled(idx === 0)
+          .onClick(async () => {
+            const a = statuses[idx];
+            const b = statuses[idx - 1];
+            if (a && b) {
+              statuses[idx - 1] = a;
+              statuses[idx] = b;
+            }
+            await this.plugin.saveSettings();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            this.display();
+          }),
+      )
+      .addExtraButton((b) =>
+        b
+          .setIcon('arrow-down')
+          .setTooltip('Move down')
+          .setDisabled(idx === statuses.length - 1)
+          .onClick(async () => {
+            const a = statuses[idx];
+            const b = statuses[idx + 1];
+            if (a && b) {
+              statuses[idx + 1] = a;
+              statuses[idx] = b;
+            }
+            await this.plugin.saveSettings();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            this.display();
+          }),
+      )
+      .addButton((b) =>
+        b
+          .setIcon('trash')
+          .setTooltip('Delete status')
+          .setDisabled(statuses.length <= 1)
+          .onClick(async () => {
+            const removed = statuses.splice(idx, 1)[0];
+            if (removed && projects.defaultStatusId === removed.id) {
+              projects.defaultStatusId = statuses[0]?.id ?? '';
+            }
+            await this.plugin.saveSettings();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            this.display();
+          }),
+      );
+
+    new Setting(card).setName('Defined by').addDropdown((d) =>
+      d
+        .addOptions({ property: 'Frontmatter property', tag: 'Tag' })
+        .setValue(status.match.kind)
+        .onChange(async (v) => {
+          status.match =
+            v === 'tag'
+              ? { kind: 'tag', tag: '' }
+              : { kind: 'property', property: 'status', value: '' };
+          await this.plugin.saveSettings();
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
+          this.display();
+        }),
+    );
+
+    if (status.match.kind === 'property') {
+      const match = status.match;
+      new Setting(card).setName('Property').addText((t) =>
+        t
+          // eslint-disable-next-line obsidianmd/ui/sentence-case
+          .setPlaceholder('status')
+          .setValue(match.property)
+          .onChange(async (v) => {
+            match.property = v.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+      new Setting(card).setName('Value').addText((t) =>
+        t
+          // eslint-disable-next-line obsidianmd/ui/sentence-case
+          .setPlaceholder('active')
+          .setValue(match.value)
+          .onChange(async (v) => {
+            match.value = v.trim();
+            await this.plugin.saveSettings();
+          }),
+      );
+    } else {
+      const match = status.match;
+      new Setting(card).setName('Tag').addText((t) =>
+        t
+          // eslint-disable-next-line obsidianmd/ui/sentence-case
+          .setPlaceholder('active')
+          .setValue(match.tag)
+          .onChange(async (v) => {
+            match.tag = v.trim().replace(/^#/, '');
+            await this.plugin.saveSettings();
+          }),
+      );
+    }
+
+    new Setting(card).setName('Color').addColorPicker((cp) =>
+      cp.setValue(status.color ?? '#888888').onChange(async (v) => {
+        status.color = v;
+        await this.plugin.saveSettings();
+      }),
+    );
+
+    new Setting(card).setName('Show on left panel').addToggle((tg) =>
+      tg.setValue(status.onLeftPanel).onChange(async (v) => {
+        status.onLeftPanel = v;
+        await this.plugin.saveSettings();
+      }),
+    );
+
+    new Setting(card).setName('Default for new projects').addToggle((tg) =>
+      tg.setValue(projects.defaultStatusId === status.id).onChange(async (v) => {
+        if (v) {
+          projects.defaultStatusId = status.id;
+          await this.plugin.saveSettings();
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
+          this.display();
+        }
+      }),
+    );
   }
 
   private renderViewConfigSettings(container: HTMLElement, platform: 'desktop' | 'mobile'): void {

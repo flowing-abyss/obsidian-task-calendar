@@ -3,6 +3,9 @@ import type { AppState, ListSelection } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
+import { CreateProjectModal } from '../projects/CreateProjectModal';
+import type { ProjectManager } from '../projects/ProjectManager';
+import type { ProjectStore } from '../projects/ProjectStore';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
 import type {
   CalendarSettings,
@@ -27,6 +30,7 @@ import {
   groupTasksByTag,
   sortTasksByField,
 } from '../views/taskGrouping';
+import { ProjectsPanel } from './projects/ProjectsPanel';
 
 type CalViewType = 'month' | 'week' | 'list';
 
@@ -59,6 +63,8 @@ export class CenterPanel {
   private mutations: TaskMutationService;
   private md = new Component();
 
+  private projectsPanel: ProjectsPanel | null = null;
+
   constructor(
     private state: AppState,
     private store: TaskStore,
@@ -66,6 +72,8 @@ export class CenterPanel {
     private settings: CalendarSettings,
     private tagManager: TagManager,
     onSaveSettings: () => Promise<void> = async () => {},
+    private projectStore: ProjectStore | null = null,
+    private projectManager: ProjectManager | null = null,
   ) {
     this.onSaveSettings = onSaveSettings;
     this.mutations = new TaskMutationService(app);
@@ -162,8 +170,70 @@ export class CenterPanel {
     window.clearTimeout(this.filterDebounce);
     this.offs.forEach((f) => f());
     this.destroyCalendarView();
+    this.destroyProjectsPanel();
     this.md.unload();
     this.el?.empty();
+  }
+
+  private destroyProjectsPanel(): void {
+    this.projectsPanel?.destroy();
+    this.projectsPanel = null;
+  }
+
+  /** Renders a project's tasks (reusing the card component) plus an add bar that writes into the note. */
+  private renderProjectTasks(host: HTMLElement, path: string): void {
+    const tasks = this.store.getTasks().filter((t) => t.filePath === path);
+    const scroll = host.createDiv({ cls: 'tc-center-scroll tc-project-tasks-scroll' });
+    if (tasks.length === 0) {
+      scroll.createDiv({ cls: 'tc-center-empty', text: 'No tasks yet' });
+    } else {
+      for (const task of tasks) this.renderTaskCard(scroll, task);
+    }
+
+    const bar = host.createDiv({ cls: 'tc-add-task-bar' });
+    const trigger = bar.createDiv({ cls: 'tc-add-task-trigger' });
+    trigger.createEl('span', { cls: 'tc-add-task-plus', text: '+' });
+    trigger.createEl('span', { cls: 'tc-add-task-label', text: 'Add task' });
+    bar.addEventListener('click', () => {
+      if (bar.querySelector('.tc-quick-capture')) return;
+      trigger.remove();
+      const form = bar.createDiv({ cls: 'tc-quick-capture' });
+      const input = form.createEl('input', {
+        cls: 'tc-quick-capture-input',
+        attr: { type: 'text', placeholder: 'Task name…' },
+      });
+      let committed = false;
+      const commit = (): void => {
+        if (committed) return;
+        committed = true;
+        const text = input.value.trim();
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (text && file instanceof TFile) {
+          void this.appendTaskToNote(file, `- [ ] ${text}`);
+        }
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          commit();
+        }
+        if (e.key === 'Escape') this.projectsPanel?.refresh();
+      });
+      input.addEventListener('blur', () => {
+        window.setTimeout(() => {
+          if (activeDocument.activeElement !== input) commit();
+        }, 150);
+      });
+      window.setTimeout(() => input.focus(), 0);
+    });
+  }
+
+  private openCreateProject(): void {
+    if (!this.projectManager) return;
+    const manager = this.projectManager;
+    new CreateProjectModal(this.app, (name) => {
+      void manager.create(name).then(() => this.projectStore?.refresh());
+    }).open();
   }
 
   private destroyCalendarView(): void {
@@ -179,6 +249,8 @@ export class CenterPanel {
     this.md.load();
 
     const mode = this.state.get('mode');
+
+    if (mode !== 'projects') this.destroyProjectsPanel();
 
     if (mode === 'calendar') {
       this.el.empty();
@@ -196,6 +268,31 @@ export class CenterPanel {
       this.renderSearch();
       return;
     }
+
+    if (mode === 'projects') {
+      this.el.addClass('tc-center--projects');
+      if (this.projectStore && this.projectManager) {
+        // Rebuild the panel fresh; it owns its own subscriptions and cleans them
+        // up in destroy(), so recreating on each render is leak-free.
+        this.destroyProjectsPanel();
+        this.projectsPanel = new ProjectsPanel(
+          this.state,
+          this.projectStore,
+          this.projectManager,
+          this.settings,
+          this.app,
+          {
+            renderTasks: (host, path) => this.renderProjectTasks(host, path),
+            onNewProject: () => this.openCreateProject(),
+          },
+        );
+        this.projectsPanel.mount(this.el);
+      } else {
+        this.el.createDiv({ cls: 'tc-center-empty', text: 'Projects unavailable' });
+      }
+      return;
+    }
+    this.el.removeClass('tc-center--projects');
 
     // Header: title + right-aligned [chips] [↕] [search]
     const header = this.el.createDiv({ cls: 'tc-center-header' });

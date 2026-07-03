@@ -1,9 +1,12 @@
-import { ItemView, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, TFile, type WorkspaceLeaf } from 'obsidian';
 import { AppState } from '../app/AppState';
 import { CenterPanel } from '../panels/CenterPanel';
 import { LeftPanel } from '../panels/LeftPanel';
 import { RailPanel } from '../panels/RailPanel';
 import { RightPanel } from '../panels/RightPanel';
+import { ProjectManager } from '../projects/ProjectManager';
+import { ProjectStore } from '../projects/ProjectStore';
+import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
@@ -18,6 +21,8 @@ export class PanelView extends ItemView {
   private right!: RightPanel;
   private storeUnsub?: () => void;
   private modeUnsub?: () => void;
+  private projectStore?: ProjectStore;
+  private projectStoreUnsub?: () => void;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -52,8 +57,23 @@ export class PanelView extends ItemView {
     const centerEl = layout.createDiv({ cls: 'tc-center' });
     const rightEl = layout.createDiv({ cls: 'tc-right' });
 
+    const resolver = new DailyNoteResolver(this.app, this.settings);
+    const projectStore = new ProjectStore(this.app, this.store, this.settings);
+    projectStore.initialize();
+    this.projectStore = projectStore;
+    const projectManager = new ProjectManager(this.app, this.settings, resolver);
+
     this.rail = new RailPanel(this.state, this.app as never);
-    this.left = new LeftPanel(this.state, this.store, this.settings, this.tagManager, this.app);
+    this.left = new LeftPanel(
+      this.state,
+      this.store,
+      this.settings,
+      this.tagManager,
+      this.app,
+      this.onSaveSettings,
+      projectStore,
+      projectManager,
+    );
     this.center = new CenterPanel(
       this.state,
       this.store,
@@ -61,8 +81,43 @@ export class PanelView extends ItemView {
       this.settings,
       this.tagManager,
       this.onSaveSettings,
+      projectStore,
+      projectManager,
     );
     this.right = new RightPanel(this.state, this.app, this.settings);
+
+    // Keep panels fresh when the project set / stats change.
+    this.projectStoreUnsub = projectStore.onUpdate(() => {
+      this.left.refresh();
+      this.center.refresh();
+    });
+
+    // Keep project selection / dashboard path valid across note rename & delete.
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (!(file instanceof TFile)) return;
+        const sel = this.state.get('selectedList');
+        if (typeof sel === 'object' && sel.type === 'project' && sel.path === oldPath) {
+          this.state.set('selectedList', { type: 'project', path: file.path });
+        }
+        const panel = this.state.get('projectsPanel');
+        if (panel.view === 'dashboard' && panel.path === oldPath) {
+          this.state.set('projectsPanel', { view: 'dashboard', path: file.path });
+        }
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        const sel = this.state.get('selectedList');
+        if (typeof sel === 'object' && sel.type === 'project' && sel.path === file.path) {
+          this.state.set('selectedList', 'today');
+        }
+        const panel = this.state.get('projectsPanel');
+        if (panel.view === 'dashboard' && panel.path === file.path) {
+          this.state.set('projectsPanel', { view: 'list' });
+        }
+      }),
+    );
 
     this.rail.mount(railEl);
     this.left.mount(leftEl);
@@ -114,6 +169,8 @@ export class PanelView extends ItemView {
   async onClose(): Promise<void> {
     this.modeUnsub?.();
     this.storeUnsub?.();
+    this.projectStoreUnsub?.();
+    this.projectStore?.destroy();
     this.rail?.destroy();
     this.left?.destroy();
     this.center?.destroy();
