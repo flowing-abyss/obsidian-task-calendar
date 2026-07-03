@@ -286,7 +286,10 @@ export class CenterPanel {
             onNewProject: () => this.openCreateProject(),
           },
         );
-        this.projectsPanel.mount(this.el);
+        // Mount into a dedicated child so ProjectsPanel's own class/DOM never
+        // lands on the shared center element (which would leak layout into tasks mode).
+        const host = this.el.createDiv({ cls: 'tc-projects-host' });
+        this.projectsPanel.mount(host);
       } else {
         this.el.createDiv({ cls: 'tc-center-empty', text: 'Projects unavailable' });
       }

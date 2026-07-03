@@ -495,3 +495,64 @@ describe('CenterPanel project selection', () => {
     expect(lines[sectionIdx + 1]).toBe('- [ ] under section');
   });
 });
+
+describe('CenterPanel projects mode teardown (regression)', () => {
+  function stubProjectStore() {
+    return {
+      list: () => [],
+      get: () => undefined,
+      activeForLeftPanel: () => [],
+      onUpdate: () => () => {},
+      refresh: () => {},
+    } as never;
+  }
+  function stubProjectManager() {
+    return { setStatus: async () => {}, create: async () => null } as never;
+  }
+
+  async function makeProjectsPanel(): Promise<{
+    panel: CenterPanel;
+    state: AppState;
+    el: HTMLElement;
+  }> {
+    const app = await createAppWithFiles({ 'Projects/A.md': '---\nstatus: active\n---\n' });
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    const state = new AppState();
+    const panel = new CenterPanel(
+      state,
+      store,
+      app,
+      DEFAULT_SETTINGS,
+      null as never,
+      async () => {},
+      stubProjectStore(),
+      stubProjectManager(),
+    );
+    const el = freshContainer();
+    panel.mount(el);
+    return { panel, state, el };
+  }
+
+  it('mounts the projects panel on a child host, not the shared center element', async () => {
+    const { state, el } = await makeProjectsPanel();
+    state.set('mode', 'projects');
+    // The projects panel class lives on the child host, never on the center el.
+    expect(el.classList.contains('tc-projects-panel')).toBe(false);
+    expect(el.querySelector('.tc-projects-host .tc-projects-list')).toBeTruthy();
+  });
+
+  it('leaving projects mode restores a clean tasks center (no leaked class or DOM)', async () => {
+    const { state, el } = await makeProjectsPanel();
+    state.set('mode', 'projects');
+    // Back to tasks with a tag selection.
+    state.set('selectedList', { type: 'tag', tag: '#work' });
+    state.set('mode', 'tasks');
+    expect(el.classList.contains('tc-projects-panel')).toBe(false);
+    expect(el.classList.contains('tc-center--projects')).toBe(false);
+    expect(el.querySelector('.tc-projects-host')).toBeNull();
+    // Normal tasks-mode header (title + controls) renders again.
+    expect(el.querySelector('.tc-center-header')).toBeTruthy();
+    expect(el.querySelector('.tc-center-scroll')).toBeTruthy();
+  });
+});
