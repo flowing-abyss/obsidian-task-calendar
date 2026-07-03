@@ -1,3 +1,5 @@
+import { buildDefaultProjectsSettings } from './defaults';
+
 export function migrateSettings(raw: Record<string, unknown>): void {
   if (!('inbox' in raw)) {
     raw['inbox'] = {
@@ -19,4 +21,16 @@ export function migrateSettings(raw: Record<string, unknown>): void {
   }
   if (!('pinnedTags' in raw)) raw['pinnedTags'] = [];
   if (!('archivedTags' in raw)) raw['archivedTags'] = [];
+  if (!('projects' in raw)) raw['projects'] = buildDefaultProjectsSettings();
+  if (!('sectionCollapse' in raw)) {
+    raw['sectionCollapse'] = { pinned: false, projects: false, tags: false };
+  }
+  const projects = raw['projects'];
+  if (projects && typeof projects === 'object') {
+    const p = projects as { statuses?: { id: string }[]; defaultStatusId?: string };
+    const ids = (p.statuses ?? []).map((s) => s.id);
+    if (!p.defaultStatusId || !ids.includes(p.defaultStatusId)) {
+      p.defaultStatusId = ids[0] ?? '';
+    }
+  }
 }

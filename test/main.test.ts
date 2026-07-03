@@ -1,7 +1,7 @@
 import { App } from 'obsidian';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TaskCalendarPlugin from '../src/main';
-import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { DEFAULT_SETTINGS, __resetStatusSeq, buildDefaultProjectsSettings } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import { PANEL_VIEW_TYPE } from '../src/views/PanelView';
 import { useRealMoment } from './helpers';
@@ -57,6 +57,10 @@ afterEach(() => {
 });
 
 describe('TaskCalendarPlugin loadSettings', () => {
+  beforeEach(() => {
+    __resetStatusSeq();
+  });
+
   it('merges DEFAULT_SETTINGS with persisted data (persisted overrides)', async () => {
     const plugin = makePlugin({ taskPrefix: '#custom' });
     await plugin.loadSettings();
@@ -67,7 +71,13 @@ describe('TaskCalendarPlugin loadSettings', () => {
   it('loadData returns empty object -> settings equal DEFAULT_SETTINGS', async () => {
     const plugin = makePlugin();
     await plugin.loadSettings();
-    expect(plugin.settings).toEqual(DEFAULT_SETTINGS);
+    // Recreate expected defaults with reset counter to match what was generated in loadSettings
+    __resetStatusSeq();
+    const expectedDefaults: CalendarSettings = {
+      ...DEFAULT_SETTINGS,
+      projects: buildDefaultProjectsSettings(),
+    };
+    expect(plugin.settings).toEqual(expectedDefaults);
   });
 
   it('loadSettings calls loadData exactly once', async () => {

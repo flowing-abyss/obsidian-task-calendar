@@ -59,3 +59,24 @@ describe('migrateSettings', () => {
     expect(raw['pinnedTags']).toEqual(['#task/next']);
   });
 });
+
+describe('projects migration', () => {
+  it('adds projects + sectionCollapse when missing', () => {
+    const raw: Record<string, unknown> = {};
+    migrateSettings(raw);
+    const projects = raw['projects'] as { statuses: unknown[]; defaultStatusId: string };
+    expect(Array.isArray(projects.statuses)).toBe(true);
+    expect(projects.statuses.length).toBeGreaterThan(0);
+    const ids = (projects.statuses as { id: string }[]).map((s) => s.id);
+    expect(ids).toContain(projects.defaultStatusId);
+    expect(raw['sectionCollapse']).toEqual({ pinned: false, projects: false, tags: false });
+  });
+  it('repoints a dangling defaultStatusId to the first status', () => {
+    const raw: Record<string, unknown> = {};
+    migrateSettings(raw);
+    const projects = raw['projects'] as { statuses: { id: string }[]; defaultStatusId: string };
+    projects.defaultStatusId = 'nonexistent';
+    migrateSettings(raw);
+    expect(projects.defaultStatusId).toBe(projects.statuses[0]!.id);
+  });
+});

@@ -35,6 +35,26 @@ interface InboxSettings {
   removeTagOnAssign: boolean;
 }
 
+export type StatusMatch =
+  | { kind: 'property'; property: string; value: string }
+  | { kind: 'tag'; tag: string };
+
+export interface ProjectStatus {
+  id: string;
+  label: string;
+  color?: string;
+  onLeftPanel: boolean;
+  match: StatusMatch;
+}
+
+export interface ProjectsSettings {
+  membershipQuery: string;
+  createFolder: string;
+  templatePath: string;
+  statuses: ProjectStatus[];
+  defaultStatusId: string;
+}
+
 export interface CalendarSettings {
   desktop: ViewConfig;
   mobile: ViewConfig;
@@ -51,6 +71,8 @@ export interface CalendarSettings {
   taskInsertionSection: string;
   sourceNoteDisplay: 'never' | 'always' | 'non-default';
   listViewStates?: Record<string, ListViewState>;
+  projects: ProjectsSettings;
+  sectionCollapse: { pinned: boolean; projects: boolean; tags: boolean };
 }
 
 // Params parsed from a task-calendar code block (all optional overrides of ViewConfig)
