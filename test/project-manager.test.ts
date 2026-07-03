@@ -45,6 +45,31 @@ describe('ProjectManager.setStatus', () => {
     expect(fm['other']).toBe('keep');
   });
 
+  it('strips an inline body status tag so status resolution does not stick', async () => {
+    const app = await createAppWithFiles({
+      'P.md': '---\ntags:\n  - keepme\n---\n\nProject notes #todo here.\n',
+    });
+    const settings = clone();
+    settings.projects.statuses = [
+      { id: 'todo', label: 'Todo', onLeftPanel: true, match: { kind: 'tag', tag: 'todo' } },
+      { id: 'done', label: 'Done', onLeftPanel: false, match: { kind: 'tag', tag: 'done' } },
+    ];
+    const pm = new ProjectManager(app as never, settings, {} as never);
+    await pm.setStatus('P.md', 'done');
+    await flushMicrotasks();
+    const file = (
+      app as never as { vault: { getAbstractFileByPath(p: string): TFile } }
+    ).vault.getAbstractFileByPath('P.md');
+    const content = await (
+      app as never as { vault: { read(f: TFile): Promise<string> } }
+    ).vault.read(file);
+    // Inline #todo removed from body; #done applied via frontmatter; unrelated tag kept.
+    expect(content).not.toMatch(/#todo\b/);
+    expect(content).toContain('keepme');
+    expect(content).toMatch(/done/);
+    expect(content).toContain('Project notes  here.');
+  });
+
   it('adds a tag marker and strips sibling tag markers for tag-kind statuses', async () => {
     const app = await createAppWithFiles({ 'P.md': '---\ntags:\n  - todo\n  - keepme\n---\n' });
     const settings = clone();

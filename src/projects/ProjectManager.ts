@@ -51,7 +51,26 @@ export class ProjectManager {
     // Tag markers: strip sibling status tags, add the target tag if tag-kind.
     if (tagStatuses.length > 0 || target.match.kind === 'tag') {
       await this.applyTagMarkers(file, target, tagStatuses);
+      // Status resolution also reads INLINE body tags (getAllTags), so an inline
+      // marker would otherwise survive and keep matching the old status. Remove
+      // inline occurrences of every defined status tag (they are plugin-managed).
+      await this.stripInlineStatusTags(file, tagStatuses);
     }
+  }
+
+  private async stripInlineStatusTags(file: TFile, tagStatuses: ProjectStatus[]): Promise<void> {
+    const tags = tagStatuses.map((s) => (s.match as { tag: string }).tag.replace(/^#/, ''));
+    if (tags.length === 0) return;
+    await this.app.vault.process(file, (content) => {
+      let out = content;
+      for (const tag of tags) {
+        const escaped = tag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+        // Match an inline #tag (not inside a word/path), keep any leading space.
+        const re = new RegExp(`(^|\\s)#${escaped}(?![\\w/-])`, 'gmu');
+        out = out.replace(re, '$1');
+      }
+      return out;
+    });
   }
 
   private async applyTagMarkers(

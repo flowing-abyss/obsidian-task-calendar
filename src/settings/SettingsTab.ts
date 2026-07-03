@@ -457,8 +457,11 @@ export class CalendarSettingsTab extends PluginSettingTab {
         .setButtonText('+ Add status')
         .setCta()
         .onClick(async () => {
+          // Collision-proof id: smallest status-N not already taken.
+          let n = projects.statuses.length + 1;
+          while (projects.statuses.some((s) => s.id === `status-${n}`)) n++;
           projects.statuses.push({
-            id: `status-${Date.now()}`,
+            id: `status-${n}`,
             label: 'New status',
             color: '#888888',
             onLeftPanel: false,
