@@ -787,7 +787,8 @@ export class RightPanel {
     if (!trimmed) return fallback;
     if (trimmed.endsWith('px')) return parseFloat(trimmed);
     if (trimmed.endsWith('rem')) {
-      const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const rootFontSize =
+        parseFloat(getComputedStyle(activeDocument.documentElement).fontSize) || 16;
       return parseFloat(trimmed) * rootFontSize;
     }
     if (trimmed.endsWith('em')) {
