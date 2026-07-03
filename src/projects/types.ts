@@ -1,0 +1,18 @@
+export interface ProjectStats {
+  total: number;
+  done: number;
+  cancelled: number;
+  inProgress: number;
+  estimateMin?: number;
+  spentMin?: number;
+}
+
+export interface Project {
+  path: string;
+  name: string;
+  frontmatter: Record<string, unknown>;
+  tags: string[]; // '#'-prefixed, lower-cased
+  statusId: string | null;
+  rawStatus: string | null;
+  stats: ProjectStats;
+}
