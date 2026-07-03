@@ -43,7 +43,7 @@ describe('CenterPanel pure helpers', () => {
       ];
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+        inbox: { mode: 'untagged', tag: '', removeTagOnAssign: false },
       };
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
@@ -235,7 +235,7 @@ describe('CenterPanel pure helpers', () => {
       ];
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+        inbox: { mode: 'untagged', tag: '', removeTagOnAssign: false },
       };
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
@@ -280,7 +280,7 @@ describe('CenterPanel pure helpers', () => {
       ];
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+        inbox: { mode: 'untagged', tag: '', removeTagOnAssign: false },
       };
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
@@ -294,7 +294,7 @@ describe('CenterPanel pure helpers', () => {
     it('tag mode: includes tasks whose rawText contains inboxTag', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+        inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
       };
       const tasks = [
         task({ text: 'inbox', rawText: '- [ ] inbox #inbox' }),
@@ -309,7 +309,7 @@ describe('CenterPanel pure helpers', () => {
     it('tag mode: includes done tasks (status filtering is done by getFilteredTasks)', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+        inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
       };
       const tasks = [
         task({ text: 'open', rawText: '- [ ] open #inbox' }),
@@ -323,7 +323,7 @@ describe('CenterPanel pure helpers', () => {
     it('untagged mode: includes tasks with no hashtags', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+        inbox: { mode: 'untagged', tag: '', removeTagOnAssign: false },
       };
       const tasks = [
         task({ text: 'plain', rawText: '- [ ] plain' }),
@@ -337,7 +337,7 @@ describe('CenterPanel pure helpers', () => {
     it('untagged mode: includes done tasks (status filtering is done by getFilteredTasks)', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+        inbox: { mode: 'untagged', tag: '', removeTagOnAssign: false },
       };
       const tasks = [
         task({ text: 'open', rawText: '- [ ] open' }),
@@ -348,10 +348,10 @@ describe('CenterPanel pure helpers', () => {
       expect(result.map((t) => t.text).sort()).toEqual(['done', 'open']);
     });
 
-    it('tag mode + showUntagged=true: includes both tagged and untagged open tasks', () => {
+    it('both mode: includes both tagged and untagged open tasks', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'tag', tag: '#task/inbox', showUntagged: true, removeTagOnAssign: true },
+        inbox: { mode: 'both', tag: '#task/inbox', removeTagOnAssign: true },
       };
       const tasks = [
         task({ text: 'with-inbox', rawText: '- [ ] with-inbox #task/inbox', line: 1 }),
@@ -366,7 +366,7 @@ describe('CenterPanel pure helpers', () => {
     it('tag mode with empty inboxTag matches all tasks (CURRENT BEHAVIOR: rawText.includes("") is always true, follow-up: FU-22)', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
-        inbox: { mode: 'tag', tag: '', showUntagged: false, removeTagOnAssign: true },
+        inbox: { mode: 'tag', tag: '', removeTagOnAssign: true },
       };
       const tasks = [
         task({ text: 'plain', rawText: '- [ ] plain' }),
@@ -609,7 +609,7 @@ describe('CenterPanel pure helpers', () => {
 describe('getFilteredTasks respects show status', () => {
   const untaggedSettings: CalendarSettings = {
     ...DEFAULT_SETTINGS,
-    inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: false },
+    inbox: { mode: 'untagged', tag: '', removeTagOnAssign: false },
   };
 
   it('show=active excludes done tasks', () => {

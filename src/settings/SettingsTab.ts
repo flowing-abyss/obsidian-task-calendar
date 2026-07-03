@@ -267,16 +267,6 @@ export class CalendarSettingsTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
-      .setName('Show untagged tasks in inbox')
-      .setDesc('Tasks with no tags also appear in inbox.')
-      .addToggle((t) =>
-        t.setValue(this.plugin.settings.inbox.showUntagged).onChange(async (v) => {
-          this.plugin.settings.inbox.showUntagged = v;
-          await this.plugin.saveSettings();
-        }),
-      );
-
-    new Setting(containerEl)
       .setName('Remove inbox tag when assigning another tag')
       .setDesc('When you drag a task to a tag, the inbox tag is removed automatically.')
       .addToggle((t) =>

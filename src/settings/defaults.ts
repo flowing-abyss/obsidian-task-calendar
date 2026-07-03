@@ -22,7 +22,6 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
   inbox: {
     mode: 'tag',
     tag: '#task/inbox',
-    showUntagged: false,
     removeTagOnAssign: true,
   },
   pinnedTags: [],

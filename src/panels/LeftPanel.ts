@@ -355,7 +355,7 @@ export class LeftPanel {
     const allOpen = tasks.filter((t) => t.status === 'open');
     const withTag =
       inbox.mode !== 'untagged' ? allOpen.filter((t) => t.rawText.includes(inbox.tag)) : [];
-    const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
+    const includeUntagged = inbox.mode !== 'tag';
     const untagged = includeUntagged ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
     if (withTag.length === 0) return untagged.length;
     if (untagged.length === 0) return withTag.length;

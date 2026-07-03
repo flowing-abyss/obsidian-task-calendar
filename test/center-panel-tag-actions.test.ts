@@ -89,7 +89,7 @@ describe('CenterPanel tag chip replace on drop', () => {
   it('dropping draggingTag onto a chip calls replaceTagOnTask, not assignTagFromInbox', () => {
     const t = task({ rawText: '- [ ] t #work #task/inbox', status: 'open', line: 1 });
     const { el, state, tm } = makeCenter([t], {
-      inbox: { mode: 'both', tag: '#task/inbox', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'both', tag: '#task/inbox', removeTagOnAssign: true },
     });
     const replaceSpy = vi.spyOn(tm, 'replaceTagOnTask').mockResolvedValue(undefined);
     const assignSpy = vi.spyOn(tm, 'assignTagFromInbox').mockResolvedValue(undefined);
@@ -110,7 +110,7 @@ describe('CenterPanel tag chip replace on drop', () => {
   it('dragging a chip onto itself is a no-op', () => {
     const t = task({ rawText: '- [ ] t #work', status: 'open', line: 1 });
     const { el, state, tm } = makeCenter([t], {
-      inbox: { mode: 'tag', tag: '#work', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'tag', tag: '#work', removeTagOnAssign: true },
     });
     const replaceSpy = vi.spyOn(tm, 'replaceTagOnTask').mockResolvedValue(undefined);
 
@@ -131,7 +131,7 @@ describe('CenterPanel inbox tasks (new inbox object)', () => {
       task({ rawText: '- [ ] b #work', status: 'open' }),
     ];
     const { el } = makeCenter(tasks, {
-      inbox: { mode: 'tag', tag: '#task/inbox', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'tag', tag: '#task/inbox', removeTagOnAssign: true },
     });
     const cards = el.querySelectorAll('.tc-task-card');
     expect(cards).toHaveLength(1);
@@ -143,7 +143,7 @@ describe('CenterPanel inbox tasks (new inbox object)', () => {
       task({ rawText: '- [ ] has tag #work', status: 'open' }),
     ];
     const { el } = makeCenter(tasks, {
-      inbox: { mode: 'untagged', tag: '#task/inbox', showUntagged: true, removeTagOnAssign: true },
+      inbox: { mode: 'untagged', tag: '#task/inbox', removeTagOnAssign: true },
     });
     const cards = el.querySelectorAll('.tc-task-card');
     expect(cards).toHaveLength(1);

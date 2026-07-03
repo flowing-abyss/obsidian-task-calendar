@@ -185,7 +185,7 @@ describe('CalendarSettingsTab renderGeneralSettings', () => {
 describe('CalendarSettingsTab renderTagGroupSettings', () => {
   it('inbox source dropdown has tag/untagged options', () => {
     const { tab } = makeTab({
-      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+      inbox: { mode: 'untagged', tag: '', removeTagOnAssign: true },
     });
     const body = openSection(tab, 3);
     const dd = findDropdown(body, 'Inbox source');
@@ -197,7 +197,7 @@ describe('CalendarSettingsTab renderTagGroupSettings', () => {
 
   it('inbox source switch to tag saves and re-renders', () => {
     const { tab, plugin, captured } = makeTab({
-      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+      inbox: { mode: 'untagged', tag: '', removeTagOnAssign: true },
     });
     openSection(tab, 3);
     findComp(captured, 'Inbox source', 'dropdown')!.comp.setValue('tag');
@@ -207,7 +207,7 @@ describe('CalendarSettingsTab renderTagGroupSettings', () => {
 
   it('inbox tag field visible when inboxMode is tag', () => {
     const { tab } = makeTab({
-      inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
     });
     const body = openSection(tab, 3);
     const input = findInput(body, 'Inbox tag');
@@ -217,7 +217,7 @@ describe('CalendarSettingsTab renderTagGroupSettings', () => {
 
   it('inbox tag field hidden when inboxMode is untagged', () => {
     const { tab } = makeTab({
-      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+      inbox: { mode: 'untagged', tag: '', removeTagOnAssign: true },
     });
     const body = openSection(tab, 3);
     const input = findInput(body, 'Inbox tag');
@@ -226,7 +226,7 @@ describe('CalendarSettingsTab renderTagGroupSettings', () => {
 
   it('inbox tag change saves (trimmed)', () => {
     const { tab, plugin, captured } = makeTab({
-      inbox: { mode: 'tag', tag: '#old', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'tag', tag: '#old', removeTagOnAssign: true },
     });
     openSection(tab, 3);
     findComp(captured, 'Inbox tag', 'text')!.comp.setValue('  #new  ');

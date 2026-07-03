@@ -61,7 +61,7 @@ describe('LeftPanel smart lists', () => {
       task({ rawText: '- [x] done #inbox', status: 'done' }),
     ];
     const { el } = makePanel(tasks, {
-      inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
     });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')?.textContent).toBe('2');
@@ -74,7 +74,7 @@ describe('LeftPanel smart lists', () => {
       task({ rawText: '- [x] done no tag', status: 'done' }),
     ];
     const { el } = makePanel(tasks, {
-      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+      inbox: { mode: 'untagged', tag: '', removeTagOnAssign: true },
     });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')?.textContent).toBe('1');
@@ -111,7 +111,7 @@ describe('LeftPanel smart lists', () => {
 
   it('count badge absent when count is 0', () => {
     const { el } = makePanel([], {
-      inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
     });
     const inboxRow = el.querySelector('.tc-left-item')!;
     expect(inboxRow.querySelector('.tc-left-count')).toBeNull();
@@ -515,7 +515,7 @@ describe('LeftPanel inbox logic (new inbox object)', () => {
       task({ rawText: '- [ ] t2 #other', status: 'open' }),
     ];
     const { el } = makePanel(tasks, {
-      inbox: { mode: 'tag', tag: '#task/inbox', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'tag', tag: '#task/inbox', removeTagOnAssign: true },
     });
     const inboxCount = el.querySelector('.tc-left-item .tc-left-count')?.textContent;
     expect(inboxCount).toBe('1');
@@ -527,7 +527,7 @@ describe('LeftPanel inbox logic (new inbox object)', () => {
       task({ rawText: '- [ ] has tag #work', status: 'open' }),
     ];
     const { el } = makePanel(tasks, {
-      inbox: { mode: 'untagged', tag: '#task/inbox', showUntagged: true, removeTagOnAssign: true },
+      inbox: { mode: 'untagged', tag: '#task/inbox', removeTagOnAssign: true },
     });
     const inboxCount = el.querySelector('.tc-left-item .tc-left-count')?.textContent;
     expect(inboxCount).toBe('1');
@@ -540,7 +540,7 @@ describe('LeftPanel inbox logic (new inbox object)', () => {
       task({ rawText: '- [ ] has other #work', status: 'open', line: 2 }),
     ];
     const { el } = makePanel(tasks, {
-      inbox: { mode: 'both', tag: '#task/inbox', showUntagged: true, removeTagOnAssign: true },
+      inbox: { mode: 'both', tag: '#task/inbox', removeTagOnAssign: true },
     });
     const inboxCount = el.querySelector('.tc-left-item .tc-left-count')?.textContent;
     expect(inboxCount).toBe('2');

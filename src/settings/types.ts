@@ -32,7 +32,6 @@ export interface TagGroup {
 export interface InboxSettings {
   mode: 'tag' | 'untagged' | 'both';
   tag: string;
-  showUntagged: boolean;
   removeTagOnAssign: boolean;
 }
 

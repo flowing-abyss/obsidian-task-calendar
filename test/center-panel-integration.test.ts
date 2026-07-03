@@ -96,7 +96,7 @@ describe('CenterPanel.createTask', () => {
       ...DEFAULT_SETTINGS,
       addToToday: false,
       customFilePath: 'Inbox.md',
-      inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+      inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
     };
     const { panel, state, app } = await makePanel({ 'Inbox.md': '- [ ] existing' }, settings);
     state.set('selectedList', 'inbox');
@@ -110,7 +110,7 @@ describe('CenterPanel.createTask', () => {
       ...DEFAULT_SETTINGS,
       addToToday: false,
       customFilePath: 'Inbox.md',
-      inbox: { mode: 'untagged', tag: '', showUntagged: true, removeTagOnAssign: true },
+      inbox: { mode: 'untagged', tag: '', removeTagOnAssign: true },
     };
     const { panel, state, app } = await makePanel({ 'Inbox.md': '- [ ] existing' }, settings);
     state.set('selectedList', 'inbox');
@@ -139,7 +139,7 @@ describe('CenterPanel.createTask', () => {
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
         addToToday: true,
-        inbox: { mode: 'tag', tag: '#inbox', showUntagged: false, removeTagOnAssign: true },
+        inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
         dailyNoteProvider: 'manual',
         manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
       };

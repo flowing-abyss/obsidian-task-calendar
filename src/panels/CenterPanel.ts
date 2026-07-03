@@ -1574,7 +1574,7 @@ export class CenterPanel {
     const all = this.store.getTasks();
     const withTag =
       inbox.mode !== 'untagged' ? all.filter((t) => t.rawText.includes(inbox.tag)) : [];
-    const includeUntagged = inbox.mode !== 'tag' || inbox.showUntagged;
+    const includeUntagged = inbox.mode !== 'tag';
     const untagged = includeUntagged ? all.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
     if (withTag.length === 0) return untagged;
     if (untagged.length === 0) return withTag;

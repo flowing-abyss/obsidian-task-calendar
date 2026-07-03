@@ -15,22 +15,31 @@ describe('migrateSettings', () => {
     expect(raw['inbox']).toEqual({
       mode: 'tag',
       tag: '#inbox',
-      showUntagged: false,
       removeTagOnAssign: true,
     });
     expect(raw['inboxMode']).toBeUndefined();
     expect(raw['inboxTag']).toBeUndefined();
   });
 
-  it('converts old inboxMode=untagged to inbox with showUntagged:true', () => {
+  it('converts old inboxMode=untagged to inbox with untagged mode', () => {
     const raw: Record<string, unknown> = { inboxMode: 'untagged', inboxTag: '#inbox' };
     migrateSettings(raw);
     expect((raw['inbox'] as Record<string, unknown>)['mode']).toBe('untagged');
-    expect((raw['inbox'] as Record<string, unknown>)['showUntagged']).toBe(true);
+    expect((raw['inbox'] as Record<string, unknown>)['showUntagged']).toBeUndefined();
     expect(raw['inboxMode']).toBeUndefined();
   });
 
-  it('does not overwrite existing inbox object', () => {
+  it('folds legacy showUntagged=true on tag mode into both mode and strips the flag', () => {
+    const raw: Record<string, unknown> = {
+      inbox: { mode: 'tag', tag: '#inbox', showUntagged: true, removeTagOnAssign: true },
+    };
+    migrateSettings(raw);
+    const inbox = raw['inbox'] as Record<string, unknown>;
+    expect(inbox['mode']).toBe('both');
+    expect(inbox['showUntagged']).toBeUndefined();
+  });
+
+  it('strips legacy showUntagged without changing a non-tag mode', () => {
     const existing = {
       mode: 'both',
       tag: '#task/inbox',
@@ -40,6 +49,8 @@ describe('migrateSettings', () => {
     const raw: Record<string, unknown> = { inbox: existing };
     migrateSettings(raw);
     expect(raw['inbox']).toBe(existing);
+    expect((raw['inbox'] as Record<string, unknown>)['mode']).toBe('both');
+    expect((raw['inbox'] as Record<string, unknown>)['showUntagged']).toBeUndefined();
   });
 
   it('preserves existing pinnedTags if already present', () => {
