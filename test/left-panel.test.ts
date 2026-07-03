@@ -153,13 +153,17 @@ describe('LeftPanel smart lists', () => {
 });
 
 describe('LeftPanel tag groups (prefix mode)', () => {
-  it('renders Tags section only when tagGroups non-empty', () => {
+  it('always renders the Tags section (with the + affordance), groups only when present', () => {
+    // Empty groups: the Tags section still shows so the "+" is discoverable, but no group rows.
     const { el } = makePanel([], { tagGroups: [] });
-    expect(el.querySelector('.tc-left-divider')).toBeNull();
+    expect(el.querySelector('.tc-left-section--tags')).not.toBeNull();
+    expect(el.querySelector('.tc-left-section--tags .tc-left-add')).not.toBeNull();
+    expect(el.querySelector('.tc-tag-group-header')).toBeNull();
+    // With a group: the group renders.
     const { el: el2 } = makePanel([], {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
     });
-    expect(el2.querySelector('.tc-left-divider')).not.toBeNull();
+    expect(el2.querySelector('.tc-tag-group-header')).not.toBeNull();
   });
 
   it('group header renders name', () => {
@@ -564,5 +568,90 @@ describe('LeftPanel drop zones', () => {
     const ev = new MouseEvent('dragover', { bubbles: true, cancelable: true });
     pinned.dispatchEvent(ev);
     expect(pinned.classList.contains('tc-drop-target')).toBe(false);
+  });
+});
+
+describe('LeftPanel collapsible sections, projects, and tags +', () => {
+  function makeFull(opts: {
+    tasks?: import('../src/parser/types').Task[];
+    settings?: Partial<CalendarSettings>;
+    projects?: Array<{ path: string; name: string }>;
+  }) {
+    const state = new AppState();
+    const store = makeStubStore(opts.tasks ?? []) as TaskStore;
+    const merged: CalendarSettings = { ...DEFAULT_SETTINGS, ...opts.settings };
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tm = new TagManager(null as never, merged, save);
+    const projectStore = {
+      activeForLeftPanel: () => opts.projects ?? [],
+      refresh: vi.fn(),
+      onUpdate: () => () => {},
+    } as never;
+    const projectManager = { create: vi.fn().mockResolvedValue(null) } as never;
+    const panel = new LeftPanel(
+      state,
+      store,
+      merged,
+      tm,
+      null as never,
+      save,
+      projectStore,
+      projectManager,
+    );
+    const el = freshContainer();
+    panel.mount(el);
+    return { panel, state, el, tm, save, merged };
+  }
+
+  it('renders a chevron span (SVG icon, not a text glyph) on the Tags header', () => {
+    const { el } = makeFull({
+      settings: { tagGroups: [{ id: 'g', name: 'W', mode: 'manual', tags: ['#w'] }] },
+    });
+    const chevron = el.querySelector('.tc-left-section--tags .tc-left-section-chevron');
+    expect(chevron).toBeTruthy();
+    expect(chevron?.textContent).toBe('');
+  });
+
+  it('persists section collapse via onSaveSettings', () => {
+    const { el, save, merged } = makeFull({});
+    const header = el.querySelector(
+      '.tc-left-section--tags .tc-left-section-header',
+    ) as HTMLElement;
+    header.click();
+    expect(merged.sectionCollapse.tags).toBe(true);
+    expect(save).toHaveBeenCalled();
+  });
+
+  it('renders active projects capped at 10 with a show-more affordance', () => {
+    const projects = Array.from({ length: 12 }, (_, i) => ({
+      path: `Projects/P${i}.md`,
+      name: `P${i}`,
+    }));
+    const { el } = makeFull({ projects });
+    expect(el.querySelectorAll('.tc-project-item').length).toBe(10);
+    expect(el.querySelector('.tc-left-showmore')).toBeTruthy();
+  });
+
+  it('clicking a project selects it without leaving tasks mode', () => {
+    const { el, state } = makeFull({ projects: [{ path: 'Projects/A.md', name: 'A' }] });
+    (el.querySelector('.tc-project-item') as HTMLElement).click();
+    expect(state.get('selectedList')).toEqual({ type: 'project', path: 'Projects/A.md' });
+    expect(state.get('mode')).toBe('tasks');
+  });
+
+  it('does not render the Projects section when there are no active projects', () => {
+    const { el } = makeFull({ projects: [] });
+    expect(el.querySelector('.tc-left-section--projects')).toBeNull();
+  });
+
+  it('tags + opens an input that creates a manual group', () => {
+    const { el, tm } = makeFull({});
+    const spy = vi.spyOn(tm, 'createManualGroup').mockResolvedValue();
+    (el.querySelector('.tc-left-section--tags .tc-left-add') as HTMLElement).click();
+    const input = el.querySelector('.tc-left-add-input') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    input.value = 'Focus';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(spy).toHaveBeenCalledWith('Focus');
   });
 });

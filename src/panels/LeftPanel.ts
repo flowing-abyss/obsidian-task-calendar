@@ -1,16 +1,22 @@
 import { Menu, setIcon, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import type { Task } from '../parser/types';
+import { CreateProjectModal } from '../projects/CreateProjectModal';
+import type { ProjectManager } from '../projects/ProjectManager';
+import type { ProjectStore } from '../projects/ProjectStore';
 import type { CalendarSettings, TagGroup } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import { RenameTagModal } from '../tags/RenameTagModal';
 import type { TagManager } from '../tags/TagManager';
+
+const PROJECTS_CAP = 10;
 
 export class LeftPanel {
   private el!: HTMLElement;
   private offs: Array<() => void> = [];
   private expandedGroups = new Set<string>();
   private explicitlyCollapsed = new Set<string>();
+  private showAllProjects = false;
 
   constructor(
     private state: AppState,
@@ -18,6 +24,9 @@ export class LeftPanel {
     private settings: CalendarSettings,
     private tagManager: TagManager,
     private app: App,
+    private onSaveSettings: () => Promise<void> = async () => {},
+    private projectStore: ProjectStore | null = null,
+    private projectManager: ProjectManager | null = null,
   ) {}
 
   mount(container: HTMLElement): void {
@@ -41,7 +50,8 @@ export class LeftPanel {
   private render(): void {
     this.el.empty();
     const mode = this.state.get('mode');
-    if (mode === 'search') return;
+    // The projects mode is a self-contained deep view; search hides the left panel too.
+    if (mode === 'search' || mode === 'projects') return;
 
     const allTasks = this.store.getTasks();
     const today = window.moment().format('YYYY-MM-DD');
@@ -59,28 +69,180 @@ export class LeftPanel {
       );
     });
 
-    // Pinned section
+    // Pinned section (collapsible)
     if (this.settings.pinnedTags.length > 0) {
-      this.el.createDiv({ cls: 'tc-left-divider' });
-      this.el.createDiv({ cls: 'tc-left-section tc-left-section--pinned' }, (section) => {
-        section.createEl('div', { cls: 'tc-left-section-header', text: 'Pinned' });
+      this.renderCollapsibleSection('pinned', 'Pinned', null, (body) => {
         for (const tag of this.settings.pinnedTags) {
-          this.renderPinnedTag(section, tag, allTasks);
+          this.renderPinnedTag(body, tag, allTasks);
         }
       });
     }
 
-    // Tag groups (archived tags filtered out)
+    // Projects section (collapsible) — only active (onLeftPanel) projects
+    const activeProjects = this.projectStore?.activeForLeftPanel() ?? [];
+    if (activeProjects.length > 0) {
+      this.renderCollapsibleSection(
+        'projects',
+        'Projects',
+        this.projectManager ? (): void => this.openCreateProject() : null,
+        (body) => this.renderProjectsList(body, activeProjects, allTasks),
+      );
+    }
+
+    // Tag groups (collapsible; archived tags filtered out)
     const groups = this.settings.tagGroups;
     if (groups.length > 0) {
-      this.el.createDiv({ cls: 'tc-left-divider' });
-      this.el.createDiv({ cls: 'tc-left-section' }, (section) => {
-        section.createEl('div', { cls: 'tc-left-section-header', text: 'Tags' });
-        for (const group of groups) {
-          this.renderTagGroup(section, group, allTasks);
-        }
+      this.renderCollapsibleSection(
+        'tags',
+        'Tags',
+        (): void => this.startAddTag(),
+        (body) => {
+          for (const group of groups) {
+            this.renderTagGroup(body, group, allTasks);
+          }
+        },
+      );
+    } else {
+      // Still expose the "+" to add the first tag with zero friction.
+      this.renderCollapsibleSection(
+        'tags',
+        'Tags',
+        (): void => this.startAddTag(),
+        () => {},
+      );
+    }
+  }
+
+  /**
+   * A left-panel section with a persisted collapse state, an SVG chevron, and an
+   * optional "+" add action. Collapse toggles `settings.sectionCollapse[key]`.
+   */
+  private renderCollapsibleSection(
+    key: 'pinned' | 'projects' | 'tags',
+    title: string,
+    addAction: (() => void) | null,
+    body: (bodyEl: HTMLElement) => void,
+  ): void {
+    const collapsed = this.settings.sectionCollapse[key];
+    this.el.createDiv({ cls: 'tc-left-divider' });
+    const section = this.el.createDiv({ cls: `tc-left-section tc-left-section--${key}` });
+
+    const header = section.createDiv({
+      cls: 'tc-left-section-header tc-left-section-header--collapsible',
+    });
+    const chevron = header.createSpan({ cls: 'tc-left-section-chevron' });
+    setIcon(chevron, collapsed ? 'chevron-right' : 'chevron-down');
+    header.createSpan({ cls: 'tc-left-section-title', text: title });
+
+    if (addAction) {
+      const add = header.createSpan({
+        cls: 'tc-left-add',
+        attr: { 'aria-label': `Add to ${title}` },
+      });
+      setIcon(add, 'plus');
+      add.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addAction();
       });
     }
+
+    header.addEventListener('click', () => {
+      this.settings.sectionCollapse[key] = !collapsed;
+      void this.onSaveSettings();
+      this.render();
+    });
+
+    if (!collapsed) {
+      const bodyEl = section.createDiv({ cls: 'tc-left-section-body' });
+      body(bodyEl);
+    }
+  }
+
+  private renderProjectsList(
+    parent: HTMLElement,
+    projects: ReturnType<ProjectStore['activeForLeftPanel']>,
+    allTasks: Task[],
+  ): void {
+    const visible = this.showAllProjects ? projects : projects.slice(0, PROJECTS_CAP);
+    const sel = this.state.get('selectedList');
+    for (const project of visible) {
+      const isActive =
+        typeof sel === 'object' && sel.type === 'project' && sel.path === project.path;
+      const openCount = allTasks.filter(
+        (t) => t.filePath === project.path && t.status === 'open',
+      ).length;
+      const row = parent.createDiv({
+        cls: `tc-left-item tc-project-item${isActive ? ' is-active' : ''}`,
+      });
+      row.createDiv({ cls: 'tc-left-item-left' }, (l) => {
+        l.createEl('span', { cls: 'tc-left-label', text: project.name });
+      });
+      if (openCount > 0) {
+        row.createEl('span', { cls: 'tc-left-count', text: String(openCount) });
+      }
+      row.addEventListener('click', () => {
+        this.state.set('selectedList', { type: 'project', path: project.path });
+        this.state.set('mode', 'tasks');
+      });
+    }
+
+    if (!this.showAllProjects && projects.length > PROJECTS_CAP) {
+      const more = parent.createDiv({ cls: 'tc-left-item tc-left-showmore' });
+      more.createEl('span', {
+        cls: 'tc-left-label',
+        text: `Show ${projects.length - PROJECTS_CAP} more…`,
+      });
+      more.addEventListener('click', () => {
+        this.showAllProjects = true;
+        this.render();
+      });
+    }
+  }
+
+  private openCreateProject(): void {
+    if (!this.projectManager) return;
+    const manager = this.projectManager;
+    new CreateProjectModal(this.app, (name) => {
+      void manager.create(name).then(() => {
+        this.projectStore?.refresh();
+        this.render();
+      });
+    }).open();
+  }
+
+  private startAddTag(): void {
+    const section = this.el.querySelector('.tc-left-section--tags');
+    if (!section) return;
+    const existing = section.querySelector('.tc-left-add-input');
+    if (existing) {
+      (existing as HTMLInputElement).focus();
+      return;
+    }
+    const body =
+      section.querySelector('.tc-left-section-body') ??
+      section.createDiv({ cls: 'tc-left-section-body' });
+    const input = body.createEl('input', {
+      cls: 'tc-left-add-input',
+      attr: { type: 'text', placeholder: 'Tag name…' },
+    });
+    const commit = (): void => {
+      const value = input.value.trim();
+      if (value) void this.tagManager.createManualGroup(value).then(() => this.render());
+      else this.render();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      }
+      if (e.key === 'Escape') this.render();
+    });
+    input.addEventListener('blur', () => {
+      window.setTimeout(() => {
+        if (activeDocument.activeElement !== input) commit();
+      }, 150);
+    });
+    window.setTimeout(() => input.focus(), 0);
   }
 
   private renderPinnedTag(parent: HTMLElement, tag: string, allTasks: Task[]): void {
@@ -163,8 +325,8 @@ export class LeftPanel {
     // Chevron: toggles expand/collapse only, does NOT select the group
     const chevron = header.createEl('span', {
       cls: `tc-left-icon tc-group-arrow${isExpanded ? ' is-open' : ''}`,
-      text: isExpanded ? '▼' : '▶',
     });
+    setIcon(chevron, isExpanded ? 'chevron-down' : 'chevron-right');
     chevron.addEventListener('click', (e) => {
       e.stopPropagation();
       if (isExpanded) {
