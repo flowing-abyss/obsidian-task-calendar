@@ -22,7 +22,7 @@
     "review:obsidian": "npm run review:obsidian:code && npm run review:obsidian:metadata",
     "review:obsidian:code": "eslint --config eslint.obsidian.config.mjs src",
     "review:obsidian:metadata": "eslint --config eslint.obsidian.metadata.config.mjs --no-error-on-unmatched-pattern manifest.json package.json LICENSE",
-    "review:local": "npm run review:obsidian && npm run lint && npm audit --audit-level=moderate && npm run build && npm run test:unit",
+    "review:local": "npm run review:obsidian && npm run lint && npm run knip && npm run format:check && npm audit --audit-level=moderate && npm run build && npm run test:unit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip"
