@@ -10,11 +10,87 @@ interface TaskCalendarPlugin extends Plugin {
 }
 
 export class CalendarSettingsTab extends PluginSettingTab {
+  /** Ids of cards (statuses / tag groups) currently expanded — persists across re-renders. */
+  private expandedCards = new Set<string>();
+
   constructor(
     app: App,
     private plugin: TaskCalendarPlugin,
   ) {
     super(app, plugin);
+  }
+
+  /**
+   * Renders a list of collapsible, drag-to-reorder cards. Collapsed by default
+   * (title only) so the whole set can be scanned at a glance; click to expand
+   * and edit. Shared by statuses and tag groups for a consistent UI.
+   */
+  private renderCardList<T>(
+    containerEl: HTMLElement,
+    items: T[],
+    opts: {
+      id: (item: T) => string;
+      title: (item: T) => string;
+      accent?: (item: T) => string | undefined;
+      body: (bodyEl: HTMLElement, idx: number) => void;
+      onReorder: (from: number, to: number) => void;
+    },
+  ): void {
+    items.forEach((item, idx) => {
+      const id = opts.id(item);
+      const expanded = this.expandedCards.has(id);
+      const card = containerEl.createDiv({
+        cls: `tc-settings-card${expanded ? ' is-open' : ''}`,
+        attr: { draggable: 'true' },
+      });
+
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer?.setData('text/plain', String(idx));
+        card.addClass('tc-dragging');
+      });
+      card.addEventListener('dragend', () => card.removeClass('tc-dragging'));
+      card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        card.addClass('tc-drag-over');
+      });
+      card.addEventListener('dragleave', () => card.removeClass('tc-drag-over'));
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.removeClass('tc-drag-over');
+        const from = Number(e.dataTransfer?.getData('text/plain'));
+        if (!Number.isNaN(from) && from !== idx) opts.onReorder(from, idx);
+      });
+
+      const header = card.createDiv({ cls: 'tc-settings-card-header' });
+      const grip = header.createSpan({ cls: 'tc-settings-card-grip' });
+      setIcon(grip, 'grip-vertical');
+      const accent = opts.accent?.(item);
+      if (accent) {
+        const dot = header.createSpan({ cls: 'tc-status-dot' });
+        dot.style.background = accent;
+      }
+      header.createSpan({ cls: 'tc-settings-card-title', text: opts.title(item) });
+      const chevron = header.createSpan({ cls: 'tc-settings-card-chevron' });
+      setIcon(chevron, expanded ? 'chevron-down' : 'chevron-right');
+      header.addEventListener('click', () => {
+        if (expanded) this.expandedCards.delete(id);
+        else this.expandedCards.add(id);
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        this.display();
+      });
+
+      if (expanded) {
+        const bodyEl = card.createDiv({ cls: 'tc-settings-card-body' });
+        opts.body(bodyEl, idx);
+      }
+    });
+  }
+
+  private moveItem<T>(arr: T[], from: number, to: number): void {
+    const item = arr[from];
+    if (item === undefined) return;
+    arr.splice(from, 1);
+    arr.splice(to, 0, item);
   }
 
   display(): void {
@@ -282,9 +358,18 @@ export class CalendarSettingsTab extends PluginSettingTab {
 
   private renderTagGroupSettings(containerEl: HTMLElement): void {
     const groups = this.plugin.settings.tagGroups;
-    for (let idx = 0; idx < groups.length; idx++) {
-      this.renderTagGroupCard(containerEl, idx);
-    }
+    this.renderCardList(containerEl, groups, {
+      id: (g) => g.id,
+      title: (g) => g.name,
+      accent: (g) => g.color,
+      body: (bodyEl, idx) => this.renderTagGroupCard(bodyEl, idx),
+      onReorder: (from, to) => {
+        this.moveItem(groups, from, to);
+        void this.plugin.saveSettings();
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        this.display();
+      },
+    });
 
     const archived = this.plugin.settings.archivedTags;
     if (archived.length > 0) {
@@ -306,12 +391,14 @@ export class CalendarSettingsTab extends PluginSettingTab {
         .setButtonText('+ Add group')
         .setCta()
         .onClick(async () => {
+          const id = `group-${Date.now()}`;
           this.plugin.settings.tagGroups.push({
-            id: `group-${Date.now()}`,
+            id,
             name: 'New group',
             mode: 'prefix',
             prefix: '',
           });
+          this.expandedCards.add(id);
           await this.plugin.saveSettings();
           // eslint-disable-next-line @typescript-eslint/no-deprecated
           this.display();
@@ -319,32 +406,17 @@ export class CalendarSettingsTab extends PluginSettingTab {
     );
   }
 
-  private renderTagGroupCard(containerEl: HTMLElement, idx: number): void {
+  private renderTagGroupCard(card: HTMLElement, idx: number): void {
     const groups = this.plugin.settings.tagGroups;
     const group = groups[idx];
     if (!group) return;
 
-    const card = containerEl.createDiv({ cls: 'tc-settings-group-card' });
-
-    new Setting(card)
-      .setName('Group name')
-      .addText((t) =>
-        t.setValue(group.name).onChange(async (v) => {
-          group.name = v;
-          await this.plugin.saveSettings();
-        }),
-      )
-      .addButton((b) =>
-        b
-          .setIcon('trash')
-          .setTooltip('Delete group')
-          .onClick(async () => {
-            groups.splice(idx, 1);
-            await this.plugin.saveSettings();
-            // eslint-disable-next-line @typescript-eslint/no-deprecated
-            this.display();
-          }),
-      );
+    new Setting(card).setName('Group name').addText((t) =>
+      t.setValue(group.name).onChange(async (v) => {
+        group.name = v;
+        await this.plugin.saveSettings();
+      }),
+    );
 
     new Setting(card).setName('Mode').addDropdown((d) =>
       d
@@ -399,6 +471,19 @@ export class CalendarSettingsTab extends PluginSettingTab {
             }),
         );
     }
+
+    new Setting(card).addButton((b) =>
+      b
+        .setButtonText('Delete group')
+        .setClass('mod-warning')
+        .onClick(async () => {
+          const removed = groups.splice(idx, 1)[0];
+          if (removed) this.expandedCards.delete(removed.id);
+          await this.plugin.saveSettings();
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
+          this.display();
+        }),
+    );
   }
 
   private renderProjectsSettings(containerEl: HTMLElement): void {
@@ -447,9 +532,18 @@ export class CalendarSettingsTab extends PluginSettingTab {
       );
 
     new Setting(containerEl).setName('Statuses').setHeading();
-    for (let idx = 0; idx < projects.statuses.length; idx++) {
-      this.renderStatusCard(containerEl, idx);
-    }
+    this.renderCardList(containerEl, projects.statuses, {
+      id: (s) => s.id,
+      title: (s) => s.label,
+      accent: (s) => s.color,
+      body: (bodyEl, idx) => this.renderStatusCard(bodyEl, idx),
+      onReorder: (from, to) => {
+        this.moveItem(projects.statuses, from, to);
+        void this.plugin.saveSettings();
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        this.display();
+      },
+    });
 
     new Setting(containerEl).addButton((b) =>
       b
@@ -460,85 +554,48 @@ export class CalendarSettingsTab extends PluginSettingTab {
           // Collision-proof id: smallest status-N not already taken.
           let n = projects.statuses.length + 1;
           while (projects.statuses.some((s) => s.id === `status-${n}`)) n++;
+          const id = `status-${n}`;
           projects.statuses.push({
-            id: `status-${n}`,
+            id,
             label: 'New status',
             color: '#888888',
             onLeftPanel: false,
             match: { kind: 'property', property: 'status', value: '' },
           });
+          this.expandedCards.add(id); // open the new card for editing
           await this.plugin.saveSettings();
           // eslint-disable-next-line @typescript-eslint/no-deprecated
           this.display();
         }),
     );
+
+    // A single place to pick the default status — not a per-status toggle.
+    if (projects.statuses.length > 0) {
+      new Setting(containerEl)
+        .setName('Default status')
+        .setDesc('Applied to newly created projects.')
+        .addDropdown((d) => {
+          for (const s of projects.statuses) d.addOption(s.id, s.label);
+          d.setValue(projects.defaultStatusId || projects.statuses[0]!.id).onChange(async (v) => {
+            projects.defaultStatusId = v;
+            await this.plugin.saveSettings();
+          });
+        });
+    }
   }
 
-  private renderStatusCard(containerEl: HTMLElement, idx: number): void {
+  private renderStatusCard(card: HTMLElement, idx: number): void {
     const projects = this.plugin.settings.projects;
     const statuses = projects.statuses;
     const status = statuses[idx];
     if (!status) return;
 
-    const card = containerEl.createDiv({ cls: 'tc-settings-group-card tc-settings-status-card' });
-
-    new Setting(card)
-      .setName('Label')
-      .addText((t) =>
-        t.setValue(status.label).onChange(async (v) => {
-          status.label = v;
-          await this.plugin.saveSettings();
-        }),
-      )
-      .addExtraButton((b) =>
-        b
-          .setIcon('arrow-up')
-          .setTooltip('Move up')
-          .setDisabled(idx === 0)
-          .onClick(async () => {
-            const a = statuses[idx];
-            const b = statuses[idx - 1];
-            if (a && b) {
-              statuses[idx - 1] = a;
-              statuses[idx] = b;
-            }
-            await this.plugin.saveSettings();
-            // eslint-disable-next-line @typescript-eslint/no-deprecated
-            this.display();
-          }),
-      )
-      .addExtraButton((b) =>
-        b
-          .setIcon('arrow-down')
-          .setTooltip('Move down')
-          .setDisabled(idx === statuses.length - 1)
-          .onClick(async () => {
-            const a = statuses[idx];
-            const b = statuses[idx + 1];
-            if (a && b) {
-              statuses[idx + 1] = a;
-              statuses[idx] = b;
-            }
-            await this.plugin.saveSettings();
-            // eslint-disable-next-line @typescript-eslint/no-deprecated
-            this.display();
-          }),
-      )
-      .addButton((b) =>
-        b
-          .setIcon('trash')
-          .setTooltip('Delete status')
-          .setDisabled(statuses.length <= 1)
-          .onClick(async () => {
-            const removed = statuses.splice(idx, 1)[0];
-            if (removed && projects.defaultStatusId === removed.id) {
-              projects.defaultStatusId = statuses[0]?.id ?? '';
-            }
-            await this.plugin.saveSettings();
-            // eslint-disable-next-line @typescript-eslint/no-deprecated
-            this.display();
-          }),
-      );
+    new Setting(card).setName('Label').addText((t) =>
+      t.setValue(status.label).onChange(async (v) => {
+        status.label = v;
+        await this.plugin.saveSettings();
+      }),
+    );
 
     new Setting(card).setName('Defined by').addDropdown((d) =>
       d
@@ -605,15 +662,23 @@ export class CalendarSettingsTab extends PluginSettingTab {
       }),
     );
 
-    new Setting(card).setName('Default for new projects').addToggle((tg) =>
-      tg.setValue(projects.defaultStatusId === status.id).onChange(async (v) => {
-        if (v) {
-          projects.defaultStatusId = status.id;
+    new Setting(card).addButton((b) =>
+      b
+        .setButtonText('Delete status')
+        .setClass('mod-warning')
+        .setDisabled(statuses.length <= 1)
+        .onClick(async () => {
+          const removed = statuses.splice(idx, 1)[0];
+          if (removed) {
+            this.expandedCards.delete(removed.id);
+            if (projects.defaultStatusId === removed.id) {
+              projects.defaultStatusId = statuses[0]?.id ?? '';
+            }
+          }
           await this.plugin.saveSettings();
           // eslint-disable-next-line @typescript-eslint/no-deprecated
           this.display();
-        }
-      }),
+        }),
     );
   }
 

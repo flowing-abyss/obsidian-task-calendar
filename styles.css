@@ -3545,3 +3545,55 @@ body.tc-modal-open .popover.hover-popover {
   margin-bottom: 8px;
   font-size: var(--font-ui-small);
 }
+
+/* ── Settings: collapsible drag-to-reorder cards (statuses + tag groups) ────── */
+.tc-settings-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--background-secondary);
+}
+.tc-settings-card.tc-dragging {
+  opacity: 0.5;
+}
+.tc-settings-card.tc-drag-over {
+  border-color: var(--interactive-accent);
+}
+.tc-settings-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.tc-settings-card-grip {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
+  cursor: grab;
+}
+.tc-settings-card-grip svg {
+  width: 14px;
+  height: 14px;
+}
+.tc-settings-card-title {
+  flex: 1;
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tc-settings-card-chevron {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+.tc-settings-card-chevron svg {
+  width: 16px;
+  height: 16px;
+}
+.tc-settings-card-body {
+  padding: 0 12px 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}

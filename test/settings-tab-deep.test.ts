@@ -59,12 +59,16 @@ function patchSetting(captured: CapturedComp[]): () => void {
   };
 }
 
-function makeTab(settingsOverrides: Partial<CalendarSettings> = {}): {
+function makeTab(
+  settingsOverrides: Partial<CalendarSettings> = {},
+  opts: { expand?: boolean } = {},
+): {
   tab: CalendarSettingsTab;
   plugin: StubPlugin;
   app: App;
   captured: CapturedComp[];
 } {
+  const expandCards = opts.expand ?? true;
   const app = new App();
   // Mock plugins so DailyNoteResolver adapters don't throw on app.plugins access
   (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
@@ -78,6 +82,13 @@ function makeTab(settingsOverrides: Partial<CalendarSettings> = {}): {
     app,
     plugin as unknown as ConstructorParameters<typeof CalendarSettingsTab>[1],
   );
+  // Cards (tag groups / statuses) are collapsed by default; expand them all so
+  // their body Settings render and are captured for inspection.
+  if (expandCards) {
+    const expanded = (tab as unknown as { expandedCards: Set<string> }).expandedCards;
+    for (const g of settings.tagGroups) expanded.add(g.id);
+    for (const s of settings.projects.statuses) expanded.add(s.id);
+  }
   // eslint-disable-next-line @typescript-eslint/no-deprecated
   tab.display();
   restore();
@@ -326,12 +337,16 @@ describe('CalendarSettingsTab renderTagGroupCard', () => {
       tagGroups: [{ ...baseGroup }, { ...baseGroup, id: 'g2', name: 'Other' }],
     });
     const body = openSection(tab, 4);
-    const cards = body.querySelectorAll('.tc-settings-group-card');
+    const cards = body.querySelectorAll('.tc-settings-card');
     expect(cards).toHaveLength(2);
-    // Delete buttons are the buttons in "Group name" Setting rows (one per card)
-    const groupBtns = captured.filter((c) => c.name === 'Group name' && c.type === 'button');
-    expect(groupBtns).toHaveLength(2);
-    groupBtns[0]!.comp.clickHandler!();
+    // Each card has its own "Delete group" warning button.
+    const delBtns = captured.filter((c) => {
+      if (c.type !== 'button') return false;
+      const el = (c.comp as unknown as { buttonEl?: HTMLElement }).buttonEl;
+      return el?.textContent === 'Delete group';
+    });
+    expect(delBtns).toHaveLength(2);
+    delBtns[0]!.comp.clickHandler!();
     expect(plugin.saveSettings).toHaveBeenCalled();
     expect(plugin.settings.tagGroups).toHaveLength(1);
     expect(plugin.settings.tagGroups[0]!.id).toBe('g2');
@@ -502,5 +517,56 @@ describe('sourceNoteDisplay setting', () => {
       Array.from(s.options).some((o) => o.value === 'non-default'),
     );
     expect(sourceSelect?.value).toBe('always');
+  });
+});
+
+describe('CalendarSettingsTab collapsible cards + default status', () => {
+  it('statuses render as collapsed cards (title only) by default', () => {
+    const { tab } = makeTab({}, { expand: false });
+    const body = openSection(tab, 5); // Projects
+    const cards = body.querySelectorAll('.tc-settings-card');
+    expect(cards.length).toBe(DEFAULT_SETTINGS.projects.statuses.length);
+    // Collapsed: title shown, no expanded body.
+    expect(cards[0]!.querySelector('.tc-settings-card-title')?.textContent).toBe('Active');
+    expect(cards[0]!.querySelector('.tc-settings-card-body')).toBeNull();
+  });
+
+  it('clicking a card header expands it to reveal the body', () => {
+    const { tab } = makeTab({}, { expand: false });
+    const body = openSection(tab, 5);
+    (body.querySelector('.tc-settings-card .tc-settings-card-header') as HTMLElement).click();
+    const bodyAgain = tab.containerEl
+      .querySelectorAll<HTMLElement>('.tc-settings-section')[5]!
+      .querySelector('.tc-settings-section-body')!;
+    expect(
+      bodyAgain.querySelector('.tc-settings-card.is-open .tc-settings-card-body'),
+    ).toBeTruthy();
+  });
+
+  it('a single Default status dropdown lists all statuses and sets defaultStatusId', () => {
+    const { tab, plugin, captured } = makeTab();
+    openSection(tab, 5);
+    const dd = captured.find((c) => c.name === 'Default status' && c.type === 'dropdown');
+    expect(dd).toBeTruthy();
+    const plannedId = plugin.settings.projects.statuses[1]!.id;
+    dd!.comp.setValue(plannedId);
+    expect(plugin.settings.projects.defaultStatusId).toBe(plannedId);
+    // No per-status "Default for new projects" toggle remains.
+    expect(captured.some((c) => c.name === 'Default for new projects')).toBe(false);
+  });
+
+  it('deleting the default status repoints defaultStatusId to the first remaining', () => {
+    const { tab, plugin, captured } = makeTab();
+    // Make the first status the default, then delete it.
+    plugin.settings.projects.defaultStatusId = plugin.settings.projects.statuses[0]!.id;
+    openSection(tab, 5);
+    const delBtns = captured.filter((c) => {
+      if (c.type !== 'button') return false;
+      const el = (c.comp as unknown as { buttonEl?: HTMLElement }).buttonEl;
+      return el?.textContent === 'Delete status';
+    });
+    const survivorId = plugin.settings.projects.statuses[1]!.id;
+    delBtns[0]!.comp.clickHandler!();
+    expect(plugin.settings.projects.defaultStatusId).toBe(survivorId);
   });
 });
