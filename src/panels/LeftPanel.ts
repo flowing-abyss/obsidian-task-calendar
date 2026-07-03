@@ -1,7 +1,6 @@
 import { Menu, setIcon, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import type { Task } from '../parser/types';
-import { CreateProjectModal } from '../projects/CreateProjectModal';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
 import type { CalendarSettings, TagGroup } from '../settings/types';
@@ -84,33 +83,34 @@ export class LeftPanel {
       this.renderCollapsibleSection(
         'projects',
         'Projects',
-        this.projectManager ? (): void => this.openCreateProject() : null,
+        this.projectManager
+          ? (): void =>
+              this.startInlineAdd('projects', 'Project name…', (name) => this.createProject(name))
+          : null,
         (body) => this.renderProjectsList(body, activeProjects, allTasks),
       );
     }
 
-    // Tag groups (collapsible; archived tags filtered out)
+    // Tag groups (collapsible; archived tags filtered out). The section always
+    // renders so the "+" (zero-friction tag entry) stays discoverable.
     const groups = this.settings.tagGroups;
-    if (groups.length > 0) {
-      this.renderCollapsibleSection(
-        'tags',
-        'Tags',
-        (): void => this.startAddTag(),
-        (body) => {
-          for (const group of groups) {
-            this.renderTagGroup(body, group, allTasks);
-          }
-        },
-      );
-    } else {
-      // Still expose the "+" to add the first tag with zero friction.
-      this.renderCollapsibleSection(
-        'tags',
-        'Tags',
-        (): void => this.startAddTag(),
-        () => {},
-      );
-    }
+    this.renderCollapsibleSection(
+      'tags',
+      'Tags',
+      (): void =>
+        this.startInlineAdd('tags', 'Tag name…', (name) => this.tagManager.createManualGroup(name)),
+      (body) => {
+        for (const group of groups) {
+          this.renderTagGroup(body, group, allTasks);
+        }
+      },
+    );
+  }
+
+  private async createProject(name: string): Promise<void> {
+    if (!this.projectManager) return;
+    await this.projectManager.create(name);
+    this.projectStore?.refresh();
   }
 
   /**
@@ -184,6 +184,10 @@ export class LeftPanel {
         this.state.set('selectedList', { type: 'project', path: project.path });
         this.state.set('mode', 'tasks');
       });
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.showProjectMenu(e, project);
+      });
     }
 
     if (!this.showAllProjects && projects.length > PROJECTS_CAP) {
@@ -199,19 +203,24 @@ export class LeftPanel {
     }
   }
 
-  private openCreateProject(): void {
-    if (!this.projectManager) return;
-    const manager = this.projectManager;
-    new CreateProjectModal(this.app, (name) => {
-      void manager.create(name).then(() => {
-        this.projectStore?.refresh();
-        this.render();
-      });
-    }).open();
-  }
-
-  private startAddTag(): void {
-    const section = this.el.querySelector('.tc-left-section--tags');
+  /**
+   * Shows an inline text input directly under a section header (not at the
+   * bottom, which breaks with many rows). Used for both tag and project entry so
+   * the "+" affordance behaves identically everywhere. A `committed` guard
+   * prevents the Enter→re-render→blur sequence from firing twice.
+   */
+  private startInlineAdd(
+    key: 'tags' | 'projects',
+    placeholder: string,
+    onCommit: (name: string) => Promise<void>,
+  ): void {
+    // Ensure the section is expanded so the input is visible.
+    if (this.settings.sectionCollapse[key]) {
+      this.settings.sectionCollapse[key] = false;
+      void this.onSaveSettings();
+      this.render();
+    }
+    const section = this.el.querySelector(`.tc-left-section--${key}`);
     if (!section) return;
     const existing = section.querySelector('.tc-left-add-input');
     if (existing) {
@@ -223,11 +232,17 @@ export class LeftPanel {
       section.createDiv({ cls: 'tc-left-section-body' });
     const input = body.createEl('input', {
       cls: 'tc-left-add-input',
-      attr: { type: 'text', placeholder: 'Tag name…' },
+      attr: { type: 'text', placeholder },
     });
+    // Place it directly under the header, above existing rows.
+    body.insertBefore(input, body.firstChild);
+
+    let committed = false;
     const commit = (): void => {
+      if (committed) return;
+      committed = true;
       const value = input.value.trim();
-      if (value) void this.tagManager.createManualGroup(value).then(() => this.render());
+      if (value) void onCommit(value).then(() => this.render());
       else this.render();
     };
     input.addEventListener('keydown', (e) => {
@@ -235,7 +250,10 @@ export class LeftPanel {
         e.preventDefault();
         commit();
       }
-      if (e.key === 'Escape') this.render();
+      if (e.key === 'Escape') {
+        committed = true;
+        this.render();
+      }
     });
     input.addEventListener('blur', () => {
       window.setTimeout(() => {
@@ -243,6 +261,47 @@ export class LeftPanel {
       }, 150);
     });
     window.setTimeout(() => input.focus(), 0);
+  }
+
+  private showProjectMenu(
+    e: MouseEvent,
+    project: ReturnType<ProjectStore['activeForLeftPanel']>[number],
+  ): void {
+    const menu = new Menu();
+    const statuses = this.settings.projects.statuses;
+    if (statuses.length > 0 && this.projectManager) {
+      menu.addItem((item) => {
+        item.setTitle('Change status').setIcon('circle-dot');
+        const sub = (item as unknown as { setSubmenu: () => Menu }).setSubmenu();
+        for (const s of statuses) {
+          sub.addItem((si) =>
+            si
+              .setTitle(s.label)
+              .setChecked(s.id === project.statusId)
+              .onClick(() => this.changeProjectStatus(project.path, s.id)),
+          );
+        }
+      });
+    }
+    menu.addItem((item) =>
+      item
+        .setTitle('Open note')
+        .setIcon('file-text')
+        .onClick(() => this.openProjectNote(project.path)),
+    );
+    menu.showAtMouseEvent(e);
+  }
+
+  private changeProjectStatus(path: string, statusId: string): void {
+    void this.projectManager?.setStatus(path, statusId).then(() => {
+      this.projectStore?.refresh();
+      this.render();
+    });
+  }
+
+  private openProjectNote(path: string): void {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file) void this.app.workspace.getLeaf(false).openFile(file as never);
   }
 
   private renderPinnedTag(parent: HTMLElement, tag: string, allTasks: Task[]): void {
@@ -268,6 +327,32 @@ export class LeftPanel {
       this.showPinnedTagMenu(e, tag);
     });
 
+    this.attachTagDragSource(row, tag);
+    this.attachDropZone(row, tag);
+  }
+
+  /** A flat, non-expandable tag row (used for manual single-tag groups). */
+  private renderTagLeaf(parent: HTMLElement, tag: string, allTasks: Task[]): void {
+    const sel = this.state.get('selectedList');
+    const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
+    const count = allTasks.filter((t) => t.status === 'open' && t.rawText.includes(tag)).length;
+
+    const row = parent.createDiv({
+      cls: `tc-left-item tc-tag-leaf${isActive ? ' is-active' : ''}`,
+    });
+    row.createDiv({ cls: 'tc-left-item-left' }, (l) => {
+      l.createEl('span', { cls: 'tc-left-label', text: tag });
+    });
+    if (count > 0) row.createEl('span', { cls: 'tc-left-count', text: String(count) });
+
+    row.addEventListener('click', () => {
+      this.state.set('selectedList', { type: 'tag', tag });
+      this.state.set('mode', 'tasks');
+    });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.showChildTagMenu(e, tag);
+    });
     this.attachTagDragSource(row, tag);
     this.attachDropZone(row, tag);
   }
@@ -300,6 +385,17 @@ export class LeftPanel {
 
   private renderTagGroup(parent: HTMLElement, group: TagGroup, allTasks: Task[]): void {
     const sel = this.state.get('selectedList');
+
+    // A manual group holding a single tag is a leaf, not an expandable group —
+    // you can't nest more tags under it, so a chevron would be misleading.
+    if (group.mode === 'manual' && (group.tags?.length ?? 0) === 1) {
+      const soleTag = group.tags![0]!;
+      if (!this.settings.archivedTags.includes(soleTag)) {
+        this.renderTagLeaf(parent, soleTag, allTasks);
+      }
+      return;
+    }
+
     const isGroupActive =
       typeof sel === 'object' && sel.type === 'group' && sel.groupId === group.id;
 

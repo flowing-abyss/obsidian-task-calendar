@@ -3,7 +3,6 @@ import type { AppState, ListSelection } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
-import { CreateProjectModal } from '../projects/CreateProjectModal';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
@@ -228,14 +227,6 @@ export class CenterPanel {
     });
   }
 
-  private openCreateProject(): void {
-    if (!this.projectManager) return;
-    const manager = this.projectManager;
-    new CreateProjectModal(this.app, (name) => {
-      void manager.create(name).then(() => this.projectStore?.refresh());
-    }).open();
-  }
-
   private destroyCalendarView(): void {
     this.calUnsubscribe?.();
     this.calUnsubscribe = null;
@@ -281,10 +272,7 @@ export class CenterPanel {
           this.projectManager,
           this.settings,
           this.app,
-          {
-            renderTasks: (host, path) => this.renderProjectTasks(host, path),
-            onNewProject: () => this.openCreateProject(),
-          },
+          { renderTasks: (host, path) => this.renderProjectTasks(host, path) },
         );
         // Mount into a dedicated child so ProjectsPanel's own class/DOM never
         // lands on the shared center element (which would leak layout into tasks mode).

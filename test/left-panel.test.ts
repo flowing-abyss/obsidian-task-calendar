@@ -395,10 +395,22 @@ describe('LeftPanel tag groups (manual mode)', () => {
 
   it('manual group no prefix stripping (labels are full tags)', () => {
     const { el } = makePanel([], {
-      tagGroups: [{ id: 'g1', name: 'Manual', mode: 'manual', tags: ['#work/dev'] }],
+      tagGroups: [{ id: 'g1', name: 'Manual', mode: 'manual', tags: ['#work/dev', '#work/ops'] }],
     });
     (el.querySelector('.tc-group-arrow') as HTMLElement).click();
     expect(el.querySelector('.tc-tag-child .tc-left-label')?.textContent).toBe('#work/dev');
+  });
+
+  it('single-tag manual group renders flat (leaf, no expand chevron)', () => {
+    const { el, state } = makePanel([], {
+      tagGroups: [{ id: 'g1', name: 'next', mode: 'manual', tags: ['#next'] }],
+    });
+    expect(el.querySelector('.tc-group-arrow')).toBeNull();
+    const leaf = el.querySelector('.tc-tag-leaf');
+    expect(leaf).toBeTruthy();
+    expect(leaf!.querySelector('.tc-left-label')?.textContent).toBe('#next');
+    (leaf as HTMLElement).click();
+    expect(state.get('selectedList')).toEqual({ type: 'tag', tag: '#next' });
   });
 });
 
@@ -653,5 +665,30 @@ describe('LeftPanel collapsible sections, projects, and tags +', () => {
     input.value = 'Focus';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
     expect(spy).toHaveBeenCalledWith('Focus');
+  });
+
+  it('tags + creates only ONE group (Enter then blur must not double-fire)', () => {
+    const { el, tm } = makeFull({});
+    const spy = vi.spyOn(tm, 'createManualGroup').mockResolvedValue();
+    (el.querySelector('.tc-left-section--tags .tc-left-add') as HTMLElement).click();
+    const input = el.querySelector('.tc-left-add-input') as HTMLInputElement;
+    input.value = 'next';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    input.dispatchEvent(new FocusEvent('blur'));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('tags + input is placed directly under the header (not at the bottom)', () => {
+    const { el } = makeFull({
+      settings: {
+        tagGroups: [
+          { id: 'a', name: 'A', mode: 'manual', tags: ['#a', '#b'] },
+          { id: 'c', name: 'C', mode: 'manual', tags: ['#c', '#d'] },
+        ],
+      },
+    });
+    (el.querySelector('.tc-left-section--tags .tc-left-add') as HTMLElement).click();
+    const body = el.querySelector('.tc-left-section--tags .tc-left-section-body') as HTMLElement;
+    expect(body.firstElementChild?.classList.contains('tc-left-add-input')).toBe(true);
   });
 });

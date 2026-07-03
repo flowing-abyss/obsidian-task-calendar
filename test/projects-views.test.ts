@@ -42,7 +42,7 @@ describe('renderProjectsList', () => {
   const ctx = {
     state: new AppState(),
     settings: DEFAULT_SETTINGS,
-    onNew: vi.fn(),
+    onCreate: vi.fn().mockResolvedValue(undefined),
     onSetStatus: vi.fn(),
     openNote: vi.fn(),
   };
@@ -70,12 +70,16 @@ describe('renderProjectsList', () => {
     expect(state.get('projectsPanel')).toEqual({ view: 'dashboard', path: 'Projects/A.md' });
   });
 
-  it('New project button triggers onNew', () => {
-    const onNew = vi.fn();
+  it('New project button reveals an inline input that calls onCreate (no modal)', () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
     const el = freshContainer();
-    renderProjectsList(el, [proj({})], { ...ctx, state: new AppState(), onNew });
+    renderProjectsList(el, [proj({})], { ...ctx, state: new AppState(), onCreate });
     (el.querySelector('.tc-projects-new') as HTMLElement).click();
-    expect(onNew).toHaveBeenCalledOnce();
+    const input = el.querySelector('.tc-projects-new-input') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    input.value = 'Fresh Project';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(onCreate).toHaveBeenCalledWith('Fresh Project');
   });
 });
 

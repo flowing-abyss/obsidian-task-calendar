@@ -9,8 +9,6 @@ import { renderProjectsList } from './ProjectsListView';
 export interface ProjectsPanelOptions {
   /** Render a project's tasks into `host` (PanelView wires this to reuse task rendering). */
   renderTasks?: (host: HTMLElement, path: string) => void;
-  /** Open the create-project flow. */
-  onNewProject?: () => void;
 }
 
 /**
@@ -22,7 +20,6 @@ export class ProjectsPanel {
   private el!: HTMLElement;
   private offs: Array<() => void> = [];
   private readonly renderTasks: (host: HTMLElement, path: string) => void;
-  private readonly onNewProject: () => void;
 
   constructor(
     private state: AppState,
@@ -33,7 +30,11 @@ export class ProjectsPanel {
     opts: ProjectsPanelOptions = {},
   ) {
     this.renderTasks = opts.renderTasks ?? ((): void => {});
-    this.onNewProject = opts.onNewProject ?? ((): void => {});
+  }
+
+  private async createProject(name: string): Promise<void> {
+    await this.projectManager.create(name);
+    this.projectStore.refresh();
   }
 
   mount(el: HTMLElement): void {
@@ -77,7 +78,7 @@ export class ProjectsPanel {
     renderProjectsList(container, this.projectStore.list(), {
       state: this.state,
       settings: this.settings,
-      onNew: () => this.onNewProject(),
+      onCreate: (name) => this.createProject(name),
       onSetStatus: (p, id) => this.setStatus(p, id),
       openNote: (p) => this.openNote(p),
     });

@@ -18,6 +18,42 @@ function parentFolder(path: string): string {
   return idx === -1 ? '' : path.slice(0, idx);
 }
 
+function showNewProjectInput(scroll: HTMLElement, onCreate: (name: string) => Promise<void>): void {
+  const existing = scroll.querySelector('.tc-projects-new-input');
+  if (existing) {
+    (existing as HTMLInputElement).focus();
+    return;
+  }
+  const input = scroll.createEl('input', {
+    cls: 'tc-projects-new-input',
+    attr: { type: 'text', placeholder: 'Project name…' },
+  });
+  scroll.insertBefore(input, scroll.firstChild);
+  let committed = false;
+  const commit = (): void => {
+    if (committed) return;
+    committed = true;
+    const name = input.value.trim();
+    if (name) void onCreate(name);
+    else input.remove();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    } else if (e.key === 'Escape') {
+      committed = true;
+      input.remove();
+    }
+  });
+  input.addEventListener('blur', () => {
+    window.setTimeout(() => {
+      if (activeDocument.activeElement !== input) commit();
+    }, 150);
+  });
+  window.setTimeout(() => input.focus(), 0);
+}
+
 /** Overview: all projects grouped by status (defined order → discovered → No status). */
 export function renderProjectsList(
   container: HTMLElement,
@@ -29,7 +65,6 @@ export function renderProjectsList(
   const header = container.createDiv({ cls: 'tc-projects-toolbar' });
   header.createEl('h2', { cls: 'tc-projects-title', text: 'Projects' });
   const newBtn = header.createEl('button', { cls: 'tc-projects-new', text: 'New project' });
-  newBtn.addEventListener('click', () => ctx.onNew());
 
   const statuses = ctx.settings.projects.statuses;
   const statusById = new Map(statuses.map((s) => [s.id, s]));
@@ -39,6 +74,10 @@ export function renderProjectsList(
   for (const p of projects) nameCounts.set(p.name, (nameCounts.get(p.name) ?? 0) + 1);
 
   const scroll = container.createDiv({ cls: 'tc-projects-scroll' });
+
+  // "New project" shows an inline input at the top of the list — the same
+  // interaction as the left-panel "+", never a modal (kept consistent).
+  newBtn.addEventListener('click', () => showNewProjectInput(scroll, ctx.onCreate));
 
   if (projects.length === 0) {
     scroll.createDiv({ cls: 'tc-projects-empty', text: 'No projects yet' });

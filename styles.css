@@ -3539,3 +3539,9 @@ body.tc-modal-open .popover.hover-popover {
   border-top: 1px solid var(--background-modifier-border);
   padding-top: 8px;
 }
+
+.tc-projects-new-input {
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: var(--font-ui-small);
+}

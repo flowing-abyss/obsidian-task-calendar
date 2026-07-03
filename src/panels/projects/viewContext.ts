@@ -4,7 +4,7 @@ import type { CalendarSettings } from '../../settings/types';
 export interface ProjectsListContext {
   state: AppState;
   settings: CalendarSettings;
-  onNew: () => void;
+  onCreate: (name: string) => Promise<void>;
   onSetStatus: (path: string, statusId: string) => void;
   openNote: (path: string) => void;
 }
