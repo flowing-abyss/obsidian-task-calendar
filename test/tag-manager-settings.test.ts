@@ -16,6 +16,32 @@ function makeManager(overrides: Partial<typeof DEFAULT_SETTINGS> = {}) {
   return { tm, settings, save };
 }
 
+describe('TagManager.createManualGroup', () => {
+  it('adds a manual group with a normalized tag and saves', async () => {
+    const { tm, settings, save } = makeManager({ tagGroups: [] });
+    await tm.createManualGroup('Work Stuff');
+    expect(settings.tagGroups).toHaveLength(1);
+    expect(settings.tagGroups[0]!.mode).toBe('manual');
+    expect(settings.tagGroups[0]!.name).toBe('Work Stuff');
+    expect(settings.tagGroups[0]!.tags).toEqual(['#work-stuff']);
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it('ignores an empty name', async () => {
+    const { tm, settings, save } = makeManager({ tagGroups: [] });
+    await tm.createManualGroup('   ');
+    expect(settings.tagGroups).toHaveLength(0);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('generates unique ids across calls', async () => {
+    const { tm, settings } = makeManager({ tagGroups: [] });
+    await tm.createManualGroup('A');
+    await tm.createManualGroup('B');
+    expect(settings.tagGroups[0]!.id).not.toBe(settings.tagGroups[1]!.id);
+  });
+});
+
 describe('TagManager.pinTag', () => {
   it('adds tag to pinnedTags and saves', async () => {
     const { tm, settings, save } = makeManager();

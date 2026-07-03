@@ -16,6 +16,28 @@ export class TagManager {
     this.mutations = new TaskMutationService(app);
   }
 
+  /**
+   * Zero-friction manual tag: creates a manual TagGroup holding one tag derived
+   * from the name. Nested/prefix tags remain a settings-time configuration.
+   */
+  async createManualGroup(name: string): Promise<void> {
+    const label = name.trim();
+    if (!label) return;
+    const slug = label
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^\w/-]/g, '');
+    if (!slug) return;
+    const tag = slug.startsWith('#') ? slug : `#${slug}`;
+    this.settings.tagGroups.push({
+      id: `group-${this.settings.tagGroups.length + 1}-${label.length}-${slug.length}`,
+      name: label,
+      mode: 'manual',
+      tags: [tag],
+    });
+    await this.saveSettings();
+  }
+
   async pinTag(tag: string): Promise<void> {
     if (this.settings.pinnedTags.includes(tag)) return;
     this.settings.pinnedTags.push(tag);
