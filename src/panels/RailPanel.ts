@@ -9,6 +9,7 @@ interface RailItem {
 
 const ITEMS: RailItem[] = [
   { mode: 'tasks', icon: 'list-checks', label: 'Tasks' },
+  { mode: 'projects', icon: 'folder-kanban', label: 'Projects' },
   { mode: 'calendar', icon: 'calendar-days', label: 'Calendar' },
   { mode: 'search', icon: 'search', label: 'Search' },
 ];

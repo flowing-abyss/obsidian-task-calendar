@@ -4,13 +4,13 @@ import { RailPanel } from '../src/panels/RailPanel';
 import { freshContainer } from './helpers';
 
 describe('RailPanel', () => {
-  it('renders 3 mode buttons + 1 settings button', () => {
+  it('renders 4 mode buttons + 1 settings button', () => {
     const state = new AppState();
     const app = { setting: { open: vi.fn(), openTabById: vi.fn() } };
     const panel = new RailPanel(state, app);
     panel.mount(freshContainer());
     const buttons = panel['el'].querySelectorAll('button');
-    expect(buttons).toHaveLength(4);
+    expect(buttons).toHaveLength(5);
   });
 
   it('mode buttons have correct aria-labels', () => {
@@ -20,7 +20,18 @@ describe('RailPanel', () => {
     const labels = Array.from(panel['el'].querySelectorAll('button')).map((b) =>
       b.getAttribute('aria-label'),
     );
-    expect(labels).toEqual(['Tasks', 'Calendar', 'Search', 'Settings']);
+    expect(labels).toEqual(['Tasks', 'Projects', 'Calendar', 'Search', 'Settings']);
+  });
+
+  it('click Projects button sets mode to projects', () => {
+    const state = new AppState();
+    const panel = new RailPanel(state, { setting: {} });
+    panel.mount(freshContainer());
+    const btn = Array.from(panel['el'].querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === 'Projects',
+    )!;
+    btn.click();
+    expect(state.get('mode')).toBe('projects');
   });
 
   it('active mode button has is-active class', () => {
