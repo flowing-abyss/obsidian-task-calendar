@@ -1,4 +1,5 @@
 {
   "entry": ["src/main.ts"],
-  "project": ["src/**/*.ts"]
+  "project": ["src/**/*.ts"],
+  "ignoreDependencies": ["moment"]
 }

@@ -29,7 +29,7 @@ export interface TagGroup {
   tags?: string[]; // manual mode: explicit tag list
 }
 
-export interface InboxSettings {
+interface InboxSettings {
   mode: 'tag' | 'untagged' | 'both';
   tag: string;
   removeTagOnAssign: boolean;
