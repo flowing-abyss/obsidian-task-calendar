@@ -33,7 +33,12 @@ type CalViewType = 'month' | 'week' | 'list';
 function listSelectionToKey(sel: ListSelection): string {
   if (typeof sel === 'string') return sel;
   if (sel.type === 'tag') return `tag:${sel.tag}`;
+  if (sel.type === 'project') return `project:${sel.path}`;
   return `group:${sel.groupId}`;
+}
+
+function projectNameFromPath(path: string): string {
+  return (path.split('/').pop() ?? path).replace(/\.md$/, '');
 }
 
 export class CenterPanel {
@@ -1416,6 +1421,23 @@ export class CenterPanel {
     window.setTimeout(() => input.focus(), 0);
   }
 
+  /** Append a task line into a specific note, honoring the section-insertion setting. */
+  private async appendTaskToNote(file: TFile, line: string): Promise<void> {
+    const { taskInsertionMode: mode, taskInsertionSection: section } = this.settings;
+    await this.app.vault.process(file, (content) => {
+      if (mode === 'section' && section.trim()) {
+        const lines = content.split('\n');
+        const idx = lines.findIndex((l) => l.trim() === section.trim());
+        if (idx === -1) {
+          return content.trimEnd() + '\n\n' + section + '\n' + line + '\n';
+        }
+        lines.splice(idx + 1, 0, line);
+        return lines.join('\n');
+      }
+      return content.trimEnd() + '\n' + line + '\n';
+    });
+  }
+
   private async createTask(text: string): Promise<void> {
     const sel = this.state.get('selectedList');
     const today = window.moment().format('YYYY-MM-DD');
@@ -1423,6 +1445,15 @@ export class CenterPanel {
     // Today view: delegate fully to store (resolver handles file + prefix + date)
     if (sel === 'today' || sel === 'upcoming') {
       await this.store.addTask(today, text);
+      return;
+    }
+
+    // Project context: write the task directly into the project note.
+    if (typeof sel === 'object' && sel.type === 'project') {
+      const file = this.app.vault.getAbstractFileByPath(sel.path);
+      if (file instanceof TFile) {
+        await this.appendTaskToNote(file, `- [ ] ${text}`);
+      }
       return;
     }
 
@@ -1524,6 +1555,8 @@ export class CenterPanel {
       }
     } else if (sel.type === 'tag') {
       tasks = this.store.getTasks({ tag: sel.tag });
+    } else if (sel.type === 'project') {
+      tasks = this.store.getTasks().filter((t) => t.filePath === sel.path);
     } else {
       const group = this.settings.tagGroups.find((g) => g.id === sel.groupId);
       tasks = this.store.getTasks().filter((t) => {
@@ -1593,6 +1626,7 @@ export class CenterPanel {
     if (sel === 'today') return 'Today';
     if (sel === 'upcoming') return 'Upcoming';
     if (typeof sel === 'object' && sel.type === 'tag') return sel.tag;
+    if (typeof sel === 'object' && sel.type === 'project') return projectNameFromPath(sel.path);
     if (typeof sel === 'object' && sel.type === 'group') {
       const group = this.settings.tagGroups.find((g) => g.id === sel.groupId);
       return group?.name ?? 'Group';

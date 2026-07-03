@@ -444,3 +444,54 @@ describe('CenterPanel source note chip', () => {
     panel.destroy();
   });
 });
+
+describe('CenterPanel project selection', () => {
+  it("sel={type:'project'} filters tasks to that note and titles by basename", async () => {
+    const files = {
+      'Projects/A.md': '- [ ] task one\n- [ ] task two\n',
+      'Other.md': '- [ ] elsewhere\n',
+    };
+    const seeds = [
+      {
+        path: 'Projects/A.md',
+        items: [
+          { task: ' ', parent: -1, line: 0 },
+          { task: ' ', parent: -1, line: 1 },
+        ],
+      },
+      { path: 'Other.md', items: [{ task: ' ', parent: -1, line: 0 }] },
+    ];
+    const { panel, state } = await makePanel(files, DEFAULT_SETTINGS, seeds);
+    state.set('selectedList', { type: 'project', path: 'Projects/A.md' });
+    const tasks = call<Task[]>(panel, 'getFilteredTasks') as Task[];
+    expect(tasks.length).toBe(2);
+    expect(tasks.every((t) => t.filePath === 'Projects/A.md')).toBe(true);
+    expect(call<string>(panel, 'getTitle')).toBe('A');
+  });
+
+  it("sel={type:'project'} createTask appends into the project note", async () => {
+    const { panel, state, app } = await makePanel({ 'Projects/A.md': '# Project A\n' });
+    state.set('selectedList', { type: 'project', path: 'Projects/A.md' });
+    await call<void>(panel, 'createTask', 'write the brief');
+    const content = await readMd(app, 'Projects/A.md');
+    expect(content).toContain('- [ ] write the brief');
+  });
+
+  it("sel={type:'project'} createTask honors the section-insertion setting", async () => {
+    const settings: CalendarSettings = {
+      ...DEFAULT_SETTINGS,
+      taskInsertionMode: 'section',
+      taskInsertionSection: '## Tasks',
+    };
+    const { panel, state, app } = await makePanel(
+      { 'Projects/A.md': '# Project A\n\n## Tasks\n- [ ] existing\n' },
+      settings,
+    );
+    state.set('selectedList', { type: 'project', path: 'Projects/A.md' });
+    await call<void>(panel, 'createTask', 'under section');
+    const content = await readMd(app, 'Projects/A.md');
+    const lines = content.split('\n');
+    const sectionIdx = lines.findIndex((l) => l.trim() === '## Tasks');
+    expect(lines[sectionIdx + 1]).toBe('- [ ] under section');
+  });
+});
