@@ -646,6 +646,18 @@ describe('LeftPanel collapsible sections, projects, and tags +', () => {
     expect(el.querySelector('.tc-left-showmore')).toBeTruthy();
   });
 
+  it('project badge counts open + in-progress (matches the active list, excludes done/cancelled)', () => {
+    const projects = [{ path: 'Projects/A.md', name: 'A' }];
+    const tasks = [
+      task({ filePath: 'Projects/A.md', status: 'open' }),
+      task({ filePath: 'Projects/A.md', status: 'in-progress' }),
+      task({ filePath: 'Projects/A.md', status: 'done' }),
+      task({ filePath: 'Projects/A.md', status: 'cancelled' }),
+    ];
+    const { el } = makeFull({ tasks, projects });
+    expect(el.querySelector('.tc-project-item .tc-left-count')?.textContent).toBe('2');
+  });
+
   it('clicking a project selects it without leaving tasks mode', () => {
     const { el, state } = makeFull({ projects: [{ path: 'Projects/A.md', name: 'A' }] });
     (el.querySelector('.tc-project-item') as HTMLElement).click();

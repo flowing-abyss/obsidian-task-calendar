@@ -168,8 +168,12 @@ export class LeftPanel {
     for (const project of visible) {
       const isActive =
         typeof sel === 'object' && sel.type === 'project' && sel.path === project.path;
+      // "Active" here matches the center list's active filter (open + in-progress)
+      // so the badge count equals what you see when you open the project.
       const openCount = allTasks.filter(
-        (t) => t.filePath === project.path && t.status === 'open',
+        (t) =>
+          t.filePath === project.path &&
+          (t.status === 'open' || t.status === 'in-progress'),
       ).length;
       const row = parent.createDiv({
         cls: `tc-left-item tc-project-item${isActive ? ' is-active' : ''}`,
