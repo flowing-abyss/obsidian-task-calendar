@@ -22,7 +22,9 @@ describe('evaluateQuery', () => {
     expect(evaluateQuery('Projects/ AND #book', 'Projects/A.md', ['#book'], fm())).toBe(true);
     expect(evaluateQuery('Projects/ AND #book', 'Projects/A.md', [], fm())).toBe(false);
     expect(evaluateQuery('#a OR #b', 'A.md', ['#b'], fm())).toBe(true);
-    expect(evaluateQuery('Projects/ AND -#archived', 'Projects/A.md', ['#archived'], fm())).toBe(false);
+    expect(evaluateQuery('Projects/ AND -#archived', 'Projects/A.md', ['#archived'], fm())).toBe(
+      false,
+    );
     expect(evaluateQuery('Projects/ AND NOT #archived', 'Projects/A.md', [], fm())).toBe(true);
     expect(evaluateQuery('(#a OR #b) AND Notes/', 'Notes/A.md', ['#a'], fm())).toBe(true);
   });

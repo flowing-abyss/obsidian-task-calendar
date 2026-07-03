@@ -13,29 +13,32 @@ export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   folder: '',
 };
 
-let statusSeq = 0;
-function statusId(): string {
-  // Deterministic within a build; avoids Math.random. Uniqueness is all that matters.
-  statusSeq += 1;
-  return `status-${statusSeq}-${statusSeq * 2654435761 % 1000000}`;
-}
-
-// Export for test reset only
-export function __resetStatusSeq(): void {
-  statusSeq = 0;
-}
-
 export function buildDefaultProjectsSettings(): ProjectsSettings {
+  let n = 0;
+  const statusId = (): string => {
+    n += 1;
+    return `status-${n}`;
+  };
+
   const active: ProjectsSettings['statuses'][number] = {
-    id: statusId(), label: 'Active', color: '#4caf50', onLeftPanel: true,
+    id: statusId(),
+    label: 'Active',
+    color: '#4caf50',
+    onLeftPanel: true,
     match: { kind: 'property', property: 'status', value: 'active' },
   };
   const planned = {
-    id: statusId(), label: 'Planned', color: '#2196f3', onLeftPanel: false,
+    id: statusId(),
+    label: 'Planned',
+    color: '#2196f3',
+    onLeftPanel: false,
     match: { kind: 'property' as const, property: 'status', value: 'planned' },
   };
   const done = {
-    id: statusId(), label: 'Done', color: '#888888', onLeftPanel: false,
+    id: statusId(),
+    label: 'Done',
+    color: '#888888',
+    onLeftPanel: false,
     match: { kind: 'property' as const, property: 'status', value: 'done' },
   };
   return {

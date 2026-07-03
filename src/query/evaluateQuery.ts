@@ -81,7 +81,10 @@ function evaluateBaseTerm(
   const eqIdx = term.indexOf('=');
   if (eqIdx !== -1 && !term.startsWith('"') && !term.startsWith("'")) {
     const key = term.slice(0, eqIdx).trim();
-    const val = term.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+    const val = term
+      .slice(eqIdx + 1)
+      .trim()
+      .replace(/^["']|["']$/g, '');
     const fmVal = frontmatter[key];
     // eslint-disable-next-line @typescript-eslint/no-base-to-string
     return (fmVal === null || fmVal === undefined ? '' : String(fmVal)) === val;

@@ -1,7 +1,10 @@
 import { App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TaskCalendarPlugin from '../src/main';
-import { DEFAULT_SETTINGS, __resetStatusSeq, buildDefaultProjectsSettings } from '../src/settings/defaults';
+import {
+  DEFAULT_SETTINGS,
+  buildDefaultProjectsSettings,
+} from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import { PANEL_VIEW_TYPE } from '../src/views/PanelView';
 import { useRealMoment } from './helpers';
@@ -57,10 +60,6 @@ afterEach(() => {
 });
 
 describe('TaskCalendarPlugin loadSettings', () => {
-  beforeEach(() => {
-    __resetStatusSeq();
-  });
-
   it('merges DEFAULT_SETTINGS with persisted data (persisted overrides)', async () => {
     const plugin = makePlugin({ taskPrefix: '#custom' });
     await plugin.loadSettings();
@@ -71,8 +70,7 @@ describe('TaskCalendarPlugin loadSettings', () => {
   it('loadData returns empty object -> settings equal DEFAULT_SETTINGS', async () => {
     const plugin = makePlugin();
     await plugin.loadSettings();
-    // Recreate expected defaults with reset counter to match what was generated in loadSettings
-    __resetStatusSeq();
+    // With deterministic status ids, no reset needed
     const expectedDefaults: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       projects: buildDefaultProjectsSettings(),
