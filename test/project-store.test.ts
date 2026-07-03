@@ -1,7 +1,16 @@
+import { TFile } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
 import { computeStats, ProjectStore } from '../src/projects/ProjectStore';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+
+/** A minimal object that passes `instanceof TFile` (TFile isn't standalone-constructable). */
+function tfile(path: string): { path: string; extension: string } {
+  return Object.assign(Object.create(TFile.prototype) as object, { path, extension: 'md' }) as {
+    path: string;
+    extension: string;
+  };
+}
 
 function t(over: Partial<Task>): Task {
   return {
@@ -39,24 +48,28 @@ interface FakeFile {
   fm: Record<string, unknown>;
 }
 
-function makeApp(files: FakeFile[]): { app: never; fire: (event: string) => void } {
-  const tfiles = files.map((f) => ({ path: f.path, extension: 'md' }));
-  const cacheByPath = new Map(
-    files.map((f) => [
-      f.path,
-      // Shape consumed by Obsidian getAllTags: inline tags under `tags[].tag`,
-      // frontmatter under `frontmatter` (frontmatter `tags` also honored by getAllTags).
-      { frontmatter: f.fm, tags: f.tags.map((tag) => ({ tag })) },
-    ]),
-  );
+interface MockApp {
+  app: never;
+  fire: (event: string) => void;
+  fireChanged: (path: string) => void;
+  setCache: (path: string, f: FakeFile) => void;
+}
+
+function makeApp(files: FakeFile[]): MockApp {
+  const tfileByPath = new Map(files.map((f) => [f.path, tfile(f.path)]));
+  const toCache = (f: FakeFile) => ({ frontmatter: f.fm, tags: f.tags.map((tag) => ({ tag })) });
+  const cacheByPath = new Map(files.map((f) => [f.path, toCache(f)]));
+  const changedHandlers: Array<(file: { path: string }) => void> = [];
   const handlers: Record<string, Array<() => void>> = {};
-  const on = (event: string, cb: () => void): { event: string } => {
-    (handlers[event] ??= []).push(cb);
+  const on = (event: string, cb: (...a: unknown[]) => void): { event: string } => {
+    if (event === 'changed') changedHandlers.push(cb as (file: { path: string }) => void);
+    else (handlers[event] ??= []).push(cb as () => void);
     return { event };
   };
   const app = {
     vault: {
-      getMarkdownFiles: () => tfiles,
+      getMarkdownFiles: () => Array.from(tfileByPath.values()),
+      getAbstractFileByPath: (p: string) => tfileByPath.get(p) ?? null,
       on,
       offref: vi.fn(),
     },
@@ -69,7 +82,14 @@ function makeApp(files: FakeFile[]): { app: never; fire: (event: string) => void
   const fire = (event: string): void => {
     for (const cb of handlers[event] ?? []) cb();
   };
-  return { app, fire };
+  const fireChanged = (path: string): void => {
+    for (const cb of changedHandlers) cb({ path });
+  };
+  const setCache = (path: string, f: FakeFile): void => {
+    if (!tfileByPath.has(path)) tfileByPath.set(path, tfile(path));
+    cacheByPath.set(path, toCache(f));
+  };
+  return { app, fire, fireChanged, setCache };
 }
 
 function storeWith(tasks: Task[]): never {
@@ -133,5 +153,55 @@ describe('ProjectStore enumeration', () => {
     ps.refresh();
     expect(cb).toHaveBeenCalledTimes(1);
     ps.destroy();
+  });
+});
+
+describe('ProjectStore incremental update', () => {
+  it('re-evaluates only the changed note on a metadata change (debounced)', () => {
+    vi.useFakeTimers();
+    const mock = makeApp([
+      { path: 'Projects/A.md', tags: [], fm: { status: 'active' } },
+      { path: 'Notes/C.md', tags: [], fm: {} },
+    ]);
+    let tasks: Task[] = [t({ filePath: 'Projects/A.md', status: 'open' })];
+    const store = { getTasks: () => tasks } as never;
+    const ps = new ProjectStore(mock.app, store, { ...DEFAULT_SETTINGS });
+    ps.initialize();
+    expect(ps.get('Projects/A.md')!.stats.done).toBe(0);
+    const cb = vi.fn();
+    ps.onUpdate(cb);
+
+    // A task in A is completed.
+    tasks = [t({ filePath: 'Projects/A.md', status: 'done' })];
+    mock.fireChanged('Projects/A.md');
+    // Debounced: not applied yet.
+    expect(ps.get('Projects/A.md')!.stats.done).toBe(0);
+    vi.advanceTimersByTime(150);
+    expect(ps.get('Projects/A.md')!.stats.done).toBe(1);
+    expect(cb).toHaveBeenCalledTimes(1);
+
+    ps.destroy();
+    vi.useRealTimers();
+  });
+
+  it('a metadata change that newly matches the query adds the note incrementally', () => {
+    vi.useFakeTimers();
+    const mock = makeApp([{ path: 'Notes/C.md', tags: [], fm: {} }]);
+    const store = { getTasks: () => [] as Task[] } as never;
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      projects: { ...DEFAULT_SETTINGS.projects, membershipQuery: '#project' },
+    };
+    const ps = new ProjectStore(mock.app, store, settings);
+    ps.initialize();
+    expect(ps.list()).toHaveLength(0);
+
+    mock.setCache('Notes/C.md', { path: 'Notes/C.md', tags: ['#project'], fm: {} });
+    mock.fireChanged('Notes/C.md');
+    vi.advanceTimersByTime(150);
+    expect(ps.list().map((p) => p.path)).toEqual(['Notes/C.md']);
+
+    ps.destroy();
+    vi.useRealTimers();
   });
 });

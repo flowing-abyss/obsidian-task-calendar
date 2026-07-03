@@ -39,8 +39,11 @@ export class ProjectsPanel {
 
   mount(el: HTMLElement): void {
     this.el = el;
+    // Only internal list⇄dashboard navigation is self-managed here. Project data
+    // changes arrive via CenterPanel rebuilding this panel (projects mode), so we
+    // deliberately do NOT also subscribe to projectStore.onUpdate — that would
+    // double-render on every store update.
     this.offs.push(this.state.on('projectsPanel', () => this.render()));
-    this.offs.push(this.projectStore.onUpdate(() => this.render()));
     this.render();
   }
 

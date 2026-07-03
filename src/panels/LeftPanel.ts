@@ -1,4 +1,4 @@
-import { Menu, setIcon, type App } from 'obsidian';
+import { Menu, setIcon, TFile, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import type { Task } from '../parser/types';
 import type { ProjectManager } from '../projects/ProjectManager';
@@ -9,6 +9,12 @@ import { RenameTagModal } from '../tags/RenameTagModal';
 import type { TagManager } from '../tags/TagManager';
 
 const PROJECTS_CAP = 10;
+
+/** A task is "active" (actionable) when open or in-progress — the same set the
+ *  center list shows by default, so left-panel badges match the opened list. */
+function isActiveTask(t: Task): boolean {
+  return t.status === 'open' || t.status === 'in-progress';
+}
 
 export class LeftPanel {
   private el!: HTMLElement;
@@ -87,7 +93,7 @@ export class LeftPanel {
           ? (): void =>
               this.startInlineAdd('projects', 'Project name…', (name) => this.createProject(name))
           : null,
-        (body) => this.renderProjectsList(body, activeProjects, allTasks),
+        (body) => this.renderProjectsList(body, activeProjects),
       );
     }
 
@@ -161,20 +167,15 @@ export class LeftPanel {
   private renderProjectsList(
     parent: HTMLElement,
     projects: ReturnType<ProjectStore['activeForLeftPanel']>,
-    allTasks: Task[],
   ): void {
     const visible = this.showAllProjects ? projects : projects.slice(0, PROJECTS_CAP);
     const sel = this.state.get('selectedList');
     for (const project of visible) {
       const isActive =
         typeof sel === 'object' && sel.type === 'project' && sel.path === project.path;
-      // "Active" here matches the center list's active filter (open + in-progress)
-      // so the badge count equals what you see when you open the project.
-      const openCount = allTasks.filter(
-        (t) =>
-          t.filePath === project.path &&
-          (t.status === 'open' || t.status === 'in-progress'),
-      ).length;
+      // Active (open + in-progress) derived from precomputed stats — O(1), and
+      // equals what the center list shows when you open the project.
+      const openCount = project.stats.total - project.stats.done - project.stats.cancelled;
       const row = parent.createDiv({
         cls: `tc-left-item tc-project-item${isActive ? ' is-active' : ''}`,
       });
@@ -276,6 +277,7 @@ export class LeftPanel {
     if (statuses.length > 0 && this.projectManager) {
       menu.addItem((item) => {
         item.setTitle('Change status').setIcon('circle-dot');
+        // setSubmenu is available at runtime but not in the public typings.
         const sub = (item as unknown as { setSubmenu: () => Menu }).setSubmenu();
         for (const s of statuses) {
           sub.addItem((si) =>
@@ -305,13 +307,13 @@ export class LeftPanel {
 
   private openProjectNote(path: string): void {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (file) void this.app.workspace.getLeaf(false).openFile(file as never);
+    if (file instanceof TFile) void this.app.workspace.getLeaf(false).openFile(file);
   }
 
   private renderPinnedTag(parent: HTMLElement, tag: string, allTasks: Task[]): void {
     const sel = this.state.get('selectedList');
     const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
-    const count = allTasks.filter((t) => t.status === 'open' && t.rawText.includes(tag)).length;
+    const count = allTasks.filter((t) => isActiveTask(t) && t.rawText.includes(tag)).length;
 
     const row = parent.createDiv({
       cls: `tc-left-item tc-pinned-tag${isActive ? ' is-active' : ''}`,
@@ -339,7 +341,7 @@ export class LeftPanel {
   private renderTagLeaf(parent: HTMLElement, group: TagGroup, tag: string, allTasks: Task[]): void {
     const sel = this.state.get('selectedList');
     const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
-    const count = allTasks.filter((t) => t.status === 'open' && t.rawText.includes(tag)).length;
+    const count = allTasks.filter((t) => isActiveTask(t) && t.rawText.includes(tag)).length;
 
     const row = parent.createDiv({
       cls: `tc-left-item tc-tag-leaf${isActive ? ' is-active' : ''}`,
@@ -456,7 +458,7 @@ export class LeftPanel {
     const rootTag = group.mode === 'prefix' && group.prefix ? `#${group.prefix}` : null;
     const allGroupTags = rootTag ? [rootTag, ...tags] : tags;
     const groupCount = allTasks.filter(
-      (t) => t.status === 'open' && allGroupTags.some((tag) => t.rawText.includes(tag)),
+      (t) => isActiveTask(t) && allGroupTags.some((tag) => t.rawText.includes(tag)),
     ).length;
     if (groupCount > 0) {
       header.createEl('span', { cls: 'tc-left-count', text: String(groupCount) });
@@ -478,9 +480,7 @@ export class LeftPanel {
         const tagSel = this.state.get('selectedList');
         const isTagActive =
           typeof tagSel === 'object' && tagSel.type === 'tag' && tagSel.tag === tag;
-        const tagCount = allTasks.filter(
-          (t) => t.rawText.includes(tag) && t.status === 'open',
-        ).length;
+        const tagCount = allTasks.filter((t) => t.rawText.includes(tag) && isActiveTask(t)).length;
 
         const child = children.createDiv({
           cls: `tc-left-item tc-tag-child${isTagActive ? ' is-active' : ''}`,

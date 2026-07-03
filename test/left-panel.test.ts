@@ -589,15 +589,27 @@ describe('LeftPanel collapsible sections, projects, and tags +', () => {
   function makeFull(opts: {
     tasks?: import('../src/parser/types').Task[];
     settings?: Partial<CalendarSettings>;
-    projects?: Array<{ path: string; name: string }>;
+    projects?: Array<{
+      path: string;
+      name: string;
+      stats?: { total: number; done: number; cancelled: number; inProgress: number };
+    }>;
   }) {
     const state = new AppState();
     const store = makeStubStore(opts.tasks ?? []) as TaskStore;
     const merged: CalendarSettings = { ...DEFAULT_SETTINGS, ...opts.settings };
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, merged, save);
+    const fullProjects = (opts.projects ?? []).map((p) => ({
+      frontmatter: {},
+      tags: [],
+      statusId: null,
+      rawStatus: null,
+      stats: p.stats ?? { total: 0, done: 0, cancelled: 0, inProgress: 0 },
+      ...p,
+    }));
     const projectStore = {
-      activeForLeftPanel: () => opts.projects ?? [],
+      activeForLeftPanel: () => fullProjects,
       refresh: vi.fn(),
       onUpdate: () => () => {},
     } as never;
@@ -646,15 +658,16 @@ describe('LeftPanel collapsible sections, projects, and tags +', () => {
     expect(el.querySelector('.tc-left-showmore')).toBeTruthy();
   });
 
-  it('project badge counts open + in-progress (matches the active list, excludes done/cancelled)', () => {
-    const projects = [{ path: 'Projects/A.md', name: 'A' }];
-    const tasks = [
-      task({ filePath: 'Projects/A.md', status: 'open' }),
-      task({ filePath: 'Projects/A.md', status: 'in-progress' }),
-      task({ filePath: 'Projects/A.md', status: 'done' }),
-      task({ filePath: 'Projects/A.md', status: 'cancelled' }),
+  it('project badge counts active (total − done − cancelled = open + in-progress)', () => {
+    // 4 tasks: 1 open + 1 in-progress + 1 done + 1 cancelled → active = 2.
+    const projects = [
+      {
+        path: 'Projects/A.md',
+        name: 'A',
+        stats: { total: 4, done: 1, cancelled: 1, inProgress: 1 },
+      },
     ];
-    const { el } = makeFull({ tasks, projects });
+    const { el } = makeFull({ projects });
     expect(el.querySelector('.tc-project-item .tc-left-count')?.textContent).toBe('2');
   });
 

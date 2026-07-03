@@ -216,7 +216,11 @@ export class CenterPanel {
           e.preventDefault();
           commit();
         }
-        if (e.key === 'Escape') this.projectsPanel?.refresh();
+        if (e.key === 'Escape') {
+          // Cancel: block the pending blur→commit so nothing is written.
+          committed = true;
+          this.projectsPanel?.refresh();
+        }
       });
       input.addEventListener('blur', () => {
         window.setTimeout(() => {

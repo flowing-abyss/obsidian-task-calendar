@@ -29,12 +29,12 @@ export class TagManager {
       .replace(/[^\w/-]/g, '');
     if (!slug) return;
     const tag = slug.startsWith('#') ? slug : `#${slug}`;
-    this.settings.tagGroups.push({
-      id: `group-${this.settings.tagGroups.length + 1}-${label.length}-${slug.length}`,
-      name: label,
-      mode: 'manual',
-      tags: [tag],
-    });
+    // Collision-proof id (length-based ids repeat after add/delete cycles).
+    const base = `group-${slug || 'tag'}`;
+    let id = base;
+    let n = 2;
+    while (this.settings.tagGroups.some((g) => g.id === id)) id = `${base}-${n++}`;
+    this.settings.tagGroups.push({ id, name: label, mode: 'manual', tags: [tag] });
     await this.saveSettings();
   }
 

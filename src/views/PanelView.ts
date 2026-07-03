@@ -86,10 +86,13 @@ export class PanelView extends ItemView {
     );
     this.right = new RightPanel(this.state, this.app, this.settings);
 
-    // Keep panels fresh when the project set / stats change.
+    // Keep panels fresh when the project set / stats change. Only the left
+    // panel's Projects section and the projects-mode center depend on this;
+    // re-rendering the tasks-mode center here would double-render on every edit
+    // (TaskStore already refreshes it), so gate the center refresh to projects mode.
     this.projectStoreUnsub = projectStore.onUpdate(() => {
       this.left.refresh();
-      this.center.refresh();
+      if (this.state.get('mode') === 'projects') this.center.refresh();
     });
 
     // Keep project selection / dashboard path valid across note rename & delete.

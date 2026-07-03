@@ -40,16 +40,10 @@ export class CalendarSettingsTab extends PluginSettingTab {
     items.forEach((item, idx) => {
       const id = opts.id(item);
       const expanded = this.expandedCards.has(id);
-      const card = containerEl.createDiv({
-        cls: `tc-settings-card${expanded ? ' is-open' : ''}`,
-        attr: { draggable: 'true' },
-      });
+      const card = containerEl.createDiv({ cls: `tc-settings-card${expanded ? ' is-open' : ''}` });
 
-      card.addEventListener('dragstart', (e) => {
-        e.dataTransfer?.setData('text/plain', String(idx));
-        card.addClass('tc-dragging');
-      });
-      card.addEventListener('dragend', () => card.removeClass('tc-dragging'));
+      // The card is a drop target; only its header is the drag SOURCE, so text
+      // selection inside expanded body inputs isn't hijacked by dragging.
       card.addEventListener('dragover', (e) => {
         e.preventDefault();
         card.addClass('tc-drag-over');
@@ -62,7 +56,15 @@ export class CalendarSettingsTab extends PluginSettingTab {
         if (!Number.isNaN(from) && from !== idx) opts.onReorder(from, idx);
       });
 
-      const header = card.createDiv({ cls: 'tc-settings-card-header' });
+      const header = card.createDiv({
+        cls: 'tc-settings-card-header',
+        attr: { draggable: 'true' },
+      });
+      header.addEventListener('dragstart', (e) => {
+        e.dataTransfer?.setData('text/plain', String(idx));
+        card.addClass('tc-dragging');
+      });
+      header.addEventListener('dragend', () => card.removeClass('tc-dragging'));
       const grip = header.createSpan({ cls: 'tc-settings-card-grip' });
       setIcon(grip, 'grip-vertical');
       const accent = opts.accent?.(item);
