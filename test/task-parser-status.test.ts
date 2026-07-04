@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseTask } from '../src/parser/TaskParser';
-import { StatusRegistry } from '../src/status/StatusRegistry';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
 const ctx = (line = 0) => ({ filePath: 'n.md', line, statusRegistry: registry });

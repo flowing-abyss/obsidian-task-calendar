@@ -1,6 +1,6 @@
-import { collapseLinks } from './links';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
 import { StatusRegistry } from '../status/StatusRegistry';
+import { collapseLinks } from './links';
 import type { ParseContext, Task, TaskPriority, TaskStatus } from './types';
 
 const DEFAULT_REGISTRY = new StatusRegistry(buildDefaultTaskStatuses());

@@ -1,7 +1,7 @@
-import { extractMetadata } from './extractMetadata';
-import { collapseLinks } from './links';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
 import { StatusRegistry } from '../status/StatusRegistry';
+import { extractMetadata } from './extractMetadata';
+import { collapseLinks } from './links';
 import type { SubTask, TaskComment } from './types';
 
 export interface SubItemResult {
