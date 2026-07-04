@@ -9,6 +9,7 @@ export interface Task {
   text: string; // display text: metadata emoji and tags stripped
   markdownText: string; // display text with link markup ([[…]], [](…)) preserved
   status: TaskStatus; // 'in-progress' from checkbox '/' only; derived date logic lives in views
+  statusSymbol: string; // raw char inside [ ]
   due?: string; // YYYY-MM-DD from 📅
   scheduled?: string; // YYYY-MM-DD from ⏳
   start?: string; // YYYY-MM-DD from 🛫
@@ -35,7 +36,8 @@ export interface SubTask {
   rawText: string;
   text: string;
   markdownText: string; // display text with link markup ([[…]], [](…)) preserved
-  status: 'open' | 'done';
+  status: TaskStatus;
+  statusSymbol: string;
   due?: string;
   scheduled?: string;
   start?: string;
@@ -67,4 +69,5 @@ export interface ParseContext {
   line: number;
   dailyNoteDate?: string; // pre-computed by store; parser stores it verbatim if provided
   globalTaskFilter?: string; // tag to strip, e.g. '#task'
+  statusRegistry?: import('../status/StatusRegistry').StatusRegistry;
 }

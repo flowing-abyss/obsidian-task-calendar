@@ -162,6 +162,7 @@ describe('RightPanel.renderSubTask', () => {
       text: 'sub one',
       markdownText: 'sub one',
       status: 'open',
+      statusSymbol: ' ',
       priority: 'D',
     };
     state.set('taskStack', [task({ text: 'Parent', subtasks: [sub] })]);
@@ -186,6 +187,7 @@ describe('RightPanel.renderSubTask', () => {
       text: 'sub one',
       markdownText: 'sub one',
       status: 'open',
+      statusSymbol: ' ',
       priority: 'D',
     };
     state.set('taskStack', [task({ filePath: 'f.md', line: 0, text: 'parent', subtasks: [sub] })]);

@@ -246,6 +246,7 @@ describe('ListView', () => {
                 text: 'a',
                 markdownText: 'a',
                 status: 'done',
+                statusSymbol: 'x',
                 priority: 'D' as const,
               },
               {
@@ -255,6 +256,7 @@ describe('ListView', () => {
                 text: 'b',
                 markdownText: 'b',
                 status: 'open',
+                statusSymbol: ' ',
                 priority: 'D' as const,
               },
             ],

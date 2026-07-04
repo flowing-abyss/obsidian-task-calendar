@@ -223,20 +223,23 @@ describe('parseSubItems', () => {
     expect(r.subtaskRange).toBeUndefined();
   });
 
-  it('treats a cancelled subtask checkbox as a comment (CURRENT BEHAVIOR, follow-up FU-1)', () => {
-    // SUBTASK_RE only matches [ xX]; [-] falls through to the comment branch
-    // COMMENT_RE captures group 2 after "- " → "[-] Cancelled child"
+  it('parses a cancelled subtask checkbox as a subtask (registry-driven, FU-1)', () => {
+    // SUBTASK_RE now matches any char inside [ ]; '-' resolves to 'cancelled'.
     const r = parseSubItems(['- [ ] Parent', '  - [-] Cancelled child'], 0, FILE);
-    expect(r.subtasks).toEqual([]);
-    expect(r.comments).toHaveLength(1);
-    expect(r.comments[0]?.text).toBe('[-] Cancelled child');
+    expect(r.subtasks).toHaveLength(1);
+    expect(r.subtasks[0]?.status).toBe('cancelled');
+    expect(r.subtasks[0]?.statusSymbol).toBe('-');
+    expect(r.subtasks[0]?.text).toBe('Cancelled child');
+    expect(r.comments).toHaveLength(0);
   });
 
-  it('treats an in-progress subtask checkbox as a comment (CURRENT BEHAVIOR, follow-up FU-1)', () => {
+  it('parses an in-progress subtask checkbox as a subtask (registry-driven, FU-1)', () => {
     const r = parseSubItems(['- [ ] Parent', '  - [/] In-progress child'], 0, FILE);
-    expect(r.subtasks).toEqual([]);
-    expect(r.comments).toHaveLength(1);
-    expect(r.comments[0]?.text).toBe('[/] In-progress child');
+    expect(r.subtasks).toHaveLength(1);
+    expect(r.subtasks[0]?.status).toBe('in-progress');
+    expect(r.subtasks[0]?.statusSymbol).toBe('/');
+    expect(r.subtasks[0]?.text).toBe('In-progress child');
+    expect(r.comments).toHaveLength(0);
   });
 
   it('strips metadata emojis from subtask text and exposes them as fields', () => {

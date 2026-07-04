@@ -40,6 +40,7 @@ export function task(overrides: Partial<Task> = {}): Task {
     text,
     markdownText: text,
     status: 'open',
+    statusSymbol: ' ',
     priority: 'D',
     ...overrides,
   };

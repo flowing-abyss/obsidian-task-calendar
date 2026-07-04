@@ -1,5 +1,7 @@
 import { extractMetadata } from './extractMetadata';
 import { collapseLinks } from './links';
+import { buildDefaultTaskStatuses } from '../settings/defaults';
+import { StatusRegistry } from '../status/StatusRegistry';
 import type { SubTask, TaskComment } from './types';
 
 export interface SubItemResult {
@@ -9,9 +11,11 @@ export interface SubItemResult {
   subtaskRange: { from: number; to: number } | undefined;
 }
 
+const DEFAULT_REGISTRY = new StatusRegistry(buildDefaultTaskStatuses());
+
 // Leading group allows blockquote/callout markers (`>`) alongside whitespace so
 // sub-items inside a blockquote (`> \t- [ ]`) nest correctly under their parent.
-const SUBTASK_RE = /^([\s>]*)- \[([ xX])\]\s+(.*)/;
+const SUBTASK_RE = /^([\s>]*)- \[(.)\]\s+(.*)/;
 const DESCRIPTION_RE = /^([\s>]*)- > (.*)/;
 const COMMENT_DATE_RE = /^([\s>]*)- (\d{4}-\d{2}-\d{2}):\s*(.*)/;
 const COMMENT_RE = /^([\s>]*)- (.+)/;
@@ -41,19 +45,23 @@ function parseSubtask(
   i: number,
   filePath: string,
   subtaskMatch: RegExpExecArray,
+  statusRegistry?: StatusRegistry,
 ): { subtask: SubTask; nextIdx: number; rangeTo: number } {
   const rawText = lines[i] ?? '';
   const statusChar = subtaskMatch[2] ?? ' ';
   const rawContent = (subtaskMatch[3] ?? '').trim();
   const meta = extractMetadata(rawContent);
-  const childResult = parseSubItems(lines, i, filePath);
+  const registry = statusRegistry ?? DEFAULT_REGISTRY;
+  const status = registry.typeForSymbol(statusChar === 'X' ? 'x' : statusChar);
+  const childResult = parseSubItems(lines, i, filePath, statusRegistry);
   const subtask: SubTask = {
     filePath,
     line: i,
     rawText,
     text: collapseLinks(meta.cleanText),
     markdownText: meta.cleanText,
-    status: statusChar === ' ' ? 'open' : 'done',
+    status,
+    statusSymbol: statusChar,
     priority: meta.priority,
     ...(meta.due !== undefined && { due: meta.due }),
     ...(meta.scheduled !== undefined && { scheduled: meta.scheduled }),
@@ -78,6 +86,7 @@ export function parseSubItems(
   lines: string[],
   taskLineIdx: number,
   filePath: string,
+  statusRegistry?: StatusRegistry,
 ): SubItemResult {
   const taskLine = lines[taskLineIdx] ?? '';
   const taskIndent = getIndent(taskLine);
@@ -112,7 +121,7 @@ export function parseSubItems(
 
     const subtaskMatch = SUBTASK_RE.exec(line);
     if (subtaskMatch) {
-      const parsed = parseSubtask(lines, i, filePath, subtaskMatch);
+      const parsed = parseSubtask(lines, i, filePath, subtaskMatch, statusRegistry);
       subtasks.push(parsed.subtask);
       rangeTo = parsed.rangeTo;
       i = parsed.nextIdx;

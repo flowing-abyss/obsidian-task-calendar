@@ -308,6 +308,7 @@ describe('RightPanel.toggleSubTask', () => {
       text: 'sub',
       markdownText: 'sub',
       status: 'open',
+      statusSymbol: ' ',
       priority: 'D',
     };
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
@@ -328,6 +329,7 @@ describe('RightPanel.toggleSubTask', () => {
       text: 'sub',
       markdownText: 'sub',
       status: 'open', // caller claims open, but file has uppercase X
+      statusSymbol: 'X',
       priority: 'D',
     };
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
@@ -345,6 +347,7 @@ describe('RightPanel.toggleSubTask', () => {
       text: 'sub',
       markdownText: 'sub',
       status: 'done',
+      statusSymbol: 'x',
       priority: 'D',
     };
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
@@ -362,6 +365,7 @@ describe('RightPanel.toggleSubTask', () => {
       text: 'sub',
       markdownText: 'sub',
       status: 'done',
+      statusSymbol: 'X',
       priority: 'D',
     };
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
@@ -378,6 +382,7 @@ describe('RightPanel.toggleSubTask', () => {
       text: 'sub',
       markdownText: 'sub',
       status: 'open',
+      statusSymbol: ' ',
       priority: 'D',
     };
     await expect(call<Promise<void>>(panel, 'toggleSubTask', sub)).resolves.toBeUndefined();

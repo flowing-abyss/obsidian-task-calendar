@@ -160,6 +160,7 @@ describe('AppState', () => {
       text: 't',
       markdownText: 't',
       status: 'open',
+      statusSymbol: ' ',
       priority: 'D',
     };
     s.set('draggingTask', t);
