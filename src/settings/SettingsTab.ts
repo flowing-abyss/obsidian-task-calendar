@@ -22,7 +22,12 @@ export function validateStatusSymbol(
   all: Array<{ id: string; symbol: string }>,
   selfId: string,
 ): string | null {
-  if ([...symbol].length !== 1) return 'Symbol must be exactly one character';
+  // Use UTF-16 code-unit length (not [...symbol] codepoint length): the bracket
+  // symbol is matched by parser regexes without the `u` flag (`\[(.)\]`), so a
+  // surrogate-pair emoji (2 code units) would pass validation here but then never
+  // match as a task at all. Multi-codepoint icons are fine elsewhere (e.g. the
+  // status icon), just not for this bracket symbol.
+  if (symbol.length !== 1) return 'Symbol must be a single character';
   if (all.some((s) => s.id !== selfId && s.symbol === symbol))
     return 'Symbol already used by another status';
   return null;

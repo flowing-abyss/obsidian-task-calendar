@@ -8,8 +8,8 @@ const list = [
 
 describe('validateStatusSymbol', () => {
   it('requires exactly one character', () => {
-    expect(validateStatusSymbol('', list, 'c')).toMatch(/one character/i);
-    expect(validateStatusSymbol('ab', list, 'c')).toMatch(/one character/i);
+    expect(validateStatusSymbol('', list, 'c')).toMatch(/single character/i);
+    expect(validateStatusSymbol('ab', list, 'c')).toMatch(/single character/i);
   });
   it('rejects duplicates against other statuses', () => {
     expect(validateStatusSymbol('x', list, 'c')).toMatch(/already/i);
@@ -19,5 +19,8 @@ describe('validateStatusSymbol', () => {
   });
   it('accepts a fresh single char', () => {
     expect(validateStatusSymbol('>', list, 'c')).toBeNull();
+  });
+  it('rejects a surrogate-pair emoji (parser regexes lack the u flag)', () => {
+    expect(validateStatusSymbol('😀', list, 'c')).toMatch(/single character/i);
   });
 });
