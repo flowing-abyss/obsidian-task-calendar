@@ -1,4 +1,5 @@
 import type { Task } from '../parser/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
 
 export interface TaskGroup {
   due: Task[];
@@ -112,10 +113,15 @@ function compareByTag(a: Task, b: Task): number {
   return ta.localeCompare(tb);
 }
 
+export function compareByStatus(a: Task, b: Task, registry: StatusRegistry): number {
+  return registry.orderIndex(a.statusSymbol) - registry.orderIndex(b.statusSymbol);
+}
+
 export function sortTasksByField(
   tasks: Task[],
   field: 'date' | 'priority' | 'title' | 'tag' | 'status',
   dir: 'asc' | 'desc',
+  registry?: StatusRegistry,
 ): Task[] {
   const sign = dir === 'asc' ? 1 : -1;
   return [...tasks].sort((a, b) => {
@@ -126,9 +132,8 @@ export function sortTasksByField(
       cmp = compareStrings(a.priority, b.priority);
     } else if (field === 'title') {
       cmp = a.text.localeCompare(b.text);
-    } else if (field === 'status') {
-      // Status-based sorting lands in a later task once the status registry exists.
-      cmp = 0;
+    } else if (field === 'status' && registry) {
+      cmp = compareByStatus(a, b, registry);
     } else {
       cmp = compareByTag(a, b);
     }
@@ -148,6 +153,24 @@ export function groupTasksByPriority(tasks: Task[]): Array<{ label: string; task
     label: PRIORITY_LABELS[p] ?? p,
     tasks: map.get(p)!,
   }));
+}
+
+export function groupTasksByStatus(
+  tasks: Task[],
+  registry: StatusRegistry,
+): Array<{ label: string; tasks: Task[] }> {
+  const buckets = new Map<string, { order: number; label: string; tasks: Task[] }>();
+  for (const t of tasks) {
+    const def = registry.bySymbol(t.statusSymbol);
+    const key = def?.id ?? '__other__';
+    const label = def?.name ?? 'Other';
+    const order = def ? registry.orderIndex(t.statusSymbol) : Number.MAX_SAFE_INTEGER;
+    if (!buckets.has(key)) buckets.set(key, { order, label, tasks: [] });
+    buckets.get(key)!.tasks.push(t);
+  }
+  return [...buckets.values()]
+    .sort((x, y) => x.order - y.order)
+    .map(({ label, tasks }) => ({ label, tasks }));
 }
 
 export function groupTasksByTag(tasks: Task[]): Array<{ label: string; tasks: Task[] }> {
