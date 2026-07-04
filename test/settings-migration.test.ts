@@ -80,3 +80,21 @@ describe('projects migration', () => {
     expect(projects.defaultStatusId).toBe(projects.statuses[0]!.id);
   });
 });
+
+describe('task statuses migration', () => {
+  it('seeds taskStatuses when missing', () => {
+    const raw: Record<string, unknown> = {}; // legacy settings without taskStatuses
+    migrateSettings(raw);
+    const seeded = raw['taskStatuses'] as unknown[];
+    expect(Array.isArray(seeded)).toBe(true);
+    expect(seeded.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('never overwrites an existing taskStatuses list', () => {
+    const existing = [{ id: 'x', symbol: 'q', name: 'Q', type: 'todo', color: '', icon: '', iconKind: 'glyph', core: false }];
+    const raw: Record<string, unknown> = { taskStatuses: existing };
+    migrateSettings(raw);
+    expect(raw['taskStatuses']).toHaveLength(1);
+    expect((raw['taskStatuses'] as Array<{ symbol: string }>)[0]!.symbol).toBe('q');
+  });
+});

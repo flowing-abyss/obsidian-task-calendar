@@ -114,7 +114,7 @@ function compareByTag(a: Task, b: Task): number {
 
 export function sortTasksByField(
   tasks: Task[],
-  field: 'date' | 'priority' | 'title' | 'tag',
+  field: 'date' | 'priority' | 'title' | 'tag' | 'status',
   dir: 'asc' | 'desc',
 ): Task[] {
   const sign = dir === 'asc' ? 1 : -1;
@@ -126,6 +126,9 @@ export function sortTasksByField(
       cmp = compareStrings(a.priority, b.priority);
     } else if (field === 'title') {
       cmp = a.text.localeCompare(b.text);
+    } else if (field === 'status') {
+      // Status-based sorting lands in a later task once the status registry exists.
+      cmp = 0;
     } else {
       cmp = compareByTag(a, b);
     }

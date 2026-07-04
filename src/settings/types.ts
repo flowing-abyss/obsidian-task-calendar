@@ -1,5 +1,18 @@
 import type { TaskPriority } from '../parser/types';
 
+export type TaskStatusType = 'todo' | 'in-progress' | 'done' | 'cancelled';
+
+export interface TaskStatusDef {
+  id: string;
+  symbol: string; // exactly one character written inside [ ]
+  name: string;
+  type: TaskStatusType;
+  color: string; // hex or '' for neutral
+  icon: string; // Lucide id or literal glyph; '' = empty chip
+  iconKind: 'lucide' | 'glyph';
+  core: boolean; // symbol+type locked, not deletable
+}
+
 export interface ViewConfig {
   defaultView: 'month' | 'week' | 'list';
   firstDayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -73,6 +86,7 @@ export interface CalendarSettings {
   listViewStates?: Record<string, ListViewState>;
   projects: ProjectsSettings;
   sectionCollapse: { pinned: boolean; projects: boolean; tags: boolean };
+  taskStatuses: TaskStatusDef[];
 }
 
 // Params parsed from a task-calendar code block (all optional overrides of ViewConfig)
@@ -97,8 +111,8 @@ export type PropertyFilter =
   | { type: 'date'; value: string };
 
 export interface ListViewState {
-  groupBy: 'none' | 'date' | 'priority' | 'tag';
-  sortBy: { field: 'date' | 'priority' | 'title' | 'tag'; dir: 'asc' | 'desc' };
+  groupBy: 'none' | 'date' | 'priority' | 'tag' | 'status';
+  sortBy: { field: 'date' | 'priority' | 'title' | 'tag' | 'status'; dir: 'asc' | 'desc' };
   show: 'active' | 'completed' | 'all';
   filters: PropertyFilter[];
 }

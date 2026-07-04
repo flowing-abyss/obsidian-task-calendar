@@ -1,4 +1,4 @@
-import { buildDefaultProjectsSettings } from './defaults';
+import { buildDefaultProjectsSettings, buildDefaultTaskStatuses } from './defaults';
 
 export function migrateSettings(raw: Record<string, unknown>): void {
   if (!('inbox' in raw)) {
@@ -32,5 +32,12 @@ export function migrateSettings(raw: Record<string, unknown>): void {
     if (!p.defaultStatusId || !ids.includes(p.defaultStatusId)) {
       p.defaultStatusId = ids[0] ?? '';
     }
+  }
+  if (
+    !('taskStatuses' in raw) ||
+    !Array.isArray(raw['taskStatuses']) ||
+    (raw['taskStatuses'] as unknown[]).length === 0
+  ) {
+    raw['taskStatuses'] = buildDefaultTaskStatuses();
   }
 }

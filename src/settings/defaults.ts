@@ -1,4 +1,10 @@
-import type { CalendarSettings, ListViewState, ProjectsSettings, ViewConfig } from './types';
+import type {
+  CalendarSettings,
+  ListViewState,
+  ProjectsSettings,
+  TaskStatusDef,
+  ViewConfig,
+} from './types';
 
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   defaultView: 'month',
@@ -50,6 +56,17 @@ export function buildDefaultProjectsSettings(): ProjectsSettings {
   };
 }
 
+export function buildDefaultTaskStatuses(): TaskStatusDef[] {
+  return [
+    { id: 'status-1', symbol: ' ', name: 'To-do',        type: 'todo',        color: '',        icon: '',               iconKind: 'lucide', core: true },
+    { id: 'status-2', symbol: '/', name: 'In progress',  type: 'in-progress', color: '#2b83f6', icon: 'contrast',       iconKind: 'lucide', core: true },
+    { id: 'status-3', symbol: 'x', name: 'Done',         type: 'done',        color: '#2b83f6', icon: 'check',          iconKind: 'lucide', core: true },
+    { id: 'status-4', symbol: '-', name: 'Cancelled',    type: 'cancelled',   color: '#8a8f98', icon: 'x',              iconKind: 'lucide', core: true },
+    { id: 'status-5', symbol: '!', name: 'Important',    type: 'todo',        color: '#e5484d', icon: 'alert-triangle', iconKind: 'lucide', core: false },
+    { id: 'status-6', symbol: '?', name: 'Question',     type: 'todo',        color: '#8e5cf6', icon: 'help-circle',    iconKind: 'lucide', core: false },
+  ];
+}
+
 export const DEFAULT_SETTINGS: CalendarSettings = {
   desktop: { ...DEFAULT_VIEW_CONFIG },
   mobile: { ...DEFAULT_VIEW_CONFIG, defaultView: 'list' },
@@ -71,6 +88,7 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
   sourceNoteDisplay: 'non-default' as const,
   projects: buildDefaultProjectsSettings(),
   sectionCollapse: { pinned: false, projects: false, tags: false },
+  taskStatuses: buildDefaultTaskStatuses(),
 };
 
 export function getListViewDefaults(listKey: string): ListViewState {
