@@ -31,7 +31,11 @@ export class StatusRegistry {
   }
 
   typeForSymbol(char: string): TaskStatus {
-    const def = this.bySymbolMap.get(char);
+    // 'X' (uppercase) is a common alternate "done" glyph in the Tasks-plugin
+    // ecosystem; the registry only knows the canonical lowercase 'x', so fold
+    // case for the lookup. Callers keep the raw glyph in statusSymbol.
+    const lookup = char === 'X' ? 'x' : char;
+    const def = this.bySymbolMap.get(lookup);
     return def ? StatusRegistry.TYPE_TO_STATUS[def.type] : 'open';
   }
 

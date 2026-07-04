@@ -52,7 +52,8 @@ function parseSubtask(
   const rawContent = (subtaskMatch[3] ?? '').trim();
   const meta = extractMetadata(rawContent);
   const registry = statusRegistry ?? DEFAULT_REGISTRY;
-  const status = registry.typeForSymbol(statusChar === 'X' ? 'x' : statusChar);
+  // typeForSymbol folds 'X' -> 'x' internally; statusSymbol keeps the raw glyph.
+  const status = registry.typeForSymbol(statusChar);
   const childResult = parseSubItems(lines, i, filePath, statusRegistry);
   const subtask: SubTask = {
     filePath,

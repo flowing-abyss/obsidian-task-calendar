@@ -34,10 +34,8 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
   // Status from checkbox char, resolved via the status registry
   const statusSymbol = state;
   const registry = ctx.statusRegistry ?? DEFAULT_REGISTRY;
-  // 'X' (uppercase) is a common alternate "done" glyph in the Tasks-plugin
-  // ecosystem; the registry only knows the canonical lowercase 'x', so fold
-  // case for the lookup while preserving the raw glyph in statusSymbol.
-  let status: TaskStatus = registry.typeForSymbol(state === 'X' ? 'x' : state);
+  // typeForSymbol folds 'X' -> 'x' internally; statusSymbol keeps the raw glyph.
+  let status: TaskStatus = registry.typeForSymbol(state);
 
   // Extract and strip emoji metadata
   let due: string | undefined;

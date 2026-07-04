@@ -14,6 +14,10 @@ describe('StatusRegistry', () => {
     expect(r.typeForSymbol('!')).toBe('open'); // Important is type todo → open
   });
 
+  it('treats uppercase X as an alias for lowercase x (done)', () => {
+    expect(reg().typeForSymbol('X')).toBe('done');
+  });
+
   it('falls back to open for unknown symbols', () => {
     expect(reg().typeForSymbol('@')).toBe('open');
     expect(reg().bySymbol('@')).toBeUndefined();
