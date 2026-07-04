@@ -1628,9 +1628,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: #fff;
   cursor: pointer;
 }
-.tc-status-marker[data-status-type='todo']:not([data-status='other']) {
+.tc-status-marker[data-status='other'] {
   background: transparent;
-  color: var(--tc-status-color, var(--text-muted));
+  color: var(--text-muted);
 }
 .tc-status-marker svg {
   width: 13px;
