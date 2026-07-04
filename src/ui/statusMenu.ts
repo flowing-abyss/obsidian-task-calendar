@@ -1,16 +1,7 @@
-import { Menu } from 'obsidian';
+import { setIcon, type Menu } from 'obsidian';
 import type { Task, TaskPriority } from '../parser/types';
-import type { TaskStatusType } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
-
-const PRIORITIES: Array<{ p: TaskPriority; label: string }> = [
-  { p: 'A', label: 'Highest' },
-  { p: 'B', label: 'High' },
-  { p: 'C', label: 'Medium' },
-  { p: 'D', label: 'None' },
-  { p: 'E', label: 'Low' },
-  { p: 'F', label: 'Lowest' },
-];
+import { renderStatusMarker } from './StatusMarker';
 
 export interface StatusMenuOpts {
   task: Task;
@@ -19,53 +10,20 @@ export interface StatusMenuOpts {
   onPickPriority: (p: TaskPriority) => void;
 }
 
-/** Runtime-only shape of Obsidian's MenuItem DOM root (undocumented in the public API). */
-interface MenuItemWithDom {
-  dom: HTMLElement;
-}
+const PRIORITY_OPTIONS: Array<{ p: TaskPriority; label: string }> = [
+  { p: 'A', label: 'Highest' },
+  { p: 'B', label: 'High' },
+  { p: 'C', label: 'Medium' },
+  { p: 'D', label: 'None' },
+  { p: 'E', label: 'Low' },
+  { p: 'F', label: 'Lowest' },
+];
 
 /**
- * Builds the top "Priority" section of the combined menu: one checkable item per
- * priority level, each with a flag icon colored to match the existing priority
- * popover (`--tc-priority-a..f` CSS vars, via `.tc-menu-priority-flag[data-tc-priority]`).
- */
-function addPrioritySection(
-  menu: Menu,
-  task: Task,
-  onPickPriority: (p: TaskPriority) => void,
-): void {
-  for (const { p, label } of PRIORITIES) {
-    menu.addItem((i) => {
-      i.setTitle(label)
-        .setSection('priority')
-        .setChecked((task.priority ?? 'D') === p)
-        .setIcon('flag')
-        .onClick(() => onPickPriority(p));
-      // `.dom` is an undocumented MenuItem internal; guard so a future
-      // Obsidian refactor degrades to an uncolored flag instead of throwing
-      // (an unguarded throw here would abort building the rest of the menu).
-      const dom = (i as unknown as MenuItemWithDom).dom;
-      if (dom) {
-        dom.addClass('tc-menu-priority-flag');
-        dom.setAttribute('data-tc-priority', p);
-      }
-      return i;
-    });
-  }
-}
-
-const GROUP_LABELS: Record<TaskStatusType, string> = {
-  todo: 'To do',
-  'in-progress': 'In progress',
-  done: 'Done',
-  cancelled: 'Cancelled',
-};
-
-/**
- * Adds the status items (grouped by open/in-progress/done/cancelled) to `menu`,
+ * Adds the status items (grouped by open/in-progress/done/cancelled) to `sub`,
  * one `setSection(group.type)` group per status type, current status checked.
- * Each group starts with a non-interactive label header (e.g. "To do") — inserted
- * before the group's items so it sorts to the top of its section.
+ * Relies on Obsidian's native section dividers (no text group-header items —
+ * those read as redundant noise next to the divider Obsidian already draws).
  */
 export function buildStatusSubmenu(
   sub: Menu,
@@ -74,10 +32,6 @@ export function buildStatusSubmenu(
   onPickStatus: (char: string) => void,
 ): void {
   for (const group of registry.grouped()) {
-    sub.addItem((i) => {
-      i.setTitle(GROUP_LABELS[group.type]).setSection(group.type).setIsLabel(true);
-      return i;
-    });
     for (const def of group.statuses) {
       sub.addItem((i) => {
         i.setTitle(def.name)
@@ -92,18 +46,100 @@ export function buildStatusSubmenu(
 }
 
 /**
- * Builds the combined priority+status right-click menu: a Priority section on top
- * (registered first so Obsidian renders it above the status sections), followed by
- * status items grouped by `registry.grouped()` (open → in-progress → done → cancelled).
+ * Clamps a popover positioned at the mouse event's viewport coordinates so it
+ * never overflows the window, then applies it as `position: fixed` coords.
  */
-export function buildStatusMenu(opts: StatusMenuOpts): Menu {
-  const { task, registry, onPickStatus, onPickPriority } = opts;
-  const menu = new Menu();
-  addPrioritySection(menu, task, onPickPriority);
-  buildStatusSubmenu(menu, task, registry, onPickStatus);
-  return menu;
+function positionPopoverAt(pop: HTMLElement, ev: MouseEvent): void {
+  const margin = 8;
+  // Measure after appending (offsetWidth/Height are 0 before layout).
+  const width = pop.offsetWidth;
+  const height = pop.offsetHeight;
+  const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+  const maxTop = Math.max(margin, window.innerHeight - height - margin);
+  const left = Math.min(Math.max(ev.clientX, margin), maxLeft);
+  const top = Math.min(Math.max(ev.clientY, margin), maxTop);
+  pop.style.left = `${left}px`;
+  pop.style.top = `${top}px`;
 }
 
+/**
+ * Opens the combined priority+status popover at the mouse event's position:
+ * a horizontal row of colored priority flags, a divider, then the status list
+ * (grouped by open/in-progress/done/cancelled, groups separated by thin
+ * dividers — no text group headers). Appended to `document.body` so it can
+ * float above any panel; dismissed on outside click, Escape, or after a pick.
+ */
 export function showStatusMenuAt(ev: MouseEvent, opts: StatusMenuOpts): void {
-  buildStatusMenu(opts).showAtMouseEvent(ev);
+  const { task, registry, onPickStatus, onPickPriority } = opts;
+
+  // Only one status popover at a time.
+  activeDocument.querySelectorAll('.tc-status-popover').forEach((el) => el.remove());
+
+  const pop = activeDocument.body.createDiv({ cls: 'tc-status-popover' });
+
+  const close = (): void => {
+    pop.remove();
+    activeDocument.removeEventListener('mousedown', onOutside, true);
+    activeDocument.removeEventListener('keydown', onKey, true);
+  };
+  const onOutside = (e: MouseEvent): void => {
+    if (!pop.contains(e.target as Node)) close();
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close();
+  };
+
+  // ── Priority row ──────────────────────────────────────────
+  const priorityRow = pop.createDiv({ cls: 'tc-status-popover-priority-row' });
+  const currentPriority = task.priority ?? 'D';
+  for (const opt of PRIORITY_OPTIONS) {
+    const btn = priorityRow.createEl('button', {
+      cls: `tc-status-popover-flag${currentPriority === opt.p ? ' is-active' : ''}`,
+      attr: { 'data-tc-priority': opt.p, 'aria-label': opt.label, title: opt.label },
+    });
+    setIcon(btn, 'flag');
+    btn.addEventListener('click', () => {
+      onPickPriority(opt.p);
+      close();
+    });
+  }
+
+  pop.createDiv({ cls: 'tc-status-popover-divider' });
+
+  // ── Status list ───────────────────────────────────────────
+  const list = pop.createDiv({ cls: 'tc-status-popover-list' });
+  const groups = registry.grouped();
+  groups.forEach((group, groupIndex) => {
+    for (const def of group.statuses) {
+      const row = list.createDiv({ cls: 'tc-status-popover-row' });
+      renderStatusMarker(row, {
+        // A faithful mini status chip needs only the symbol; priority is
+        // irrelevant here so it's pinned to 'D' to avoid drawing a border.
+        task: { statusSymbol: def.symbol, priority: 'D' } as unknown as Task,
+        registry,
+        onLeftClick: () => {},
+        onContextMenu: () => {},
+      });
+      row.createSpan({ cls: 'tc-status-popover-name', text: def.name });
+      const isCurrent = task.statusSymbol === def.symbol;
+      if (isCurrent) {
+        row.addClass('is-current');
+        const check = row.createSpan({ cls: 'tc-status-popover-check' });
+        setIcon(check, 'check');
+      }
+      row.addEventListener('click', () => {
+        onPickStatus(def.symbol);
+        close();
+      });
+    }
+    if (groupIndex < groups.length - 1) {
+      list.createDiv({ cls: 'tc-status-popover-divider' });
+    }
+  });
+
+  positionPopoverAt(pop, ev);
+  window.setTimeout(() => {
+    activeDocument.addEventListener('mousedown', onOutside, true);
+    activeDocument.addEventListener('keydown', onKey, true);
+  }, 0);
 }

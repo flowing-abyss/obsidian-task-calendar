@@ -2493,25 +2493,114 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   height: 0.75em;
 }
 
-/* Combined priority+status context menu (src/ui/statusMenu.ts). This menu is rendered
-   by Obsidian at document.body, OUTSIDE `.tc-panel-view`, so the panel-scoped
-   --tc-priority-* vars are empty here — use the global Obsidian color vars directly
-   (same underlying colors --tc-priority-* alias inside the panel). 'D' (None) is
+/* Combined priority+status popover (src/ui/statusMenu.ts). Rendered at
+   document.body, OUTSIDE `.tc-panel-view`, so the panel-scoped --tc-priority-*
+   vars are empty here — use the global Obsidian color vars directly (same
+   underlying colors --tc-priority-* alias inside the panel). 'D' (None) is
    intentionally left uncolored/muted, matching the priority popover. */
-.tc-menu-priority-flag[data-tc-priority='A'] .menu-item-icon {
+.tc-status-popover {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  max-width: 16rem;
+  padding: 0.4rem;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow-s);
+}
+.tc-status-popover-priority-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2rem;
+  padding: 0.15rem 0.15rem 0.4rem;
+}
+.tc-status-popover-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tc-status-popover-flag:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-status-popover-flag.is-active {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
+}
+.tc-status-popover-flag svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.tc-status-popover-flag[data-tc-priority='A'] {
   color: var(--color-red);
 }
-.tc-menu-priority-flag[data-tc-priority='B'] .menu-item-icon {
+.tc-status-popover-flag[data-tc-priority='B'] {
   color: var(--color-orange);
 }
-.tc-menu-priority-flag[data-tc-priority='C'] .menu-item-icon {
+.tc-status-popover-flag[data-tc-priority='C'] {
   color: var(--color-yellow);
 }
-.tc-menu-priority-flag[data-tc-priority='E'] .menu-item-icon {
+.tc-status-popover-flag[data-tc-priority='E'] {
   color: var(--color-blue);
 }
-.tc-menu-priority-flag[data-tc-priority='F'] .menu-item-icon {
+.tc-status-popover-flag[data-tc-priority='F'] {
   color: var(--color-purple);
+}
+.tc-status-popover-divider {
+  height: 1px;
+  margin: 0.25rem 0.15rem;
+  background: var(--background-modifier-border);
+}
+.tc-status-popover-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 18rem;
+  overflow-y: auto;
+}
+.tc-status-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+.tc-status-popover-row:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-status-popover-row.is-current {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.tc-status-popover-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tc-status-popover-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--color-accent);
+}
+.tc-status-popover-check svg {
+  width: 0.8rem;
+  height: 0.8rem;
 }
 
 /* Priority chip in right panel */
