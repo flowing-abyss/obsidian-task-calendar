@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { StatusRegistry } from '../src/status/StatusRegistry';
+import { describe, expect, it } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 
 const reg = () => new StatusRegistry(buildDefaultTaskStatuses());
 
@@ -26,7 +26,9 @@ describe('StatusRegistry', () => {
   });
 
   it('groups in fixed type order', () => {
-    const groups = reg().grouped().map((g) => g.type);
+    const groups = reg()
+      .grouped()
+      .map((g) => g.type);
     expect(groups).toEqual(['todo', 'in-progress', 'done', 'cancelled']);
   });
 

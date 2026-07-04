@@ -1,5 +1,5 @@
-import type { TaskStatusDef, TaskStatusType } from '../settings/types';
 import type { TaskStatus } from '../parser/types';
+import type { TaskStatusDef, TaskStatusType } from '../settings/types';
 
 const TYPE_ORDER: TaskStatusType[] = ['todo', 'in-progress', 'done', 'cancelled'];
 

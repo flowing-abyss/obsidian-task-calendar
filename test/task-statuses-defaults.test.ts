@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 
 describe('buildDefaultTaskStatuses', () => {
@@ -24,8 +24,6 @@ describe('buildDefaultTaskStatuses', () => {
 
   it('marks exactly the 4 backbone types as core', () => {
     const core = buildDefaultTaskStatuses().filter((d) => d.core);
-    expect(core.map((d) => d.type).sort()).toEqual(
-      ['cancelled', 'done', 'in-progress', 'todo'],
-    );
+    expect(core.map((d) => d.type).sort()).toEqual(['cancelled', 'done', 'in-progress', 'todo']);
   });
 });

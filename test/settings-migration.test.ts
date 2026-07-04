@@ -91,7 +91,18 @@ describe('task statuses migration', () => {
   });
 
   it('never overwrites an existing taskStatuses list', () => {
-    const existing = [{ id: 'x', symbol: 'q', name: 'Q', type: 'todo', color: '', icon: '', iconKind: 'glyph', core: false }];
+    const existing = [
+      {
+        id: 'x',
+        symbol: 'q',
+        name: 'Q',
+        type: 'todo',
+        color: '',
+        icon: '',
+        iconKind: 'glyph',
+        core: false,
+      },
+    ];
     const raw: Record<string, unknown> = { taskStatuses: existing };
     migrateSettings(raw);
     expect(raw['taskStatuses']).toHaveLength(1);
