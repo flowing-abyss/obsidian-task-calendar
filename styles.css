@@ -1229,11 +1229,6 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--icon-color-active);
 }
 
-.calendar-task-checkbox {
-  position: relative;
-  top: 3px;
-}
-
 /* ---- Rail ---- */
 .tc-rail-top {
   display: flex;
@@ -1573,46 +1568,6 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-muted);
   padding: 2px 12px 4px;
 }
-.tc-task-checkbox {
-  margin-top: 3px;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  min-width: 16px;
-  cursor: pointer;
-  accent-color: var(--interactive-accent);
-}
-/* Priority coloring on task card checkbox — outline visible even when unchecked */
-.tc-task-checkbox[data-priority='A'] {
-  accent-color: var(--tc-priority-a);
-  outline: 2px solid var(--tc-priority-a);
-  outline-offset: 0px;
-  border-radius: 2px;
-}
-.tc-task-checkbox[data-priority='B'] {
-  accent-color: var(--tc-priority-b);
-  outline: 2px solid var(--tc-priority-b);
-  outline-offset: 0px;
-  border-radius: 2px;
-}
-.tc-task-checkbox[data-priority='C'] {
-  accent-color: var(--tc-priority-c);
-  outline: 2px solid var(--tc-priority-c);
-  outline-offset: 0px;
-  border-radius: 2px;
-}
-.tc-task-checkbox[data-priority='E'] {
-  accent-color: var(--tc-priority-e);
-  outline: 2px solid var(--tc-priority-e);
-  outline-offset: 0px;
-  border-radius: 2px;
-}
-.tc-task-checkbox[data-priority='F'] {
-  accent-color: var(--tc-priority-f);
-  outline: 2px solid var(--tc-priority-f);
-  outline-offset: 0px;
-  border-radius: 2px;
-}
 /* Status marker — chip replacing the native checkbox at task render sites */
 .tc-status-marker {
   width: 19px;
@@ -1636,7 +1591,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   width: 13px;
   height: 13px;
 }
-/* Priority ring — ported from .tc-task-checkbox[data-priority] to keep the outer ring visually identical */
+/* Priority ring on the status marker chip */
 .tc-status-marker[data-priority='A'] {
   box-shadow:
     0 0 0 1px var(--background-primary),
@@ -2542,21 +2497,25 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   height: 0.75em;
 }
 
-/* Combined priority+status context menu (src/ui/statusMenu.ts) */
+/* Combined priority+status context menu (src/ui/statusMenu.ts). This menu is rendered
+   by Obsidian at document.body, OUTSIDE `.tc-panel-view`, so the panel-scoped
+   --tc-priority-* vars are empty here — use the global Obsidian color vars directly
+   (same underlying colors --tc-priority-* alias inside the panel). 'D' (None) is
+   intentionally left uncolored/muted, matching the priority popover. */
 .tc-menu-priority-flag[data-tc-priority='A'] .menu-item-icon {
-  color: var(--tc-priority-a);
+  color: var(--color-red);
 }
 .tc-menu-priority-flag[data-tc-priority='B'] .menu-item-icon {
-  color: var(--tc-priority-b);
+  color: var(--color-orange);
 }
 .tc-menu-priority-flag[data-tc-priority='C'] .menu-item-icon {
-  color: var(--tc-priority-c);
+  color: var(--color-yellow);
 }
 .tc-menu-priority-flag[data-tc-priority='E'] .menu-item-icon {
-  color: var(--tc-priority-e);
+  color: var(--color-blue);
 }
 .tc-menu-priority-flag[data-tc-priority='F'] .menu-item-icon {
-  color: var(--tc-priority-f);
+  color: var(--color-purple);
 }
 
 /* Priority chip in right panel */
