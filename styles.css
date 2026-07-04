@@ -2542,6 +2542,23 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   height: 0.75em;
 }
 
+/* Combined priority+status context menu (src/ui/statusMenu.ts) */
+.tc-menu-priority-flag[data-tc-priority='A'] .menu-item-icon {
+  color: var(--tc-priority-a);
+}
+.tc-menu-priority-flag[data-tc-priority='B'] .menu-item-icon {
+  color: var(--tc-priority-b);
+}
+.tc-menu-priority-flag[data-tc-priority='C'] .menu-item-icon {
+  color: var(--tc-priority-c);
+}
+.tc-menu-priority-flag[data-tc-priority='E'] .menu-item-icon {
+  color: var(--tc-priority-e);
+}
+.tc-menu-priority-flag[data-tc-priority='F'] .menu-item-icon {
+  color: var(--tc-priority-f);
+}
+
 /* Priority chip in right panel */
 .tc-priority-chip[data-priority='A'] {
   color: var(--tc-priority-a);
