@@ -1586,6 +1586,14 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   background: transparent;
   color: var(--tc-status-color, var(--text-muted));
   cursor: pointer;
+  /* Center a text glyph/emoji marker exactly: kill baseline/line-box offset
+     so the character sits dead-center like the SVG icons do. */
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
+}
+.tc-status-marker > svg {
+  display: block;
 }
 .tc-status-marker[data-status='other'] {
   color: var(--text-muted);
