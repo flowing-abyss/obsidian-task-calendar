@@ -770,6 +770,26 @@ describe('getFilteredTasks respects property filters', () => {
     expect(tasks[0]?.text).toBe('high');
   });
 
+  it('status filter keeps only tasks with matching statusSymbol', () => {
+    const { panel, state } = makePanel([
+      task({ text: 'inProgress', status: 'in-progress', statusSymbol: '/' }),
+      task({ text: 'todo', status: 'open', statusSymbol: ' ' }),
+    ]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'all',
+      filters: [{ type: 'status', value: '/' }],
+    });
+    state.set(
+      'selectedList',
+      'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
+    );
+    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.text).toBe('inProgress');
+  });
+
   it('date filter matches due, scheduled, or dailyNoteDate', () => {
     const { panel, state } = makePanel([
       task({ text: 'due', status: 'open', due: '2026-01-10' }),
@@ -872,6 +892,18 @@ describe('addPropertyFilter', () => {
     expect(state.get('centerListViewState').filters).toHaveLength(1);
   });
 
+  it('deduplicates status filters by value', () => {
+    const { panel, state } = makePanel([]);
+    state.set('centerListViewState', {
+      groupBy: 'none',
+      sortBy: { field: 'date', dir: 'asc' },
+      show: 'active',
+      filters: [{ type: 'status', value: '/' }],
+    });
+    call(panel, 'addPropertyFilter', { type: 'status', value: '/' });
+    expect(state.get('centerListViewState').filters).toHaveLength(1);
+  });
+
   it('allows different filter types with the same value', () => {
     const { panel, state } = makePanel([]);
     state.set('centerListViewState', {
@@ -929,5 +961,17 @@ describe('filterChipLabel', () => {
     expect(call<string>(panel, 'filterChipLabel', { type: 'priority', value: 'B' })).toBe(
       '⏫ High',
     );
+  });
+
+  it('status filter → status name from registry', () => {
+    const { panel } = makePanel([]);
+    expect(call<string>(panel, 'filterChipLabel', { type: 'status', value: '/' })).toBe(
+      'In progress',
+    );
+  });
+
+  it('status filter → raw symbol fallback when unknown', () => {
+    const { panel } = makePanel([]);
+    expect(call<string>(panel, 'filterChipLabel', { type: 'status', value: '~' })).toBe('~');
   });
 });

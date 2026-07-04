@@ -1,4 +1,4 @@
-import { Component, Menu, Notice, setIcon, TFile, type App } from 'obsidian';
+import { Component, Menu, Notice, setIcon, TFile, type App, type MenuItem } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
@@ -45,6 +45,28 @@ function listSelectionToKey(sel: ListSelection): string {
 
 function projectNameFromPath(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
+}
+
+const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
+  { label: 'Highest', value: 'A' },
+  { label: 'High', value: 'B' },
+  { label: 'Medium', value: 'C' },
+  { label: 'None', value: 'D' },
+  { label: 'Low', value: 'E' },
+  { label: 'Lowest', value: 'F' },
+];
+
+/**
+ * Colors a priority-submenu flag icon to match the rest of the UI (status
+ * popover flags, flag settings, etc.) by tagging the item's undocumented
+ * `.dom` element — Obsidian doesn't expose per-item icon styling otherwise.
+ */
+function applyPriorityFlagColor(si: MenuItem, value: TaskPriority): void {
+  const dom = (si as unknown as { dom?: HTMLElement }).dom;
+  if (dom) {
+    dom.addClass('tc-menu-priority-flag');
+    dom.setAttribute('data-tc-priority', value);
+  }
 }
 
 export class CenterPanel {
@@ -1035,6 +1057,14 @@ export class CenterPanel {
           .onClick(() => this.addPropertyFilter({ type: 'priority', value: task.priority })),
       );
 
+      menu.addItem((item) =>
+        item
+          .setTitle('Filter by this status')
+          .setIcon('filter')
+          .setSection('priority')
+          .onClick(() => this.addPropertyFilter({ type: 'status', value: task.statusSymbol })),
+      );
+
       // ── Set tag… ───────────────────────────────────────────
       menu.addItem((item) =>
         item
@@ -1109,41 +1139,27 @@ export class CenterPanel {
   }
 
   private buildPrioritySubmenu(sub: Menu, task: Task): void {
-    const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
-      { label: '🔺 Highest', value: 'A' },
-      { label: '⏫ High', value: 'B' },
-      { label: '🔼 Medium', value: 'C' },
-      { label: 'Normal', value: 'D' },
-      { label: '🔽 Low', value: 'E' },
-      { label: '⏬ Lowest', value: 'F' },
-    ];
     for (const level of PRIORITY_LEVELS) {
-      sub.addItem((si) =>
-        si
-          .setTitle(level.label)
+      sub.addItem((si) => {
+        si.setTitle(level.label)
+          .setIcon('flag')
           .setChecked(task.priority === level.value)
-          .onClick(() => void this.setPriority(task, level.value)),
-      );
+          .onClick(() => void this.setPriority(task, level.value));
+        applyPriorityFlagColor(si, level.value);
+      });
     }
   }
 
   private buildBulkPrioritySubmenu(sub: Menu, selectedTasks: Task[]): void {
-    const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
-      { label: '🔺 Highest', value: 'A' },
-      { label: '⏫ High', value: 'B' },
-      { label: '🔼 Medium', value: 'C' },
-      { label: 'Normal', value: 'D' },
-      { label: '🔽 Low', value: 'E' },
-      { label: '⏬ Lowest', value: 'F' },
-    ];
     for (const level of PRIORITY_LEVELS) {
-      sub.addItem((si) =>
-        si
-          .setTitle(level.label)
+      sub.addItem((si) => {
+        si.setTitle(level.label)
+          .setIcon('flag')
           .onClick(
             () => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value))),
-          ),
-      );
+          );
+        applyPriorityFlagColor(si, level.value);
+      });
     }
   }
 
@@ -1273,6 +1289,7 @@ export class CenterPanel {
     if (f.type === 'tag') return f.value;
     if (f.type === 'file') return `📄 ${f.filePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}`;
     if (f.type === 'time') return `⏰ ${f.value}`;
+    if (f.type === 'status') return this.store.statusRegistry.bySymbol(f.value)?.name ?? f.value;
     if (f.type === 'date') return `📅 ${this.formatDate(f.value)}`;
     const PRIORITY_EMOJIS: Record<string, string> = {
       A: '🔺 Highest',
@@ -1293,6 +1310,7 @@ export class CenterPanel {
       if (f.type === 'tag' && filter.type === 'tag') return f.value === filter.value;
       if (f.type === 'time' && filter.type === 'time') return f.value === filter.value;
       if (f.type === 'priority' && filter.type === 'priority') return f.value === filter.value;
+      if (f.type === 'status' && filter.type === 'status') return f.value === filter.value;
       if (f.type === 'date' && filter.type === 'date') return f.value === filter.value;
       return false;
     });
@@ -1714,6 +1732,8 @@ export class CenterPanel {
         tasks = tasks.filter((t) => t.time === f.value);
       } else if (f.type === 'priority') {
         tasks = tasks.filter((t) => t.priority === f.value);
+      } else if (f.type === 'status') {
+        tasks = tasks.filter((t) => t.statusSymbol === f.value);
       } else if (f.type === 'date') {
         tasks = tasks.filter((t) => (t.due ?? t.scheduled ?? t.dailyNoteDate) === f.value);
       }

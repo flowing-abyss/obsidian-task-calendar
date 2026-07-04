@@ -108,6 +108,7 @@ export type PropertyFilter =
   | { type: 'file'; filePath: string }
   | { type: 'time'; value: string }
   | { type: 'priority'; value: TaskPriority }
+  | { type: 'status'; value: string }
   | { type: 'date'; value: string };
 
 export interface ListViewState {

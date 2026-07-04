@@ -2565,6 +2565,24 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-status-popover-flag[data-tc-priority='F'] {
   color: var(--color-purple);
 }
+.tc-menu-priority-flag[data-tc-priority='A'] .menu-item-icon {
+  color: var(--color-red);
+}
+.tc-menu-priority-flag[data-tc-priority='B'] .menu-item-icon {
+  color: var(--color-orange);
+}
+.tc-menu-priority-flag[data-tc-priority='C'] .menu-item-icon {
+  color: var(--color-yellow);
+}
+.tc-menu-priority-flag[data-tc-priority='D'] .menu-item-icon {
+  color: var(--text-muted);
+}
+.tc-menu-priority-flag[data-tc-priority='E'] .menu-item-icon {
+  color: var(--color-blue);
+}
+.tc-menu-priority-flag[data-tc-priority='F'] .menu-item-icon {
+  color: var(--color-purple);
+}
 .tc-status-popover-divider {
   height: 1px;
   margin: 0.25rem 0.15rem;
