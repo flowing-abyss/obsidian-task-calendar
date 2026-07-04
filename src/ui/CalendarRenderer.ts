@@ -6,6 +6,7 @@ import { BaseView } from '../views/BaseView';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
+import { showStatusMenuAt } from './statusMenu';
 import { openInFile } from './taskNavigation';
 import { Toolbar, type ViewEntry } from './Toolbar';
 
@@ -131,6 +132,14 @@ export class CalendarRenderer {
         this.switchView('week');
       },
       onDateClick: (date: string) => this.openAddTaskModal(date),
+      onContextMenu: (ev: MouseEvent, task: Task) => {
+        showStatusMenuAt(ev, {
+          task,
+          registry: this.store.statusRegistry,
+          onPickStatus: (c) => void this.store.setTaskStatus(task, c),
+          onPickPriority: (p) => void this.store.setPriority(task, p),
+        });
+      },
     };
   }
 
@@ -161,6 +170,8 @@ export class CalendarRenderer {
           onTaskClick: () => {},
           onDrop: () => {},
           onOpenNote: (t) => void openInFile(this.app, t),
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu: cb.onContextMenu,
         });
       } else if (this.activeViewType === 'week') {
         this.activeView = new WeekView({
@@ -170,12 +181,16 @@ export class CalendarRenderer {
           onTaskClick: () => {},
           onDrop: () => {},
           onOpenNote: (t) => void openInFile(this.app, t),
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu: cb.onContextMenu,
         });
       } else {
         this.activeView = new ListView({
           app: this.app,
           onToggle: cb.onToggle,
           onDateClick: cb.onDateClick,
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu: cb.onContextMenu,
         });
       }
     }

@@ -3,6 +3,8 @@ import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { ResolvedConfig } from '../settings/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
+import { renderStatusMarker } from '../ui/StatusMarker';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { BaseView } from './BaseView';
@@ -14,6 +16,8 @@ export interface ListViewCallbacks {
   onDateClick: (date: string) => void;
   onTaskClick?: (task: Task) => void;
   onEditLink?: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
+  statusRegistry: StatusRegistry;
+  onContextMenu: (ev: MouseEvent, task: Task) => void;
 }
 
 export class ListView extends BaseView {
@@ -113,14 +117,11 @@ export class ListView extends BaseView {
   private renderListTask(container: HTMLElement, task: Task): void {
     const row = container.createDiv({ cls: 'tc-list-task' });
 
-    const cb = row.createEl('input', {
-      cls: 'tc-task-checkbox',
-      attr: { type: 'checkbox' },
-    });
-    cb.checked = task.status === 'done';
-    cb.addEventListener('change', (e) => {
-      e.stopPropagation();
-      this.callbacks.onToggle(task);
+    const marker = renderStatusMarker(row, {
+      task,
+      registry: this.callbacks.statusRegistry,
+      onLeftClick: () => this.callbacks.onToggle(task),
+      onContextMenu: (e) => this.callbacks.onContextMenu(e, task),
     });
 
     let statusClass = '';
@@ -161,7 +162,7 @@ export class ListView extends BaseView {
     }
 
     row.addEventListener('click', (e) => {
-      if (e.target === cb) return;
+      if (e.target === marker) return;
       this.callbacks.onTaskClick?.(task);
     });
   }

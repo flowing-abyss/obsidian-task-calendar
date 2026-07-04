@@ -1,8 +1,10 @@
 import { Notice, Platform, type App, type Component } from 'obsidian';
 import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
 import { attachLongPress } from './MobileTouch';
 import { renderTaskText } from './renderTaskText';
+import { renderStatusMarker } from './StatusMarker';
 
 type TaskCardMode = 'default' | 'timeblock';
 
@@ -14,6 +16,8 @@ export interface TaskCardOptions {
   onToggle?: (task: Task) => void;
   onMove?: (task: Task, newDate: string, newTime: string) => void;
   onEditLink?: (occurrenceIndex: number, token: LinkToken) => void;
+  statusRegistry?: StatusRegistry;
+  onContextMenu?: (ev: MouseEvent, task: Task) => void;
 }
 
 const TASK_ICONS: Record<string, string> = {
@@ -75,18 +79,14 @@ export function createTaskCard(
   const inner = activeDocument.createElement('div');
   inner.className = 'inner';
 
-  // Checkbox
-  if (mode === 'default') {
-    const checkbox = activeDocument.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'calendar-task-checkbox';
-    checkbox.checked = task.status === 'done';
-    if (onToggle) {
-      checkbox.addEventListener('change', () => {
-        onToggle(task);
-      });
-    }
-    inner.appendChild(checkbox);
+  // Status marker (replaces the native checkbox; also carries priority + right-click menu)
+  if (mode === 'default' && options.statusRegistry) {
+    renderStatusMarker(inner, {
+      task,
+      registry: options.statusRegistry,
+      onLeftClick: () => onToggle?.(task),
+      onContextMenu: (e) => options.onContextMenu?.(e, task),
+    });
   }
 
   // Content wrapper (was an <a>; nested <a> is invalid so this is a div now)

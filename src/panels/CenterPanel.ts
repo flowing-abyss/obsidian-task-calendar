@@ -19,6 +19,8 @@ import { TagPickerModal } from '../ui/TagPickerModal';
 import { TaskModal } from '../ui/TaskModal';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
+import { renderStatusMarker } from '../ui/StatusMarker';
+import { buildStatusSubmenu, showStatusMenuAt } from '../ui/statusMenu';
 import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
@@ -445,6 +447,14 @@ export class CenterPanel {
         customFilePath: this.settings.customFilePath,
         startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
       };
+      const onContextMenu = (ev: MouseEvent, t: Task): void => {
+        showStatusMenuAt(ev, {
+          task: t,
+          registry: this.store.statusRegistry,
+          onPickStatus: (c) => void this.store.setTaskStatus(t, c),
+          onPickPriority: (p) => void this.store.setPriority(t, p),
+        });
+      };
       if (this.calViewType === 'month') {
         this.calViewInstance = new MonthView({
           app: this.app,
@@ -465,6 +475,8 @@ export class CenterPanel {
           onDrop: handleDrop,
           onOpenNote: (t) => void openInFile(this.app, t),
           onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu,
         });
       } else if (this.calViewType === 'week') {
         this.calViewInstance = new WeekView({
@@ -477,6 +489,8 @@ export class CenterPanel {
           onDrop: handleDrop,
           onOpenNote: (t) => void openInFile(this.app, t),
           onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu,
         });
       } else {
         this.calViewInstance = new ListView({
@@ -487,6 +501,8 @@ export class CenterPanel {
           onDateClick: () => {},
           onTaskClick: handleTaskClick,
           onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu,
         });
       }
       this.calViewInstance.render(viewContainer, tasks, cfg);
@@ -705,17 +721,19 @@ export class CenterPanel {
     card.dataset['filePath'] = task.filePath;
     card.dataset['line'] = String(task.line);
 
-    const checkbox = card.createEl('input', {
-      cls: 'tc-task-checkbox',
-      attr: { type: 'checkbox' },
-    });
-    checkbox.checked = task.status === 'done';
-    if (task.priority && task.priority !== 'D') {
-      checkbox.dataset['priority'] = task.priority;
-    }
-    checkbox.addEventListener('change', (e) => {
-      e.stopPropagation();
-      void this.store.toggleTask(task);
+    renderStatusMarker(card, {
+      task,
+      registry: this.store.statusRegistry,
+      onLeftClick: () => void this.store.toggleTask(task),
+      onContextMenu: (ev) => {
+        ev.stopPropagation();
+        showStatusMenuAt(ev, {
+          task,
+          registry: this.store.statusRegistry,
+          onPickStatus: (c) => void this.store.setTaskStatus(task, c),
+          onPickPriority: (p) => void this.store.setPriority(task, p),
+        });
+      },
     });
 
     // Pre-compute metadata needed in both body and meta-right
@@ -992,6 +1010,15 @@ export class CenterPanel {
         item.setTitle('Priority').setIcon('arrow-up-narrow-wide').setSection('priority');
         const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
         this.buildPrioritySubmenu(sub, task);
+      });
+
+      // ── Status (submenu) ──────────────────────────────────
+      menu.addItem((item) => {
+        item.setTitle('Status').setIcon('check-square').setSection('priority');
+        const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+        buildStatusSubmenu(sub, task, this.store.statusRegistry, (c) =>
+          void this.store.setTaskStatus(task, c),
+        );
       });
 
       menu.addItem((item) =>
