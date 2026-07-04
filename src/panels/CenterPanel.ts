@@ -1853,16 +1853,6 @@ export class CenterPanel {
     task: Task,
     priority: 'A' | 'B' | 'C' | 'D' | 'E' | 'F',
   ): Promise<void> {
-    const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'] as const;
-    const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      let updated = line;
-      for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
-      if (priority !== 'D' && PRIORITY_MAP[priority])
-        updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
-      lines[taskLine] = updated.replace(/\s{2,}/gu, ' ').trimEnd();
-    });
+    await this.store.setPriority(task, priority);
   }
 }

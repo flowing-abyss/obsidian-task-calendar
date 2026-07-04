@@ -2,7 +2,9 @@
 import moment from 'moment';
 import { App as ObsidianApp, Platform, TFile, type CachedMetadata } from 'obsidian';
 import { afterEach, beforeEach, vi } from 'vitest';
-import type { Task } from '../src/parser/types';
+import { locatorOf } from '../src/mutation/TaskLocator';
+import { TaskMutationService } from '../src/mutation/TaskMutationService';
+import type { Task, TaskPriority } from '../src/parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../src/settings/defaults';
 import type { ResolvedConfig } from '../src/settings/types';
 
@@ -190,14 +192,28 @@ export function freshContainer(): HTMLElement {
 /**
  * Minimal TaskStore stub exposing getTasks() (with optional tag/status filtering)
  * for panels that read tasks. Cast to TaskStore via `as unknown as TaskStore`.
+ *
+ * When `app` is supplied, `setPriority`/`setTaskStatus` delegate to a real
+ * `TaskMutationService` so write-path tests (e.g. CenterPanel.setPriority) can
+ * assert on actual file content, mirroring TaskStore's real behavior.
  */
-export function makeStubStore(tasks: Task[]): unknown {
+export function makeStubStore(tasks: Task[], app?: ObsidianApp): unknown {
+  const mutations = app ? new TaskMutationService(app) : undefined;
   return {
     getTasks: (filter?: { tag?: string; status?: string[] }): Task[] => {
       let all = tasks;
       if (filter?.tag) all = all.filter((t) => t.rawText.includes(filter.tag!));
       if (filter?.status?.length) all = all.filter((t) => filter.status!.includes(t.status));
       return all;
+    },
+    setPriority: async (t: Task, priority: TaskPriority): Promise<void> => {
+      if (!mutations) return;
+      await mutations.setPriority(locatorOf(t), priority);
+    },
+    setTaskStatus: async (t: Task, char: string): Promise<void> => {
+      if (!mutations) return;
+      const today = moment().format('YYYY-MM-DD');
+      await mutations.setStatusChar(locatorOf(t), char, today);
     },
   };
 }

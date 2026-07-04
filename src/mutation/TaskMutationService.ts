@@ -1,4 +1,6 @@
 import { Notice, TFile, type App } from 'obsidian';
+import type { TaskPriority } from '../parser/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
 import { findTaskLine, type FindResult, type TaskLocator } from './TaskLocator';
 
 export type MutationResult =
@@ -16,7 +18,19 @@ export type MutationResult =
  * unambiguously, the file is left unchanged and a structured error is returned.
  */
 export class TaskMutationService {
-  constructor(private app: App) {}
+  constructor(
+    private app: App,
+    private getRegistry?: () => StatusRegistry,
+  ) {}
+
+  private static stripStamp(line: string, emoji: string): string {
+    return line.replace(new RegExp(`\\s*${emoji}\\s*\\d{4}-\\d{2}-\\d{2}`, 'u'), '');
+  }
+
+  private static addStamp(line: string, emoji: string, date: string, cr: string): string {
+    const body = (cr ? line.slice(0, -cr.length) : line).trimEnd();
+    return `${body} ${emoji} ${date}${cr}`;
+  }
 
   /**
    * Locate the task in the current file content and call `transform(lines, taskLine)`.
@@ -71,33 +85,74 @@ export class TaskMutationService {
     });
   }
 
-  /** Toggle task completion: open → done (with ✅ today), done → open (strip ✅). */
+  /**
+   * Toggle task completion. Registry-driven: any non-done status becomes the
+   * registry's default "done" symbol (✅ stamped), and done becomes the default
+   * "to-do" symbol (✅ stripped). Falls back to plain x/space when no registry
+   * getter was supplied (mirrors legacy open ↔ done behavior).
+   */
   async toggleCompletion(locator: TaskLocator, today: string): Promise<MutationResult> {
     return this.applyToLines(locator, (lines, taskLine) => {
       const line = lines[taskLine];
       if (!line) return;
+      const registry = this.getRegistry?.();
+      const cur = /^[\s>]*- \[(.)\]/u.exec(line)?.[1] ?? ' ';
+      const isDone = registry ? registry.typeForSymbol(cur) === 'done' : cur === 'x' || cur === 'X';
+      const target = isDone
+        ? (registry?.defaultTodo().symbol ?? ' ')
+        : (registry?.defaultDone().symbol ?? 'x');
       // Preserve trailing \r for CRLF files so the rawText fingerprint stays consistent.
-      const hasCR = line.endsWith('\r');
-      const cr = hasCR ? '\r' : '';
+      const cr = line.endsWith('\r') ? '\r' : '';
       // `[\s>]*` preserves any leading blockquote/callout markers on write-back.
-      const isNowOpen = /^([\s>]*)- \[ \]/.test(line);
-      if (isNowOpen) {
-        lines[taskLine] =
-          line
-            .replace(/^([\s>]*)- \[ \]/, '$1- [x]')
-            // eslint-disable-next-line sonarjs/super-linear-regex
-            .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
-            .trimEnd() +
-          ` ✅ ${today}` +
-          cr;
+      let next = line.replace(/^([\s>]*)- \[.\]/u, `$1- [${target}]`);
+      next = TaskMutationService.stripStamp(next, '✅');
+      next = TaskMutationService.stripStamp(next, '❌');
+      let targetType: 'open' | 'done';
+      if (registry) targetType = registry.typeForSymbol(target) === 'done' ? 'done' : 'open';
+      else targetType = target === 'x' ? 'done' : 'open';
+      if (!isDone && targetType === 'done') {
+        next = TaskMutationService.addStamp(next, '✅', today, cr);
       } else {
-        lines[taskLine] =
-          line
-            .replace(/^([\s>]*)- \[.\]/, '$1- [ ]')
-            // eslint-disable-next-line sonarjs/super-linear-regex
-            .replace(/\s*✅\s*\d{4}-\d{2}-\d{2}/, '')
-            .trimEnd() + cr;
+        next = next.trimEnd() + cr;
       }
+      lines[taskLine] = next;
+    });
+  }
+
+  /** Rewrite the marker char inside `[ ]` and manage ✅/❌ stamps for the target type. */
+  async setStatusChar(locator: TaskLocator, char: string, today: string): Promise<MutationResult> {
+    return this.applyToLines(locator, (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const registry = this.getRegistry?.();
+      const targetType = registry ? registry.typeForSymbol(char) : 'open';
+      const cr = line.endsWith('\r') ? '\r' : '';
+      let next = line.replace(/^([\s>]*)- \[.\]/u, `$1- [${char}]`);
+      next = TaskMutationService.stripStamp(next, '✅');
+      next = TaskMutationService.stripStamp(next, '❌');
+      if (targetType === 'done') {
+        next = TaskMutationService.addStamp(next, '✅', today, cr);
+      } else if (targetType === 'cancelled') {
+        next = TaskMutationService.addStamp(next, '❌', today, cr);
+      } else {
+        next = next.trimEnd() + cr;
+      }
+      lines[taskLine] = next;
+    });
+  }
+
+  /** Rewrite the priority emoji on the task line (replaces any existing one). */
+  async setPriority(locator: TaskLocator, priority: TaskPriority): Promise<MutationResult> {
+    const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'] as const;
+    const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
+    return this.applyToLines(locator, (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      let updated = line;
+      for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
+      if (priority !== 'D' && PRIORITY_MAP[priority])
+        updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
+      lines[taskLine] = updated.replace(/\s{2,}/gu, ' ').trimEnd();
     });
   }
 

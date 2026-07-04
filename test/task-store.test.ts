@@ -337,14 +337,15 @@ describe('TaskStore toggleTask', () => {
     expect(content).toBe('- [ ] task');
   });
 
-  it('toggles a [-] cancelled line to open (CURRENT BEHAVIOR, follow-up FU-11)', async () => {
+  it('toggles a [-] cancelled line to done (registry-driven, resolves FU-11)', async () => {
+    const today = window.moment().format('YYYY-MM-DD');
     const app = await createAppWithFiles({ 't.md': '- [-] cancelled task' });
     seedTaskCache(app, 't.md', [{ task: '-', parent: -1, line: 0 }]);
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     await store.toggleTask(store.getTasks()[0]!);
     const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);
-    expect(content).toBe('- [ ] cancelled task');
+    expect(content).toBe(`- [x] cancelled task ✅ ${today}`);
   });
 
   it('out-of-bounds task.line falls back to rawText scan and toggles the task', async () => {
