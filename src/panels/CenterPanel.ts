@@ -15,11 +15,11 @@ import type {
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { LinkEditModal } from '../ui/LinkEditModal';
+import { renderStatusMarker } from '../ui/StatusMarker';
 import { TagPickerModal } from '../ui/TagPickerModal';
 import { TaskModal } from '../ui/TaskModal';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
-import { renderStatusMarker } from '../ui/StatusMarker';
 import { buildStatusSubmenu, showStatusMenuAt } from '../ui/statusMenu';
 import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
@@ -1016,8 +1016,11 @@ export class CenterPanel {
       menu.addItem((item) => {
         item.setTitle('Status').setIcon('check-square').setSection('priority');
         const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
-        buildStatusSubmenu(sub, task, this.store.statusRegistry, (c) =>
-          void this.store.setTaskStatus(task, c),
+        buildStatusSubmenu(
+          sub,
+          task,
+          this.store.statusRegistry,
+          (c) => void this.store.setTaskStatus(task, c),
         );
       });
 

@@ -37,7 +37,9 @@ export class RightPanel {
     private app: App,
     private settings?: CalendarSettings,
   ) {
-    this.statusRegistry = new StatusRegistry(this.settings?.taskStatuses ?? buildDefaultTaskStatuses());
+    this.statusRegistry = new StatusRegistry(
+      this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
+    );
     this.mutations = new TaskMutationService(app, () => this.statusRegistry);
   }
 
