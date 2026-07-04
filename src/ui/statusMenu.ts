@@ -1,5 +1,6 @@
 import { Menu } from 'obsidian';
 import type { Task, TaskPriority } from '../parser/types';
+import type { TaskStatusType } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 
 const PRIORITIES: Array<{ p: TaskPriority; label: string }> = [
@@ -53,9 +54,18 @@ function addPrioritySection(
   }
 }
 
+const GROUP_LABELS: Record<TaskStatusType, string> = {
+  todo: 'To do',
+  'in-progress': 'In progress',
+  done: 'Done',
+  cancelled: 'Cancelled',
+};
+
 /**
  * Adds the status items (grouped by open/in-progress/done/cancelled) to `menu`,
  * one `setSection(group.type)` group per status type, current status checked.
+ * Each group starts with a non-interactive label header (e.g. "To do") — inserted
+ * before the group's items so it sorts to the top of its section.
  */
 export function buildStatusSubmenu(
   sub: Menu,
@@ -64,6 +74,10 @@ export function buildStatusSubmenu(
   onPickStatus: (char: string) => void,
 ): void {
   for (const group of registry.grouped()) {
+    sub.addItem((i) => {
+      i.setTitle(GROUP_LABELS[group.type]).setSection(group.type).setIsLabel(true);
+      return i;
+    });
     for (const def of group.statuses) {
       sub.addItem((i) => {
         i.setTitle(def.name)
