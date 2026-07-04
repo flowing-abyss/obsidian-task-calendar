@@ -35,7 +35,7 @@ describe('CalendarSettingsTab sections', () => {
   it('renders exactly 6 sections', () => {
     const tab = makeTab();
     const sections = tab.containerEl.querySelectorAll('.tc-settings-section');
-    expect(sections).toHaveLength(6);
+    expect(sections).toHaveLength(7);
   });
 
   it('all sections start collapsed (no is-open)', () => {
@@ -67,19 +67,27 @@ describe('CalendarSettingsTab sections', () => {
     const labels = Array.from(tab.containerEl.querySelectorAll('.tc-settings-section-label')).map(
       (el) => el.textContent,
     );
-    expect(labels).toEqual(['General', 'Desktop', 'Mobile', 'Inbox', 'Tag groups', 'Projects']);
+    expect(labels).toEqual([
+      'General',
+      'Desktop',
+      'Mobile',
+      'Inbox',
+      'Tag groups',
+      'Projects',
+      'Custom statuses',
+    ]);
   });
 
   it('each section header has an icon element', () => {
     const tab = makeTab();
     const icons = tab.containerEl.querySelectorAll('.tc-settings-section-icon');
-    expect(icons).toHaveLength(6);
+    expect(icons).toHaveLength(7);
   });
 
   it('each section header has a chevron element', () => {
     const tab = makeTab();
     const chevrons = tab.containerEl.querySelectorAll('.tc-settings-section-chevron');
-    expect(chevrons).toHaveLength(6);
+    expect(chevrons).toHaveLength(7);
   });
 
   it('open sections stay open after display() re-render', () => {

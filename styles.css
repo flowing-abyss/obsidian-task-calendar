@@ -3677,3 +3677,73 @@ body.tc-modal-open .popover.hover-popover {
 .tc-tag-leaf.tc-reorder-target {
   box-shadow: inset 0 -2px 0 0 var(--interactive-accent);
 }
+
+/* ── Settings: custom statuses section ──────────────────────────────────── */
+.tc-status-type-group {
+  margin-bottom: 16px;
+}
+.tc-status-type-group-label {
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 6px 2px;
+}
+/* Symbol badges in this section are single characters — monospace reads clearer. */
+.tc-status-type-group .tc-settings-card-badge {
+  font-family: var(--font-monospace);
+}
+.tc-status-header-preview {
+  display: inline-flex;
+  align-items: center;
+}
+.tc-status-symbol-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  margin-top: 4px;
+}
+.tc-status-icon-field {
+  margin-bottom: 12px;
+}
+.tc-status-icon-input-host {
+  margin-top: 4px;
+}
+.tc-status-icon-results {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  margin-top: 4px;
+}
+.tc-status-icon-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.tc-status-icon-result:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-status-icon-result.is-selected {
+  background: var(--background-modifier-hover);
+  font-weight: var(--font-semibold);
+}
+.tc-status-icon-result-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+.tc-status-icon-result-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.tc-status-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tc-status-preview-title {
+  color: var(--text-muted);
+}

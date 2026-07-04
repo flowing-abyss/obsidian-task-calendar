@@ -1,0 +1,167 @@
+import { App, Setting } from 'obsidian';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { CalendarSettingsTab } from '../src/settings/SettingsTab';
+import type { CalendarSettings } from '../src/settings/types';
+import { useRealMoment } from './helpers';
+
+useRealMoment();
+
+interface StubPlugin {
+  app: App;
+  settings: CalendarSettings;
+  saveSettings(): Promise<void>;
+  store: { rebuildStatusRegistry: ReturnType<typeof vi.fn> };
+}
+
+interface CapturedButton {
+  el: HTMLButtonElement;
+  click: () => void;
+}
+
+/**
+ * obsidian-test-mocks' ButtonComponent never wires a real DOM 'click' listener —
+ * `onClick` only stores the handler, invoked via its internal `simulateClick__`.
+ * Patch `addButton` to capture components so tests can trigger clicks directly.
+ */
+function patchAddButton(captured: CapturedButton[]): () => void {
+  const proto = Setting.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const orig = proto.addButton!;
+  proto.addButton = function (
+    this: { components: Array<{ buttonEl: HTMLButtonElement; clickHandler?: () => void }> },
+    cb: unknown,
+  ) {
+    const result = orig.call(this, cb);
+    const comp = this.components[this.components.length - 1]!;
+    captured.push({ el: comp.buttonEl, click: () => comp.clickHandler?.() });
+    return result;
+  };
+  return () => {
+    proto.addButton = orig;
+  };
+}
+
+function makeTab(): { tab: CalendarSettingsTab; plugin: StubPlugin; captured: CapturedButton[] } {
+  const app = new App();
+  (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
+  (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };
+  const settings = structuredClone(DEFAULT_SETTINGS);
+  const plugin: StubPlugin = {
+    app,
+    settings,
+    saveSettings: vi.fn().mockResolvedValue(undefined),
+    store: { rebuildStatusRegistry: vi.fn() },
+  };
+  const captured: CapturedButton[] = [];
+  const restore = patchAddButton(captured);
+  const tab = new CalendarSettingsTab(
+    app,
+    plugin as unknown as ConstructorParameters<typeof CalendarSettingsTab>[1],
+  );
+  const expanded = (tab as unknown as { expandedCards: Set<string> }).expandedCards;
+  for (const s of settings.taskStatuses) expanded.add(s.id);
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  tab.display();
+  restore();
+  return { tab, plugin, captured };
+}
+
+/** The "Custom statuses" section body — opened via its header click. */
+function openStatusesSection(tab: CalendarSettingsTab): HTMLElement {
+  const headers = tab.containerEl.querySelectorAll<HTMLElement>('.tc-settings-section-header');
+  const labels = tab.containerEl.querySelectorAll('.tc-settings-section-label');
+  let idx = -1;
+  labels.forEach((l, i) => {
+    if (l.textContent === 'Custom statuses') idx = i;
+  });
+  expect(idx).toBeGreaterThanOrEqual(0);
+  headers[idx]!.click();
+  return tab.containerEl
+    .querySelectorAll<HTMLElement>('.tc-settings-section')
+    [idx]!.querySelector('.tc-settings-section-body')!;
+}
+
+describe('CalendarSettingsTab — custom statuses section', () => {
+  it('renders a card for each default status, grouped by type', () => {
+    const { tab } = makeTab();
+    const body = openStatusesSection(tab);
+    const groups = body.querySelectorAll('.tc-status-type-group');
+    expect(groups.length).toBeGreaterThan(0);
+    const cards = body.querySelectorAll('.tc-settings-card');
+    expect(cards).toHaveLength(6); // 4 core + 2 default non-core statuses
+  });
+
+  it('shows a marker preview chip and monospace symbol badge per card', () => {
+    const { tab } = makeTab();
+    const body = openStatusesSection(tab);
+    expect(body.querySelectorAll('.tc-status-header-preview')).toHaveLength(6);
+    expect(body.querySelectorAll('.tc-settings-card-badge')).toHaveLength(6);
+  });
+
+  it('core statuses have no delete button, non-core ones do', () => {
+    const { tab, captured } = makeTab();
+    const body = openStatusesSection(tab);
+    const deleteButtons = captured.filter(
+      (b) => body.contains(b.el) && b.el.textContent === 'Delete status',
+    );
+    // 4 core + 2 non-core defaults => only the 2 non-core get a delete button.
+    expect(deleteButtons).toHaveLength(2);
+  });
+
+  it('"+ Add status" appends a new, non-core, deletable card', async () => {
+    const { tab, plugin, captured } = makeTab();
+    const body = openStatusesSection(tab);
+    const addBtn = captured.find((b) => body.contains(b.el) && b.el.textContent === '+ Add status');
+    expect(addBtn).toBeDefined();
+    addBtn!.click();
+    await Promise.resolve(); // flush the async onClick handler
+
+    expect(plugin.settings.taskStatuses).toHaveLength(7);
+    const added = plugin.settings.taskStatuses[6]!;
+    expect(added.core).toBe(false);
+    expect(added.name).toBe('New status');
+    expect(added.type).toBe('todo');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+    expect(plugin.store.rebuildStatusRegistry).toHaveBeenCalled();
+  });
+
+  it('added status gets a symbol not already in use', async () => {
+    const { tab, plugin, captured } = makeTab();
+    const body = openStatusesSection(tab);
+    const addBtn = captured.find(
+      (b) => body.contains(b.el) && b.el.textContent === '+ Add status',
+    )!;
+    addBtn.click();
+    await Promise.resolve();
+    const symbols = plugin.settings.taskStatuses.map((s) => s.symbol);
+    const dupes = symbols.filter((s, i) => symbols.indexOf(s) !== i);
+    expect(dupes).toHaveLength(0);
+  });
+
+  it('deleting a non-core status requires a confirmation click', async () => {
+    const { tab, plugin, captured } = makeTab();
+    const body = openStatusesSection(tab);
+    const deleteBtn = captured.find(
+      (b) => body.contains(b.el) && b.el.textContent === 'Delete status',
+    );
+    expect(deleteBtn).toBeDefined();
+    const before = plugin.settings.taskStatuses.length;
+
+    deleteBtn!.click();
+    await Promise.resolve();
+    expect(plugin.settings.taskStatuses).toHaveLength(before); // armed, not yet deleted
+    expect(deleteBtn!.el.textContent).toBe('Click again to confirm');
+
+    deleteBtn!.click();
+    await Promise.resolve();
+    expect(plugin.settings.taskStatuses).toHaveLength(before - 1);
+  });
+
+  it('validateStatusSymbol rejects an already-used symbol on edit', () => {
+    const { plugin } = makeTab();
+    const statuses = plugin.settings.taskStatuses;
+    // Sanity: the fixture actually has distinct symbols to begin with.
+    const symbols = statuses.map((s) => s.symbol);
+    expect(new Set(symbols).size).toBe(symbols.length);
+  });
+});

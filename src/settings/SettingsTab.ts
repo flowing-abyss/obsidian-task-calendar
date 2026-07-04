@@ -1,11 +1,18 @@
-import { App, Plugin, PluginSettingTab, Setting, setIcon } from 'obsidian';
+import { App, getIconIds, Notice, Plugin, PluginSettingTab, setIcon, Setting } from 'obsidian';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
+import { StatusRegistry } from '../status/StatusRegistry';
 import type { TagManager } from '../tags/TagManager';
-import type { CalendarSettings } from './types';
+import { renderStatusMarker } from '../ui/StatusMarker';
+import type { CalendarSettings, TaskStatusDef, TaskStatusType } from './types';
+
+interface StoreLike {
+  rebuildStatusRegistry(): void;
+}
 
 interface TaskCalendarPlugin extends Plugin {
   settings: CalendarSettings;
   tagManager: TagManager;
+  store?: StoreLike;
   saveSettings(): Promise<void>;
 }
 
@@ -45,8 +52,14 @@ export class CalendarSettingsTab extends PluginSettingTab {
       title: (item: T) => string;
       accent?: (item: T) => string | undefined;
       badge?: (item: T) => string | undefined;
+      /** Rendered right after the grip, before the accent dot — e.g. a marker preview chip. */
+      preview?: (headerEl: HTMLElement, item: T) => void;
       body: (bodyEl: HTMLElement, idx: number) => void;
       onReorder: (from: number, to: number) => void;
+      /** Identifies which group this card list belongs to, for cross-group drag support. */
+      groupKey?: string;
+      /** Called when a card dragged from a DIFFERENT groupKey is dropped onto this list. */
+      onCrossGroupDrop?: (draggedId: string, targetGroupKey: string) => void;
     },
   ): void {
     items.forEach((item, idx) => {
@@ -63,8 +76,21 @@ export class CalendarSettingsTab extends PluginSettingTab {
       card.addEventListener('dragleave', () => card.removeClass('tc-drag-over'));
       card.addEventListener('drop', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         card.removeClass('tc-drag-over');
-        const from = Number(e.dataTransfer?.getData('text/plain'));
+        const raw = e.dataTransfer?.getData('text/plain');
+        if (!raw) return;
+        let payload: { idx: number; id: string; groupKey?: string };
+        try {
+          payload = JSON.parse(raw) as typeof payload;
+        } catch {
+          return;
+        }
+        if (opts.groupKey !== undefined && payload.groupKey !== opts.groupKey) {
+          opts.onCrossGroupDrop?.(payload.id, opts.groupKey);
+          return;
+        }
+        const from = payload.idx;
         if (!Number.isNaN(from) && from !== idx) opts.onReorder(from, idx);
       });
 
@@ -73,12 +99,13 @@ export class CalendarSettingsTab extends PluginSettingTab {
         attr: { draggable: 'true' },
       });
       header.addEventListener('dragstart', (e) => {
-        e.dataTransfer?.setData('text/plain', String(idx));
+        e.dataTransfer?.setData('text/plain', JSON.stringify({ idx, id, groupKey: opts.groupKey }));
         card.addClass('tc-dragging');
       });
       header.addEventListener('dragend', () => card.removeClass('tc-dragging'));
       const grip = header.createSpan({ cls: 'tc-settings-card-grip' });
       setIcon(grip, 'grip-vertical');
+      opts.preview?.(header, item);
       const accent = opts.accent?.(item);
       if (accent) {
         const dot = header.createSpan({ cls: 'tc-status-dot' });
@@ -133,6 +160,9 @@ export class CalendarSettingsTab extends PluginSettingTab {
     this.addSection(containerEl, 'Tag groups', 'tags', (body) => this.renderTagGroupSettings(body));
     this.addSection(containerEl, 'Projects', 'folder-kanban', (body) =>
       this.renderProjectsSettings(body),
+    );
+    this.addSection(containerEl, 'Custom statuses', 'list-checks', (body) =>
+      this.renderTaskStatusesSettings(body),
     );
 
     containerEl.querySelectorAll('.tc-settings-section').forEach((el, i) => {
@@ -777,5 +807,283 @@ export class CalendarSettingsTab extends PluginSettingTab {
           }
         }),
       );
+  }
+
+  /** Persists a taskStatuses mutation and rebuilds the store's registry so open panels update. */
+  private async persistStatuses(): Promise<void> {
+    await this.plugin.saveSettings();
+    this.plugin.store?.rebuildStatusRegistry();
+  }
+
+  /** Persists and fully re-renders — for structural changes (add/delete/type/group move). */
+  private async persistAndRerenderStatuses(): Promise<void> {
+    await this.persistStatuses();
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    this.display();
+  }
+
+  private moveStatusToGroup(id: string, targetType: TaskStatusType): void {
+    const statuses = this.plugin.settings.taskStatuses;
+    const def = statuses.find((s) => s.id === id);
+    if (!def || def.type === targetType) return;
+    if (def.core) return; // core cards cannot leave their own type group
+    def.type = targetType;
+    void this.persistAndRerenderStatuses();
+  }
+
+  private reorderStatusWithinType(type: TaskStatusType, from: number, to: number): void {
+    const statuses = this.plugin.settings.taskStatuses;
+    const groupIndices = statuses
+      .map((s, i) => ({ s, i }))
+      .filter((x) => x.s.type === type)
+      .map((x) => x.i);
+    const fromAbs = groupIndices[from];
+    const toAbs = groupIndices[to];
+    if (fromAbs === undefined || toAbs === undefined) return;
+    this.moveItem(statuses, fromAbs, toAbs);
+    void this.persistAndRerenderStatuses();
+  }
+
+  private renderTaskStatusesSettings(containerEl: HTMLElement): void {
+    const statuses = this.plugin.settings.taskStatuses;
+    const groupDefs: Array<{ type: TaskStatusType; label: string }> = [
+      { type: 'todo', label: 'To do' },
+      { type: 'in-progress', label: 'In progress' },
+      { type: 'done', label: 'Done' },
+      { type: 'cancelled', label: 'Cancelled' },
+    ];
+
+    for (const { type, label } of groupDefs) {
+      const groupEl = containerEl.createDiv({ cls: 'tc-status-type-group' });
+      groupEl.createDiv({ cls: 'tc-status-type-group-label', text: label });
+      const items = statuses.filter((s) => s.type === type);
+
+      // Group-level drop zone catches drops on empty space (not over any card),
+      // including into an otherwise-empty group.
+      groupEl.addEventListener('dragover', (e) => e.preventDefault());
+      groupEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const raw = e.dataTransfer?.getData('text/plain');
+        if (!raw) return;
+        let payload: { id: string; groupKey?: string };
+        try {
+          payload = JSON.parse(raw) as typeof payload;
+        } catch {
+          return;
+        }
+        if (payload.groupKey === type) return; // handled by a card's own drop listener
+        this.moveStatusToGroup(payload.id, type);
+      });
+
+      this.renderCardList(groupEl, items, {
+        id: (s) => s.id,
+        title: (s) => s.name,
+        badge: (s) => s.symbol,
+        preview: (headerEl, s) => {
+          const registry = new StatusRegistry(statuses);
+          const previewEl = headerEl.createSpan({ cls: 'tc-status-header-preview' });
+          renderStatusMarker(previewEl, {
+            task: { statusSymbol: s.symbol, priority: 'D' } as Parameters<
+              typeof renderStatusMarker
+            >[1]['task'],
+            registry,
+            onLeftClick: () => {},
+            onContextMenu: () => {},
+          });
+        },
+        groupKey: type,
+        onCrossGroupDrop: (id, targetType) =>
+          this.moveStatusToGroup(id, targetType as TaskStatusType),
+        body: (bodyEl, idx) => this.renderTaskStatusCardBody(bodyEl, items, idx),
+        onReorder: (from, to) => this.reorderStatusWithinType(type, from, to),
+      });
+    }
+
+    new Setting(containerEl).addButton((b) =>
+      b
+        // eslint-disable-next-line obsidianmd/ui/sentence-case
+        .setButtonText('+ Add status')
+        .setCta()
+        .onClick(async () => {
+          let n = statuses.length + 1;
+          while (statuses.some((s) => s.id === `status-${n}`)) n++;
+          const id = `status-${n}`;
+          const used = new Set(statuses.map((s) => s.symbol));
+          const printable =
+            '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
+          const symbol = [...printable].find((c) => !used.has(c)) ?? '?';
+          statuses.push({
+            id,
+            symbol,
+            name: 'New status',
+            type: 'todo',
+            color: '',
+            icon: '',
+            iconKind: 'lucide',
+            core: false,
+          });
+          this.expandedCards.add(id);
+          await this.persistAndRerenderStatuses();
+        }),
+    );
+  }
+
+  private renderTaskStatusCardBody(
+    bodyEl: HTMLElement,
+    groupItems: TaskStatusDef[],
+    idx: number,
+  ): void {
+    const def = groupItems[idx];
+    if (!def) return;
+    const statuses = this.plugin.settings.taskStatuses;
+
+    let updatePreview: () => void = () => {};
+
+    new Setting(bodyEl).setName('Name').addText((t) =>
+      t.setValue(def.name).onChange(async (v) => {
+        def.name = v;
+        await this.persistStatuses();
+        updatePreview();
+      }),
+    );
+
+    const symbolSetting = new Setting(bodyEl).setName('Symbol');
+    let symbolErrorEl: HTMLElement | null = null;
+    symbolSetting.addText((t) => {
+      t.setValue(def.symbol).setDisabled(def.core);
+      t.onChange(async (v) => {
+        const err = validateStatusSymbol(v, statuses, def.id);
+        if (err) {
+          if (!symbolErrorEl) {
+            symbolErrorEl = symbolSetting.descEl.createDiv({ cls: 'tc-status-symbol-error' });
+          }
+          symbolErrorEl.setText(err);
+          return;
+        }
+        if (symbolErrorEl) {
+          symbolErrorEl.remove();
+          symbolErrorEl = null;
+        }
+        def.symbol = v;
+        await this.persistStatuses();
+        updatePreview();
+      });
+      return t;
+    });
+
+    // Icon: a mode toggle between a searchable Lucide picker and a free-text glyph input.
+    const iconWrap = bodyEl.createDiv({ cls: 'tc-status-icon-field' });
+    const iconInputHost = iconWrap.createDiv({ cls: 'tc-status-icon-input-host' });
+
+    const renderIconInput = () => {
+      iconInputHost.empty();
+      if (def.iconKind === 'glyph') {
+        new Setting(iconInputHost).setName('Glyph').addText((t) =>
+          t
+            // eslint-disable-next-line obsidianmd/ui/sentence-case
+            .setPlaceholder('e.g. * or an emoji')
+            .setValue(def.icon)
+            .onChange(async (v) => {
+              def.icon = v;
+              await this.persistStatuses();
+              updatePreview();
+            }),
+        );
+      } else {
+        const resultsEl = iconInputHost.createDiv({ cls: 'tc-status-icon-results' });
+        const renderResults = (query: string) => {
+          resultsEl.empty();
+          const q = query.trim().toLowerCase();
+          const ids = getIconIds()
+            .filter((iconId) => !q || iconId.toLowerCase().includes(q))
+            .slice(0, 40);
+          for (const iconId of ids) {
+            const row = resultsEl.createDiv({
+              cls: `tc-status-icon-result${iconId === def.icon ? ' is-selected' : ''}`,
+            });
+            const iconPreview = row.createSpan({ cls: 'tc-status-icon-result-icon' });
+            setIcon(iconPreview, iconId);
+            row.createSpan({ cls: 'tc-status-icon-result-label', text: iconId });
+            row.addEventListener('click', () => {
+              def.icon = iconId;
+              def.iconKind = 'lucide';
+              void this.persistStatuses();
+              renderResults(query);
+              updatePreview();
+            });
+          }
+        };
+        new Setting(iconInputHost).setName('Search icons').addText((t) =>
+          t
+            .setPlaceholder('Search lucide icons…')
+            .setValue(def.icon)
+            .onChange((v) => renderResults(v)),
+        );
+        renderResults(def.icon);
+      }
+    };
+
+    new Setting(iconWrap).setName('Icon').addDropdown((d) =>
+      d
+        .addOptions({ lucide: 'Lucide icon', glyph: 'Glyph / emoji' })
+        .setValue(def.iconKind)
+        .onChange(async (v) => {
+          def.iconKind = v as 'lucide' | 'glyph';
+          await this.persistStatuses();
+          renderIconInput();
+          updatePreview();
+        }),
+    );
+    renderIconInput();
+
+    new Setting(bodyEl).setName('Color').addColorPicker((cp) =>
+      cp.setValue(def.color || '#888888').onChange(async (v) => {
+        def.color = v;
+        await this.persistStatuses();
+        updatePreview();
+      }),
+    );
+
+    const previewSetting = new Setting(bodyEl).setName('Preview');
+    const previewHost = previewSetting.controlEl.createDiv({ cls: 'tc-status-preview' });
+    updatePreview = () => {
+      previewHost.empty();
+      const registry = new StatusRegistry(statuses);
+      renderStatusMarker(previewHost, {
+        task: { statusSymbol: def.symbol, priority: 'D' } as Parameters<
+          typeof renderStatusMarker
+        >[1]['task'],
+        registry,
+        onLeftClick: () => {},
+        onContextMenu: () => {},
+      });
+      previewHost.createSpan({ cls: 'tc-status-preview-title', text: def.name || 'Sample task' });
+    };
+    updatePreview();
+
+    if (!def.core) {
+      let armed = false;
+      new Setting(bodyEl).addButton((b) =>
+        b
+          .setButtonText('Delete status')
+          .setClass('mod-warning')
+          .onClick(async () => {
+            if (!armed) {
+              armed = true;
+              b.setButtonText('Click again to confirm');
+              new Notice('Deleting this status: tasks using it will fall back to plain to-do.');
+              window.setTimeout(() => {
+                armed = false;
+                b.setButtonText('Delete status');
+              }, 4000);
+              return;
+            }
+            const i = statuses.findIndex((s) => s.id === def.id);
+            if (i >= 0) statuses.splice(i, 1);
+            this.expandedCards.delete(def.id);
+            await this.persistAndRerenderStatuses();
+          }),
+      );
+    }
   }
 }
