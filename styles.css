@@ -1568,7 +1568,11 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-muted);
   padding: 2px 12px 4px;
 }
-/* Status marker — chip replacing the native checkbox at task render sites */
+/* Status marker — chip replacing the native checkbox at task render sites.
+   Background stays transparent (neutral empty-checkbox slot); the status
+   color is applied to the icon/glyph via `color`, and priority (when set)
+   colors the border instead of an outer box-shadow halo, so the chip's
+   footprint never grows. */
 .tc-status-marker {
   width: 19px;
   height: 19px;
@@ -1578,44 +1582,36 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   box-sizing: border-box;
   display: grid;
   place-items: center;
-  border: 1.5px solid var(--tc-status-color, var(--background-modifier-border));
-  background: var(--tc-status-color, transparent);
-  color: #fff;
+  border: 1.5px solid var(--background-modifier-border);
+  background: transparent;
+  color: var(--tc-status-color, var(--text-muted));
   cursor: pointer;
 }
 .tc-status-marker[data-status='other'] {
-  background: transparent;
   color: var(--text-muted);
 }
 .tc-status-marker svg {
   width: 13px;
   height: 13px;
+  color: currentColor;
+  stroke: currentColor;
 }
-/* Priority ring on the status marker chip */
+/* Priority — colors the chip border instead of an outer halo, so the
+   19px footprint is unchanged regardless of priority. */
 .tc-status-marker[data-priority='A'] {
-  box-shadow:
-    0 0 0 1px var(--background-primary),
-    0 0 0 3px var(--tc-priority-a);
+  border-color: var(--tc-priority-a);
 }
 .tc-status-marker[data-priority='B'] {
-  box-shadow:
-    0 0 0 1px var(--background-primary),
-    0 0 0 3px var(--tc-priority-b);
+  border-color: var(--tc-priority-b);
 }
 .tc-status-marker[data-priority='C'] {
-  box-shadow:
-    0 0 0 1px var(--background-primary),
-    0 0 0 3px var(--tc-priority-c);
+  border-color: var(--tc-priority-c);
 }
 .tc-status-marker[data-priority='E'] {
-  box-shadow:
-    0 0 0 1px var(--background-primary),
-    0 0 0 3px var(--tc-priority-e);
+  border-color: var(--tc-priority-e);
 }
 .tc-status-marker[data-priority='F'] {
-  box-shadow:
-    0 0 0 1px var(--background-primary),
-    0 0 0 3px var(--tc-priority-f);
+  border-color: var(--tc-priority-f);
 }
 .tc-task-body {
   flex: 1;
