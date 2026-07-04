@@ -995,21 +995,47 @@ export class CalendarSettingsTab extends PluginSettingTab {
             }),
         );
       } else {
+        // getIconIds() returns ids prefixed with "lucide-" (e.g. "lucide-alert-triangle"),
+        // but stored status icons use the short form (e.g. "alert-triangle") that setIcon
+        // and renderStatusMarker expect. Normalize to short ids, deduping any collisions.
+        const allIconIds = (() => {
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const raw of getIconIds()) {
+            const short = raw.startsWith('lucide-') ? raw.slice('lucide-'.length) : raw;
+            if (seen.has(short)) continue;
+            seen.add(short);
+            out.push(short);
+          }
+          return out;
+        })();
+
+        new Setting(iconInputHost).setName('Search icons').addText((t) =>
+          t
+            .setPlaceholder('Search lucide icons…')
+            .setValue('')
+            .onChange((v) => renderResults(v)),
+        );
+
         const resultsEl = iconInputHost.createDiv({ cls: 'tc-status-icon-results' });
         const renderResults = (query: string) => {
           resultsEl.empty();
           const q = query.trim().toLowerCase();
-          const ids = getIconIds()
+          const ids = allIconIds
             .filter((iconId) => !q || iconId.toLowerCase().includes(q))
-            .slice(0, 40);
+            .slice(0, 48);
+          if (ids.length === 0) {
+            resultsEl.createDiv({ cls: 'tc-status-icon-empty', text: 'No icons found' });
+            return;
+          }
           for (const iconId of ids) {
-            const row = resultsEl.createDiv({
+            const cell = resultsEl.createDiv({
               cls: `tc-status-icon-result${iconId === def.icon ? ' is-selected' : ''}`,
+              attr: { title: iconId },
             });
-            const iconPreview = row.createSpan({ cls: 'tc-status-icon-result-icon' });
+            const iconPreview = cell.createSpan({ cls: 'tc-status-icon-result-icon' });
             setIcon(iconPreview, iconId);
-            row.createSpan({ cls: 'tc-status-icon-result-label', text: iconId });
-            row.addEventListener('click', () => {
+            cell.addEventListener('click', () => {
               def.icon = iconId;
               def.iconKind = 'lucide';
               void this.persistStatuses();
@@ -1018,13 +1044,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
             });
           }
         };
-        new Setting(iconInputHost).setName('Search icons').addText((t) =>
-          t
-            .setPlaceholder('Search lucide icons…')
-            .setValue(def.icon)
-            .onChange((v) => renderResults(v)),
-        );
-        renderResults(def.icon);
+        renderResults('');
       }
     };
 

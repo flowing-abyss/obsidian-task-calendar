@@ -3780,25 +3780,34 @@ body.tc-modal-open .popover.hover-popover {
   margin-top: 4px;
 }
 .tc-status-icon-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   max-height: 220px;
   overflow-y: auto;
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
-  margin-top: 4px;
+  padding: 8px;
+  margin-top: 8px;
 }
 .tc-status-icon-result {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
   cursor: pointer;
 }
 .tc-status-icon-result:hover {
   background: var(--background-modifier-hover);
 }
 .tc-status-icon-result.is-selected {
-  background: var(--background-modifier-hover);
-  font-weight: var(--font-semibold);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.tc-status-icon-result.is-selected .tc-status-icon-result-icon {
+  color: var(--text-on-accent);
 }
 .tc-status-icon-result-icon {
   display: inline-flex;
@@ -3806,8 +3815,13 @@ body.tc-modal-open .popover.hover-popover {
   color: var(--text-muted);
 }
 .tc-status-icon-result-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
+}
+.tc-status-icon-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: 4px 2px;
 }
 .tc-status-preview {
   display: flex;
