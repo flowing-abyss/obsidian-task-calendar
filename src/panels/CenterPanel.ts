@@ -28,6 +28,7 @@ import { WeekView } from '../views/WeekView';
 import {
   groupTasksByDate,
   groupTasksByPriority,
+  groupTasksByStatus,
   groupTasksByTag,
   sortTasksByField,
 } from '../views/taskGrouping';
@@ -688,6 +689,8 @@ export class CenterPanel {
       groups = groupTasksByDate(tasks, today, tomorrow);
     } else if (vs.groupBy === 'priority') {
       groups = groupTasksByPriority(tasks);
+    } else if (vs.groupBy === 'status') {
+      groups = groupTasksByStatus(tasks, this.store.statusRegistry);
     } else {
       groups = groupTasksByTag(tasks);
     }
@@ -1403,12 +1406,14 @@ export class CenterPanel {
       { label: 'Date', value: 'date' },
       { label: 'Priority', value: 'priority' },
       { label: 'Tag', value: 'tag' },
+      { label: 'Status', value: 'status' },
     ];
     const GROUP_LABELS: Record<string, string> = {
       none: 'None',
       date: 'Date',
       priority: 'Priority',
       tag: 'Tag',
+      status: 'Status',
     };
 
     const sortDirArrow = vs.sortBy.dir === 'asc' ? '↑' : '↓';
@@ -1419,6 +1424,7 @@ export class CenterPanel {
       { label: `Priority ${sortFieldArrow('priority')}`.trim(), value: 'priority' },
       { label: `Title ${sortFieldArrow('title')}`.trim(), value: 'title' },
       { label: `Tag ${sortFieldArrow('tag')}`.trim(), value: 'tag' },
+      { label: `Status ${sortFieldArrow('status')}`.trim(), value: 'status' },
     ];
     const sortLabel = `${vs.sortBy.field.charAt(0).toUpperCase() + vs.sortBy.field.slice(1)} ${vs.sortBy.dir === 'asc' ? '↑' : '↓'}`;
 
@@ -1721,7 +1727,7 @@ export class CenterPanel {
     }
 
     // 5. Sort
-    return sortTasksByField(tasks, vs.sortBy.field, vs.sortBy.dir);
+    return sortTasksByField(tasks, vs.sortBy.field, vs.sortBy.dir, this.store.statusRegistry);
   }
 
   private getInboxTasks(): Task[] {
