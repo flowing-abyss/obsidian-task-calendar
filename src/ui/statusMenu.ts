@@ -40,9 +40,14 @@ function addPrioritySection(
         .setChecked((task.priority ?? 'D') === p)
         .setIcon('flag')
         .onClick(() => onPickPriority(p));
+      // `.dom` is an undocumented MenuItem internal; guard so a future
+      // Obsidian refactor degrades to an uncolored flag instead of throwing
+      // (an unguarded throw here would abort building the rest of the menu).
       const dom = (i as unknown as MenuItemWithDom).dom;
-      dom.addClass('tc-menu-priority-flag');
-      dom.setAttribute('data-tc-priority', p);
+      if (dom) {
+        dom.addClass('tc-menu-priority-flag');
+        dom.setAttribute('data-tc-priority', p);
+      }
       return i;
     });
   }
