@@ -9,6 +9,18 @@ interface TaskCalendarPlugin extends Plugin {
   saveSettings(): Promise<void>;
 }
 
+/** Returns an error message if `symbol` is invalid for a status, else null. */
+export function validateStatusSymbol(
+  symbol: string,
+  all: Array<{ id: string; symbol: string }>,
+  selfId: string,
+): string | null {
+  if ([...symbol].length !== 1) return 'Symbol must be exactly one character';
+  if (all.some((s) => s.id !== selfId && s.symbol === symbol))
+    return 'Symbol already used by another status';
+  return null;
+}
+
 export class CalendarSettingsTab extends PluginSettingTab {
   /** Ids of cards (statuses / tag groups) currently expanded — persists across re-renders. */
   private expandedCards = new Set<string>();
