@@ -317,10 +317,10 @@ describe('RightPanel.toggleSubTask', () => {
     expect(after).not.toContain('- [ ]');
   });
 
-  // CURRENT BEHAVIOR (follow-up: FU-28): open→done uses case-sensitive regex /- \[ \]/
-  // so an uppercase checkbox like "- [X]" (already done) wouldn't toggle, but more importantly
-  // the open check only matches lowercase "[ ]". Done→open uses case-insensitive /- \[x\]/i.
-  it('open→done is case-sensitive: does not match "- [X]" (CURRENT BEHAVIOR, FU-28)', async () => {
+  // FU-28 fix: toggling is now registry-driven (via statusSymbol -> typeForSymbol),
+  // not the stale/caller-supplied `status` field, so an uppercase "[X]" (done, via
+  // the X->x alias) correctly toggles to the registry's default todo symbol.
+  it('registry-driven: "- [X]" (done via X->x alias) toggles to open, ignoring stale status field', async () => {
     const { panel, app } = await makePanel({ 't.md': '  - [X] sub' });
     const sub: SubTask = {
       filePath: 't.md',
@@ -328,14 +328,13 @@ describe('RightPanel.toggleSubTask', () => {
       rawText: '  - [X] sub',
       text: 'sub',
       markdownText: 'sub',
-      status: 'open', // caller claims open, but file has uppercase X
+      status: 'open', // caller claims open, but statusSymbol 'X' resolves to done
       statusSymbol: 'X',
       priority: 'D',
     };
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
     const after = await readMd(app, 't.md');
-    // FU-28: /- \[ \]/ does not match "- [X]" so the line is unchanged
-    expect(after).toBe('  - [X] sub');
+    expect(after).toBe('  - [ ] sub');
   });
 
   it('done → open: replaces "- [x]" with "- [ ]" (case-insensitive)', async () => {

@@ -56,6 +56,11 @@ export class RightPanel {
   }
 
   private render(): void {
+    // Rebuild from current settings so a mid-session status edit (Settings tab) is
+    // reflected immediately — RightPanel is constructed once and never otherwise refreshed.
+    this.statusRegistry = new StatusRegistry(
+      this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
+    );
     this.md.unload();
     this.md = new Component();
     this.md.load();
@@ -894,15 +899,12 @@ export class RightPanel {
   }
 
   private async toggleSubTask(sub: SubTask): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(sub), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      if (sub.status === 'open') {
-        lines[taskLine] = line.replace(/- \[ \]/, '- [x]');
-      } else {
-        lines[taskLine] = line.replace(/- \[x\]/i, '- [ ]');
-      }
-    });
+    const isDone = this.statusRegistry.typeForSymbol(sub.statusSymbol) === 'done';
+    const targetSymbol = isDone
+      ? this.statusRegistry.defaultTodo().symbol
+      : this.statusRegistry.defaultDone().symbol;
+    const today = window.moment().format('YYYY-MM-DD');
+    await this.mutations.setStatusChar(locatorOf(sub), targetSymbol, today);
   }
 
   private async addComment(
