@@ -1613,6 +1613,55 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   outline-offset: 0px;
   border-radius: 2px;
 }
+/* Status marker — chip replacing the native checkbox at task render sites */
+.tc-status-marker {
+  width: 19px;
+  height: 19px;
+  min-width: 19px;
+  flex: 0 0 19px;
+  border-radius: 5px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--tc-status-color, var(--background-modifier-border));
+  background: var(--tc-status-color, transparent);
+  color: #fff;
+  cursor: pointer;
+}
+.tc-status-marker[data-status-type='todo']:not([data-status='other']) {
+  background: transparent;
+  color: var(--tc-status-color, var(--text-muted));
+}
+.tc-status-marker svg {
+  width: 13px;
+  height: 13px;
+}
+/* Priority ring — ported from .tc-task-checkbox[data-priority] to keep the outer ring visually identical */
+.tc-status-marker[data-priority='A'] {
+  box-shadow:
+    0 0 0 1px var(--background-primary),
+    0 0 0 3px var(--tc-priority-a);
+}
+.tc-status-marker[data-priority='B'] {
+  box-shadow:
+    0 0 0 1px var(--background-primary),
+    0 0 0 3px var(--tc-priority-b);
+}
+.tc-status-marker[data-priority='C'] {
+  box-shadow:
+    0 0 0 1px var(--background-primary),
+    0 0 0 3px var(--tc-priority-c);
+}
+.tc-status-marker[data-priority='E'] {
+  box-shadow:
+    0 0 0 1px var(--background-primary),
+    0 0 0 3px var(--tc-priority-e);
+}
+.tc-status-marker[data-priority='F'] {
+  box-shadow:
+    0 0 0 1px var(--background-primary),
+    0 0 0 3px var(--tc-priority-f);
+}
 .tc-task-body {
   flex: 1;
   min-width: 0;
