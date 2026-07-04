@@ -2,6 +2,8 @@ import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { LinkToken } from '../src/parser/links';
 import type { Task } from '../src/parser/types';
+import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import { ListView } from '../src/views/ListView';
 import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
@@ -20,6 +22,7 @@ function makeView(
     onDateClick: (d: string) => void;
     onTaskClick: (t: Task) => void;
     onEditLink: (t: Task, occ: number, token: LinkToken) => void;
+    onContextMenu: (ev: MouseEvent, t: Task) => void;
   }> = {},
 ) {
   const spies = {
@@ -28,6 +31,8 @@ function makeView(
     onDateClick: vi.fn(callbacks.onDateClick),
     onTaskClick: vi.fn(callbacks.onTaskClick),
     onEditLink: vi.fn(callbacks.onEditLink),
+    statusRegistry: new StatusRegistry(buildDefaultTaskStatuses()),
+    onContextMenu: vi.fn(callbacks.onContextMenu),
   };
   const view = new ListView(spies);
   return { view, spies };
@@ -163,25 +168,34 @@ describe('ListView', () => {
       expect(spies.onTaskClick).toHaveBeenCalledWith(t);
     });
 
-    it('checkbox change invokes onToggle and stops propagation', () => {
+    it('clicking the status marker invokes onToggle and does not also invoke onTaskClick', () => {
       const { view, spies } = makeView({ onToggle: (t) => t });
       const c = freshContainer();
       const t = task({ due: today(), status: 'open' });
       view.render(c, [t], resolvedConfig());
-      const cb = c.querySelector('.tc-task-checkbox') as HTMLInputElement;
-      cb.dispatchEvent(new Event('change', { bubbles: true }));
+      const marker = c.querySelector('.tc-status-marker') as HTMLElement;
+      marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       expect(spies.onToggle).toHaveBeenCalledWith(t);
       expect(spies.onTaskClick).not.toHaveBeenCalled();
     });
 
-    it('checkbox checked reflects task.status === done', () => {
+    it('right-clicking the status marker invokes onContextMenu with the task', () => {
+      const { view, spies } = makeView();
+      const c = freshContainer();
+      const t = task({ due: today(), status: 'open' });
+      view.render(c, [t], resolvedConfig());
+      const marker = c.querySelector('.tc-status-marker') as HTMLElement;
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      marker.dispatchEvent(ev);
+      expect(spies.onContextMenu).toHaveBeenCalledWith(ev, t);
+    });
+
+    it('status marker data-status-type reflects an open task', () => {
       const { view } = makeView();
       const c = freshContainer();
-      // done tasks are filtered out, so test via a task that is done but in overdue? No — done never shown.
-      // Instead verify an open task has unchecked checkbox
       view.render(c, [task({ due: today(), status: 'open' })], resolvedConfig());
-      const cb = c.querySelector('.tc-task-checkbox') as HTMLInputElement;
-      expect(cb.checked).toBe(false);
+      const marker = c.querySelector('.tc-status-marker') as HTMLElement;
+      expect(marker.getAttribute('data-status-type')).toBe('todo');
     });
 
     it('is-done class on title when status done — N/A (done tasks filtered)', () => {

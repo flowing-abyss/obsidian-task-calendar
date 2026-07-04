@@ -2,6 +2,8 @@ import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { LinkToken } from '../src/parser/links';
 import type { Task } from '../src/parser/types';
+import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import { MonthView } from '../src/views/MonthView';
 import { dispatchDnD, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
@@ -20,6 +22,7 @@ function makeView(
     onDrop: (d: string, date: string) => void;
     onOpenNote: (t: Task) => void;
     onEditLink: (t: Task, occ: number, token: LinkToken) => void;
+    onContextMenu: (ev: MouseEvent, t: Task) => void;
   }> = {},
 ) {
   const spies = {
@@ -31,6 +34,8 @@ function makeView(
     onDrop: vi.fn(callbacks.onDrop),
     onOpenNote: vi.fn(callbacks.onOpenNote),
     onEditLink: vi.fn(callbacks.onEditLink),
+    statusRegistry: new StatusRegistry(buildDefaultTaskStatuses()),
+    onContextMenu: vi.fn(callbacks.onContextMenu),
   };
   const view = new MonthView(spies);
   return { view, spies };

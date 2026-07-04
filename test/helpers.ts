@@ -5,8 +5,9 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import { locatorOf } from '../src/mutation/TaskLocator';
 import { TaskMutationService } from '../src/mutation/TaskMutationService';
 import type { Task, TaskPriority } from '../src/parser/types';
-import { DEFAULT_VIEW_CONFIG } from '../src/settings/defaults';
+import { buildDefaultTaskStatuses, DEFAULT_VIEW_CONFIG } from '../src/settings/defaults';
 import type { ResolvedConfig } from '../src/settings/types';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 
 /** Install real moment as window.moment for date-aware tests. Idempotent; restores in afterEach. */
 export function useRealMoment(): void {
@@ -198,13 +199,24 @@ export function freshContainer(): HTMLElement {
  * assert on actual file content, mirroring TaskStore's real behavior.
  */
 export function makeStubStore(tasks: Task[], app?: ObsidianApp): unknown {
-  const mutations = app ? new TaskMutationService(app) : undefined;
+  const registry = new StatusRegistry(buildDefaultTaskStatuses());
+  const mutations = app ? new TaskMutationService(app, () => registry) : undefined;
   return {
+    statusRegistry: registry,
     getTasks: (filter?: { tag?: string; status?: string[] }): Task[] => {
       let all = tasks;
       if (filter?.tag) all = all.filter((t) => t.rawText.includes(filter.tag!));
       if (filter?.status?.length) all = all.filter((t) => filter.status!.includes(t.status));
       return all;
+    },
+    toggleTask: async (t: Task): Promise<void> => {
+      if (!mutations) return;
+      const today = moment().format('YYYY-MM-DD');
+      await mutations.setStatusChar(
+        locatorOf(t),
+        t.status === 'done' ? registry.defaultTodo().symbol : registry.defaultDone().symbol,
+        today,
+      );
     },
     setPriority: async (t: Task, priority: TaskPriority): Promise<void> => {
       if (!mutations) return;

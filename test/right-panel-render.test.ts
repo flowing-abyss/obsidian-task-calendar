@@ -37,11 +37,6 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
   return fn.call(panel, ...args);
 }
 
-/** Dispatch a change event on an input. */
-function change(el: HTMLInputElement): void {
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-}
-
 /**
  * Wire up a real RightPanel + AppState with a vault file. `fileContent` is
  * seeded at `f.md` so vault-write tests can assert on the resulting content.
@@ -153,7 +148,7 @@ describe('RightPanel.renderTask', () => {
 });
 
 describe('RightPanel.renderSubTask', () => {
-  it('subtask row renders checkbox + label text', async () => {
+  it('subtask row renders status marker + label text', async () => {
     const { state, el } = await makePanel();
     const sub: SubTask = {
       filePath: 'f.md',
@@ -168,15 +163,15 @@ describe('RightPanel.renderSubTask', () => {
     state.set('taskStack', [task({ text: 'Parent', subtasks: [sub] })]);
     const row = el.querySelector('.tc-subtask-row');
     expect(row).not.toBeNull();
-    const cb = row?.querySelector<HTMLInputElement>('.tc-task-checkbox');
-    expect(cb).not.toBeNull();
-    expect(cb?.checked).toBe(false);
+    const marker = row?.querySelector<HTMLElement>('.tc-status-marker');
+    expect(marker).not.toBeNull();
+    expect(marker?.getAttribute('data-status-type')).toBe('todo');
     // Label text renders via MarkdownRenderer (mocked as a noop in tests), so we
     // assert on the label element's presence rather than its textContent.
     expect(row?.querySelector('.tc-subtask-label')).not.toBeNull();
   });
 
-  it('checkbox change → toggleSubTask writes [x] to file', async () => {
+  it('clicking the status marker → toggleSubTask writes [x] to file', async () => {
     const { state, el, app } = await makePanel({
       'f.md': '- [ ] parent\n  - [ ] sub one',
     });
@@ -191,8 +186,8 @@ describe('RightPanel.renderSubTask', () => {
       priority: 'D',
     };
     state.set('taskStack', [task({ filePath: 'f.md', line: 0, text: 'parent', subtasks: [sub] })]);
-    const cb = el.querySelector<HTMLInputElement>('.tc-task-checkbox')!;
-    change(cb);
+    const marker = el.querySelector<HTMLElement>('.tc-status-marker')!;
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await flushMicrotasks(20);
     const content = await readMd(app, 'f.md');
     expect(content).toContain('  - [x] sub one');
