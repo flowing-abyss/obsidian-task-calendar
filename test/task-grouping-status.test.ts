@@ -8,8 +8,8 @@ const task = (statusSymbol: string) => ({ statusSymbol, text: statusSymbol }) as
 
 describe('group/sort by status', () => {
   it('groups by status name in settings order', () => {
-    const groups = groupTasksByStatus([task('x'), task('!'), task(' ')], reg);
-    expect(groups.map((g) => g.label)).toEqual(['To-do', 'Done', 'Important']);
+    const groups = groupTasksByStatus([task('x'), task('/'), task(' ')], reg);
+    expect(groups.map((g) => g.label)).toEqual(['To-do', 'In progress', 'Done']);
   });
 
   it('puts unknown-status tasks in an "Other" group last', () => {

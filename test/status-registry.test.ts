@@ -11,7 +11,6 @@ describe('StatusRegistry', () => {
     expect(r.typeForSymbol('/')).toBe('in-progress');
     expect(r.typeForSymbol('x')).toBe('done');
     expect(r.typeForSymbol('-')).toBe('cancelled');
-    expect(r.typeForSymbol('!')).toBe('open'); // Important is type todo → open
   });
 
   it('treats uppercase X as an alias for lowercase x (done)', () => {

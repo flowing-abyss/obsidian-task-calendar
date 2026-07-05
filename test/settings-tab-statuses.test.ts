@@ -41,11 +41,25 @@ function patchAddButton(captured: CapturedButton[]): () => void {
   };
 }
 
-function makeTab(): { tab: CalendarSettingsTab; plugin: StubPlugin; captured: CapturedButton[] } {
+function makeTab(opts: { withCustomStatus?: boolean } = {}): {
+  tab: CalendarSettingsTab;
+  plugin: StubPlugin;
+  captured: CapturedButton[];
+} {
   const app = new App();
   (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
   (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };
   const settings = structuredClone(DEFAULT_SETTINGS);
+  if (opts.withCustomStatus) {
+    settings.taskStatuses.push({
+      id: 'status-custom',
+      symbol: '!',
+      name: 'Important',
+      type: 'todo',
+      icon: 'alert-triangle',
+      core: false,
+    });
+  }
   const plugin: StubPlugin = {
     app,
     settings,
@@ -88,24 +102,24 @@ describe('CalendarSettingsTab — custom statuses section', () => {
     const groups = body.querySelectorAll('.tc-status-type-group');
     expect(groups.length).toBeGreaterThan(0);
     const cards = body.querySelectorAll('.tc-settings-card');
-    expect(cards).toHaveLength(6); // 4 core + 2 default non-core statuses
+    expect(cards).toHaveLength(4); // the 4 locked core statuses, no defaults beyond that
   });
 
   it('shows a marker preview chip and monospace symbol badge per card', () => {
     const { tab } = makeTab();
     const body = openStatusesSection(tab);
-    expect(body.querySelectorAll('.tc-status-header-preview')).toHaveLength(6);
-    expect(body.querySelectorAll('.tc-settings-card-badge')).toHaveLength(6);
+    expect(body.querySelectorAll('.tc-status-header-preview')).toHaveLength(4);
+    expect(body.querySelectorAll('.tc-settings-card-badge')).toHaveLength(4);
   });
 
-  it('core statuses have no delete button, non-core ones do', () => {
+  it('core statuses have no delete button by default', () => {
     const { tab, captured } = makeTab();
     const body = openStatusesSection(tab);
     const deleteButtons = captured.filter(
       (b) => body.contains(b.el) && b.el.textContent === 'Delete status',
     );
-    // 4 core + 2 non-core defaults => only the 2 non-core get a delete button.
-    expect(deleteButtons).toHaveLength(2);
+    // All 4 default statuses are core => none get a delete button.
+    expect(deleteButtons).toHaveLength(0);
   });
 
   it('"+ Add status" appends a new, non-core, deletable card', async () => {
@@ -116,8 +130,8 @@ describe('CalendarSettingsTab — custom statuses section', () => {
     addBtn!.click();
     await Promise.resolve(); // flush the async onClick handler
 
-    expect(plugin.settings.taskStatuses).toHaveLength(7);
-    const added = plugin.settings.taskStatuses[6]!;
+    expect(plugin.settings.taskStatuses).toHaveLength(5);
+    const added = plugin.settings.taskStatuses[4]!;
     expect(added.core).toBe(false);
     expect(added.name).toBe('New status');
     expect(added.type).toBe('todo');
@@ -139,8 +153,10 @@ describe('CalendarSettingsTab — custom statuses section', () => {
   });
 
   it('deleting a non-core status requires a confirmation click', async () => {
-    const { tab, plugin, captured } = makeTab();
+    // No non-core status exists in the defaults anymore — seed one directly.
+    const { tab, plugin, captured } = makeTab({ withCustomStatus: true });
     const body = openStatusesSection(tab);
+
     const deleteBtn = captured.find(
       (b) => body.contains(b.el) && b.el.textContent === 'Delete status',
     );
@@ -166,7 +182,7 @@ describe('CalendarSettingsTab — custom statuses section', () => {
   });
 
   it('core statuses show a lock cue and a disabled symbol input; non-core does not', () => {
-    const { tab } = makeTab();
+    const { tab } = makeTab({ withCustomStatus: true });
     const body = openStatusesSection(tab);
     const cards = body.querySelectorAll('.tc-settings-card');
     let sawLockedCore = false;
@@ -185,6 +201,28 @@ describe('CalendarSettingsTab — custom statuses section', () => {
     expect(sawUnlockedNonCore).toBe(true);
   });
 
+  it('core statuses show a locked, read-only icon; non-core gets the full picker', () => {
+    const { tab } = makeTab({ withCustomStatus: true });
+    const body = openStatusesSection(tab);
+    const cards = body.querySelectorAll('.tc-settings-card');
+    let sawLockedCoreIcon = false;
+    let sawEditableNonCoreIcon = false;
+    cards.forEach((card) => {
+      const iconLock = card.querySelector('.tc-status-icon-lock');
+      const lockedPreview = card.querySelector('.tc-status-icon-locked-preview');
+      const searchInput = card.querySelector('.tc-status-icon-input-host');
+      if (iconLock) {
+        expect(lockedPreview).not.toBeNull();
+        expect(searchInput).toBeNull(); // no Lucide search picker for locked core icons
+        sawLockedCoreIcon = true;
+      } else if (searchInput) {
+        sawEditableNonCoreIcon = true;
+      }
+    });
+    expect(sawLockedCoreIcon).toBe(true);
+    expect(sawEditableNonCoreIcon).toBe(true);
+  });
+
   it('has no per-status Color setting and no glyph-mode icon dropdown', () => {
     const { tab } = makeTab();
     const body = openStatusesSection(tab);
@@ -192,14 +230,15 @@ describe('CalendarSettingsTab — custom statuses section', () => {
       (el) => el.textContent,
     );
     expect(settingNames).not.toContain('Color');
-    expect(settingNames).not.toContain('Icon');
+    // The 4 default statuses are all core, so "Icon" only appears as the
+    // locked read-only row (guarded by the dedicated test above) — never as
+    // an editable glyph-mode dropdown.
   });
 
-  it('"No icon" cell clears a status icon and persists the empty state', async () => {
-    const { tab, plugin } = makeTab();
+  it('"No icon" cell clears a custom status icon and persists the empty state', async () => {
+    const { tab, plugin } = makeTab({ withCustomStatus: true });
     const body = openStatusesSection(tab);
-    // Any default status with a non-empty icon (e.g. "Important", icon 'alert-triangle').
-    const status = plugin.settings.taskStatuses.find((s) => s.icon !== '')!;
+    const status = plugin.settings.taskStatuses.find((s) => !s.core && s.icon !== '')!;
     expect(status).toBeDefined();
     const card = Array.from(body.querySelectorAll('.tc-settings-card')).find((c) =>
       c.textContent?.includes(status.name),

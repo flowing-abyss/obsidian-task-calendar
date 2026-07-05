@@ -56,6 +56,12 @@ export function buildDefaultProjectsSettings(): ProjectsSettings {
   };
 }
 
+/**
+ * The 4 core group statuses: fully locked (symbol, type, and icon are fixed)
+ * so the calendar looks predictable out of the box. Marker shape already
+ * conveys in-progress (circle) vs. the rest (rounded square), so in-progress
+ * intentionally carries no icon on top of that.
+ */
 export function buildDefaultTaskStatuses(): TaskStatusDef[] {
   return [
     {
@@ -71,7 +77,7 @@ export function buildDefaultTaskStatuses(): TaskStatusDef[] {
       symbol: '/',
       name: 'In progress',
       type: 'in-progress',
-      icon: 'play',
+      icon: '',
       core: true,
     },
     {
@@ -89,22 +95,6 @@ export function buildDefaultTaskStatuses(): TaskStatusDef[] {
       type: 'cancelled',
       icon: 'x',
       core: true,
-    },
-    {
-      id: 'status-5',
-      symbol: '!',
-      name: 'Important',
-      type: 'todo',
-      icon: 'alert-triangle',
-      core: false,
-    },
-    {
-      id: 'status-6',
-      symbol: '?',
-      name: 'Question',
-      type: 'todo',
-      icon: 'help-circle',
-      core: false,
     },
   ];
 }

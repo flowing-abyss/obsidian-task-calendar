@@ -3847,6 +3847,31 @@ body.tc-modal-open .popover.hover-popover {
   opacity: 0.6;
   cursor: not-allowed;
 }
+.tc-status-icon-lock {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+.tc-status-icon-lock svg {
+  width: 12px;
+  height: 12px;
+}
+.tc-status-icon-locked-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  opacity: 0.6;
+  color: var(--text-muted);
+}
+.tc-status-icon-locked-preview svg {
+  width: 16px;
+  height: 16px;
+}
 .tc-status-preview {
   display: flex;
   align-items: center;
