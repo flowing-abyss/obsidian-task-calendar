@@ -38,7 +38,24 @@ export function buildStatusSubmenu(
           .setSection(group.type)
           .setChecked(task.statusSymbol === def.symbol)
           .onClick(() => onPickStatus(def.symbol));
-        if (def.icon) i.setIcon(def.icon);
+
+        // Match the popover's visual language: a shape-marker (not a bare
+        // setIcon check/x) in the item's icon slot. Reach the native item's
+        // undocumented `.dom` the same way applyPriorityFlagColor does for
+        // priority flags.
+        const dom = (i as unknown as { dom?: HTMLElement }).dom;
+        if (dom) {
+          const iconEl = dom.querySelector('.menu-item-icon');
+          if (iconEl instanceof HTMLElement) {
+            iconEl.empty();
+            renderStatusMarker(iconEl, {
+              task: { statusSymbol: def.symbol, priority: 'D' } as unknown as Task,
+              registry,
+              onLeftClick: () => {},
+              onContextMenu: () => {},
+            });
+          }
+        }
         return i;
       });
     }
