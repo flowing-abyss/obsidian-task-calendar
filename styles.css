@@ -1391,6 +1391,18 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   border-radius: 50%;
   flex-shrink: 0;
 }
+/* Marks a left-panel container whose view state (group/sort/show or filters)
+   differs from defaults. Sits after the label, before the count badge; the
+   fixed size + flex-shrink:0 keep it from resizing or eliding the label. */
+.tc-left-custom-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0.9;
+}
 .tc-tag-group-children {
   padding-left: 8px;
 }
