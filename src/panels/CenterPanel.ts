@@ -1,5 +1,6 @@
 import { Component, Menu, Notice, setIcon, TFile, type App } from 'obsidian';
-import type { AppState, ListSelection } from '../app/AppState';
+import type { AppState } from '../app/AppState';
+import { listSelectionToKey } from '../app/listViewState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
@@ -32,13 +33,6 @@ import {
 import { ProjectsPanel } from './projects/ProjectsPanel';
 
 type CalViewType = 'month' | 'week' | 'list';
-
-function listSelectionToKey(sel: ListSelection): string {
-  if (typeof sel === 'string') return sel;
-  if (sel.type === 'tag') return `tag:${sel.tag}`;
-  if (sel.type === 'project') return `project:${sel.path}`;
-  return `group:${sel.groupId}`;
-}
 
 function projectNameFromPath(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
