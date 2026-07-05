@@ -1,6 +1,7 @@
 import { App, getIconIds, Notice, Plugin, PluginSettingTab, setIcon, Setting } from 'obsidian';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import { StatusRegistry } from '../status/StatusRegistry';
+import { TYPE_LABELS, TYPE_ORDER } from '../status/statusConstants';
 import type { TagManager } from '../tags/TagManager';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import type { CalendarSettings, TaskStatusDef, TaskStatusType } from './types';
@@ -853,12 +854,10 @@ export class CalendarSettingsTab extends PluginSettingTab {
 
   private renderTaskStatusesSettings(containerEl: HTMLElement): void {
     const statuses = this.plugin.settings.taskStatuses;
-    const groupDefs: Array<{ type: TaskStatusType; label: string }> = [
-      { type: 'todo', label: 'To do' },
-      { type: 'in-progress', label: 'In progress' },
-      { type: 'done', label: 'Done' },
-      { type: 'cancelled', label: 'Cancelled' },
-    ];
+    const groupDefs: Array<{ type: TaskStatusType; label: string }> = TYPE_ORDER.map((type) => ({
+      type,
+      label: TYPE_LABELS[type],
+    }));
 
     for (const { type, label } of groupDefs) {
       const groupEl = containerEl.createDiv({ cls: 'tc-status-type-group' });

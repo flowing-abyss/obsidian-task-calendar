@@ -1,4 +1,9 @@
+import { ACTIVE_STATUS_GROUPS, TYPE_ORDER } from '../status/statusConstants';
 import { buildDefaultProjectsSettings, buildDefaultTaskStatuses } from './defaults';
+
+const DONE_CANCELLED_STATUS_GROUPS = TYPE_ORDER.filter(
+  (t) => !(ACTIVE_STATUS_GROUPS as string[]).includes(t),
+);
 
 function migrateInbox(raw: Record<string, unknown>): void {
   if (!('inbox' in raw)) {
@@ -100,10 +105,10 @@ function migrateListViewStates(raw: Record<string, unknown>): void {
       if (!('statusGroups' in vs) || vs['statusGroups'] === undefined) {
         switch (vs['show']) {
           case 'active':
-            vs['statusGroups'] = ['todo', 'in-progress'];
+            vs['statusGroups'] = [...ACTIVE_STATUS_GROUPS];
             break;
           case 'completed':
-            vs['statusGroups'] = ['done', 'cancelled'];
+            vs['statusGroups'] = [...DONE_CANCELLED_STATUS_GROUPS];
             break;
           case 'all':
           default:

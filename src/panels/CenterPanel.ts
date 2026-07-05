@@ -14,6 +14,7 @@ import type {
   ResolvedConfig,
   TaskStatusType,
 } from '../settings/types';
+import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/statusConstants';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { LinkEditModal } from '../ui/LinkEditModal';
@@ -1544,15 +1545,8 @@ export class CenterPanel {
     ];
     const sortLabel = `${vs.sortBy.field.charAt(0).toUpperCase() + vs.sortBy.field.slice(1)} ${vs.sortBy.dir === 'asc' ? '↑' : '↓'}`;
 
-    const ACTIVE_STATUS_GROUPS: TaskStatusType[] = ['todo', 'in-progress'];
-    const ALL_STATUS_GROUPS: TaskStatusType[] = ['todo', 'in-progress', 'done', 'cancelled'];
-
-    const STATUS_GROUP_OPTIONS: Array<{ label: string; value: TaskStatusType }> = [
-      { label: 'To do', value: 'todo' },
-      { label: 'In progress', value: 'in-progress' },
-      { label: 'Done', value: 'done' },
-      { label: 'Cancelled', value: 'cancelled' },
-    ];
+    const STATUS_GROUP_OPTIONS: Array<{ label: string; value: TaskStatusType }> =
+      ALL_STATUS_GROUPS.map((value) => ({ label: TYPE_LABELS[value], value }));
 
     // Unified "Show" display value: All (undefined/all 4), Active (exactly
     // the open+in-progress pair), otherwise a count of the selected groups.

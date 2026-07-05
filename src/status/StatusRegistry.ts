@@ -1,7 +1,6 @@
 import type { TaskStatus } from '../parser/types';
 import type { TaskStatusDef, TaskStatusType } from '../settings/types';
-
-const TYPE_ORDER: TaskStatusType[] = ['todo', 'in-progress', 'done', 'cancelled'];
+import { TYPE_ORDER } from './statusConstants';
 
 export class StatusRegistry {
   static readonly TYPE_TO_STATUS: Record<TaskStatusType, TaskStatus> = {

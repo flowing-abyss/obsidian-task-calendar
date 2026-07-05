@@ -1,3 +1,4 @@
+import { ACTIVE_STATUS_GROUPS } from '../status/statusConstants';
 import type {
   CalendarSettings,
   ListViewState,
@@ -131,6 +132,6 @@ export function getListViewDefaults(listKey: string): ListViewState {
     filters: [],
     // Default "Show" is Active (open + in-progress) — preserves the old
     // show:'active' default under the unified statusGroups filter.
-    statusGroups: ['todo', 'in-progress'],
+    statusGroups: [...ACTIVE_STATUS_GROUPS],
   };
 }
