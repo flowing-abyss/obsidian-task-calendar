@@ -87,7 +87,7 @@ describe('task statuses migration', () => {
     migrateSettings(raw);
     const seeded = raw['taskStatuses'] as unknown[];
     expect(Array.isArray(seeded)).toBe(true);
-    expect(seeded.length).toBeGreaterThanOrEqual(6);
+    expect(seeded).toHaveLength(4);
   });
 
   it('never overwrites an existing taskStatuses list', () => {
@@ -150,5 +150,45 @@ describe('task statuses migration', () => {
     const entry = (raw['taskStatuses'] as Array<Record<string, unknown>>)[0]!;
     expect(entry['icon']).toBe('');
     expect(entry['iconKind']).toBeUndefined();
+  });
+
+  it('heals a legacy core in-progress status back to the canonical symbol/icon', () => {
+    const raw: Record<string, unknown> = {
+      taskStatuses: [
+        {
+          id: 'status-2',
+          symbol: '/',
+          name: 'In progress',
+          type: 'in-progress',
+          icon: 'contrast', // drifted from an older build
+          core: true,
+        },
+      ],
+    };
+    migrateSettings(raw);
+    const entry = (raw['taskStatuses'] as Array<Record<string, unknown>>)[0]!;
+    expect(entry['icon']).toBe('');
+    expect(entry['symbol']).toBe('/');
+    expect(entry['type']).toBe('in-progress');
+  });
+
+  it('leaves non-core statuses untouched by the core-heal pass', () => {
+    const raw: Record<string, unknown> = {
+      taskStatuses: [
+        {
+          id: 'status-5',
+          symbol: '!',
+          name: 'Important',
+          type: 'todo',
+          icon: 'alert-triangle',
+          core: false,
+        },
+      ],
+    };
+    migrateSettings(raw);
+    const entry = (raw['taskStatuses'] as Array<Record<string, unknown>>)[0]!;
+    expect(entry['icon']).toBe('alert-triangle');
+    expect(entry['symbol']).toBe('!');
+    expect(entry['type']).toBe('todo');
   });
 });
