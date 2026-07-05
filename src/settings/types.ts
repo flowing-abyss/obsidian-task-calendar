@@ -7,9 +7,7 @@ export interface TaskStatusDef {
   symbol: string; // exactly one character written inside [ ]
   name: string;
   type: TaskStatusType;
-  color: string; // hex or '' for neutral
-  icon: string; // Lucide id or literal glyph; '' = empty chip
-  iconKind: 'lucide' | 'glyph';
+  icon: string; // Lucide icon id; '' = empty chip
   core: boolean; // symbol+type locked, not deletable
 }
 

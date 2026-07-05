@@ -108,4 +108,47 @@ describe('task statuses migration', () => {
     expect(raw['taskStatuses']).toHaveLength(1);
     expect((raw['taskStatuses'] as Array<{ symbol: string }>)[0]!.symbol).toBe('q');
   });
+
+  it('strips legacy color and iconKind fields from every status entry', () => {
+    const raw: Record<string, unknown> = {
+      taskStatuses: [
+        {
+          id: 'x',
+          symbol: 'q',
+          name: 'Q',
+          type: 'todo',
+          color: '#abc',
+          icon: 'star',
+          iconKind: 'lucide',
+          core: false,
+        },
+      ],
+    };
+    migrateSettings(raw);
+    const entry = (raw['taskStatuses'] as Array<Record<string, unknown>>)[0]!;
+    expect(entry['color']).toBeUndefined();
+    expect(entry['iconKind']).toBeUndefined();
+    expect(entry['icon']).toBe('star');
+  });
+
+  it('clears the icon of a legacy glyph-kind status (glyphs are no longer supported)', () => {
+    const raw: Record<string, unknown> = {
+      taskStatuses: [
+        {
+          id: 'x',
+          symbol: 'q',
+          name: 'Q',
+          type: 'todo',
+          color: '',
+          icon: '*',
+          iconKind: 'glyph',
+          core: false,
+        },
+      ],
+    };
+    migrateSettings(raw);
+    const entry = (raw['taskStatuses'] as Array<Record<string, unknown>>)[0]!;
+    expect(entry['icon']).toBe('');
+    expect(entry['iconKind']).toBeUndefined();
+  });
 });

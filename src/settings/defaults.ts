@@ -63,9 +63,7 @@ export function buildDefaultTaskStatuses(): TaskStatusDef[] {
       symbol: ' ',
       name: 'To-do',
       type: 'todo',
-      color: '',
       icon: '',
-      iconKind: 'lucide',
       core: true,
     },
     {
@@ -73,9 +71,7 @@ export function buildDefaultTaskStatuses(): TaskStatusDef[] {
       symbol: '/',
       name: 'In progress',
       type: 'in-progress',
-      color: '#2b83f6',
-      icon: 'contrast',
-      iconKind: 'lucide',
+      icon: 'play',
       core: true,
     },
     {
@@ -83,9 +79,7 @@ export function buildDefaultTaskStatuses(): TaskStatusDef[] {
       symbol: 'x',
       name: 'Done',
       type: 'done',
-      color: '#2b83f6',
       icon: 'check',
-      iconKind: 'lucide',
       core: true,
     },
     {
@@ -93,9 +87,7 @@ export function buildDefaultTaskStatuses(): TaskStatusDef[] {
       symbol: '-',
       name: 'Cancelled',
       type: 'cancelled',
-      color: '#8a8f98',
       icon: 'x',
-      iconKind: 'lucide',
       core: true,
     },
     {
@@ -103,9 +95,7 @@ export function buildDefaultTaskStatuses(): TaskStatusDef[] {
       symbol: '!',
       name: 'Important',
       type: 'todo',
-      color: '#e5484d',
       icon: 'alert-triangle',
-      iconKind: 'lucide',
       core: false,
     },
     {
@@ -113,9 +103,7 @@ export function buildDefaultTaskStatuses(): TaskStatusDef[] {
       symbol: '?',
       name: 'Question',
       type: 'todo',
-      color: '#8e5cf6',
       icon: 'help-circle',
-      iconKind: 'lucide',
       core: false,
     },
   ];

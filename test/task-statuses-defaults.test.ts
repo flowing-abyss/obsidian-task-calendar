@@ -26,4 +26,19 @@ describe('buildDefaultTaskStatuses', () => {
     const core = buildDefaultTaskStatuses().filter((d) => d.core);
     expect(core.map((d) => d.type).sort()).toEqual(['cancelled', 'done', 'in-progress', 'todo']);
   });
+
+  it('has no color or iconKind fields; icons are lucide ids only', () => {
+    const s = buildDefaultTaskStatuses();
+    for (const d of s) {
+      expect((d as unknown as Record<string, unknown>)['color']).toBeUndefined();
+      expect((d as unknown as Record<string, unknown>)['iconKind']).toBeUndefined();
+    }
+    const bySymbol = Object.fromEntries(s.map((d) => [d.symbol, d]));
+    expect(bySymbol[' ']!.icon).toBe('');
+    expect(bySymbol['/']!.icon).toBe('play');
+    expect(bySymbol['x']!.icon).toBe('check');
+    expect(bySymbol['-']!.icon).toBe('x');
+    expect(bySymbol['!']!.icon).toBe('alert-triangle');
+    expect(bySymbol['?']!.icon).toBe('help-circle');
+  });
 });

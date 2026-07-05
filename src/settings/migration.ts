@@ -40,4 +40,17 @@ export function migrateSettings(raw: Record<string, unknown>): void {
   ) {
     raw['taskStatuses'] = buildDefaultTaskStatuses();
   }
+  // Per-status color/iconKind were folded into the priority-color + lucide-only
+  // visual contract: color is no longer stored per status, and glyph icons are
+  // no longer supported (Lucide only). Check iconKind BEFORE deleting it.
+  const taskStatuses = raw['taskStatuses'];
+  if (Array.isArray(taskStatuses)) {
+    for (const entry of taskStatuses) {
+      if (!entry || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      if (e['iconKind'] === 'glyph') e['icon'] = '';
+      delete e['color'];
+      delete e['iconKind'];
+    }
+  }
 }
