@@ -87,6 +87,11 @@ function applyPriorityFlagColor(si: MenuItem, value: TaskPriority): void {
   }
 }
 
+/** Obsidian's MenuItem.setSubmenu() is undocumented; reach it via one shared cast. */
+function getSubmenu(item: MenuItem): Menu {
+  return (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+}
+
 export class CenterPanel {
   private el!: HTMLElement;
   private offs: Array<() => void> = [];
@@ -1055,14 +1060,14 @@ export class CenterPanel {
       // ── Priority (submenu) ────────────────────────────────
       menu.addItem((item) => {
         item.setTitle('Priority').setIcon('arrow-up-narrow-wide').setSection('priority');
-        const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+        const sub = getSubmenu(item);
         this.buildPrioritySubmenu(sub, task);
       });
 
       // ── Status (submenu) ──────────────────────────────────
       menu.addItem((item) => {
         item.setTitle('Status').setIcon('check-square').setSection('priority');
-        const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+        const sub = getSubmenu(item);
         buildStatusSubmenu(
           sub,
           task,
@@ -1266,14 +1271,14 @@ export class CenterPanel {
     // Priority (submenu)
     menu.addItem((item) => {
       item.setTitle('Priority').setIcon('arrow-up-narrow-wide').setSection('priority');
-      const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+      const sub = getSubmenu(item);
       this.buildBulkPrioritySubmenu(sub, selectedTasks);
     });
 
     // Status (submenu) — applies to all selected tasks
     menu.addItem((item) => {
       item.setTitle('Status').setIcon('check-square').setSection('priority');
-      const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+      const sub = getSubmenu(item);
       buildStatusSubmenu(sub, selectedTasks[0]!, this.store.statusRegistry, (c) => {
         void Promise.all(selectedTasks.map((t) => this.store.setTaskStatus(t, c)));
       });
