@@ -2612,7 +2612,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-status-popover-list {
   display: flex;
   flex-direction: column;
-  max-height: 18rem;
+  /* Grow to fit all statuses; only scroll when there are really many
+     (or the popover would run off-screen) rather than at a fixed small cap. */
+  max-height: min(55vh, 32rem);
   overflow-y: auto;
 }
 .tc-status-popover-row {
