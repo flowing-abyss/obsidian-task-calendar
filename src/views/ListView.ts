@@ -162,7 +162,7 @@ export class ListView extends BaseView {
     }
 
     row.addEventListener('click', (e) => {
-      if (e.target === marker) return;
+      if (marker.contains(e.target as Node)) return;
       this.callbacks.onTaskClick?.(task);
     });
   }

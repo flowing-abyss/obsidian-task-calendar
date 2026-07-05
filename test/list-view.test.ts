@@ -1,4 +1,5 @@
 import type { App } from 'obsidian';
+import { addIcon } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { LinkToken } from '../src/parser/links';
 import type { Task } from '../src/parser/types';
@@ -24,6 +25,7 @@ function makeView(
     onEditLink: (t: Task, occ: number, token: LinkToken) => void;
     onContextMenu: (ev: MouseEvent, t: Task) => void;
   }> = {},
+  statusRegistry: StatusRegistry = new StatusRegistry(buildDefaultTaskStatuses()),
 ) {
   const spies = {
     app: fakeApp(),
@@ -31,7 +33,7 @@ function makeView(
     onDateClick: vi.fn(callbacks.onDateClick),
     onTaskClick: vi.fn(callbacks.onTaskClick),
     onEditLink: vi.fn(callbacks.onEditLink),
-    statusRegistry: new StatusRegistry(buildDefaultTaskStatuses()),
+    statusRegistry,
     onContextMenu: vi.fn(callbacks.onContextMenu),
   };
   const view = new ListView(spies);
@@ -175,6 +177,30 @@ describe('ListView', () => {
       view.render(c, [t], resolvedConfig());
       const marker = c.querySelector('.tc-status-marker') as HTMLElement;
       marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(spies.onToggle).toHaveBeenCalledWith(t);
+      expect(spies.onTaskClick).not.toHaveBeenCalled();
+    });
+
+    it('clicking the marker icon (svg child) invokes onToggle and does not also invoke onTaskClick', () => {
+      // Regression test: the marker for a status with an icon renders a child
+      // <svg>. A click lands on that svg (e.target !== marker), so the row
+      // click handler must use marker.contains(e.target), not marker === e.target,
+      // or it double-fires (toggle AND open the task).
+      addIcon('circle', '<svg><circle cx="12" cy="12" r="10"/></svg>');
+      const registryWithIcon = new StatusRegistry([
+        { id: 's1', symbol: ' ', name: 'To-do', type: 'todo', icon: 'circle', core: true },
+        { id: 's2', symbol: '/', name: 'In progress', type: 'in-progress', icon: '', core: true },
+        { id: 's3', symbol: 'x', name: 'Done', type: 'done', icon: 'check', core: true },
+        { id: 's4', symbol: '-', name: 'Cancelled', type: 'cancelled', icon: 'x', core: true },
+      ]);
+      const { view, spies } = makeView({ onToggle: (t) => t }, registryWithIcon);
+      const c = freshContainer();
+      const t = task({ due: today(), status: 'open', statusSymbol: ' ' });
+      view.render(c, [t], resolvedConfig());
+      const marker = c.querySelector('.tc-status-marker') as HTMLElement;
+      const svg = marker.querySelector('svg') as unknown as HTMLElement;
+      expect(svg).not.toBeNull();
+      svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       expect(spies.onToggle).toHaveBeenCalledWith(t);
       expect(spies.onTaskClick).not.toHaveBeenCalled();
     });
