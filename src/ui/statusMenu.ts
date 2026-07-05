@@ -1,5 +1,6 @@
 import { setIcon, type Menu } from 'obsidian';
 import type { Task, TaskPriority } from '../parser/types';
+import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { renderStatusMarker } from './StatusMarker';
 
@@ -10,14 +11,10 @@ export interface StatusMenuOpts {
   onPickPriority: (p: TaskPriority) => void;
 }
 
-const PRIORITY_OPTIONS: Array<{ p: TaskPriority; label: string }> = [
-  { p: 'A', label: 'Highest' },
-  { p: 'B', label: 'High' },
-  { p: 'C', label: 'Medium' },
-  { p: 'D', label: 'None' },
-  { p: 'E', label: 'Low' },
-  { p: 'F', label: 'Lowest' },
-];
+const PRIORITY_OPTIONS: Array<{ p: TaskPriority; label: string }> = PRIORITY_LEVELS.map((l) => ({
+  p: l.value,
+  label: l.label,
+}));
 
 /**
  * Adds the status items (grouped by open/in-progress/done/cancelled) to `sub`,

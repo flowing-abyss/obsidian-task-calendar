@@ -1,5 +1,6 @@
 import { Notice, TFile, type App } from 'obsidian';
 import type { TaskPriority } from '../parser/types';
+import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { findTaskLine, type FindResult, type TaskLocator } from './TaskLocator';
 
@@ -145,8 +146,10 @@ export class TaskMutationService {
 
   /** Rewrite the priority emoji on the task line (replaces any existing one). */
   async setPriority(locator: TaskLocator, priority: TaskPriority): Promise<MutationResult> {
-    const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'] as const;
-    const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
+    const PRIORITY_EMOJIS = PRIORITY_LEVELS.map((l) => l.emoji).filter(Boolean);
+    const PRIORITY_MAP: Record<string, string> = Object.fromEntries(
+      PRIORITY_LEVELS.filter((l) => l.emoji).map((l) => [l.value, l.emoji]),
+    );
     return this.applyToLines(locator, (lines, taskLine) => {
       const line = lines[taskLine];
       if (!line) return;

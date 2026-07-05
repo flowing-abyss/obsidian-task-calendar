@@ -3,6 +3,7 @@ import type { AppState, ListSelection } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
+import { PRIORITY_LEVELS } from '../priority';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
@@ -71,15 +72,6 @@ function statusGroupsEqual(
   const sb = [...nb].sort(compare);
   return sa.every((v, i) => v === sb[i]);
 }
-
-const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
-  { label: 'Highest', value: 'A' },
-  { label: 'High', value: 'B' },
-  { label: 'Medium', value: 'C' },
-  { label: 'None', value: 'D' },
-  { label: 'Low', value: 'E' },
-  { label: 'Lowest', value: 'F' },
-];
 
 /**
  * Colors a priority-submenu flag icon to match the rest of the UI (status
@@ -1329,15 +1321,11 @@ export class CenterPanel {
     if (f.type === 'time') return `⏰ ${f.value}`;
     if (f.type === 'status') return this.store.statusRegistry.bySymbol(f.value)?.name ?? f.value;
     if (f.type === 'date') return `📅 ${this.formatDate(f.value)}`;
-    const PRIORITY_EMOJIS: Record<string, string> = {
-      A: '🔺 Highest',
-      B: '⏫ High',
-      C: '🔼 Medium',
-      D: 'Normal',
-      E: '🔽 Low',
-      F: '⏬ Lowest',
-    };
-    return PRIORITY_EMOJIS[f.value] ?? f.value;
+    const level = PRIORITY_LEVELS.find((l) => l.value === f.value);
+    if (!level) return f.value;
+    // D/None has no emoji and reads as "Normal" here (distinct from the
+    // "None" label used in priority-picker menus).
+    return level.emoji ? `${level.emoji} ${level.label}` : 'Normal';
   }
 
   private addPropertyFilter(filter: PropertyFilter): void {
