@@ -17,6 +17,15 @@ describe('StatusRegistry', () => {
     expect(reg().typeForSymbol('X')).toBe('done');
   });
 
+  it('bySymbol folds uppercase X to the same Done def as lowercase x', () => {
+    const r = reg();
+    const upper = r.bySymbol('X');
+    const lower = r.bySymbol('x');
+    expect(upper).toBeDefined();
+    expect(upper).toBe(lower);
+    expect(upper?.type).toBe('done');
+  });
+
   it('falls back to open for unknown symbols', () => {
     expect(reg().typeForSymbol('@')).toBe('open');
     expect(reg().bySymbol('@')).toBeUndefined();

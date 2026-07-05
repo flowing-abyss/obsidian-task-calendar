@@ -27,16 +27,19 @@ export class StatusRegistry {
   }
 
   bySymbol(char: string): TaskStatusDef | undefined {
-    return this.bySymbolMap.get(char);
+    return this.bySymbolMap.get(StatusRegistry.normalizeSymbol(char));
   }
 
   typeForSymbol(char: string): TaskStatus {
-    // 'X' (uppercase) is a common alternate "done" glyph in the Tasks-plugin
-    // ecosystem; the registry only knows the canonical lowercase 'x', so fold
-    // case for the lookup. Callers keep the raw glyph in statusSymbol.
-    const lookup = char === 'X' ? 'x' : char;
-    const def = this.bySymbolMap.get(lookup);
+    const def = this.bySymbolMap.get(StatusRegistry.normalizeSymbol(char));
     return def ? StatusRegistry.TYPE_TO_STATUS[def.type] : 'open';
+  }
+
+  // 'X' (uppercase) is a common alternate "done" glyph in the Tasks-plugin
+  // ecosystem; the registry only knows the canonical lowercase 'x', so fold
+  // case for lookups. Callers keep the raw glyph in statusSymbol.
+  private static normalizeSymbol(char: string): string {
+    return char === 'X' ? 'x' : char;
   }
 
   byType(type: TaskStatusType): TaskStatusDef[] {
