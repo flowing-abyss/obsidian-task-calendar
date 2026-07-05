@@ -38,7 +38,7 @@ export function buildStatusSubmenu(
           .setSection(group.type)
           .setChecked(task.statusSymbol === def.symbol)
           .onClick(() => onPickStatus(def.symbol));
-        if (def.iconKind === 'lucide' && def.icon) i.setIcon(def.icon);
+        if (def.icon) i.setIcon(def.icon);
         return i;
       });
     }

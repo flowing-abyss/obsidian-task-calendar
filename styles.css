@@ -1569,10 +1569,11 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   padding: 2px 12px 4px;
 }
 /* Status marker — chip replacing the native checkbox at task render sites.
-   Background stays transparent (neutral empty-checkbox slot); the status
-   color is applied to the icon/glyph via `color`, and priority (when set)
-   colors the border instead of an outer box-shadow halo, so the chip's
-   footprint never grows. */
+   Visual contract: PRIORITY = border color (only use of color), STATUS
+   GROUP (type) = container shape, CUSTOM STATUS = neutral-tone icon inside.
+   Background stays transparent (neutral empty-checkbox slot); priority
+   (when set) colors the border instead of an outer box-shadow halo, so the
+   chip's footprint never grows. */
 .tc-status-marker {
   width: 19px;
   height: 19px;
@@ -1584,13 +1585,17 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   place-items: center;
   border: 1.5px solid var(--background-modifier-border);
   background: transparent;
-  color: var(--tc-status-color, var(--text-muted));
+  color: var(--text-normal);
   cursor: pointer;
   /* Center a text glyph/emoji marker exactly: kill baseline/line-box offset
      so the character sits dead-center like the SVG icons do. */
   font-size: 12px;
   line-height: 1;
   text-align: center;
+}
+/* Shape by status-group (type): in-progress is the only circular group. */
+.tc-status-marker[data-status-type='in-progress'] {
+  border-radius: 50%;
 }
 .tc-status-marker > svg {
   display: block;
@@ -3822,6 +3827,25 @@ body.tc-modal-open .popover.hover-popover {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   padding: 4px 2px;
+}
+.tc-status-icon-clear .tc-status-icon-result-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.tc-status-symbol-lock {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+.tc-status-symbol-lock svg {
+  width: 12px;
+  height: 12px;
+}
+.tc-status-symbol-locked {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .tc-status-preview {
   display: flex;

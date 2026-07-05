@@ -6,7 +6,7 @@ import { renderStatusMarker } from '../src/ui/StatusMarker';
 const reg = new StatusRegistry(buildDefaultTaskStatuses());
 
 describe('renderStatusMarker', () => {
-  it('renders a chip with the status color and data attrs', () => {
+  it('renders a chip with the type + priority data attrs and an icon (no color)', () => {
     const parent = document.createElement('div');
     const el = renderStatusMarker(parent, {
       task: { statusSymbol: '!', priority: 'A' } as any,
@@ -17,6 +17,18 @@ describe('renderStatusMarker', () => {
     expect(el.classList.contains('tc-status-marker')).toBe(true);
     expect(el.getAttribute('data-status-type')).toBe('todo');
     expect(el.getAttribute('data-priority')).toBe('A');
+    expect(el.style.getPropertyValue('--tc-status-color')).toBe('');
+  });
+
+  it('renders the in-progress group with data-status-type used for circular shape', () => {
+    const parent = document.createElement('div');
+    const el = renderStatusMarker(parent, {
+      task: { statusSymbol: '/', priority: 'D' } as any,
+      registry: reg,
+      onLeftClick: () => {},
+      onContextMenu: () => {},
+    });
+    expect(el.getAttribute('data-status-type')).toBe('in-progress');
   });
 
   it('renders an empty chip for to-do (no icon)', () => {

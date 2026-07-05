@@ -35,15 +35,16 @@ export function renderStatusMarker(parent: HTMLElement, opts: Opts): HTMLElement
   if (task.priority && task.priority !== 'D') {
     el.setAttribute('data-priority', task.priority);
   }
-  if (def?.color) el.style.setProperty('--tc-status-color', def.color);
 
-  const icon = def?.icon ?? task.statusSymbol.trim();
-  if (def && def.icon && def.iconKind === 'lucide') {
+  if (def && def.icon) {
     const svg = getLucideIcon(def.icon);
     if (svg) el.appendChild(svg);
-  } else if (icon) {
-    el.setText(icon); // glyph/emoji, or unknown raw char
-  } // else: empty chip (to-do)
+  } else if (!def) {
+    // Unknown symbol (not in the status table): fall back to the raw glyph
+    // in a neutral tone rather than rendering an empty chip.
+    const raw = task.statusSymbol.trim();
+    if (raw) el.setText(raw);
+  } // else: def with icon === '' → empty chip (plain to-do)
 
   el.addEventListener('click', (e) => {
     e.preventDefault();
