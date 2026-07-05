@@ -1613,22 +1613,29 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: currentColor;
   stroke: currentColor;
 }
-/* Priority — colors the chip border instead of an outer halo, so the
-   19px footprint is unchanged regardless of priority. */
+/* Priority — colors BOTH the chip border and the inner icon (via currentColor),
+   so the whole marker reads as one priority hue. Footprint stays 19px (border,
+   not an outer halo). No-priority markers keep the neutral color from the base
+   rule. */
 .tc-status-marker[data-priority='A'] {
   border-color: var(--tc-priority-a);
+  color: var(--tc-priority-a);
 }
 .tc-status-marker[data-priority='B'] {
   border-color: var(--tc-priority-b);
+  color: var(--tc-priority-b);
 }
 .tc-status-marker[data-priority='C'] {
   border-color: var(--tc-priority-c);
+  color: var(--tc-priority-c);
 }
 .tc-status-marker[data-priority='E'] {
   border-color: var(--tc-priority-e);
+  color: var(--tc-priority-e);
 }
 .tc-status-marker[data-priority='F'] {
   border-color: var(--tc-priority-f);
+  color: var(--tc-priority-f);
 }
 .tc-task-body {
   flex: 1;
