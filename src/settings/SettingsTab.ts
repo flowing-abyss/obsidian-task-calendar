@@ -935,9 +935,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
     previewEl.empty();
     const registry = new StatusRegistry(statuses);
     renderStatusMarker(previewEl, {
-      task: { statusSymbol: def.symbol, priority: 'D' } as Parameters<
-        typeof renderStatusMarker
-      >[1]['task'],
+      task: { statusSymbol: def.symbol, priority: 'D' },
       registry,
       onLeftClick: () => {},
       onContextMenu: () => {},
@@ -1090,9 +1088,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
       previewHost.empty();
       const registry = new StatusRegistry(statuses);
       renderStatusMarker(previewHost, {
-        task: { statusSymbol: def.symbol, priority: 'D' } as Parameters<
-          typeof renderStatusMarker
-        >[1]['task'],
+        task: { statusSymbol: def.symbol, priority: 'D' },
         registry,
         onLeftClick: () => {},
         onContextMenu: () => {},

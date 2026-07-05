@@ -1,9 +1,12 @@
 import { setIcon } from 'obsidian';
-import type { SubTask, Task } from '../parser/types';
+import type { TaskPriority } from '../parser/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 
 interface Opts {
-  task: Task | SubTask;
+  // Structural type: only statusSymbol/priority are read, so Task/SubTask
+  // satisfy this without a cast, and callers needing a fake stand-in task
+  // (menus/previews) can pass a plain object literal instead of a cast.
+  task: { statusSymbol: string; priority?: TaskPriority };
   registry: StatusRegistry;
   onLeftClick: () => void;
   onContextMenu: (ev: MouseEvent) => void;
