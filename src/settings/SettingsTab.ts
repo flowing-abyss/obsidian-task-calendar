@@ -975,6 +975,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
       t.setValue(def.symbol).setDisabled(def.core);
       if (def.core) t.inputEl.addClass('tc-status-symbol-locked');
       t.onChange(async (v) => {
+        if (def.core) return;
         const err = validateStatusSymbol(v, statuses, def.id);
         if (err) {
           if (!symbolErrorEl) {

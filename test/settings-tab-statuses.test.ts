@@ -24,6 +24,36 @@ interface CapturedButton {
  * `onClick` only stores the handler, invoked via its internal `simulateClick__`.
  * Patch `addButton` to capture components so tests can trigger clicks directly.
  */
+interface CapturedText {
+  el: HTMLInputElement;
+  invokeChange: (v: string) => unknown;
+}
+
+/**
+ * Patch `addText` to capture each TextComponent's inputEl + its registered
+ * onChange callback, so a test can invoke the handler directly without
+ * relying on DOM 'input' event wiring (which obsidian-test-mocks doesn't
+ * simulate for TextComponent).
+ */
+function patchAddText(captured: CapturedText[]): () => void {
+  const proto = Setting.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const orig = proto.addText!;
+  proto.addText = function (
+    this: {
+      components: Array<{ inputEl: HTMLInputElement; _onChange?: (v: string) => unknown }>;
+    },
+    cb: unknown,
+  ) {
+    const result = orig.call(this, cb);
+    const comp = this.components[this.components.length - 1]!;
+    captured.push({ el: comp.inputEl, invokeChange: (v: string) => comp._onChange?.(v) });
+    return result;
+  };
+  return () => {
+    proto.addText = orig;
+  };
+}
+
 function patchAddButton(captured: CapturedButton[]): () => void {
   const proto = Setting.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
   const orig = proto.addButton!;
@@ -233,6 +263,28 @@ describe('CalendarSettingsTab — custom statuses section', () => {
     // The 4 default statuses are all core, so "Icon" only appears as the
     // locked read-only row (guarded by the dedicated test above) — never as
     // an editable glyph-mode dropdown.
+  });
+
+  it('core Symbol onChange is a guarded no-op even if invoked directly', async () => {
+    const captured: CapturedText[] = [];
+    const restore = patchAddText(captured);
+    const { plugin } = makeTab();
+    restore();
+
+    const coreStatus = plugin.settings.taskStatuses.find((s) => s.core)!;
+    expect(coreStatus).toBeDefined();
+    const originalSymbol = coreStatus.symbol;
+
+    const coreSymbolInput = captured.find((c) =>
+      c.el.classList.contains('tc-status-symbol-locked'),
+    );
+    expect(coreSymbolInput).toBeDefined();
+
+    coreSymbolInput!.invokeChange('!');
+    await Promise.resolve();
+
+    expect(coreStatus.symbol).toBe(originalSymbol);
+    expect(plugin.saveSettings).not.toHaveBeenCalled();
   });
 
   it('"No icon" cell clears a custom status icon and persists the empty state', async () => {
