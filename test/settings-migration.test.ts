@@ -200,3 +200,91 @@ describe('task statuses migration', () => {
     expect(entry['type']).toBe('todo');
   });
 });
+
+describe('list view state show → statusGroups migration', () => {
+  it('migrates show=active to statusGroups=[todo, in-progress] and drops show', () => {
+    const raw: Record<string, unknown> = {
+      listViewStates: {
+        today: {
+          groupBy: 'date',
+          sortBy: { field: 'date', dir: 'asc' },
+          show: 'active',
+          filters: [],
+        },
+      },
+    };
+    migrateSettings(raw);
+    const state = (raw['listViewStates'] as Record<string, Record<string, unknown>>)['today']!;
+    expect(state['statusGroups']).toEqual(['todo', 'in-progress']);
+    expect(state['show']).toBeUndefined();
+  });
+
+  it('migrates show=completed to statusGroups=[done, cancelled]', () => {
+    const raw: Record<string, unknown> = {
+      listViewStates: {
+        inbox: {
+          groupBy: 'none',
+          sortBy: { field: 'date', dir: 'asc' },
+          show: 'completed',
+          filters: [],
+        },
+      },
+    };
+    migrateSettings(raw);
+    const state = (raw['listViewStates'] as Record<string, Record<string, unknown>>)['inbox']!;
+    expect(state['statusGroups']).toEqual(['done', 'cancelled']);
+    expect(state['show']).toBeUndefined();
+  });
+
+  it('migrates show=all to statusGroups=undefined', () => {
+    const raw: Record<string, unknown> = {
+      listViewStates: {
+        inbox: { groupBy: 'none', sortBy: { field: 'date', dir: 'asc' }, show: 'all', filters: [] },
+      },
+    };
+    migrateSettings(raw);
+    const state = (raw['listViewStates'] as Record<string, Record<string, unknown>>)['inbox']!;
+    expect(state['statusGroups']).toBeUndefined();
+    expect(state['show']).toBeUndefined();
+  });
+
+  it('leaves an already-set statusGroups untouched and still drops show', () => {
+    const raw: Record<string, unknown> = {
+      listViewStates: {
+        inbox: {
+          groupBy: 'none',
+          sortBy: { field: 'date', dir: 'asc' },
+          show: 'active',
+          statusGroups: ['done'],
+          filters: [],
+        },
+      },
+    };
+    migrateSettings(raw);
+    const state = (raw['listViewStates'] as Record<string, Record<string, unknown>>)['inbox']!;
+    expect(state['statusGroups']).toEqual(['done']);
+    expect(state['show']).toBeUndefined();
+  });
+
+  it('leaves state without a show key untouched', () => {
+    const raw: Record<string, unknown> = {
+      listViewStates: {
+        inbox: {
+          groupBy: 'none',
+          sortBy: { field: 'date', dir: 'asc' },
+          statusGroups: ['todo', 'in-progress'],
+          filters: [],
+        },
+      },
+    };
+    migrateSettings(raw);
+    const state = (raw['listViewStates'] as Record<string, Record<string, unknown>>)['inbox']!;
+    expect(state['statusGroups']).toEqual(['todo', 'in-progress']);
+  });
+
+  it('does nothing when listViewStates is absent', () => {
+    const raw: Record<string, unknown> = {};
+    expect(() => migrateSettings(raw)).not.toThrow();
+    expect(raw['listViewStates']).toBeUndefined();
+  });
+});

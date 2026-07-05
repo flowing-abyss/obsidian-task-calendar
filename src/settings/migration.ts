@@ -83,6 +83,39 @@ function migrateTaskStatuses(raw: Record<string, unknown>): void {
   healCoreStatuses(taskStatuses);
 }
 
+/**
+ * The old separate "Show" (active/completed/all) single-select and "Status
+ * group" multi-select were unified into one statusGroups-only filter. Fold
+ * each persisted list view state's legacy `show` into `statusGroups` (unless
+ * statusGroups was already explicitly set) and drop the `show` key.
+ */
+function migrateListViewStates(raw: Record<string, unknown>): void {
+  const states = raw['listViewStates'];
+  if (!states || typeof states !== 'object') return;
+  for (const key of Object.keys(states)) {
+    const entry = (states as Record<string, unknown>)[key];
+    if (!entry || typeof entry !== 'object') continue;
+    const vs = entry as Record<string, unknown>;
+    if ('show' in vs) {
+      if (!('statusGroups' in vs) || vs['statusGroups'] === undefined) {
+        switch (vs['show']) {
+          case 'active':
+            vs['statusGroups'] = ['todo', 'in-progress'];
+            break;
+          case 'completed':
+            vs['statusGroups'] = ['done', 'cancelled'];
+            break;
+          case 'all':
+          default:
+            vs['statusGroups'] = undefined;
+            break;
+        }
+      }
+      delete vs['show'];
+    }
+  }
+}
+
 export function migrateSettings(raw: Record<string, unknown>): void {
   migrateInbox(raw);
   if (!('pinnedTags' in raw)) raw['pinnedTags'] = [];
@@ -92,4 +125,5 @@ export function migrateSettings(raw: Record<string, unknown>): void {
     raw['sectionCollapse'] = { pinned: false, projects: false, tags: false };
   }
   migrateTaskStatuses(raw);
+  migrateListViewStates(raw);
 }
