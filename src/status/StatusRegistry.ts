@@ -61,7 +61,7 @@ export class StatusRegistry {
   }
 
   orderIndex(char: string): number {
-    return this.orderMap.get(char) ?? Number.MAX_SAFE_INTEGER;
+    return this.orderMap.get(StatusRegistry.normalizeSymbol(char)) ?? Number.MAX_SAFE_INTEGER;
   }
 
   all(): TaskStatusDef[] {

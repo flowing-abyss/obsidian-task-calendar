@@ -49,4 +49,10 @@ describe('StatusRegistry', () => {
     expect(r.orderIndex(' ')).toBeLessThan(r.orderIndex('x'));
     expect(r.orderIndex('@')).toBe(Number.MAX_SAFE_INTEGER);
   });
+
+  it('orderIndex folds uppercase X to the same slot as lowercase x', () => {
+    const r = reg();
+    expect(r.orderIndex('X')).toBe(r.orderIndex('x'));
+    expect(r.orderIndex('X')).toBeLessThan(r.orderIndex('@'));
+  });
 });
