@@ -164,4 +164,52 @@ describe('CalendarSettingsTab — custom statuses section', () => {
     const symbols = statuses.map((s) => s.symbol);
     expect(new Set(symbols).size).toBe(symbols.length);
   });
+
+  it('core statuses show a lock cue and a disabled symbol input; non-core does not', () => {
+    const { tab } = makeTab();
+    const body = openStatusesSection(tab);
+    const cards = body.querySelectorAll('.tc-settings-card');
+    let sawLockedCore = false;
+    let sawUnlockedNonCore = false;
+    cards.forEach((card) => {
+      const lock = card.querySelector('.tc-status-symbol-lock');
+      const lockedInput = card.querySelector<HTMLInputElement>('.tc-status-symbol-locked');
+      if (lock) {
+        expect(lockedInput).not.toBeNull();
+        sawLockedCore = true;
+      } else {
+        sawUnlockedNonCore = true;
+      }
+    });
+    expect(sawLockedCore).toBe(true);
+    expect(sawUnlockedNonCore).toBe(true);
+  });
+
+  it('has no per-status Color setting and no glyph-mode icon dropdown', () => {
+    const { tab } = makeTab();
+    const body = openStatusesSection(tab);
+    const settingNames = Array.from(body.querySelectorAll('.setting-item-name')).map(
+      (el) => el.textContent,
+    );
+    expect(settingNames).not.toContain('Color');
+    expect(settingNames).not.toContain('Icon');
+  });
+
+  it('"No icon" cell clears a status icon and persists the empty state', async () => {
+    const { tab, plugin } = makeTab();
+    const body = openStatusesSection(tab);
+    // Any default status with a non-empty icon (e.g. "Important", icon 'alert-triangle').
+    const status = plugin.settings.taskStatuses.find((s) => s.icon !== '')!;
+    expect(status).toBeDefined();
+    const card = Array.from(body.querySelectorAll('.tc-settings-card')).find((c) =>
+      c.textContent?.includes(status.name),
+    )!;
+    expect(card).toBeDefined();
+    const clearCell = card.querySelector<HTMLElement>('.tc-status-icon-clear');
+    expect(clearCell).not.toBeNull();
+    clearCell!.click();
+    await Promise.resolve();
+    expect(status.icon).toBe('');
+    expect(plugin.saveSettings).toHaveBeenCalled();
+  });
 });

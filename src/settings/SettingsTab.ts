@@ -922,9 +922,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
             symbol,
             name: 'New status',
             type: 'todo',
-            color: '',
             icon: '',
-            iconKind: 'lucide',
             core: false,
           });
           this.expandedCards.add(id);
@@ -954,8 +952,14 @@ export class CalendarSettingsTab extends PluginSettingTab {
 
     const symbolSetting = new Setting(bodyEl).setName('Symbol');
     let symbolErrorEl: HTMLElement | null = null;
+    if (def.core) {
+      const lockEl = symbolSetting.nameEl.createSpan({ cls: 'tc-status-symbol-lock' });
+      setIcon(lockEl, 'lock');
+      symbolSetting.setTooltip('Core status — symbol is fixed');
+    }
     symbolSetting.addText((t) => {
       t.setValue(def.symbol).setDisabled(def.core);
+      if (def.core) t.inputEl.addClass('tc-status-symbol-locked');
       t.onChange(async (v) => {
         const err = validateStatusSymbol(v, statuses, def.id);
         if (err) {
@@ -976,98 +980,77 @@ export class CalendarSettingsTab extends PluginSettingTab {
       return t;
     });
 
-    // Icon: a mode toggle between a searchable Lucide picker and a free-text glyph input.
+    // Icon: a searchable Lucide picker only (glyph/emoji input was dropped —
+    // custom status is now conveyed purely by the Lucide icon).
     const iconWrap = bodyEl.createDiv({ cls: 'tc-status-icon-field' });
     const iconInputHost = iconWrap.createDiv({ cls: 'tc-status-icon-input-host' });
 
-    const renderIconInput = () => {
-      iconInputHost.empty();
-      if (def.iconKind === 'glyph') {
-        new Setting(iconInputHost).setName('Glyph').addText((t) =>
-          t
-            // eslint-disable-next-line obsidianmd/ui/sentence-case
-            .setPlaceholder('e.g. * or an emoji')
-            .setValue(def.icon)
-            .onChange(async (v) => {
-              def.icon = v;
-              await this.persistStatuses();
-              updatePreview();
-            }),
-        );
-      } else {
-        // getIconIds() returns ids prefixed with "lucide-" (e.g. "lucide-alert-triangle"),
-        // but stored status icons use the short form (e.g. "alert-triangle") that setIcon
-        // and renderStatusMarker expect. Normalize to short ids, deduping any collisions.
-        const allIconIds = (() => {
-          const seen = new Set<string>();
-          const out: string[] = [];
-          for (const raw of getIconIds()) {
-            const short = raw.startsWith('lucide-') ? raw.slice('lucide-'.length) : raw;
-            if (seen.has(short)) continue;
-            seen.add(short);
-            out.push(short);
-          }
-          return out;
-        })();
+    // getIconIds() returns ids prefixed with "lucide-" (e.g. "lucide-alert-triangle"),
+    // but stored status icons use the short form (e.g. "alert-triangle") that setIcon
+    // and renderStatusMarker expect. Normalize to short ids, deduping any collisions.
+    const allIconIds = (() => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const raw of getIconIds()) {
+        const short = raw.startsWith('lucide-') ? raw.slice('lucide-'.length) : raw;
+        if (seen.has(short)) continue;
+        seen.add(short);
+        out.push(short);
+      }
+      return out;
+    })();
 
-        new Setting(iconInputHost).setName('Search icons').addText((t) =>
-          t
-            .setPlaceholder('Search lucide icons…')
-            .setValue('')
-            .onChange((v) => renderResults(v)),
-        );
+    let renderResults: (query: string) => void = () => {};
 
-        const resultsEl = iconInputHost.createDiv({ cls: 'tc-status-icon-results' });
-        const renderResults = (query: string) => {
-          resultsEl.empty();
-          const q = query.trim().toLowerCase();
-          const ids = allIconIds
-            .filter((iconId) => !q || iconId.toLowerCase().includes(q))
-            .slice(0, 48);
-          if (ids.length === 0) {
-            resultsEl.createDiv({ cls: 'tc-status-icon-empty', text: 'No icons found' });
-            return;
-          }
-          for (const iconId of ids) {
-            const cell = resultsEl.createDiv({
-              cls: `tc-status-icon-result${iconId === def.icon ? ' is-selected' : ''}`,
-              attr: { title: iconId },
-            });
-            const iconPreview = cell.createSpan({ cls: 'tc-status-icon-result-icon' });
-            setIcon(iconPreview, iconId);
-            cell.addEventListener('click', () => {
-              def.icon = iconId;
-              def.iconKind = 'lucide';
-              void this.persistStatuses();
-              renderResults(query);
-              updatePreview();
-            });
-          }
-        };
-        renderResults('');
+    new Setting(iconInputHost).setName('Search icons').addText((t) =>
+      t
+        .setPlaceholder('Search lucide icons…')
+        .setValue('')
+        .onChange((v) => renderResults(v)),
+    );
+
+    const resultsEl = iconInputHost.createDiv({ cls: 'tc-status-icon-results' });
+    renderResults = (query: string) => {
+      resultsEl.empty();
+
+      // "No icon" is always the first cell — the only way to clear a
+      // previously-set icon back to the empty (plain to-do-style) chip.
+      const clearCell = resultsEl.createDiv({
+        cls: `tc-status-icon-result tc-status-icon-clear${def.icon === '' ? ' is-selected' : ''}`,
+        attr: { title: 'No icon' },
+      });
+      clearCell.createSpan({ cls: 'tc-status-icon-result-icon', text: '—' });
+      clearCell.addEventListener('click', () => {
+        def.icon = '';
+        void this.persistStatuses();
+        renderResults(query);
+        updatePreview();
+      });
+
+      const q = query.trim().toLowerCase();
+      const ids = allIconIds
+        .filter((iconId) => !q || iconId.toLowerCase().includes(q))
+        .slice(0, 48);
+      if (ids.length === 0) {
+        resultsEl.createDiv({ cls: 'tc-status-icon-empty', text: 'No icons found' });
+        return;
+      }
+      for (const iconId of ids) {
+        const cell = resultsEl.createDiv({
+          cls: `tc-status-icon-result${iconId === def.icon ? ' is-selected' : ''}`,
+          attr: { title: iconId },
+        });
+        const iconPreview = cell.createSpan({ cls: 'tc-status-icon-result-icon' });
+        setIcon(iconPreview, iconId);
+        cell.addEventListener('click', () => {
+          def.icon = iconId;
+          void this.persistStatuses();
+          renderResults(query);
+          updatePreview();
+        });
       }
     };
-
-    new Setting(iconWrap).setName('Icon').addDropdown((d) =>
-      d
-        .addOptions({ lucide: 'Lucide icon', glyph: 'Glyph / emoji' })
-        .setValue(def.iconKind)
-        .onChange(async (v) => {
-          def.iconKind = v as 'lucide' | 'glyph';
-          await this.persistStatuses();
-          renderIconInput();
-          updatePreview();
-        }),
-    );
-    renderIconInput();
-
-    new Setting(bodyEl).setName('Color').addColorPicker((cp) =>
-      cp.setValue(def.color || '#888888').onChange(async (v) => {
-        def.color = v;
-        await this.persistStatuses();
-        updatePreview();
-      }),
-    );
+    renderResults('');
 
     const previewSetting = new Setting(bodyEl).setName('Preview');
     const previewHost = previewSetting.controlEl.createDiv({ cls: 'tc-status-preview' });
