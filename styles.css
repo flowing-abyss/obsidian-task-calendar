@@ -2548,9 +2548,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   background: var(--background-modifier-hover);
 }
 .tc-status-popover-flag.is-active {
-  border-color: var(--background-modifier-border-hover);
+  border-color: var(--color-accent);
   background: var(--background-modifier-hover);
-  box-shadow: inset 0 0 0 2px var(--text-normal);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 .tc-status-popover-flag svg {
   width: 0.95rem;
