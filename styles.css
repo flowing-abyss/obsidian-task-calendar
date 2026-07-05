@@ -1583,7 +1583,11 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   box-sizing: border-box;
   display: grid;
   place-items: center;
-  border: 1.5px solid var(--background-modifier-border);
+  /* --text-faint is clearly visible on both the list and the (darker) right
+     panel; the old --background-modifier-border was near-invisible for the
+     empty To-do marker, which has no inner icon to fall back on. Priority
+     overrides this border-color with the priority hue. */
+  border: 1.5px solid var(--text-faint);
   background: transparent;
   color: var(--text-normal);
   cursor: pointer;
