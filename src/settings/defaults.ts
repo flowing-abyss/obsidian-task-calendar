@@ -130,5 +130,6 @@ export function getListViewDefaults(listKey: string): ListViewState {
     sortBy: { field: 'date', dir: 'asc' },
     show: 'active',
     filters: [],
+    statusGroups: undefined,
   };
 }

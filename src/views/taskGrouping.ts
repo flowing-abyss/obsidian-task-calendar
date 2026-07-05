@@ -1,4 +1,5 @@
 import type { Task } from '../parser/types';
+import type { TaskStatusType } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 
 export interface TaskGroup {
@@ -239,4 +240,19 @@ export function renderTaskGroup(
   show(groups.dailyNote, 'dailyNote');
   show(groups.allDone, 'done');
   show(groups.cancelled, 'cancelled');
+}
+
+// undefined, or all 4 status groups selected, means "no filtering".
+// A real subset (1-3 groups) restricts tasks to those status groups.
+export function filterTasksByStatusGroups(
+  tasks: Task[],
+  statusGroups: TaskStatusType[] | undefined,
+  registry: StatusRegistry,
+): Task[] {
+  if (!statusGroups || statusGroups.length === 0 || statusGroups.length >= 4) return tasks;
+  const allowed = new Set(statusGroups);
+  return tasks.filter((t) => {
+    const type = registry.bySymbol(t.statusSymbol)?.type ?? 'todo';
+    return allowed.has(type);
+  });
 }

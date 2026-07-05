@@ -11,6 +11,7 @@ import type {
   ListViewState,
   PropertyFilter,
   ResolvedConfig,
+  TaskStatusType,
 } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
@@ -26,6 +27,7 @@ import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
 import {
+  filterTasksByStatusGroups,
   groupTasksByDate,
   groupTasksByPriority,
   groupTasksByStatus,
@@ -45,6 +47,11 @@ function listSelectionToKey(sel: ListSelection): string {
 
 function projectNameFromPath(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
+}
+
+// undefined, or all 4 groups selected, is the default "no filtering" state.
+function isStatusGroupsNonDefault(statusGroups: TaskStatusType[] | undefined): boolean {
+  return !!statusGroups && statusGroups.length > 0 && statusGroups.length < 4;
 }
 
 const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
@@ -83,6 +90,10 @@ export class CenterPanel {
   private currentListKey: string = 'today';
   private filterDebounce = 0;
   private refocusSearch = false;
+  // Set true while a status-group toggle click is in flight, so that the
+  // full re-render triggered by updateViewState re-opens the popover with
+  // the "Status group" row still expanded (multi-select shouldn't close on pick).
+  private reopenStatusGroupPopover = false;
   private onSaveSettings: () => Promise<void>;
   private mutations: TaskMutationService;
   private md = new Component();
@@ -1339,7 +1350,8 @@ export class CenterPanel {
       vs.groupBy !== defaults.groupBy ||
       vs.sortBy.field !== defaults.sortBy.field ||
       vs.sortBy.dir !== defaults.sortBy.dir ||
-      vs.show !== defaults.show;
+      vs.show !== defaults.show ||
+      isStatusGroupsNonDefault(vs.statusGroups);
 
     const btn = container.createEl('button', {
       cls: `tc-view-state-btn${isNonDefault ? ' tc-view-state-btn--active' : ''}`,
@@ -1347,9 +1359,14 @@ export class CenterPanel {
     });
     setIcon(btn, 'arrow-up-down');
     btn.addEventListener('click', () => this.showViewStatePopover(btn));
+
+    if (this.reopenStatusGroupPopover) {
+      this.reopenStatusGroupPopover = false;
+      this.showViewStatePopover(btn, true);
+    }
   }
 
-  private showViewStatePopover(anchor: HTMLElement): void {
+  private showViewStatePopover(anchor: HTMLElement, autoOpenStatusGroupRow = false): void {
     const existing = this.el.querySelector('.tc-view-state-popover');
     if (existing) {
       existing.remove();
@@ -1419,6 +1436,59 @@ export class CenterPanel {
       }
     };
 
+    // Like makeRow, but options toggle membership in a set rather than
+    // selecting a single value, and the popover stays open after a click
+    // so multiple options can be picked.
+    const makeMultiRow = (
+      icon: string,
+      label: string,
+      displayValue: string,
+      selected: readonly string[],
+      options: Array<{ label: string; value: string }>,
+      onToggle: (value: string) => void,
+      initiallyOpen = false,
+    ): void => {
+      const row = popover.createDiv({ cls: 'tc-view-state-row' });
+      const rowMain = row.createDiv({ cls: 'tc-view-state-row-main' });
+      const iconEl = rowMain.createEl('span', { cls: 'tc-view-state-row-icon' });
+      setIcon(iconEl, icon);
+      rowMain.createEl('span', { cls: 'tc-view-state-row-label', text: label });
+      rowMain.createEl('span', { cls: 'tc-view-state-row-value', text: displayValue });
+      const chevEl = rowMain.createEl('span', { cls: 'tc-view-state-row-chevron' });
+      setIcon(chevEl, 'chevron-right');
+
+      const subList = row.createDiv({ cls: 'tc-view-state-sublist tc-hidden' });
+      if (initiallyOpen) {
+        subList.removeClass('tc-hidden');
+        rowMain.addClass('is-open');
+      }
+
+      rowMain.addEventListener('click', () => {
+        const isOpen = !subList.hasClass('tc-hidden');
+        popover.querySelectorAll<HTMLElement>('.tc-view-state-sublist').forEach((el) => {
+          el.addClass('tc-hidden');
+        });
+        popover.querySelectorAll<HTMLElement>('.tc-view-state-row-main').forEach((el) => {
+          el.removeClass('is-open');
+        });
+        if (!isOpen) {
+          subList.removeClass('tc-hidden');
+          rowMain.addClass('is-open');
+        }
+      });
+
+      for (const opt of options) {
+        const isActive = selected.includes(opt.value);
+        const optEl = subList.createEl('button', { cls: 'tc-view-state-option' });
+        const checkEl = optEl.createEl('span', { cls: 'tc-view-state-option-check' });
+        if (isActive) setIcon(checkEl, 'check');
+        optEl.createEl('span', { cls: 'tc-view-state-option-label', text: opt.label });
+        optEl.addEventListener('click', () => {
+          onToggle(opt.value);
+        });
+      }
+    };
+
     const GROUP_BY_OPTIONS = [
       { label: 'None', value: 'none' },
       { label: 'Date', value: 'date' },
@@ -1455,6 +1525,23 @@ export class CenterPanel {
       active: 'Active',
       completed: 'Completed',
       all: 'All',
+    };
+
+    const STATUS_GROUP_OPTIONS: Array<{ label: string; value: TaskStatusType }> = [
+      { label: 'To do', value: 'todo' },
+      { label: 'In progress', value: 'in-progress' },
+      { label: 'Done', value: 'done' },
+      { label: 'Cancelled', value: 'cancelled' },
+    ];
+    const STATUS_GROUP_LABELS: Record<TaskStatusType, string> = {
+      todo: 'To do',
+      'in-progress': 'In progress',
+      done: 'Done',
+      cancelled: 'Cancelled',
+    };
+    const statusGroupDisplayValue = (selected: TaskStatusType[] | undefined): string => {
+      if (!selected || selected.length === 0 || selected.length >= 4) return 'All';
+      return selected.map((s) => STATUS_GROUP_LABELS[s]).join(', ');
     };
 
     const defaults = getListViewDefaults(this.currentListKey);
@@ -1498,12 +1585,38 @@ export class CenterPanel {
       },
     );
 
+    makeMultiRow(
+      'layers',
+      'Status group',
+      statusGroupDisplayValue(vs.statusGroups),
+      vs.statusGroups ?? [],
+      STATUS_GROUP_OPTIONS,
+      (val) => {
+        const value = val as TaskStatusType;
+        const current = vs.statusGroups ?? ['todo', 'in-progress', 'done', 'cancelled'];
+        const next = current.includes(value)
+          ? current.filter((g) => g !== value)
+          : [...current, value];
+        // All 4 selected (or none, treated the same as "all") is the default — store
+        // undefined so the state stays clean and matches getListViewDefaults.
+        const nextStatusGroups = next.length === 0 || next.length >= 4 ? undefined : next;
+        this.reopenStatusGroupPopover = true;
+        // The popover is about to be torn down and rebuilt by the full re-render
+        // that updateViewState triggers — drop this instance's dismiss listener
+        // now so it doesn't linger on a detached node.
+        activeDocument.removeEventListener('click', dismiss, true);
+        this.updateViewState({ ...vs, statusGroups: nextStatusGroups });
+      },
+      autoOpenStatusGroupRow,
+    );
+
     // Reset to defaults row — only shown when state differs from defaults
     const isNonDefault =
       vs.groupBy !== defaults.groupBy ||
       vs.sortBy.field !== defaults.sortBy.field ||
       vs.sortBy.dir !== defaults.sortBy.dir ||
       vs.show !== defaults.show ||
+      isStatusGroupsNonDefault(vs.statusGroups) ||
       vs.filters.length > 0;
     if (isNonDefault) {
       const resetRow = popover.createDiv({ cls: 'tc-view-state-reset' });
@@ -1719,6 +1832,9 @@ export class CenterPanel {
       tasks = tasks.filter((t) => t.status === 'done');
     }
     // 'all' → no filter
+
+    // 2b. Status group filter
+    tasks = filterTasksByStatusGroups(tasks, vs.statusGroups, this.store.statusRegistry);
 
     // 3. Property filters (AND)
     for (const f of vs.filters) {
