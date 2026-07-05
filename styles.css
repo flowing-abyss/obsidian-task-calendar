@@ -3358,6 +3358,12 @@ body.tc-modal-open .popover.hover-popover {
   padding-left: 8px;
 }
 
+.tc-view-state-sublist-divider {
+  height: 1px;
+  margin: 4px 12px;
+  background: var(--background-modifier-border);
+}
+
 .tc-hidden {
   display: none;
 }

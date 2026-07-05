@@ -102,7 +102,13 @@ describe('CenterPanel pure helpers', () => {
 
     it('today excludes done tasks', () => {
       const tasks = [
-        task({ text: 'done', rawText: '- [x] done', status: 'done', due: '2026-06-25' }),
+        task({
+          text: 'done',
+          rawText: '- [x] done',
+          status: 'done',
+          statusSymbol: 'x',
+          due: '2026-06-25',
+        }),
         task({ text: 'open', rawText: '- [ ] open', due: '2026-06-25' }),
       ];
       const { panel, state } = makePanel(tasks);
@@ -131,7 +137,7 @@ describe('CenterPanel pure helpers', () => {
         task({ text: 'far', rawText: '- [ ] far', due: far }),
         task({ text: 'near', rawText: '- [ ] near', due: near }),
         task({ text: 'past', rawText: '- [ ] past', due: past }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done', due: near }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x', due: near }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'upcoming');
@@ -157,7 +163,7 @@ describe('CenterPanel pure helpers', () => {
       // 'today' is a known string; use a non-matching string by casting
       const tasks = [
         task({ text: 'open', rawText: '- [ ] open' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x' }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'unknown-list' as unknown as 'inbox');
@@ -168,7 +174,12 @@ describe('CenterPanel pure helpers', () => {
     it('{type:"tag"} filters via store.getTasks({tag}) and status open', () => {
       const tasks = [
         task({ text: 'work', rawText: '- [ ] work #work' }),
-        task({ text: 'workDone', rawText: '- [x] workDone #work', status: 'done' }),
+        task({
+          text: 'workDone',
+          rawText: '- [x] workDone #work',
+          status: 'done',
+          statusSymbol: 'x',
+        }),
         task({ text: 'personal', rawText: '- [ ] personal #personal' }),
       ];
       const { panel, state } = makePanel(tasks);
@@ -190,7 +201,7 @@ describe('CenterPanel pure helpers', () => {
         task({ text: 'work', rawText: '- [ ] work #work' }),
         task({ text: 'workSub', rawText: '- [ ] workSub #work/deep' }),
         task({ text: 'other', rawText: '- [ ] other #personal' }),
-        task({ text: 'done', rawText: '- [x] done #work', status: 'done' }),
+        task({ text: 'done', rawText: '- [x] done #work', status: 'done', statusSymbol: 'x' }),
       ];
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', { type: 'group', groupId: 'g1' });
@@ -504,7 +515,7 @@ describe('CenterPanel pure helpers', () => {
     it('all lists default to active show and date sort ascending', () => {
       for (const key of ['today', 'upcoming', 'inbox', 'tag:#work']) {
         const d = getListViewDefaults(key);
-        expect(d.show).toBe('active');
+        expect(d.statusGroups).toEqual(['todo', 'in-progress']);
         expect(d.sortBy.field).toBe('date');
         expect(d.sortBy.dir).toBe('asc');
         expect(d.filters).toHaveLength(0);
@@ -519,7 +530,7 @@ describe('CenterPanel pure helpers', () => {
       panel.mount(container);
       const vs = state.get('centerListViewState');
       expect(vs.groupBy).toBe('date');
-      expect(vs.show).toBe('active');
+      expect(vs.statusGroups).toEqual(['todo', 'in-progress']);
     });
 
     it('switches to inbox defaults when selectedList changes to inbox', () => {
@@ -606,24 +617,24 @@ describe('CenterPanel pure helpers', () => {
   });
 });
 
-describe('getFilteredTasks respects show status', () => {
+describe('getFilteredTasks respects the unified Show status filter (statusGroups)', () => {
   const untaggedSettings: CalendarSettings = {
     ...DEFAULT_SETTINGS,
     inbox: { mode: 'untagged', tag: '', removeTagOnAssign: false },
   };
 
-  it('show=active excludes done tasks', () => {
+  it('statusGroups=[todo,in-progress] (Active preset) excludes done tasks', () => {
     const { panel, state } = makePanel(
       [
-        task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+        task({ text: 'open', rawText: '- [ ] open', status: 'open', statusSymbol: ' ' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x' }),
       ],
       untaggedSettings,
     );
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
+      statusGroups: ['todo', 'in-progress'],
       filters: [],
     });
     state.set('selectedList', 'inbox');
@@ -631,18 +642,18 @@ describe('getFilteredTasks respects show status', () => {
     expect(tasks.every((t) => t.status !== 'done')).toBe(true);
   });
 
-  it('show=completed returns only done tasks', () => {
+  it('statusGroups=[done,cancelled] returns only done/cancelled tasks', () => {
     const { panel, state } = makePanel(
       [
-        task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+        task({ text: 'open', rawText: '- [ ] open', status: 'open', statusSymbol: ' ' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x' }),
       ],
       untaggedSettings,
     );
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'completed',
+      statusGroups: ['done', 'cancelled'],
       filters: [],
     });
     state.set('selectedList', 'inbox');
@@ -650,18 +661,18 @@ describe('getFilteredTasks respects show status', () => {
     expect(tasks.every((t) => t.status === 'done')).toBe(true);
   });
 
-  it('show=all returns both', () => {
+  it('statusGroups=undefined (All preset) returns both', () => {
     const { panel, state } = makePanel(
       [
-        task({ text: 'open', rawText: '- [ ] open', status: 'open' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done' }),
+        task({ text: 'open', rawText: '- [ ] open', status: 'open', statusSymbol: ' ' }),
+        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x' }),
       ],
       untaggedSettings,
     );
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'all',
+      statusGroups: undefined,
       filters: [],
     });
     state.set('selectedList', 'inbox');
@@ -679,7 +690,6 @@ describe('getFilteredTasks respects property filters', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'tag', value: '#work' }],
     });
     state.set('selectedList', { type: 'tag', tag: '#work' });
@@ -696,7 +706,6 @@ describe('getFilteredTasks respects property filters', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'tag', value: '#work' }],
     });
     // 'upcoming' with no dates → default branch returns all tasks via store.getTasks()
@@ -717,7 +726,6 @@ describe('getFilteredTasks respects property filters', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'file', filePath: 'notes/a.md' }],
     });
     state.set(
@@ -738,7 +746,6 @@ describe('getFilteredTasks respects property filters', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'time', value: '09:00' }],
     });
     state.set(
@@ -758,7 +765,6 @@ describe('getFilteredTasks respects property filters', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'priority', value: 'B' }],
     });
     state.set(
@@ -778,7 +784,6 @@ describe('getFilteredTasks respects property filters', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'all',
       filters: [{ type: 'status', value: '/' }],
     });
     state.set(
@@ -800,7 +805,6 @@ describe('getFilteredTasks respects property filters', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'date', value: '2026-01-10' }],
     });
     state.set(
@@ -826,7 +830,6 @@ describe('getFilteredTasks respects property filters', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [
         { type: 'tag', value: '#work' },
         { type: 'time', value: '09:00' },
@@ -848,7 +851,6 @@ describe('addPropertyFilter', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [],
     });
     call(panel, 'addPropertyFilter', { type: 'tag', value: '#work' });
@@ -861,7 +863,6 @@ describe('addPropertyFilter', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'tag', value: '#work' }],
     });
     call(panel, 'addPropertyFilter', { type: 'tag', value: '#work' });
@@ -873,7 +874,6 @@ describe('addPropertyFilter', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'file', filePath: 'a.md' }],
     });
     call(panel, 'addPropertyFilter', { type: 'file', filePath: 'a.md' });
@@ -885,7 +885,6 @@ describe('addPropertyFilter', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'date', value: '2026-01-10' }],
     });
     call(panel, 'addPropertyFilter', { type: 'date', value: '2026-01-10' });
@@ -897,7 +896,6 @@ describe('addPropertyFilter', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'status', value: '/' }],
     });
     call(panel, 'addPropertyFilter', { type: 'status', value: '/' });
@@ -909,7 +907,6 @@ describe('addPropertyFilter', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [{ type: 'tag', value: '#work' }],
     });
     call(panel, 'addPropertyFilter', { type: 'time', value: '#work' });
@@ -923,7 +920,6 @@ describe('removePropertyFilter', () => {
     state.set('centerListViewState', {
       groupBy: 'none',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'active',
       filters: [
         { type: 'tag', value: '#work' },
         { type: 'tag', value: '#personal' },

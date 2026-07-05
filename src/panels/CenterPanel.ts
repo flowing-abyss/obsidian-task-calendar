@@ -49,9 +49,27 @@ function projectNameFromPath(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
 }
 
-// undefined, or all 4 groups selected, is the default "no filtering" state.
-function isStatusGroupsNonDefault(statusGroups: TaskStatusType[] | undefined): boolean {
-  return !!statusGroups && statusGroups.length > 0 && statusGroups.length < 4;
+// undefined, or all 4 groups selected, both mean "no filtering" (show everything) —
+// normalize to undefined so the two representations compare equal.
+function normalizeStatusGroups(
+  statusGroups: TaskStatusType[] | undefined,
+): TaskStatusType[] | undefined {
+  if (!statusGroups || statusGroups.length === 0 || statusGroups.length >= 4) return undefined;
+  return statusGroups;
+}
+
+function statusGroupsEqual(
+  a: TaskStatusType[] | undefined,
+  b: TaskStatusType[] | undefined,
+): boolean {
+  const na = normalizeStatusGroups(a);
+  const nb = normalizeStatusGroups(b);
+  if (na === undefined || nb === undefined) return na === nb;
+  if (na.length !== nb.length) return false;
+  const compare = (x: string, y: string): number => x.localeCompare(y);
+  const sa = [...na].sort(compare);
+  const sb = [...nb].sort(compare);
+  return sa.every((v, i) => v === sb[i]);
 }
 
 const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
@@ -1350,8 +1368,7 @@ export class CenterPanel {
       vs.groupBy !== defaults.groupBy ||
       vs.sortBy.field !== defaults.sortBy.field ||
       vs.sortBy.dir !== defaults.sortBy.dir ||
-      vs.show !== defaults.show ||
-      isStatusGroupsNonDefault(vs.statusGroups);
+      !statusGroupsEqual(vs.statusGroups, defaults.statusGroups);
 
     const btn = container.createEl('button', {
       cls: `tc-view-state-btn${isNonDefault ? ' tc-view-state-btn--active' : ''}`,
@@ -1438,7 +1455,9 @@ export class CenterPanel {
 
     // Like makeRow, but options toggle membership in a set rather than
     // selecting a single value, and the popover stays open after a click
-    // so multiple options can be picked.
+    // so multiple options can be picked. `presets`, if given, render as
+    // plain (non-checkable) shortcut buttons above a divider, ahead of the
+    // toggle options — they just set the whole selection in one click.
     const makeMultiRow = (
       icon: string,
       label: string,
@@ -1447,6 +1466,7 @@ export class CenterPanel {
       options: Array<{ label: string; value: string }>,
       onToggle: (value: string) => void,
       initiallyOpen = false,
+      presets: Array<{ label: string; onClick: () => void }> = [],
     ): void => {
       const row = popover.createDiv({ cls: 'tc-view-state-row' });
       const rowMain = row.createDiv({ cls: 'tc-view-state-row-main' });
@@ -1476,6 +1496,16 @@ export class CenterPanel {
           rowMain.addClass('is-open');
         }
       });
+
+      for (const preset of presets) {
+        const optEl = subList.createEl('button', { cls: 'tc-view-state-option' });
+        optEl.createEl('span', { cls: 'tc-view-state-option-check' });
+        optEl.createEl('span', { cls: 'tc-view-state-option-label', text: preset.label });
+        optEl.addEventListener('click', () => preset.onClick());
+      }
+      if (presets.length > 0) {
+        subList.createDiv({ cls: 'tc-view-state-sublist-divider' });
+      }
 
       for (const opt of options) {
         const isActive = selected.includes(opt.value);
@@ -1516,16 +1546,8 @@ export class CenterPanel {
     ];
     const sortLabel = `${vs.sortBy.field.charAt(0).toUpperCase() + vs.sortBy.field.slice(1)} ${vs.sortBy.dir === 'asc' ? '↑' : '↓'}`;
 
-    const SHOW_OPTIONS = [
-      { label: 'Active only', value: 'active' },
-      { label: 'Completed only', value: 'completed' },
-      { label: 'All', value: 'all' },
-    ];
-    const SHOW_LABELS: Record<string, string> = {
-      active: 'Active',
-      completed: 'Completed',
-      all: 'All',
-    };
+    const ACTIVE_STATUS_GROUPS: TaskStatusType[] = ['todo', 'in-progress'];
+    const ALL_STATUS_GROUPS: TaskStatusType[] = ['todo', 'in-progress', 'done', 'cancelled'];
 
     const STATUS_GROUP_OPTIONS: Array<{ label: string; value: TaskStatusType }> = [
       { label: 'To do', value: 'todo' },
@@ -1533,15 +1555,14 @@ export class CenterPanel {
       { label: 'Done', value: 'done' },
       { label: 'Cancelled', value: 'cancelled' },
     ];
-    const STATUS_GROUP_LABELS: Record<TaskStatusType, string> = {
-      todo: 'To do',
-      'in-progress': 'In progress',
-      done: 'Done',
-      cancelled: 'Cancelled',
-    };
-    const statusGroupDisplayValue = (selected: TaskStatusType[] | undefined): string => {
-      if (!selected || selected.length === 0 || selected.length >= 4) return 'All';
-      return selected.map((s) => STATUS_GROUP_LABELS[s]).join(', ');
+
+    // Unified "Show" display value: All (undefined/all 4), Active (exactly
+    // the open+in-progress pair), otherwise a count of the selected groups.
+    const showDisplayValue = (selected: TaskStatusType[] | undefined): string => {
+      const effective = normalizeStatusGroups(selected) ?? ALL_STATUS_GROUPS;
+      if (effective.length >= 4) return 'All';
+      if (statusGroupsEqual(effective, ACTIVE_STATUS_GROUPS)) return 'Active';
+      return `${effective.length} selected`;
     };
 
     const defaults = getListViewDefaults(this.currentListKey);
@@ -1573,41 +1594,41 @@ export class CenterPanel {
       },
     );
 
-    makeRow(
-      'eye',
-      'Show',
-      SHOW_LABELS[vs.show] ?? vs.show,
-      vs.show,
-      defaults.show,
-      SHOW_OPTIONS,
-      (val) => {
-        this.updateViewState({ ...vs, show: val as ListViewState['show'] });
-      },
-    );
+    // Single unified "Show" control — replaces the old separate Show
+    // single-select and Status group multi-select, which contradicted each
+    // other. "Active"/"All" are one-click presets; the 4 toggles below them
+    // are the actual source of truth (presets just set their state).
+    const applyStatusGroupsChange = (nextStatusGroups: TaskStatusType[] | undefined): void => {
+      this.reopenStatusGroupPopover = true;
+      // The popover is about to be torn down and rebuilt by the full re-render
+      // that updateViewState triggers — drop this instance's dismiss listener
+      // now so it doesn't linger on a detached node.
+      activeDocument.removeEventListener('click', dismiss, true);
+      this.updateViewState({ ...vs, statusGroups: nextStatusGroups });
+    };
 
     makeMultiRow(
-      'layers',
-      'Status group',
-      statusGroupDisplayValue(vs.statusGroups),
-      vs.statusGroups ?? [],
+      'eye',
+      'Show',
+      showDisplayValue(vs.statusGroups),
+      vs.statusGroups ?? ALL_STATUS_GROUPS,
       STATUS_GROUP_OPTIONS,
       (val) => {
         const value = val as TaskStatusType;
-        const current = vs.statusGroups ?? ['todo', 'in-progress', 'done', 'cancelled'];
+        const current = vs.statusGroups ?? ALL_STATUS_GROUPS;
         const next = current.includes(value)
           ? current.filter((g) => g !== value)
           : [...current, value];
         // All 4 selected (or none, treated the same as "all") is the default — store
         // undefined so the state stays clean and matches getListViewDefaults.
         const nextStatusGroups = next.length === 0 || next.length >= 4 ? undefined : next;
-        this.reopenStatusGroupPopover = true;
-        // The popover is about to be torn down and rebuilt by the full re-render
-        // that updateViewState triggers — drop this instance's dismiss listener
-        // now so it doesn't linger on a detached node.
-        activeDocument.removeEventListener('click', dismiss, true);
-        this.updateViewState({ ...vs, statusGroups: nextStatusGroups });
+        applyStatusGroupsChange(nextStatusGroups);
       },
       autoOpenStatusGroupRow,
+      [
+        { label: 'Active', onClick: () => applyStatusGroupsChange(ACTIVE_STATUS_GROUPS) },
+        { label: 'All', onClick: () => applyStatusGroupsChange(undefined) },
+      ],
     );
 
     // Reset to defaults row — only shown when state differs from defaults
@@ -1615,8 +1636,7 @@ export class CenterPanel {
       vs.groupBy !== defaults.groupBy ||
       vs.sortBy.field !== defaults.sortBy.field ||
       vs.sortBy.dir !== defaults.sortBy.dir ||
-      vs.show !== defaults.show ||
-      isStatusGroupsNonDefault(vs.statusGroups) ||
+      !statusGroupsEqual(vs.statusGroups, defaults.statusGroups) ||
       vs.filters.length > 0;
     if (isNonDefault) {
       const resetRow = popover.createDiv({ cls: 'tc-view-state-reset' });
@@ -1825,15 +1845,7 @@ export class CenterPanel {
       });
     }
 
-    // 2. Show status filter
-    if (vs.show === 'active') {
-      tasks = tasks.filter((t) => t.status === 'open' || t.status === 'in-progress');
-    } else if (vs.show === 'completed') {
-      tasks = tasks.filter((t) => t.status === 'done');
-    }
-    // 'all' → no filter
-
-    // 2b. Status group filter
+    // 2. Show status filter (undefined/all-4 statusGroups → no filter)
     tasks = filterTasksByStatusGroups(tasks, vs.statusGroups, this.store.statusRegistry);
 
     // 3. Property filters (AND)

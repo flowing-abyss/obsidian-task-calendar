@@ -112,9 +112,9 @@ export type PropertyFilter =
 export interface ListViewState {
   groupBy: 'none' | 'date' | 'priority' | 'tag' | 'status';
   sortBy: { field: 'date' | 'priority' | 'title' | 'tag' | 'status'; dir: 'asc' | 'desc' };
-  show: 'active' | 'completed' | 'all';
   filters: PropertyFilter[];
-  // undefined, or all 4 groups present, means "no filtering" (show all groups).
-  // A real subset (1-3 groups) restricts tasks to those status groups.
+  // The single "Show" status filter. undefined, or all 4 groups present, means
+  // "no filtering" (show all groups). A real subset (1-3 groups) restricts
+  // tasks to those status groups.
   statusGroups?: TaskStatusType[];
 }

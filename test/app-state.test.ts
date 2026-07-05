@@ -187,7 +187,7 @@ describe('AppState', () => {
     const state = s.get('centerListViewState');
     expect(state.groupBy).toBe('date');
     expect(state.sortBy).toEqual({ field: 'date', dir: 'asc' });
-    expect(state.show).toBe('active');
+    expect(state.statusGroups).toEqual(['todo', 'in-progress']);
     expect(state.filters).toEqual([]);
   });
 });

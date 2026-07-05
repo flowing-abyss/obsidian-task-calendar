@@ -128,8 +128,9 @@ export function getListViewDefaults(listKey: string): ListViewState {
   return {
     groupBy: useDateGrouping ? 'date' : 'none',
     sortBy: { field: 'date', dir: 'asc' },
-    show: 'active',
     filters: [],
-    statusGroups: undefined,
+    // Default "Show" is Active (open + in-progress) — preserves the old
+    // show:'active' default under the unified statusGroups filter.
+    statusGroups: ['todo', 'in-progress'],
   };
 }
