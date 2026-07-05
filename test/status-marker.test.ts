@@ -1,3 +1,4 @@
+import { addIcon } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
@@ -57,6 +58,19 @@ describe('renderStatusMarker', () => {
     el.dispatchEvent(new MouseEvent('contextmenu'));
     expect(left).toHaveBeenCalledOnce();
     expect(ctx).toHaveBeenCalledOnce();
+  });
+
+  it('renders an <svg> child for a status with an icon (e.g. Done)', () => {
+    addIcon('check', '<svg><path d="M20 6 9 17l-5-5"/></svg>');
+    const parent = document.createElement('div');
+    const el = renderStatusMarker(parent, {
+      task: { statusSymbol: 'x', priority: 'D' } as any,
+      registry: reg,
+      onLeftClick: () => {},
+      onContextMenu: () => {},
+    });
+    const svg = el.querySelector('svg');
+    expect(svg).not.toBeNull();
   });
 
   it('renders unknown status glyph on neutral chip', () => {

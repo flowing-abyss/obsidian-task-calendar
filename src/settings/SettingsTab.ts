@@ -36,6 +36,8 @@ export function validateStatusSymbol(
 export class CalendarSettingsTab extends PluginSettingTab {
   /** Ids of cards (statuses / tag groups) currently expanded — persists across re-renders. */
   private expandedCards = new Set<string>();
+  /** Status id → its collapsed-card header preview chip host, so an icon edit can refresh it live. */
+  private statusHeaderPreviewEls = new Map<string, HTMLElement>();
 
   constructor(
     app: App,
@@ -885,16 +887,9 @@ export class CalendarSettingsTab extends PluginSettingTab {
         title: (s) => s.name,
         badge: (s) => s.symbol,
         preview: (headerEl, s) => {
-          const registry = new StatusRegistry(statuses);
           const previewEl = headerEl.createSpan({ cls: 'tc-status-header-preview' });
-          renderStatusMarker(previewEl, {
-            task: { statusSymbol: s.symbol, priority: 'D' } as Parameters<
-              typeof renderStatusMarker
-            >[1]['task'],
-            registry,
-            onLeftClick: () => {},
-            onContextMenu: () => {},
-          });
+          this.statusHeaderPreviewEls.set(s.id, previewEl);
+          this.renderStatusHeaderPreview(s.id);
         },
         groupKey: type,
         onCrossGroupDrop: (id, targetType) =>
@@ -929,6 +924,25 @@ export class CalendarSettingsTab extends PluginSettingTab {
           await this.persistAndRerenderStatuses();
         }),
     );
+  }
+
+  /** Re-renders a status's collapsed-card header preview chip (e.g. after an icon edit). */
+  private renderStatusHeaderPreview(statusId: string): void {
+    const previewEl = this.statusHeaderPreviewEls.get(statusId);
+    if (!previewEl) return;
+    const statuses = this.plugin.settings.taskStatuses;
+    const def = statuses.find((s) => s.id === statusId);
+    if (!def) return;
+    previewEl.empty();
+    const registry = new StatusRegistry(statuses);
+    renderStatusMarker(previewEl, {
+      task: { statusSymbol: def.symbol, priority: 'D' } as Parameters<
+        typeof renderStatusMarker
+      >[1]['task'],
+      registry,
+      onLeftClick: () => {},
+      onContextMenu: () => {},
+    });
   }
 
   private renderTaskStatusCardBody(
@@ -1040,6 +1054,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
           void this.persistStatuses();
           renderResults(query);
           updatePreview();
+          this.renderStatusHeaderPreview(def.id);
         });
 
         const q = query.trim().toLowerCase();
@@ -1062,6 +1077,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
             void this.persistStatuses();
             renderResults(query);
             updatePreview();
+            this.renderStatusHeaderPreview(def.id);
           });
         }
       };

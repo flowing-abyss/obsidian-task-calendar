@@ -90,6 +90,14 @@ describe('task statuses migration', () => {
     expect(seeded).toHaveLength(4);
   });
 
+  it('reseeds to the 4 defaults when taskStatuses is an empty array', () => {
+    const raw: Record<string, unknown> = { taskStatuses: [] };
+    migrateSettings(raw);
+    const seeded = raw['taskStatuses'] as unknown[];
+    expect(Array.isArray(seeded)).toBe(true);
+    expect(seeded).toHaveLength(4);
+  });
+
   it('never overwrites an existing taskStatuses list', () => {
     const existing = [
       {
