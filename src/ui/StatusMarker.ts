@@ -48,6 +48,7 @@ export function renderStatusMarker(parent: HTMLElement, opts: Opts): HTMLElement
 
   el.addEventListener('click', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     onLeftClick();
   });
   el.addEventListener('contextmenu', (e) => {

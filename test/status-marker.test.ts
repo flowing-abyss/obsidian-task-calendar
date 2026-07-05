@@ -60,6 +60,22 @@ describe('renderStatusMarker', () => {
     expect(ctx).toHaveBeenCalledOnce();
   });
 
+  it('stops click propagation so a parent card click handler does not also fire', () => {
+    const parent = document.createElement('div');
+    const parentClick = vi.fn();
+    parent.addEventListener('click', parentClick);
+    const left = vi.fn();
+    const el = renderStatusMarker(parent, {
+      task: { statusSymbol: 'x', priority: 'D' } as any,
+      registry: reg,
+      onLeftClick: left,
+      onContextMenu: () => {},
+    });
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(left).toHaveBeenCalledOnce();
+    expect(parentClick).not.toHaveBeenCalled();
+  });
+
   it('renders an <svg> child for a status with an icon (e.g. Done)', () => {
     addIcon('check', '<svg><path d="M20 6 9 17l-5-5"/></svg>');
     const parent = document.createElement('div');
