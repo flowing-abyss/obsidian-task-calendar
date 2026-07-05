@@ -124,6 +124,8 @@ export class TaskMutationService {
     return this.applyToLines(locator, (lines, taskLine) => {
       const line = lines[taskLine];
       if (!line) return;
+      const cur = /^[\s>]*- \[(.)\]/u.exec(line)?.[1];
+      if (cur === char) return; // no-op: status unchanged, preserve existing ✅/❌ stamp
       const registry = this.getRegistry?.();
       const targetType = registry ? registry.typeForSymbol(char) : 'open';
       const cr = line.endsWith('\r') ? '\r' : '';

@@ -88,6 +88,28 @@ describe('setStatusChar', () => {
     expect(l).toContain('- [!]');
   });
 
+  it('is a no-op (does not rewrite the ✅ stamp) when re-selecting the current status', async () => {
+    const raw = '- [x] task ✅ 2026-06-01';
+    const app = await createAppWithFiles({ 'f.md': raw });
+    const locator: TaskLocator = { filePath: 'f.md', rawText: raw, line: 0 };
+    await svc(app).setStatusChar(locator, 'x', '2026-07-04');
+    const content = await readFile(app, 'f.md');
+    expect(content).toBe(raw);
+    expect(content).toContain('✅ 2026-06-01');
+    expect(content).not.toContain('2026-07-04');
+  });
+
+  it('still updates the stamp on a genuine status transition', async () => {
+    const raw = '- [x] task ✅ 2026-06-01';
+    const app = await createAppWithFiles({ 'f.md': raw });
+    const locator: TaskLocator = { filePath: 'f.md', rawText: raw, line: 0 };
+    await svc(app).setStatusChar(locator, '-', '2026-07-04');
+    const content = await readFile(app, 'f.md');
+    expect(content).toContain('- [-]');
+    expect(content).toContain('❌ 2026-07-04');
+    expect(content).not.toContain('✅');
+  });
+
   it('preserves trailing \\r on CRLF files', async () => {
     const crlf = '- [ ] Buy milk\r\n- [ ] other\r\n';
     const app = await createAppWithFiles({ 'f.md': crlf });
