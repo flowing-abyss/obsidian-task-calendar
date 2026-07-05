@@ -1277,6 +1277,15 @@ export class CenterPanel {
       this.buildBulkPrioritySubmenu(sub, selectedTasks);
     });
 
+    // Status (submenu) — applies to all selected tasks
+    menu.addItem((item) => {
+      item.setTitle('Status').setIcon('check-square').setSection('priority');
+      const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+      buildStatusSubmenu(sub, selectedTasks[0]!, this.store.statusRegistry, (c) => {
+        void Promise.all(selectedTasks.map((t) => this.store.setTaskStatus(t, c)));
+      });
+    });
+
     // Set tag…
     menu.addItem((item) =>
       item
