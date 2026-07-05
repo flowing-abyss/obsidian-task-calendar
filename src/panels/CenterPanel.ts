@@ -1475,7 +1475,7 @@ export class CenterPanel {
       options: Array<{ label: string; value: string }>,
       onToggle: (value: string) => void,
       initiallyOpen = false,
-      presets: Array<{ label: string; onClick: () => void }> = [],
+      presets: Array<{ label: string; onClick: () => void; isActive?: boolean }> = [],
     ): void => {
       const row = popover.createDiv({ cls: 'tc-view-state-row' });
       const rowMain = row.createDiv({ cls: 'tc-view-state-row-main' });
@@ -1508,7 +1508,8 @@ export class CenterPanel {
 
       for (const preset of presets) {
         const optEl = subList.createEl('button', { cls: 'tc-view-state-option' });
-        optEl.createEl('span', { cls: 'tc-view-state-option-check' });
+        const checkEl = optEl.createEl('span', { cls: 'tc-view-state-option-check' });
+        if (preset.isActive) setIcon(checkEl, 'check');
         optEl.createEl('span', { cls: 'tc-view-state-option-label', text: preset.label });
         optEl.addEventListener('click', () => preset.onClick());
       }
@@ -1635,8 +1636,16 @@ export class CenterPanel {
       },
       autoOpenStatusGroupRow,
       [
-        { label: 'Active', onClick: () => applyStatusGroupsChange(ACTIVE_STATUS_GROUPS) },
-        { label: 'All', onClick: () => applyStatusGroupsChange(undefined) },
+        {
+          label: 'Active',
+          onClick: () => applyStatusGroupsChange(ACTIVE_STATUS_GROUPS),
+          isActive: statusGroupsEqual(vs.statusGroups, ACTIVE_STATUS_GROUPS),
+        },
+        {
+          label: 'All',
+          onClick: () => applyStatusGroupsChange(undefined),
+          isActive: normalizeStatusGroups(vs.statusGroups) === undefined,
+        },
       ],
     );
 
