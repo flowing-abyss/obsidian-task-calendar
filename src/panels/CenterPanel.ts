@@ -1,8 +1,9 @@
-import { Component, Menu, Notice, setIcon, TFile, type App } from 'obsidian';
+import { Component, Menu, Notice, setIcon, TFile, type App, type MenuItem } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
+import { PRIORITY_LEVELS } from '../priority';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
@@ -11,21 +12,27 @@ import type {
   ListViewState,
   PropertyFilter,
   ResolvedConfig,
+  TaskStatusType,
 } from '../settings/types';
+import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/statusConstants';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { LinkEditModal } from '../ui/LinkEditModal';
+import { renderStatusMarker } from '../ui/StatusMarker';
 import { TagPickerModal } from '../ui/TagPickerModal';
 import { TaskModal } from '../ui/TaskModal';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
+import { buildStatusSubmenu, showStatusMenuAt } from '../ui/statusMenu';
 import { openInFile } from '../ui/taskNavigation';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
 import {
+  filterTasksByStatusGroups,
   groupTasksByDate,
   groupTasksByPriority,
+  groupTasksByStatus,
   groupTasksByTag,
   sortTasksByField,
 } from '../views/taskGrouping';
@@ -44,6 +51,47 @@ function projectNameFromPath(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
 }
 
+// undefined, or all 4 groups selected, both mean "no filtering" (show everything) —
+// normalize to undefined so the two representations compare equal.
+function normalizeStatusGroups(
+  statusGroups: TaskStatusType[] | undefined,
+): TaskStatusType[] | undefined {
+  if (!statusGroups || statusGroups.length === 0 || statusGroups.length >= 4) return undefined;
+  return statusGroups;
+}
+
+function statusGroupsEqual(
+  a: TaskStatusType[] | undefined,
+  b: TaskStatusType[] | undefined,
+): boolean {
+  const na = normalizeStatusGroups(a);
+  const nb = normalizeStatusGroups(b);
+  if (na === undefined || nb === undefined) return na === nb;
+  if (na.length !== nb.length) return false;
+  const compare = (x: string, y: string): number => x.localeCompare(y);
+  const sa = [...na].sort(compare);
+  const sb = [...nb].sort(compare);
+  return sa.every((v, i) => v === sb[i]);
+}
+
+/**
+ * Colors a priority-submenu flag icon to match the rest of the UI (status
+ * popover flags, flag settings, etc.) by tagging the item's undocumented
+ * `.dom` element — Obsidian doesn't expose per-item icon styling otherwise.
+ */
+function applyPriorityFlagColor(si: MenuItem, value: TaskPriority): void {
+  const dom = (si as unknown as { dom?: HTMLElement }).dom;
+  if (dom) {
+    dom.addClass('tc-menu-priority-flag');
+    dom.setAttribute('data-tc-priority', value);
+  }
+}
+
+/** Obsidian's MenuItem.setSubmenu() is undocumented; reach it via one shared cast. */
+function getSubmenu(item: MenuItem): Menu {
+  return (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+}
+
 export class CenterPanel {
   private el!: HTMLElement;
   private offs: Array<() => void> = [];
@@ -58,6 +106,10 @@ export class CenterPanel {
   private currentListKey: string = 'today';
   private filterDebounce = 0;
   private refocusSearch = false;
+  // Set true while a status-group toggle click is in flight, so that the
+  // full re-render triggered by updateViewState re-opens the popover with
+  // the "Status group" row still expanded (multi-select shouldn't close on pick).
+  private reopenStatusGroupPopover = false;
   private onSaveSettings: () => Promise<void>;
   private mutations: TaskMutationService;
   private md = new Component();
@@ -445,6 +497,14 @@ export class CenterPanel {
         customFilePath: this.settings.customFilePath,
         startPosition: this.calDate.format(this.calViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM'),
       };
+      const onContextMenu = (ev: MouseEvent, t: Task): void => {
+        showStatusMenuAt(ev, {
+          task: t,
+          registry: this.store.statusRegistry,
+          onPickStatus: (c) => void this.store.setTaskStatus(t, c),
+          onPickPriority: (p) => void this.store.setPriority(t, p),
+        });
+      };
       if (this.calViewType === 'month') {
         this.calViewInstance = new MonthView({
           app: this.app,
@@ -465,6 +525,8 @@ export class CenterPanel {
           onDrop: handleDrop,
           onOpenNote: (t) => void openInFile(this.app, t),
           onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu,
         });
       } else if (this.calViewType === 'week') {
         this.calViewInstance = new WeekView({
@@ -477,6 +539,8 @@ export class CenterPanel {
           onDrop: handleDrop,
           onOpenNote: (t) => void openInFile(this.app, t),
           onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu,
         });
       } else {
         this.calViewInstance = new ListView({
@@ -487,6 +551,8 @@ export class CenterPanel {
           onDateClick: () => {},
           onTaskClick: handleTaskClick,
           onEditLink: (t, occ, token) => this.editTaskLink(t, occ, token),
+          statusRegistry: this.store.statusRegistry,
+          onContextMenu,
         });
       }
       this.calViewInstance.render(viewContainer, tasks, cfg);
@@ -672,6 +738,8 @@ export class CenterPanel {
       groups = groupTasksByDate(tasks, today, tomorrow);
     } else if (vs.groupBy === 'priority') {
       groups = groupTasksByPriority(tasks);
+    } else if (vs.groupBy === 'status') {
+      groups = groupTasksByStatus(tasks, this.store.statusRegistry);
     } else {
       groups = groupTasksByTag(tasks);
     }
@@ -705,17 +773,19 @@ export class CenterPanel {
     card.dataset['filePath'] = task.filePath;
     card.dataset['line'] = String(task.line);
 
-    const checkbox = card.createEl('input', {
-      cls: 'tc-task-checkbox',
-      attr: { type: 'checkbox' },
-    });
-    checkbox.checked = task.status === 'done';
-    if (task.priority && task.priority !== 'D') {
-      checkbox.dataset['priority'] = task.priority;
-    }
-    checkbox.addEventListener('change', (e) => {
-      e.stopPropagation();
-      void this.store.toggleTask(task);
+    renderStatusMarker(card, {
+      task,
+      registry: this.store.statusRegistry,
+      onLeftClick: () => void this.store.toggleTask(task),
+      onContextMenu: (ev) => {
+        ev.stopPropagation();
+        showStatusMenuAt(ev, {
+          task,
+          registry: this.store.statusRegistry,
+          onPickStatus: (c) => void this.store.setTaskStatus(task, c),
+          onPickPriority: (p) => void this.store.setPriority(task, p),
+        });
+      },
     });
 
     // Pre-compute metadata needed in both body and meta-right
@@ -990,8 +1060,20 @@ export class CenterPanel {
       // ── Priority (submenu) ────────────────────────────────
       menu.addItem((item) => {
         item.setTitle('Priority').setIcon('arrow-up-narrow-wide').setSection('priority');
-        const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+        const sub = getSubmenu(item);
         this.buildPrioritySubmenu(sub, task);
+      });
+
+      // ── Status (submenu) ──────────────────────────────────
+      menu.addItem((item) => {
+        item.setTitle('Status').setIcon('check-square').setSection('priority');
+        const sub = getSubmenu(item);
+        buildStatusSubmenu(
+          sub,
+          task,
+          this.store.statusRegistry,
+          (c) => void this.store.setTaskStatus(task, c),
+        );
       });
 
       menu.addItem((item) =>
@@ -1000,6 +1082,14 @@ export class CenterPanel {
           .setIcon('filter')
           .setSection('priority')
           .onClick(() => this.addPropertyFilter({ type: 'priority', value: task.priority })),
+      );
+
+      menu.addItem((item) =>
+        item
+          .setTitle('Filter by this status')
+          .setIcon('filter')
+          .setSection('priority')
+          .onClick(() => this.addPropertyFilter({ type: 'status', value: task.statusSymbol })),
       );
 
       // ── Set tag… ───────────────────────────────────────────
@@ -1076,41 +1166,27 @@ export class CenterPanel {
   }
 
   private buildPrioritySubmenu(sub: Menu, task: Task): void {
-    const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
-      { label: '🔺 Highest', value: 'A' },
-      { label: '⏫ High', value: 'B' },
-      { label: '🔼 Medium', value: 'C' },
-      { label: 'Normal', value: 'D' },
-      { label: '🔽 Low', value: 'E' },
-      { label: '⏬ Lowest', value: 'F' },
-    ];
     for (const level of PRIORITY_LEVELS) {
-      sub.addItem((si) =>
-        si
-          .setTitle(level.label)
+      sub.addItem((si) => {
+        si.setTitle(level.label)
+          .setIcon('flag')
           .setChecked(task.priority === level.value)
-          .onClick(() => void this.setPriority(task, level.value)),
-      );
+          .onClick(() => void this.setPriority(task, level.value));
+        applyPriorityFlagColor(si, level.value);
+      });
     }
   }
 
   private buildBulkPrioritySubmenu(sub: Menu, selectedTasks: Task[]): void {
-    const PRIORITY_LEVELS: Array<{ label: string; value: TaskPriority }> = [
-      { label: '🔺 Highest', value: 'A' },
-      { label: '⏫ High', value: 'B' },
-      { label: '🔼 Medium', value: 'C' },
-      { label: 'Normal', value: 'D' },
-      { label: '🔽 Low', value: 'E' },
-      { label: '⏬ Lowest', value: 'F' },
-    ];
     for (const level of PRIORITY_LEVELS) {
-      sub.addItem((si) =>
-        si
-          .setTitle(level.label)
+      sub.addItem((si) => {
+        si.setTitle(level.label)
+          .setIcon('flag')
           .onClick(
             () => void Promise.all(selectedTasks.map((t) => this.setPriority(t, level.value))),
-          ),
-      );
+          );
+        applyPriorityFlagColor(si, level.value);
+      });
     }
   }
 
@@ -1195,8 +1271,17 @@ export class CenterPanel {
     // Priority (submenu)
     menu.addItem((item) => {
       item.setTitle('Priority').setIcon('arrow-up-narrow-wide').setSection('priority');
-      const sub = (item as unknown as { setSubmenu(): Menu }).setSubmenu();
+      const sub = getSubmenu(item);
       this.buildBulkPrioritySubmenu(sub, selectedTasks);
+    });
+
+    // Status (submenu) — applies to all selected tasks
+    menu.addItem((item) => {
+      item.setTitle('Status').setIcon('check-square').setSection('priority');
+      const sub = getSubmenu(item);
+      buildStatusSubmenu(sub, selectedTasks[0]!, this.store.statusRegistry, (c) => {
+        void Promise.all(selectedTasks.map((t) => this.store.setTaskStatus(t, c)));
+      });
     });
 
     // Set tag…
@@ -1240,16 +1325,13 @@ export class CenterPanel {
     if (f.type === 'tag') return f.value;
     if (f.type === 'file') return `📄 ${f.filePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}`;
     if (f.type === 'time') return `⏰ ${f.value}`;
+    if (f.type === 'status') return this.store.statusRegistry.bySymbol(f.value)?.name ?? f.value;
     if (f.type === 'date') return `📅 ${this.formatDate(f.value)}`;
-    const PRIORITY_EMOJIS: Record<string, string> = {
-      A: '🔺 Highest',
-      B: '⏫ High',
-      C: '🔼 Medium',
-      D: 'Normal',
-      E: '🔽 Low',
-      F: '⏬ Lowest',
-    };
-    return PRIORITY_EMOJIS[f.value] ?? f.value;
+    const level = PRIORITY_LEVELS.find((l) => l.value === f.value);
+    if (!level) return f.value;
+    // D/None has no emoji and reads as "Normal" here (distinct from the
+    // "None" label used in priority-picker menus).
+    return level.emoji ? `${level.emoji} ${level.label}` : 'Normal';
   }
 
   private addPropertyFilter(filter: PropertyFilter): void {
@@ -1260,6 +1342,7 @@ export class CenterPanel {
       if (f.type === 'tag' && filter.type === 'tag') return f.value === filter.value;
       if (f.type === 'time' && filter.type === 'time') return f.value === filter.value;
       if (f.type === 'priority' && filter.type === 'priority') return f.value === filter.value;
+      if (f.type === 'status' && filter.type === 'status') return f.value === filter.value;
       if (f.type === 'date' && filter.type === 'date') return f.value === filter.value;
       return false;
     });
@@ -1288,7 +1371,7 @@ export class CenterPanel {
       vs.groupBy !== defaults.groupBy ||
       vs.sortBy.field !== defaults.sortBy.field ||
       vs.sortBy.dir !== defaults.sortBy.dir ||
-      vs.show !== defaults.show;
+      !statusGroupsEqual(vs.statusGroups, defaults.statusGroups);
 
     const btn = container.createEl('button', {
       cls: `tc-view-state-btn${isNonDefault ? ' tc-view-state-btn--active' : ''}`,
@@ -1296,9 +1379,14 @@ export class CenterPanel {
     });
     setIcon(btn, 'arrow-up-down');
     btn.addEventListener('click', () => this.showViewStatePopover(btn));
+
+    if (this.reopenStatusGroupPopover) {
+      this.reopenStatusGroupPopover = false;
+      this.showViewStatePopover(btn, true);
+    }
   }
 
-  private showViewStatePopover(anchor: HTMLElement): void {
+  private showViewStatePopover(anchor: HTMLElement, autoOpenStatusGroupRow = false): void {
     const existing = this.el.querySelector('.tc-view-state-popover');
     if (existing) {
       existing.remove();
@@ -1368,17 +1456,86 @@ export class CenterPanel {
       }
     };
 
+    // Like makeRow, but options toggle membership in a set rather than
+    // selecting a single value, and the popover stays open after a click
+    // so multiple options can be picked. `presets`, if given, render as
+    // plain (non-checkable) shortcut buttons above a divider, ahead of the
+    // toggle options — they just set the whole selection in one click.
+    const makeMultiRow = (
+      icon: string,
+      label: string,
+      displayValue: string,
+      selected: readonly string[],
+      options: Array<{ label: string; value: string }>,
+      onToggle: (value: string) => void,
+      initiallyOpen = false,
+      presets: Array<{ label: string; onClick: () => void; isActive?: boolean }> = [],
+    ): void => {
+      const row = popover.createDiv({ cls: 'tc-view-state-row' });
+      const rowMain = row.createDiv({ cls: 'tc-view-state-row-main' });
+      const iconEl = rowMain.createEl('span', { cls: 'tc-view-state-row-icon' });
+      setIcon(iconEl, icon);
+      rowMain.createEl('span', { cls: 'tc-view-state-row-label', text: label });
+      rowMain.createEl('span', { cls: 'tc-view-state-row-value', text: displayValue });
+      const chevEl = rowMain.createEl('span', { cls: 'tc-view-state-row-chevron' });
+      setIcon(chevEl, 'chevron-right');
+
+      const subList = row.createDiv({ cls: 'tc-view-state-sublist tc-hidden' });
+      if (initiallyOpen) {
+        subList.removeClass('tc-hidden');
+        rowMain.addClass('is-open');
+      }
+
+      rowMain.addEventListener('click', () => {
+        const isOpen = !subList.hasClass('tc-hidden');
+        popover.querySelectorAll<HTMLElement>('.tc-view-state-sublist').forEach((el) => {
+          el.addClass('tc-hidden');
+        });
+        popover.querySelectorAll<HTMLElement>('.tc-view-state-row-main').forEach((el) => {
+          el.removeClass('is-open');
+        });
+        if (!isOpen) {
+          subList.removeClass('tc-hidden');
+          rowMain.addClass('is-open');
+        }
+      });
+
+      for (const preset of presets) {
+        const optEl = subList.createEl('button', { cls: 'tc-view-state-option' });
+        const checkEl = optEl.createEl('span', { cls: 'tc-view-state-option-check' });
+        if (preset.isActive) setIcon(checkEl, 'check');
+        optEl.createEl('span', { cls: 'tc-view-state-option-label', text: preset.label });
+        optEl.addEventListener('click', () => preset.onClick());
+      }
+      if (presets.length > 0) {
+        subList.createDiv({ cls: 'tc-view-state-sublist-divider' });
+      }
+
+      for (const opt of options) {
+        const isActive = selected.includes(opt.value);
+        const optEl = subList.createEl('button', { cls: 'tc-view-state-option' });
+        const checkEl = optEl.createEl('span', { cls: 'tc-view-state-option-check' });
+        if (isActive) setIcon(checkEl, 'check');
+        optEl.createEl('span', { cls: 'tc-view-state-option-label', text: opt.label });
+        optEl.addEventListener('click', () => {
+          onToggle(opt.value);
+        });
+      }
+    };
+
     const GROUP_BY_OPTIONS = [
       { label: 'None', value: 'none' },
       { label: 'Date', value: 'date' },
       { label: 'Priority', value: 'priority' },
       { label: 'Tag', value: 'tag' },
+      { label: 'Status', value: 'status' },
     ];
     const GROUP_LABELS: Record<string, string> = {
       none: 'None',
       date: 'Date',
       priority: 'Priority',
       tag: 'Tag',
+      status: 'Status',
     };
 
     const sortDirArrow = vs.sortBy.dir === 'asc' ? '↑' : '↓';
@@ -1389,18 +1546,20 @@ export class CenterPanel {
       { label: `Priority ${sortFieldArrow('priority')}`.trim(), value: 'priority' },
       { label: `Title ${sortFieldArrow('title')}`.trim(), value: 'title' },
       { label: `Tag ${sortFieldArrow('tag')}`.trim(), value: 'tag' },
+      { label: `Status ${sortFieldArrow('status')}`.trim(), value: 'status' },
     ];
     const sortLabel = `${vs.sortBy.field.charAt(0).toUpperCase() + vs.sortBy.field.slice(1)} ${vs.sortBy.dir === 'asc' ? '↑' : '↓'}`;
 
-    const SHOW_OPTIONS = [
-      { label: 'Active only', value: 'active' },
-      { label: 'Completed only', value: 'completed' },
-      { label: 'All', value: 'all' },
-    ];
-    const SHOW_LABELS: Record<string, string> = {
-      active: 'Active',
-      completed: 'Completed',
-      all: 'All',
+    const STATUS_GROUP_OPTIONS: Array<{ label: string; value: TaskStatusType }> =
+      ALL_STATUS_GROUPS.map((value) => ({ label: TYPE_LABELS[value], value }));
+
+    // Unified "Show" display value: All (undefined/all 4), Active (exactly
+    // the open+in-progress pair), otherwise a count of the selected groups.
+    const showDisplayValue = (selected: TaskStatusType[] | undefined): string => {
+      const effective = normalizeStatusGroups(selected) ?? ALL_STATUS_GROUPS;
+      if (effective.length >= 4) return 'All';
+      if (statusGroupsEqual(effective, ACTIVE_STATUS_GROUPS)) return 'Active';
+      return `${effective.length} selected`;
     };
 
     const defaults = getListViewDefaults(this.currentListKey);
@@ -1432,16 +1591,49 @@ export class CenterPanel {
       },
     );
 
-    makeRow(
+    // Single unified "Show" control — replaces the old separate Show
+    // single-select and Status group multi-select, which contradicted each
+    // other. "Active"/"All" are one-click presets; the 4 toggles below them
+    // are the actual source of truth (presets just set their state).
+    const applyStatusGroupsChange = (nextStatusGroups: TaskStatusType[] | undefined): void => {
+      this.reopenStatusGroupPopover = true;
+      // The popover is about to be torn down and rebuilt by the full re-render
+      // that updateViewState triggers — drop this instance's dismiss listener
+      // now so it doesn't linger on a detached node.
+      activeDocument.removeEventListener('click', dismiss, true);
+      this.updateViewState({ ...vs, statusGroups: nextStatusGroups });
+    };
+
+    makeMultiRow(
       'eye',
       'Show',
-      SHOW_LABELS[vs.show] ?? vs.show,
-      vs.show,
-      defaults.show,
-      SHOW_OPTIONS,
+      showDisplayValue(vs.statusGroups),
+      vs.statusGroups ?? ALL_STATUS_GROUPS,
+      STATUS_GROUP_OPTIONS,
       (val) => {
-        this.updateViewState({ ...vs, show: val as ListViewState['show'] });
+        const value = val as TaskStatusType;
+        const current = vs.statusGroups ?? ALL_STATUS_GROUPS;
+        const next = current.includes(value)
+          ? current.filter((g) => g !== value)
+          : [...current, value];
+        // All 4 selected (or none, treated the same as "all") is the default — store
+        // undefined so the state stays clean and matches getListViewDefaults.
+        const nextStatusGroups = next.length === 0 || next.length >= 4 ? undefined : next;
+        applyStatusGroupsChange(nextStatusGroups);
       },
+      autoOpenStatusGroupRow,
+      [
+        {
+          label: 'Active',
+          onClick: () => applyStatusGroupsChange(ACTIVE_STATUS_GROUPS),
+          isActive: statusGroupsEqual(vs.statusGroups, ACTIVE_STATUS_GROUPS),
+        },
+        {
+          label: 'All',
+          onClick: () => applyStatusGroupsChange(undefined),
+          isActive: normalizeStatusGroups(vs.statusGroups) === undefined,
+        },
+      ],
     );
 
     // Reset to defaults row — only shown when state differs from defaults
@@ -1449,7 +1641,7 @@ export class CenterPanel {
       vs.groupBy !== defaults.groupBy ||
       vs.sortBy.field !== defaults.sortBy.field ||
       vs.sortBy.dir !== defaults.sortBy.dir ||
-      vs.show !== defaults.show ||
+      !statusGroupsEqual(vs.statusGroups, defaults.statusGroups) ||
       vs.filters.length > 0;
     if (isNonDefault) {
       const resetRow = popover.createDiv({ cls: 'tc-view-state-reset' });
@@ -1658,13 +1850,8 @@ export class CenterPanel {
       });
     }
 
-    // 2. Show status filter
-    if (vs.show === 'active') {
-      tasks = tasks.filter((t) => t.status === 'open' || t.status === 'in-progress');
-    } else if (vs.show === 'completed') {
-      tasks = tasks.filter((t) => t.status === 'done');
-    }
-    // 'all' → no filter
+    // 2. Show status filter (undefined/all-4 statusGroups → no filter)
+    tasks = filterTasksByStatusGroups(tasks, vs.statusGroups, this.store.statusRegistry);
 
     // 3. Property filters (AND)
     for (const f of vs.filters) {
@@ -1678,6 +1865,8 @@ export class CenterPanel {
         tasks = tasks.filter((t) => t.time === f.value);
       } else if (f.type === 'priority') {
         tasks = tasks.filter((t) => t.priority === f.value);
+      } else if (f.type === 'status') {
+        tasks = tasks.filter((t) => t.statusSymbol === f.value);
       } else if (f.type === 'date') {
         tasks = tasks.filter((t) => (t.due ?? t.scheduled ?? t.dailyNoteDate) === f.value);
       }
@@ -1691,7 +1880,7 @@ export class CenterPanel {
     }
 
     // 5. Sort
-    return sortTasksByField(tasks, vs.sortBy.field, vs.sortBy.dir);
+    return sortTasksByField(tasks, vs.sortBy.field, vs.sortBy.dir, this.store.statusRegistry);
   }
 
   private getInboxTasks(): Task[] {
@@ -1853,16 +2042,6 @@ export class CenterPanel {
     task: Task,
     priority: 'A' | 'B' | 'C' | 'D' | 'E' | 'F',
   ): Promise<void> {
-    const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'] as const;
-    const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      let updated = line;
-      for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
-      if (priority !== 'D' && PRIORITY_MAP[priority])
-        updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
-      lines[taskLine] = updated.replace(/\s{2,}/gu, ' ').trimEnd();
-    });
+    await this.store.setPriority(task, priority);
   }
 }

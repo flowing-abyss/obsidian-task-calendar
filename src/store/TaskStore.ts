@@ -10,9 +10,10 @@ import { locatorOf, TaskMutationService } from '../mutation';
 import { countLinksIn } from '../parser/links';
 import { parseSubItems } from '../parser/SubItemParser';
 import { parseTask } from '../parser/TaskParser';
-import type { Task, TaskFilter } from '../parser/types';
+import type { Task, TaskFilter, TaskPriority } from '../parser/types';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings } from '../settings/types';
+import { StatusRegistry } from '../status/StatusRegistry';
 
 export interface StoreUpdateEvent {
   changedFile?: string; // undefined = bulk init complete
@@ -49,13 +50,20 @@ export class TaskStore {
   private vaultRefs: EventRef[] = [];
   private resolver: DailyNoteResolver;
   private mutations: TaskMutationService;
+  statusRegistry: StatusRegistry;
 
   constructor(
     private app: App,
     private settings: CalendarSettings,
   ) {
     this.resolver = new DailyNoteResolver(app, settings);
-    this.mutations = new TaskMutationService(app);
+    this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
+    this.mutations = new TaskMutationService(app, () => this.statusRegistry);
+  }
+
+  /** Rebuild the status registry from current settings. Call after settings edits. */
+  rebuildStatusRegistry(): void {
+    this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
   }
 
   async initialize(): Promise<void> {
@@ -139,13 +147,14 @@ export class TaskStore {
         line: lineIdx,
         dailyNoteDate,
         globalTaskFilter: this.settings.desktop.globalTaskFilter || undefined,
+        statusRegistry: this.statusRegistry,
       });
       if (task) {
         task.noteColor = fm?.color;
         task.noteTextColor = fm?.textColor;
         task.noteIcon = fm?.icon;
         // Parse sub-items (sub-tasks, comments, description)
-        const sub = parseSubItems(lines, lineIdx, filePath);
+        const sub = parseSubItems(lines, lineIdx, filePath, this.statusRegistry);
         if (sub.subtasks.length) task.subtasks = sub.subtasks;
         if (sub.comments.length) task.comments = sub.comments;
         if (sub.description) task.description = sub.description;
@@ -249,6 +258,25 @@ export class TaskStore {
     const today = window.moment().format('YYYY-MM-DD');
     try {
       await this.mutations.toggleCompletion(locatorOf(task), today);
+    } catch {
+      new Notice('Failed to update task. Please try again.');
+    }
+  }
+
+  /** Rewrite the task's status marker character, stamping/stripping ✅/❌ as needed. */
+  async setTaskStatus(task: Task, char: string): Promise<void> {
+    const today = window.moment().format('YYYY-MM-DD');
+    try {
+      await this.mutations.setStatusChar(locatorOf(task), char, today);
+    } catch {
+      new Notice('Failed to update task. Please try again.');
+    }
+  }
+
+  /** Rewrite the task's priority emoji. */
+  async setPriority(task: Task, priority: TaskPriority): Promise<void> {
+    try {
+      await this.mutations.setPriority(locatorOf(task), priority);
     } catch {
       new Notice('Failed to update task. Please try again.');
     }

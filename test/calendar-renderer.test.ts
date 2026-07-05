@@ -1,6 +1,8 @@
 import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
+import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskStore } from '../src/store/TaskStore';
 import { CalendarRenderer } from '../src/ui/CalendarRenderer';
 import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
@@ -10,6 +12,7 @@ useRealMoment();
 class StubStore {
   private tasks: Task[] = [];
   private listeners = new Set<(p: { changedFile?: string }) => void>();
+  statusRegistry = new StatusRegistry(buildDefaultTaskStatuses());
   getTasks(): Task[] {
     return this.tasks;
   }
@@ -26,6 +29,8 @@ class StubStore {
     this.tasks = t;
   }
   toggleTask = vi.fn();
+  setTaskStatus = vi.fn();
+  setPriority = vi.fn();
   addTask = vi.fn<(date: string, text: string) => Promise<void>>().mockResolvedValue(undefined);
 }
 
@@ -478,9 +483,9 @@ describe('CalendarRenderer', () => {
       const t = task({ due: todayStr, status: 'open' });
       store.setTasks([t]);
       store.emit();
-      // click the checkbox inside the task card
-      const cb = root.querySelector('.task .calendar-task-checkbox') as HTMLInputElement;
-      cb.dispatchEvent(new Event('change', { bubbles: true }));
+      // click the status marker inside the task card
+      const marker = root.querySelector('.task .tc-status-marker') as HTMLElement;
+      marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       expect(store.toggleTask).toHaveBeenCalledWith(t);
       r.destroy();
     });

@@ -13,6 +13,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     text: 'do thing #task/inbox',
     markdownText: 'do thing #task/inbox',
     status: 'open',
+    statusSymbol: ' ',
     priority: 'D',
     ...overrides,
   };

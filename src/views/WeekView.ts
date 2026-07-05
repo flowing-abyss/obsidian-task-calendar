@@ -2,6 +2,7 @@ import { Component, type App } from 'obsidian';
 import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
 import { createTaskCard } from '../ui/TaskCard';
 import { BaseView } from './BaseView';
 import { getTasksForDate, renderTaskGroup } from './taskGrouping';
@@ -14,6 +15,8 @@ export interface WeekViewCallbacks {
   onDrop: (dragData: string, targetDate: string) => void;
   onOpenNote: (task: Task) => void;
   onEditLink?: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
+  statusRegistry: StatusRegistry;
+  onContextMenu: (ev: MouseEvent, task: Task) => void;
 }
 
 export class WeekView extends BaseView {
@@ -70,6 +73,8 @@ export class WeekView extends BaseView {
           onToggle: this.callbacks.onToggle,
           onOpenNote: this.callbacks.onOpenNote,
           onEditLink: onEditLink ? (occ, token) => onEditLink(task, occ, token) : undefined,
+          statusRegistry: this.callbacks.statusRegistry,
+          onContextMenu: this.callbacks.onContextMenu,
         });
 
         card.setAttribute('draggable', 'true');

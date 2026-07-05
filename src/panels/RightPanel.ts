@@ -6,7 +6,9 @@ import { rewriteNthLink, type LinkToken } from '../parser/links';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
 import { formatTaskLine, insertIntoTitleBody } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
+import { buildDefaultTaskStatuses } from '../settings/defaults';
 import type { CalendarSettings } from '../settings/types';
+import { StatusRegistry } from '../status/StatusRegistry';
 import {
   enableAttachmentDrop,
   enableAttachmentPaste,
@@ -15,6 +17,8 @@ import {
 } from '../ui/attachmentDrop';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderTaskText } from '../ui/renderTaskText';
+import { renderStatusMarker } from '../ui/StatusMarker';
+import { showStatusMenuAt } from '../ui/statusMenu';
 import { showTagDropdown } from '../ui/tagDropdown';
 import { openInFile } from '../ui/taskNavigation';
 
@@ -25,6 +29,7 @@ export class RightPanel {
   private off?: () => void;
   private draggingSub: SubTask | null = null;
   private mutations: TaskMutationService;
+  private statusRegistry: StatusRegistry;
   private md = new Component();
 
   constructor(
@@ -32,7 +37,10 @@ export class RightPanel {
     private app: App,
     private settings?: CalendarSettings,
   ) {
-    this.mutations = new TaskMutationService(app);
+    this.statusRegistry = new StatusRegistry(
+      this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
+    );
+    this.mutations = new TaskMutationService(app, () => this.statusRegistry);
   }
 
   mount(container: HTMLElement): void {
@@ -48,6 +56,11 @@ export class RightPanel {
   }
 
   private render(): void {
+    // Rebuild from current settings so a mid-session status edit (Settings tab) is
+    // reflected immediately — RightPanel is constructed once and never otherwise refreshed.
+    this.statusRegistry = new StatusRegistry(
+      this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
+    );
     this.md.unload();
     this.md = new Component();
     this.md.load();
@@ -489,15 +502,21 @@ export class RightPanel {
       void this.reorderSubTask(parentTask, dragged, sub, position);
     });
 
-    // ── Checkbox ──────────────────────────────────────────────
-    const cb = row.createEl('input', {
-      cls: 'tc-task-checkbox',
-      attr: { type: 'checkbox' },
-    });
-    cb.checked = sub.status === 'done';
-    cb.addEventListener('change', (e) => {
-      e.stopPropagation();
-      void this.toggleSubTask(sub);
+    // ── Status marker ─────────────────────────────────────────
+    renderStatusMarker(row, {
+      task: sub,
+      registry: this.statusRegistry,
+      onLeftClick: () => void this.toggleSubTask(sub),
+      onContextMenu: (ev) => {
+        ev.stopPropagation();
+        const today = window.moment().format('YYYY-MM-DD');
+        showStatusMenuAt(ev, {
+          task: sub,
+          registry: this.statusRegistry,
+          onPickStatus: (c) => void this.mutations.setStatusChar(locatorOf(sub), c, today),
+          onPickPriority: (p) => void this.updatePriority(sub, p),
+        });
+      },
     });
 
     // ── Content ───────────────────────────────────────────────
@@ -880,15 +899,12 @@ export class RightPanel {
   }
 
   private async toggleSubTask(sub: SubTask): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(sub), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      if (sub.status === 'open') {
-        lines[taskLine] = line.replace(/- \[ \]/, '- [x]');
-      } else {
-        lines[taskLine] = line.replace(/- \[x\]/i, '- [ ]');
-      }
-    });
+    const isDone = this.statusRegistry.typeForSymbol(sub.statusSymbol) === 'done';
+    const targetSymbol = isDone
+      ? this.statusRegistry.defaultTodo().symbol
+      : this.statusRegistry.defaultDone().symbol;
+    const today = window.moment().format('YYYY-MM-DD');
+    await this.mutations.setStatusChar(locatorOf(sub), targetSymbol, today);
   }
 
   private async addComment(

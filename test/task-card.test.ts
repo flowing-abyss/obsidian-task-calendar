@@ -1,6 +1,8 @@
 import { Component, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
+import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import { createTaskCard, type TaskCardOptions } from '../src/ui/TaskCard';
 import { task, useRealMoment, withMobile } from './helpers';
 
@@ -10,11 +12,15 @@ function fakeApp(): App {
   return {} as App;
 }
 
+const statusRegistry = new StatusRegistry(buildDefaultTaskStatuses());
+
 function baseOptions(overrides: Partial<TaskCardOptions> = {}): TaskCardOptions {
   return {
     app: fakeApp(),
     component: new Component(),
     onOpenNote: vi.fn(),
+    statusRegistry,
+    onContextMenu: vi.fn(),
     ...overrides,
   };
 }
@@ -85,34 +91,44 @@ describe('createTaskCard', () => {
     });
   });
 
-  describe('checkbox (default mode)', () => {
-    it('renders a checkbox in default mode, checked iff status === done', () => {
-      const openCb = createTaskCard(
-        task({ status: 'open' }),
+  describe('status marker (default mode)', () => {
+    it('renders a status marker in default mode, data-status-type "done" iff status === done', () => {
+      const openMarker = createTaskCard(
+        task({ status: 'open', statusSymbol: ' ' }),
         'due',
         baseOptions(),
-      ).querySelector<HTMLInputElement>('input.calendar-task-checkbox');
-      expect(openCb?.checked).toBe(false);
-      const doneCb = createTaskCard(
-        task({ status: 'done' }),
+      ).querySelector<HTMLElement>('.tc-status-marker');
+      expect(openMarker?.getAttribute('data-status-type')).toBe('todo');
+      const doneMarker = createTaskCard(
+        task({ status: 'done', statusSymbol: 'x' }),
         'due',
         baseOptions(),
-      ).querySelector<HTMLInputElement>('input.calendar-task-checkbox');
-      expect(doneCb?.checked).toBe(true);
+      ).querySelector<HTMLElement>('.tc-status-marker');
+      expect(doneMarker?.getAttribute('data-status-type')).toBe('done');
     });
 
-    it('omits the checkbox in timeblock mode', () => {
+    it('omits the status marker in timeblock mode', () => {
       const el = createTaskCard(task(), 'due', baseOptions({ mode: 'timeblock' }));
-      expect(el.querySelector('input.calendar-task-checkbox')).toBeNull();
+      expect(el.querySelector('.tc-status-marker')).toBeNull();
     });
 
-    it('invokes onToggle once on change', () => {
+    it('invokes onToggle once on click', () => {
       const onToggle = vi.fn();
       const el = createTaskCard(task({ text: 'x' }), 'due', baseOptions({ onToggle }));
-      const cb = el.querySelector('input.calendar-task-checkbox') as HTMLInputElement;
-      cb.dispatchEvent(new Event('change'));
+      const marker = el.querySelector('.tc-status-marker') as HTMLElement;
+      marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       expect(onToggle).toHaveBeenCalledTimes(1);
       expect((onToggle.mock.calls[0]?.[0] as Task).text).toBe('x');
+    });
+
+    it('invokes onContextMenu with the event and task on right-click', () => {
+      const onContextMenu = vi.fn();
+      const t = task({ text: 'y' });
+      const el = createTaskCard(t, 'due', baseOptions({ onContextMenu }));
+      const marker = el.querySelector('.tc-status-marker') as HTMLElement;
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      marker.dispatchEvent(ev);
+      expect(onContextMenu).toHaveBeenCalledWith(ev, t);
     });
   });
 

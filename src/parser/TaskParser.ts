@@ -1,5 +1,9 @@
+import { buildDefaultTaskStatuses } from '../settings/defaults';
+import { StatusRegistry } from '../status/StatusRegistry';
 import { collapseLinks } from './links';
 import type { ParseContext, Task, TaskPriority, TaskStatus } from './types';
+
+const DEFAULT_REGISTRY = new StatusRegistry(buildDefaultTaskStatuses());
 
 // Matches task lines: optional indent and blockquote/callout markers (spaces, tabs,
 // and `>`), then "- [char] rest". The `[\s>]*` prefix lets tasks inside blockquotes
@@ -21,28 +25,17 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
   const match = CHECKBOX_RE.exec(rawText);
   if (!match) return null;
 
-  const state = match[2];
+  const state = match[2] ?? '';
   const rest = match[3];
   if (rest === undefined) return null;
 
   let text = rest;
 
-  // Status from checkbox char
-  let status: TaskStatus;
-  switch (state) {
-    case 'x':
-    case 'X':
-      status = 'done';
-      break;
-    case '-':
-      status = 'cancelled';
-      break;
-    case '/':
-      status = 'in-progress';
-      break;
-    default:
-      status = 'open';
-  }
+  // Status from checkbox char, resolved via the status registry
+  const statusSymbol = state;
+  const registry = ctx.statusRegistry ?? DEFAULT_REGISTRY;
+  // typeForSymbol folds 'X' -> 'x' internally; statusSymbol keeps the raw glyph.
+  let status: TaskStatus = registry.typeForSymbol(state);
 
   // Extract and strip emoji metadata
   let due: string | undefined;
@@ -132,6 +125,7 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
     text,
     markdownText,
     status,
+    statusSymbol,
     due,
     scheduled,
     start,
@@ -166,7 +160,7 @@ const FMT_PREFIX_RE = /^([\s>]*-\s\[[^\]]\]\s)/u;
  * Returns the line unchanged if it is not a task line. Pure — unit-tested.
  */
 export function insertIntoTitleBody(line: string, insertText: string): string {
-  const prefixMatch = /^([\s>]*- \[[ xX/]\] )/u.exec(line);
+  const prefixMatch = /^([\s>]*- \[.\] )/u.exec(line);
   if (!prefixMatch) return line;
   const prefix = prefixMatch[1] ?? '';
   const rawAfterPrefix = line.slice(prefix.length);

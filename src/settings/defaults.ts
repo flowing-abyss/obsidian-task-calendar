@@ -1,4 +1,11 @@
-import type { CalendarSettings, ListViewState, ProjectsSettings, ViewConfig } from './types';
+import { ACTIVE_STATUS_GROUPS } from '../status/statusConstants';
+import type {
+  CalendarSettings,
+  ListViewState,
+  ProjectsSettings,
+  TaskStatusDef,
+  ViewConfig,
+} from './types';
 
 export const DEFAULT_VIEW_CONFIG: ViewConfig = {
   defaultView: 'month',
@@ -50,6 +57,49 @@ export function buildDefaultProjectsSettings(): ProjectsSettings {
   };
 }
 
+/**
+ * The 4 core group statuses: fully locked (symbol, type, and icon are fixed)
+ * so the calendar looks predictable out of the box. Marker shape already
+ * conveys in-progress (circle) vs. the rest (rounded square), so in-progress
+ * intentionally carries no icon on top of that.
+ */
+export function buildDefaultTaskStatuses(): TaskStatusDef[] {
+  return [
+    {
+      id: 'status-1',
+      symbol: ' ',
+      name: 'To-do',
+      type: 'todo',
+      icon: '',
+      core: true,
+    },
+    {
+      id: 'status-2',
+      symbol: '/',
+      name: 'In progress',
+      type: 'in-progress',
+      icon: '',
+      core: true,
+    },
+    {
+      id: 'status-3',
+      symbol: 'x',
+      name: 'Done',
+      type: 'done',
+      icon: 'check',
+      core: true,
+    },
+    {
+      id: 'status-4',
+      symbol: '-',
+      name: 'Cancelled',
+      type: 'cancelled',
+      icon: 'x',
+      core: true,
+    },
+  ];
+}
+
 export const DEFAULT_SETTINGS: CalendarSettings = {
   desktop: { ...DEFAULT_VIEW_CONFIG },
   mobile: { ...DEFAULT_VIEW_CONFIG, defaultView: 'list' },
@@ -71,6 +121,7 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
   sourceNoteDisplay: 'non-default' as const,
   projects: buildDefaultProjectsSettings(),
   sectionCollapse: { pinned: false, projects: false, tags: false },
+  taskStatuses: buildDefaultTaskStatuses(),
 };
 
 export function getListViewDefaults(listKey: string): ListViewState {
@@ -78,7 +129,9 @@ export function getListViewDefaults(listKey: string): ListViewState {
   return {
     groupBy: useDateGrouping ? 'date' : 'none',
     sortBy: { field: 'date', dir: 'asc' },
-    show: 'active',
     filters: [],
+    // Default "Show" is Active (open + in-progress) — preserves the old
+    // show:'active' default under the unified statusGroups filter.
+    statusGroups: [...ACTIVE_STATUS_GROUPS],
   };
 }

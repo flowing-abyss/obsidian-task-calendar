@@ -1229,11 +1229,6 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--icon-color-active);
 }
 
-.calendar-task-checkbox {
-  position: relative;
-  top: 3px;
-}
-
 /* ---- Rail ---- */
 .tc-rail-top {
   display: flex;
@@ -1573,45 +1568,74 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   color: var(--text-muted);
   padding: 2px 12px 4px;
 }
-.tc-task-checkbox {
-  margin-top: 3px;
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  min-width: 16px;
+/* Status marker — chip replacing the native checkbox at task render sites.
+   Visual contract: PRIORITY = border color (only use of color), STATUS
+   GROUP (type) = container shape, CUSTOM STATUS = neutral-tone icon inside.
+   Background stays transparent (neutral empty-checkbox slot); priority
+   (when set) colors the border instead of an outer box-shadow halo, so the
+   chip's footprint never grows. */
+.tc-status-marker {
+  width: 19px;
+  height: 19px;
+  min-width: 19px;
+  flex: 0 0 19px;
+  border-radius: 5px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  /* --text-faint is clearly visible on both the list and the (darker) right
+     panel; the old --background-modifier-border was near-invisible for the
+     empty To-do marker, which has no inner icon to fall back on. Priority
+     overrides this border-color with the priority hue. */
+  border: 1.5px solid var(--text-faint);
+  background: transparent;
+  color: var(--text-normal);
   cursor: pointer;
-  accent-color: var(--interactive-accent);
+  /* Center a text glyph/emoji marker exactly: kill baseline/line-box offset
+     so the character sits dead-center like the SVG icons do. */
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
 }
-/* Priority coloring on task card checkbox — outline visible even when unchecked */
-.tc-task-checkbox[data-priority='A'] {
-  accent-color: var(--tc-priority-a);
-  outline: 2px solid var(--tc-priority-a);
-  outline-offset: 0px;
-  border-radius: 2px;
+/* Shape by status-group (type): in-progress is the only circular group. */
+.tc-status-marker[data-status-type='in-progress'] {
+  border-radius: 50%;
 }
-.tc-task-checkbox[data-priority='B'] {
-  accent-color: var(--tc-priority-b);
-  outline: 2px solid var(--tc-priority-b);
-  outline-offset: 0px;
-  border-radius: 2px;
+.tc-status-marker > svg {
+  display: block;
 }
-.tc-task-checkbox[data-priority='C'] {
-  accent-color: var(--tc-priority-c);
-  outline: 2px solid var(--tc-priority-c);
-  outline-offset: 0px;
-  border-radius: 2px;
+.tc-status-marker[data-status='other'] {
+  color: var(--text-muted);
 }
-.tc-task-checkbox[data-priority='E'] {
-  accent-color: var(--tc-priority-e);
-  outline: 2px solid var(--tc-priority-e);
-  outline-offset: 0px;
-  border-radius: 2px;
+.tc-status-marker svg {
+  width: 13px;
+  height: 13px;
+  color: currentColor;
+  stroke: currentColor;
 }
-.tc-task-checkbox[data-priority='F'] {
-  accent-color: var(--tc-priority-f);
-  outline: 2px solid var(--tc-priority-f);
-  outline-offset: 0px;
-  border-radius: 2px;
+/* Priority — colors BOTH the chip border and the inner icon (via currentColor),
+   so the whole marker reads as one priority hue. Footprint stays 19px (border,
+   not an outer halo). No-priority markers keep the neutral color from the base
+   rule. */
+.tc-status-marker[data-priority='A'] {
+  border-color: var(--tc-priority-a);
+  color: var(--tc-priority-a);
+}
+.tc-status-marker[data-priority='B'] {
+  border-color: var(--tc-priority-b);
+  color: var(--tc-priority-b);
+}
+.tc-status-marker[data-priority='C'] {
+  border-color: var(--tc-priority-c);
+  color: var(--tc-priority-c);
+}
+.tc-status-marker[data-priority='E'] {
+  border-color: var(--tc-priority-e);
+  color: var(--tc-priority-e);
+}
+.tc-status-marker[data-priority='F'] {
+  border-color: var(--tc-priority-f);
+  color: var(--tc-priority-f);
 }
 .tc-task-body {
   flex: 1;
@@ -2493,6 +2517,152 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   height: 0.75em;
 }
 
+/* Combined priority+status popover (src/ui/statusMenu.ts). Rendered at
+   document.body, OUTSIDE `.tc-panel-view`, so the panel-scoped --tc-priority-*
+   vars are empty here — use the global Obsidian color vars directly (same
+   underlying colors --tc-priority-* alias inside the panel). 'D' (None) is
+   intentionally left uncolored/muted, matching the priority popover. */
+.tc-status-popover {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  max-width: 16rem;
+  padding: 0.4rem;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow-s);
+}
+.tc-status-popover-priority-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2rem;
+  padding: 0.15rem 0.15rem 0.4rem;
+}
+.tc-status-popover-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tc-status-popover-flag:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-status-popover-flag.is-active {
+  border-color: var(--color-accent);
+  background: var(--background-modifier-hover);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+.tc-status-popover-flag svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.tc-status-popover-flag[data-tc-priority='A'] {
+  color: var(--color-red);
+}
+.tc-status-popover-flag[data-tc-priority='B'] {
+  color: var(--color-orange);
+}
+.tc-status-popover-flag[data-tc-priority='C'] {
+  color: var(--color-yellow);
+}
+.tc-status-popover-flag[data-tc-priority='E'] {
+  color: var(--color-blue);
+}
+.tc-status-popover-flag[data-tc-priority='F'] {
+  color: var(--color-purple);
+}
+.tc-menu-priority-flag[data-tc-priority='A'] .menu-item-icon {
+  color: var(--color-red);
+}
+.tc-menu-priority-flag[data-tc-priority='B'] .menu-item-icon {
+  color: var(--color-orange);
+}
+.tc-menu-priority-flag[data-tc-priority='C'] .menu-item-icon {
+  color: var(--color-yellow);
+}
+.tc-menu-priority-flag[data-tc-priority='D'] .menu-item-icon {
+  color: var(--text-muted);
+}
+.tc-menu-priority-flag[data-tc-priority='E'] .menu-item-icon {
+  color: var(--color-blue);
+}
+.tc-menu-priority-flag[data-tc-priority='F'] .menu-item-icon {
+  color: var(--color-purple);
+}
+/* Status shape-marker injected into a native menu item's icon slot
+   (buildStatusSubmenu, src/ui/statusMenu.ts) — rendered outside
+   `.tc-panel-view`, always with priority 'D' so no colored border is drawn;
+   just shrink it to fit the menu's icon slot alongside the check indicator. */
+.menu-item-icon .tc-status-marker {
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  flex: 0 0 15px;
+  cursor: default;
+}
+.menu-item-icon .tc-status-marker svg {
+  width: 10px;
+  height: 10px;
+}
+.tc-status-popover-divider {
+  height: 1px;
+  margin: 0.25rem 0.15rem;
+  background: var(--background-modifier-border);
+}
+.tc-status-popover-list {
+  display: flex;
+  flex-direction: column;
+  /* Grow to fit all statuses; only scroll when there are really many
+     (or the popover would run off-screen) rather than at a fixed small cap. */
+  max-height: min(55vh, 32rem);
+  overflow-y: auto;
+}
+.tc-status-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+.tc-status-popover-row:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-status-popover-row.is-current {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.tc-status-popover-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tc-status-popover-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--color-accent);
+}
+.tc-status-popover-check svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
 /* Priority chip in right panel */
 .tc-priority-chip[data-priority='A'] {
   color: var(--tc-priority-a);
@@ -3199,6 +3369,12 @@ body.tc-modal-open .popover.hover-popover {
   padding-left: 8px;
 }
 
+.tc-view-state-sublist-divider {
+  height: 1px;
+  margin: 4px 12px;
+  background: var(--background-modifier-border);
+}
+
 .tc-hidden {
   display: none;
 }
@@ -3610,4 +3786,132 @@ body.tc-modal-open .popover.hover-popover {
 .tc-tag-group-header.tc-reorder-target,
 .tc-tag-leaf.tc-reorder-target {
   box-shadow: inset 0 -2px 0 0 var(--interactive-accent);
+}
+
+/* ── Settings: custom statuses section ──────────────────────────────────── */
+.tc-status-type-group {
+  margin-bottom: 16px;
+}
+.tc-status-type-group-label {
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 6px 2px;
+}
+/* Symbol badges in this section are single characters — monospace reads clearer. */
+.tc-status-type-group .tc-settings-card-badge {
+  font-family: var(--font-monospace);
+}
+.tc-status-header-preview {
+  display: inline-flex;
+  align-items: center;
+}
+.tc-status-symbol-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  margin-top: 4px;
+}
+.tc-status-icon-field {
+  margin-bottom: 12px;
+}
+.tc-status-icon-input-host {
+  margin-top: 4px;
+}
+.tc-status-icon-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  margin-top: 8px;
+}
+.tc-status-icon-result {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tc-status-icon-result:hover {
+  background: var(--background-modifier-hover);
+}
+.tc-status-icon-result.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.tc-status-icon-result.is-selected .tc-status-icon-result-icon {
+  color: var(--text-on-accent);
+}
+.tc-status-icon-result-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+.tc-status-icon-result-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.tc-status-icon-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: 4px 2px;
+}
+.tc-status-icon-clear .tc-status-icon-result-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.tc-status-symbol-lock {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+.tc-status-symbol-lock svg {
+  width: 12px;
+  height: 12px;
+}
+.tc-status-symbol-locked {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.tc-status-icon-lock {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+.tc-status-icon-lock svg {
+  width: 12px;
+  height: 12px;
+}
+.tc-status-icon-locked-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  opacity: 0.6;
+  color: var(--text-muted);
+}
+.tc-status-icon-locked-preview svg {
+  width: 16px;
+  height: 16px;
+}
+.tc-status-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tc-status-preview-title {
+  color: var(--text-muted);
 }

@@ -278,7 +278,7 @@ describe('CenterPanel.renderWithGrouping (date grouping)', () => {
     state.set('centerListViewState', {
       groupBy: 'date',
       sortBy: { field: 'date', dir: 'asc' },
-      show: 'all',
+      statusGroups: undefined,
       filters: [],
     });
     const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS, null as never);

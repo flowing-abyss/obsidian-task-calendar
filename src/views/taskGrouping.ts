@@ -1,4 +1,6 @@
 import type { Task } from '../parser/types';
+import type { TaskStatusType } from '../settings/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
 
 export interface TaskGroup {
   due: Task[];
@@ -112,10 +114,15 @@ function compareByTag(a: Task, b: Task): number {
   return ta.localeCompare(tb);
 }
 
+export function compareByStatus(a: Task, b: Task, registry: StatusRegistry): number {
+  return registry.orderIndex(a.statusSymbol) - registry.orderIndex(b.statusSymbol);
+}
+
 export function sortTasksByField(
   tasks: Task[],
-  field: 'date' | 'priority' | 'title' | 'tag',
+  field: 'date' | 'priority' | 'title' | 'tag' | 'status',
   dir: 'asc' | 'desc',
+  registry?: StatusRegistry,
 ): Task[] {
   const sign = dir === 'asc' ? 1 : -1;
   return [...tasks].sort((a, b) => {
@@ -126,6 +133,8 @@ export function sortTasksByField(
       cmp = compareStrings(a.priority, b.priority);
     } else if (field === 'title') {
       cmp = a.text.localeCompare(b.text);
+    } else if (field === 'status' && registry) {
+      cmp = compareByStatus(a, b, registry);
     } else {
       cmp = compareByTag(a, b);
     }
@@ -145,6 +154,24 @@ export function groupTasksByPriority(tasks: Task[]): Array<{ label: string; task
     label: PRIORITY_LABELS[p] ?? p,
     tasks: map.get(p)!,
   }));
+}
+
+export function groupTasksByStatus(
+  tasks: Task[],
+  registry: StatusRegistry,
+): Array<{ label: string; tasks: Task[] }> {
+  const buckets = new Map<string, { order: number; label: string; tasks: Task[] }>();
+  for (const t of tasks) {
+    const def = registry.bySymbol(t.statusSymbol);
+    const key = def?.id ?? '__other__';
+    const label = def?.name ?? 'Other';
+    const order = def ? registry.orderIndex(t.statusSymbol) : Number.MAX_SAFE_INTEGER;
+    if (!buckets.has(key)) buckets.set(key, { order, label, tasks: [] });
+    buckets.get(key)!.tasks.push(t);
+  }
+  return [...buckets.values()]
+    .sort((x, y) => x.order - y.order)
+    .map(({ label, tasks }) => ({ label, tasks }));
 }
 
 export function groupTasksByTag(tasks: Task[]): Array<{ label: string; tasks: Task[] }> {
@@ -213,4 +240,19 @@ export function renderTaskGroup(
   show(groups.dailyNote, 'dailyNote');
   show(groups.allDone, 'done');
   show(groups.cancelled, 'cancelled');
+}
+
+// undefined, or all 4 status groups selected, means "no filtering".
+// A real subset (1-3 groups) restricts tasks to those status groups.
+export function filterTasksByStatusGroups(
+  tasks: Task[],
+  statusGroups: TaskStatusType[] | undefined,
+  registry: StatusRegistry,
+): Task[] {
+  if (!statusGroups || statusGroups.length === 0 || statusGroups.length >= 4) return tasks;
+  const allowed = new Set(statusGroups);
+  return tasks.filter((t) => {
+    const type = registry.bySymbol(t.statusSymbol)?.type ?? 'todo';
+    return allowed.has(type);
+  });
 }

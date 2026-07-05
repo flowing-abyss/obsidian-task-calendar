@@ -31,7 +31,7 @@ async function makePanel(
   const state = new AppState();
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
-  const store = makeStubStore(extraTasks) as unknown as TaskStore;
+  const store = makeStubStore(extraTasks, app) as unknown as TaskStore;
   const panel = new CenterPanel(state, store, app, DEFAULT_SETTINGS, tm);
   return { panel, app };
 }
