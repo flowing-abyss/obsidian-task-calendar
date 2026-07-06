@@ -1,5 +1,6 @@
 import { Menu, setIcon, TFile, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
+import { isListViewCustomized, listSelectionToKey } from '../app/listViewState';
 import type { Task } from '../parser/types';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
@@ -39,6 +40,9 @@ export class LeftPanel {
     this.offs.push(
       this.state.on('selectedList', () => this.render()),
       this.state.on('mode', () => this.render()),
+      // Re-render when the active container's view state changes so the
+      // "customized" dot appears/disappears live as filters/sort/group change.
+      this.state.on('centerListViewState', () => this.render()),
     );
     this.render();
   }
@@ -50,6 +54,16 @@ export class LeftPanel {
   destroy(): void {
     this.offs.forEach((f) => f());
     this.el?.empty();
+  }
+
+  /** Append the "customized" dot after a container label when its saved view
+   *  state differs from defaults (group/sort/show changed or any filter set). */
+  private appendCustomDot(labelParent: HTMLElement, sel: ListSelection): void {
+    const key = listSelectionToKey(sel);
+    const vs = this.settings.listViewStates?.[key];
+    if (vs && isListViewCustomized(vs, key)) {
+      labelParent.createEl('span', { cls: 'tc-left-custom-dot' });
+    }
   }
 
   private render(): void {
@@ -181,6 +195,7 @@ export class LeftPanel {
       });
       row.createDiv({ cls: 'tc-left-item-left' }, (l) => {
         l.createEl('span', { cls: 'tc-left-label', text: project.name });
+        this.appendCustomDot(l, { type: 'project', path: project.path });
       });
       if (openCount > 0) {
         row.createEl('span', { cls: 'tc-left-count', text: String(openCount) });
@@ -320,6 +335,7 @@ export class LeftPanel {
     });
     row.createDiv({ cls: 'tc-left-item-left' }, (l) => {
       l.createEl('span', { cls: 'tc-left-label', text: tag });
+      this.appendCustomDot(l, { type: 'tag', tag });
     });
     if (count > 0) row.createEl('span', { cls: 'tc-left-count', text: String(count) });
 
@@ -353,6 +369,7 @@ export class LeftPanel {
         dot.style.background = group.color;
       }
       l.createEl('span', { cls: 'tc-left-label', text: group.name });
+      this.appendCustomDot(l, { type: 'tag', tag });
     });
     if (count > 0) row.createEl('span', { cls: 'tc-left-count', text: String(count) });
 
@@ -384,6 +401,7 @@ export class LeftPanel {
     const iconEl = left.createEl('span', { cls: 'tc-left-icon' });
     setIcon(iconEl, icon);
     left.createEl('span', { cls: 'tc-left-label', text: label });
+    this.appendCustomDot(left, selection);
 
     if (count > 0) {
       row.createEl('span', { cls: 'tc-left-count', text: String(count) });
@@ -453,6 +471,7 @@ export class LeftPanel {
       dot.style.background = group.color;
     }
     header.createEl('span', { cls: 'tc-left-label', text: group.name });
+    this.appendCustomDot(header, { type: 'group', groupId: group.id });
 
     // Count all tasks matching any tag in this group (including root prefix tag)
     const rootTag = group.mode === 'prefix' && group.prefix ? `#${group.prefix}` : null;
@@ -487,6 +506,7 @@ export class LeftPanel {
         });
         child.createDiv({ cls: 'tc-left-item-left' }, (l) => {
           l.createEl('span', { cls: 'tc-left-label', text: label });
+          this.appendCustomDot(l, { type: 'tag', tag });
         });
         if (tagCount > 0) child.createEl('span', { cls: 'tc-left-count', text: String(tagCount) });
 

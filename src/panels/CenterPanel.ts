@@ -1,5 +1,6 @@
 import { Component, Menu, Notice, setIcon, TFile, type App, type MenuItem } from 'obsidian';
-import type { AppState, ListSelection } from '../app/AppState';
+import type { AppState } from '../app/AppState';
+import { listSelectionToKey, normalizeStatusGroups, statusGroupsEqual } from '../app/listViewState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
@@ -40,38 +41,8 @@ import { ProjectsPanel } from './projects/ProjectsPanel';
 
 type CalViewType = 'month' | 'week' | 'list';
 
-function listSelectionToKey(sel: ListSelection): string {
-  if (typeof sel === 'string') return sel;
-  if (sel.type === 'tag') return `tag:${sel.tag}`;
-  if (sel.type === 'project') return `project:${sel.path}`;
-  return `group:${sel.groupId}`;
-}
-
 function projectNameFromPath(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
-}
-
-// undefined, or all 4 groups selected, both mean "no filtering" (show everything) —
-// normalize to undefined so the two representations compare equal.
-function normalizeStatusGroups(
-  statusGroups: TaskStatusType[] | undefined,
-): TaskStatusType[] | undefined {
-  if (!statusGroups || statusGroups.length === 0 || statusGroups.length >= 4) return undefined;
-  return statusGroups;
-}
-
-function statusGroupsEqual(
-  a: TaskStatusType[] | undefined,
-  b: TaskStatusType[] | undefined,
-): boolean {
-  const na = normalizeStatusGroups(a);
-  const nb = normalizeStatusGroups(b);
-  if (na === undefined || nb === undefined) return na === nb;
-  if (na.length !== nb.length) return false;
-  const compare = (x: string, y: string): number => x.localeCompare(y);
-  const sa = [...na].sort(compare);
-  const sb = [...nb].sort(compare);
-  return sa.every((v, i) => v === sb[i]);
 }
 
 /**
