@@ -1,5 +1,6 @@
 import { getListViewDefaults } from '../settings/defaults';
 import type { ListViewState, TaskStatusType } from '../settings/types';
+import { ALL_STATUS_GROUPS } from '../status/statusConstants';
 import type { ListSelection } from './AppState';
 
 /** Stable persistence key for a left-panel selection (matches CenterPanel's `listViewStates` keys). */
@@ -15,7 +16,13 @@ export function listSelectionToKey(sel: ListSelection): string {
 export function normalizeStatusGroups(
   statusGroups: TaskStatusType[] | undefined,
 ): TaskStatusType[] | undefined {
-  if (!statusGroups || statusGroups.length === 0 || statusGroups.length >= 4) return undefined;
+  if (
+    !statusGroups ||
+    statusGroups.length === 0 ||
+    statusGroups.length >= ALL_STATUS_GROUPS.length
+  ) {
+    return undefined;
+  }
   return statusGroups;
 }
 
@@ -38,6 +45,11 @@ export function statusGroupsEqual(
  * warrants the left-panel "customized" dot: group/sort changed, the "Show"
  * status filter differs, OR any active property filter. The text search box is
  * global and not represented here.
+ *
+ * NB: this deliberately includes property filters, so it is broader than the
+ * ↑↓ button's own dot predicate (which covers only group/sort/show). It matches
+ * the "Reset to defaults" predicate — the left-panel dot means "this container
+ * has any saved customization", filters included.
  */
 export function isListViewCustomized(vs: ListViewState, listKey: string): boolean {
   const defaults = getListViewDefaults(listKey);

@@ -1,6 +1,11 @@
 import { Component, Menu, Notice, setIcon, TFile, type App, type MenuItem } from 'obsidian';
 import type { AppState } from '../app/AppState';
-import { listSelectionToKey, normalizeStatusGroups, statusGroupsEqual } from '../app/listViewState';
+import {
+  isListViewCustomized,
+  listSelectionToKey,
+  normalizeStatusGroups,
+  statusGroupsEqual,
+} from '../app/listViewState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
@@ -1607,14 +1612,9 @@ export class CenterPanel {
       ],
     );
 
-    // Reset to defaults row — only shown when state differs from defaults
-    const isNonDefault =
-      vs.groupBy !== defaults.groupBy ||
-      vs.sortBy.field !== defaults.sortBy.field ||
-      vs.sortBy.dir !== defaults.sortBy.dir ||
-      !statusGroupsEqual(vs.statusGroups, defaults.statusGroups) ||
-      vs.filters.length > 0;
-    if (isNonDefault) {
+    // Reset to defaults row — only shown when state differs from defaults.
+    // Same predicate as the left-panel customization dot.
+    if (isListViewCustomized(vs, this.currentListKey)) {
       const resetRow = popover.createDiv({ cls: 'tc-view-state-reset' });
       const resetBtn = resetRow.createEl('button', {
         cls: 'tc-view-state-reset-btn',

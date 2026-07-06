@@ -62,7 +62,10 @@ export class LeftPanel {
     const key = listSelectionToKey(sel);
     const vs = this.settings.listViewStates?.[key];
     if (vs && isListViewCustomized(vs, key)) {
-      labelParent.createEl('span', { cls: 'tc-left-custom-dot' });
+      labelParent.createEl('span', {
+        cls: 'tc-left-custom-dot',
+        attr: { 'aria-label': 'Custom view applied' },
+      });
     }
   }
 

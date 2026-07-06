@@ -1396,6 +1396,10 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   flex-shrink: 0;
   width: 5px;
   height: 5px;
+  /* Pull tight to the label: the parent flex `gap` (6-8px) would otherwise
+     leave the dot floating well clear of the text; a negative margin lets it
+     hug the name, matching the tag color-dot spacing. */
+  margin-left: -3px;
   border-radius: 50%;
   background: var(--color-accent);
   opacity: 0.9;
