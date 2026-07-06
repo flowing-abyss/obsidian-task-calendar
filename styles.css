@@ -1400,6 +1400,10 @@ body.is-mobile .tasksCalendar .statisticPopup li {
      leave the dot floating well clear of the text; a negative margin lets it
      hug the name, matching the tag color-dot spacing. */
   margin-left: -3px;
+  /* Sit just above-right of the text (like a superscript badge) rather than
+     vertically centred on the row. */
+  align-self: flex-start;
+  margin-top: 1px;
   border-radius: 50%;
   background: var(--color-accent);
   opacity: 0.9;
