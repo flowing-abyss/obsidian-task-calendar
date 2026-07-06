@@ -64,7 +64,7 @@ export class LeftPanel {
     if (vs && isListViewCustomized(vs, key)) {
       labelParent.createEl('span', {
         cls: 'tc-left-custom-dot',
-        attr: { 'aria-label': 'Custom view applied' },
+        attr: { role: 'img', 'aria-label': 'Custom view applied' },
       });
     }
   }
