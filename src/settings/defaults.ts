@@ -54,6 +54,8 @@ export function buildDefaultProjectsSettings(): ProjectsSettings {
     templatePath: '',
     statuses: [active, planned, done],
     defaultStatusId: active.id,
+    taskInsertionMode: 'append',
+    taskInsertionSection: '## Tasks',
   };
 }
 

@@ -79,6 +79,35 @@ describe('projects migration', () => {
     migrateSettings(raw);
     expect(projects.defaultStatusId).toBe(projects.statuses[0]!.id);
   });
+  it('backfills project task-insertion settings on a pre-existing projects config', () => {
+    const raw: Record<string, unknown> = {
+      projects: { statuses: [{ id: 'a' }], defaultStatusId: 'a' },
+    };
+    migrateSettings(raw);
+    const projects = raw['projects'] as {
+      taskInsertionMode: string;
+      taskInsertionSection: string;
+    };
+    expect(projects.taskInsertionMode).toBe('append');
+    expect(projects.taskInsertionSection).toBe('## Tasks');
+  });
+  it('preserves an already-set project task-insertion mode', () => {
+    const raw: Record<string, unknown> = {
+      projects: {
+        statuses: [{ id: 'a' }],
+        defaultStatusId: 'a',
+        taskInsertionMode: 'section',
+        taskInsertionSection: '## Todo',
+      },
+    };
+    migrateSettings(raw);
+    const projects = raw['projects'] as {
+      taskInsertionMode: string;
+      taskInsertionSection: string;
+    };
+    expect(projects.taskInsertionMode).toBe('section');
+    expect(projects.taskInsertionSection).toBe('## Todo');
+  });
 });
 
 describe('task statuses migration', () => {

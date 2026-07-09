@@ -30,10 +30,23 @@ function migrateProjects(raw: Record<string, unknown>): void {
   if (!('projects' in raw)) raw['projects'] = buildDefaultProjectsSettings();
   const projects = raw['projects'];
   if (projects && typeof projects === 'object') {
-    const p = projects as { statuses?: { id: string }[]; defaultStatusId?: string };
+    const p = projects as {
+      statuses?: { id: string }[];
+      defaultStatusId?: string;
+      taskInsertionMode?: string;
+      taskInsertionSection?: string;
+    };
     const ids = (p.statuses ?? []).map((s) => s.id);
     if (!p.defaultStatusId || !ids.includes(p.defaultStatusId)) {
       p.defaultStatusId = ids[0] ?? '';
+    }
+    // Backfill project-specific insertion settings for pre-existing configs.
+    const defaults = buildDefaultProjectsSettings();
+    if (p.taskInsertionMode !== 'append' && p.taskInsertionMode !== 'section') {
+      p.taskInsertionMode = defaults.taskInsertionMode;
+    }
+    if (typeof p.taskInsertionSection !== 'string') {
+      p.taskInsertionSection = defaults.taskInsertionSection;
     }
   }
 }

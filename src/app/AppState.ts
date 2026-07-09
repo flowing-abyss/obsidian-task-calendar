@@ -22,6 +22,7 @@ export interface AppStateData {
   searchQuery: string;
   draggingTask: Task | null;
   draggingTag: string | null;
+  draggingProject: string | null;
   centerListViewState: ListViewState;
   projectsPanel: ProjectsPanelState;
 }
@@ -37,6 +38,7 @@ export class AppState {
     searchQuery: '',
     draggingTask: null,
     draggingTag: null,
+    draggingProject: null,
     centerListViewState: getListViewDefaults('today'),
     projectsPanel: { view: 'list' },
   };

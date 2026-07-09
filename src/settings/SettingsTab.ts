@@ -587,6 +587,36 @@ export class CalendarSettingsTab extends PluginSettingTab {
           }),
       );
 
+    new Setting(containerEl)
+      .setName('Task insert position')
+      .setDesc('Where a task is placed in a project note when created there or moved in.')
+      .addDropdown((d) =>
+        d
+          .addOptions({ append: 'End of note', section: 'Under section heading' })
+          .setValue(projects.taskInsertionMode)
+          .onChange(async (v) => {
+            projects.taskInsertionMode = v as typeof projects.taskInsertionMode;
+            await this.plugin.saveSettings();
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            this.display();
+          }),
+      );
+
+    if (projects.taskInsertionMode === 'section') {
+      new Setting(containerEl)
+        .setName('Task section heading')
+        .setDesc('Tasks are inserted under this heading in the project note. Created if absent.')
+        .addText((t) =>
+          t
+            .setPlaceholder('## Tasks')
+            .setValue(projects.taskInsertionSection)
+            .onChange(async (v) => {
+              projects.taskInsertionSection = v;
+              await this.plugin.saveSettings();
+            }),
+        );
+    }
+
     new Setting(containerEl).setName('Statuses').setHeading();
     this.renderCardList(containerEl, projects.statuses, {
       id: (s) => s.id,

@@ -748,7 +748,8 @@ export class RightPanel {
       });
       const checkEl = btn.createEl('span', { cls: 'tc-priority-option-check' });
       if (isActive) setIcon(checkEl, 'check');
-      btn.createEl('span', { cls: 'tc-priority-option-flag' });
+      const flagEl = btn.createEl('span', { cls: 'tc-priority-option-flag' });
+      setIcon(flagEl, 'flag');
       btn.createEl('span', { cls: 'tc-priority-option-label', text: opt.label });
       btn.addEventListener('click', () => {
         // Optimistic update on the chip

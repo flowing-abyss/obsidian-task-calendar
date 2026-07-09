@@ -64,6 +64,11 @@ export interface ProjectsSettings {
   templatePath: string;
   statuses: ProjectStatus[];
   defaultStatusId: string;
+  // Where a task lands inside a project note when it is created there or moved
+  // in (drag-and-drop). Independent of the global task-insertion setting so
+  // project notes can keep tasks under a dedicated heading.
+  taskInsertionMode: 'append' | 'section';
+  taskInsertionSection: string;
 }
 
 export interface CalendarSettings {

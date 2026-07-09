@@ -92,6 +92,76 @@ describe('ProjectManager.setStatus', () => {
   });
 });
 
+async function readContent(app: unknown, path: string): Promise<string> {
+  const a = app as {
+    vault: { getAbstractFileByPath(p: string): unknown; read(f: TFile): Promise<string> };
+  };
+  const file = a.vault.getAbstractFileByPath(path);
+  if (!(file instanceof TFile)) throw new Error(`${path} is not a TFile`);
+  return a.vault.read(file);
+}
+
+// Minimal Task shape — moveTaskToProject only reads filePath / rawText / line.
+function taskLike(filePath: string, line: number, rawText: string): never {
+  return { filePath, line, rawText } as never;
+}
+
+describe('ProjectManager.moveTaskToProject', () => {
+  it('physically relocates the task block into the project note (append mode)', async () => {
+    const app = await createAppWithFiles({
+      'Daily/2026-07-01.md': '- [ ] Ship it 📅 2026-07-04\n- [ ] keep me',
+      'Projects/Redesign.md': '# Redesign\nbody',
+    });
+    const settings = clone();
+    settings.projects.taskInsertionMode = 'append';
+    const pm = new ProjectManager(app as never, settings, {} as never);
+
+    const moved = await pm.moveTaskToProject(
+      taskLike('Daily/2026-07-01.md', 0, '- [ ] Ship it 📅 2026-07-04'),
+      'Projects/Redesign.md',
+    );
+
+    expect(moved).toBe(true);
+    expect(await readContent(app, 'Daily/2026-07-01.md')).toBe('- [ ] keep me');
+    expect(await readContent(app, 'Projects/Redesign.md')).toBe(
+      '# Redesign\nbody\n- [ ] Ship it 📅 2026-07-04\n',
+    );
+  });
+
+  it('honors the section insertion setting when moving', async () => {
+    const app = await createAppWithFiles({
+      'Daily/2026-07-01.md': '- [ ] Ship it',
+      'Projects/P.md': '# P\n## Tasks\n- [ ] existing\n',
+    });
+    const settings = clone();
+    settings.projects.taskInsertionMode = 'section';
+    settings.projects.taskInsertionSection = '## Tasks';
+    const pm = new ProjectManager(app as never, settings, {} as never);
+
+    await pm.moveTaskToProject(
+      taskLike('Daily/2026-07-01.md', 0, '- [ ] Ship it'),
+      'Projects/P.md',
+    );
+
+    expect(await readContent(app, 'Projects/P.md')).toBe(
+      '# P\n## Tasks\n- [ ] Ship it\n- [ ] existing\n',
+    );
+  });
+
+  it('is a no-op when the task already lives in the project note', async () => {
+    const app = await createAppWithFiles({ 'Projects/P.md': '- [ ] here' });
+    const pm = new ProjectManager(app as never, clone(), {} as never);
+
+    const moved = await pm.moveTaskToProject(
+      taskLike('Projects/P.md', 0, '- [ ] here'),
+      'Projects/P.md',
+    );
+
+    expect(moved).toBe(false);
+    expect(await readContent(app, 'Projects/P.md')).toBe('- [ ] here');
+  });
+});
+
 describe('ProjectManager.create', () => {
   it('builds a path under createFolder, applies default status, opens the note', async () => {
     const app = await createAppWithFiles({});

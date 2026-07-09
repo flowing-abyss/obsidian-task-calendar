@@ -1,4 +1,5 @@
 import { Notice, TFile, normalizePath, type App } from 'obsidian';
+import { insertTaskBlockIntoContent } from '../mutation/insertTaskBlock';
 import type { CalendarSettings } from '../settings/types';
 import { CoreDailyNotesAdapter } from './adapters/CoreDailyNotesAdapter';
 import { JournalAdapter } from './adapters/JournalAdapter';
@@ -154,18 +155,9 @@ export class DailyNoteResolver {
 
   private async insertTask(file: TFile, line: string): Promise<void> {
     const { taskInsertionMode: mode, taskInsertionSection: section } = this.settings;
-    await this.app.vault.process(file, (content) => {
-      if (mode === 'section' && section.trim()) {
-        const lines = content.split('\n');
-        const idx = lines.findIndex((l) => l.trim() === section.trim());
-        if (idx === -1) {
-          return content.trimEnd() + '\n\n' + section + '\n' + line + '\n';
-        }
-        lines.splice(idx + 1, 0, line);
-        return lines.join('\n');
-      }
-      return content.trimEnd() + '\n' + line + '\n';
-    });
+    await this.app.vault.process(file, (content) =>
+      insertTaskBlockIntoContent(content, line, mode, section),
+    );
   }
 
   private autoLabel(): string {

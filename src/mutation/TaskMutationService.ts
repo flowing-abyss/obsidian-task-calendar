@@ -2,7 +2,41 @@ import { Notice, TFile, type App } from 'obsidian';
 import type { TaskPriority } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import { insertTaskBlockIntoContent } from './insertTaskBlock';
 import { findTaskLine, type FindResult, type TaskLocator } from './TaskLocator';
+
+/**
+ * The line range `[start, end]` (inclusive) covering a task and its indented
+ * sub-item block. Block end is found by an indentation/quote-depth scan on the
+ * live content, so it is robust to lines inserted or removed inside the block.
+ *
+ * Leading prefix includes blockquote/callout markers (`>`) so a quoted child
+ * (`> \t- [ ]`) measures as deeper than its quoted parent (`> - [ ]`), and a
+ * differing quote depth marks a separate block (a sibling container).
+ */
+function taskBlockRange(lines: string[], taskLine: number): [number, number] {
+  const prefixOf = (s: string) => /^[\s>]*/.exec(s)?.[0] ?? '';
+  const indentOf = (s: string) => prefixOf(s).replace(/\t/g, '    ').length;
+  const quoteOf = (s: string) => {
+    let depth = 0;
+    for (const ch of prefixOf(s)) if (ch === '>') depth++;
+    return depth;
+  };
+  const taskLineStr = lines[taskLine] ?? '';
+  const taskIndent = indentOf(taskLineStr);
+  const taskQuote = quoteOf(taskLineStr);
+  let blockEnd = taskLine;
+  for (let i = taskLine + 1; i < lines.length; i++) {
+    const lineStr = lines[i] ?? '';
+    // A quote-only line (">", "> ") is "blank" inside a blockquote — absorb it.
+    const isBlank = /^[\s>]*$/u.test(lineStr);
+    // A non-blank line ends the block once it leaves the parent's quote depth or
+    // is no longer more indented than the parent.
+    if (!isBlank && (quoteOf(lineStr) !== taskQuote || indentOf(lineStr) <= taskIndent)) break;
+    blockEnd = i;
+  }
+  return [taskLine, blockEnd];
+}
 
 export type MutationResult =
   | { type: 'ok' }
@@ -191,30 +225,83 @@ export class TaskMutationService {
    *  so the operation is safe even when lines were inserted or deleted inside the block. */
   async deleteTaskBlock(locator: TaskLocator, _rangeEndHint: number): Promise<MutationResult> {
     return this.applyToLines(locator, (lines, taskLine) => {
-      // Leading prefix includes blockquote/callout markers (`>`) so a quoted child
-      // (`> \t- [ ]`) is measured as deeper than its quoted parent (`> - [ ]`),
-      // and a differing quote depth marks a separate block (a sibling container).
-      const prefixOf = (s: string) => /^[\s>]*/.exec(s)?.[0] ?? '';
-      const indentOf = (s: string) => prefixOf(s).replace(/\t/g, '    ').length;
-      const quoteOf = (s: string) => {
-        let depth = 0;
-        for (const ch of prefixOf(s)) if (ch === '>') depth++;
-        return depth;
-      };
-      const taskLineStr = lines[taskLine] ?? '';
-      const taskIndent = indentOf(taskLineStr);
-      const taskQuote = quoteOf(taskLineStr);
-      let blockEnd = taskLine;
-      for (let i = taskLine + 1; i < lines.length; i++) {
-        const lineStr = lines[i] ?? '';
-        // A quote-only line (">", "> ") is "blank" inside a blockquote — absorb it.
-        const isBlank = /^[\s>]*$/u.test(lineStr);
-        // A non-blank line ends the block once it leaves the parent's quote depth or
-        // is no longer more indented than the parent.
-        if (!isBlank && (quoteOf(lineStr) !== taskQuote || indentOf(lineStr) <= taskIndent)) break;
-        blockEnd = i;
-      }
-      lines.splice(taskLine, blockEnd - taskLine + 1);
+      const [start, end] = taskBlockRange(lines, taskLine);
+      lines.splice(start, end - start + 1);
     });
+  }
+
+  /**
+   * Move a task and its sub-item block from its source file into `targetPath`,
+   * honoring the given insertion policy. "Project membership" in this plugin is
+   * physical file location, so this is how a task is reassigned to a project.
+   *
+   * Ordering is data-loss safe: the block is captured from a read-only snapshot,
+   * appended to the target, and only then removed from the source (re-located by
+   * rawText for drift safety). If the target write succeeds but the source can no
+   * longer be located, the task exists in both files (recoverable) rather than
+   * being lost. A move into the file it already lives in is a no-op.
+   */
+  async moveTaskToFile(
+    locator: TaskLocator,
+    targetPath: string,
+    insertion: { mode: 'append' | 'section'; section: string },
+  ): Promise<MutationResult> {
+    if (locator.filePath === targetPath) return { type: 'ok' };
+
+    const sourceFile = this.app.vault.getAbstractFileByPath(locator.filePath);
+    if (!(sourceFile instanceof TFile)) {
+      new Notice('Task file not found: ' + locator.filePath);
+      return { type: 'file-not-found' };
+    }
+    const targetFile = this.app.vault.getAbstractFileByPath(targetPath);
+    if (!(targetFile instanceof TFile)) {
+      new Notice('Target note not found: ' + targetPath);
+      return { type: 'file-not-found' };
+    }
+
+    // Phase 1 — capture the block from a read-only snapshot (no write yet).
+    const sourceData = await this.app.vault.read(sourceFile);
+    const sourceLines = sourceData.split('\n');
+    const found = findTaskLine(sourceLines, locator);
+    if (found.type === 'not-found') {
+      new Notice('Could not move task: it may have been moved or deleted.');
+      return { type: 'not-found' };
+    }
+    if (found.type === 'ambiguous') {
+      new Notice('Could not move task: multiple identical tasks found in the file.');
+      return { type: 'ambiguous', candidates: found.candidates };
+    }
+    const [start, end] = taskBlockRange(sourceLines, found.line);
+    // Normalise any CRLF so the block joins cleanly into the (possibly LF) target.
+    const block = sourceLines
+      .slice(start, end + 1)
+      .map((l) => l.replace(/\r$/, ''))
+      .join('\n');
+
+    // Phase 2 — append to the target first, so a failure here loses nothing.
+    await this.app.vault.process(targetFile, (content) =>
+      insertTaskBlockIntoContent(content, block, insertion.mode, insertion.section),
+    );
+
+    // Phase 3 — remove from the source, re-locating by rawText for drift safety.
+    let removedFromSource = false;
+    await this.app.vault.process(sourceFile, (content) => {
+      const lines = content.split('\n');
+      const refound = findTaskLine(lines, locator);
+      if (refound.type !== 'found') return content;
+      const [s, e] = taskBlockRange(lines, refound.line);
+      lines.splice(s, e - s + 1);
+      removedFromSource = true;
+      return lines.join('\n');
+    });
+
+    // The task was appended to the target but could no longer be located in the
+    // source (an external edit slipped in between phases). It now exists in both
+    // files — never lost, but the user should know a stray copy remains.
+    if (!removedFromSource) {
+      new Notice('Task moved into the project, but a copy remains in the original note.');
+    }
+
+    return { type: 'ok' };
   }
 }

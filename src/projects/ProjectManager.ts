@@ -1,4 +1,6 @@
 import { normalizePath, TFile, type App } from 'obsidian';
+import { locatorOf, TaskMutationService } from '../mutation';
+import type { Task } from '../parser/types';
 import type { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings, ProjectStatus } from '../settings/types';
 
@@ -15,11 +17,29 @@ function toStringArray(raw: unknown): string[] {
  * statuses so a note carries at most one plugin-managed status.
  */
 export class ProjectManager {
+  private mutations: TaskMutationService;
+
   constructor(
     private app: App,
     private settings: CalendarSettings,
     private resolver: DailyNoteResolver,
-  ) {}
+  ) {
+    this.mutations = new TaskMutationService(app);
+  }
+
+  /**
+   * Move a task into a project by physically relocating its markdown block into
+   * the project note (membership == file location). No-op when the task already
+   * lives in that note. Honors the plugin's task-insertion setting.
+   */
+  async moveTaskToProject(task: Task, projectPath: string): Promise<boolean> {
+    if (task.filePath === projectPath) return false;
+    const result = await this.mutations.moveTaskToFile(locatorOf(task), projectPath, {
+      mode: this.settings.projects.taskInsertionMode,
+      section: this.settings.projects.taskInsertionSection,
+    });
+    return result.type === 'ok';
+  }
 
   async setStatus(path: string, statusId: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(path);

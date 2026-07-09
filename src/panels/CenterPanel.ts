@@ -6,7 +6,12 @@ import {
   normalizeStatusGroups,
   statusGroupsEqual,
 } from '../app/listViewState';
-import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
+import {
+  insertTaskBlockIntoContent,
+  locatorOf,
+  rewriteLinkInTask,
+  TaskMutationService,
+} from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
@@ -965,9 +970,12 @@ export class CenterPanel {
       card.classList.remove('tc-dragging');
     });
 
-    // Drop target for tag→task drag
+    // Drop target for tag→task drag, and for project→task drag (drop a project
+    // onto a task to move that task into the project note).
     card.addEventListener('dragover', (e) => {
-      if (!this.state.get('draggingTag')) return;
+      const project = this.state.get('draggingProject');
+      const canDropProject = !!project && project !== task.filePath && !!this.projectManager;
+      if (!this.state.get('draggingTag') && !canDropProject) return;
       e.preventDefault();
       card.classList.add('tc-drop-target');
     });
@@ -975,11 +983,16 @@ export class CenterPanel {
       card.classList.remove('tc-drop-target');
     });
     card.addEventListener('drop', (e) => {
-      e.preventDefault();
       card.classList.remove('tc-drop-target');
       const tag = this.state.get('draggingTag');
-      if (!tag) return;
-      void this.tagManager.assignTagFromInbox(task, tag);
+      const project = this.state.get('draggingProject');
+      if (tag) {
+        e.preventDefault();
+        void this.tagManager.assignTagFromInbox(task, tag);
+      } else if (project && project !== task.filePath && this.projectManager) {
+        e.preventDefault();
+        void this.projectManager.moveTaskToProject(task, project);
+      }
     });
 
     // Right-click context menu
@@ -1676,21 +1689,18 @@ export class CenterPanel {
     window.setTimeout(() => input.focus(), 0);
   }
 
-  /** Append a task line into a specific note, honoring the section-insertion setting. */
-  private async appendTaskToNote(file: TFile, line: string): Promise<void> {
-    const { taskInsertionMode: mode, taskInsertionSection: section } = this.settings;
-    await this.app.vault.process(file, (content) => {
-      if (mode === 'section' && section.trim()) {
-        const lines = content.split('\n');
-        const idx = lines.findIndex((l) => l.trim() === section.trim());
-        if (idx === -1) {
-          return content.trimEnd() + '\n\n' + section + '\n' + line + '\n';
-        }
-        lines.splice(idx + 1, 0, line);
-        return lines.join('\n');
-      }
-      return content.trimEnd() + '\n' + line + '\n';
-    });
+  /** Append a task line into a specific note, honoring the section-insertion
+   *  setting. Callers pass the mode/section to use (global for most notes, the
+   *  project-specific one for project notes). */
+  private async appendTaskToNote(
+    file: TFile,
+    line: string,
+    mode: 'append' | 'section' = this.settings.taskInsertionMode,
+    section: string = this.settings.taskInsertionSection,
+  ): Promise<void> {
+    await this.app.vault.process(file, (content) =>
+      insertTaskBlockIntoContent(content, line, mode, section),
+    );
   }
 
   private async createTask(text: string): Promise<void> {
@@ -1703,11 +1713,13 @@ export class CenterPanel {
       return;
     }
 
-    // Project context: write the task directly into the project note.
+    // Project context: write the task directly into the project note, using the
+    // project-specific insertion setting.
     if (typeof sel === 'object' && sel.type === 'project') {
       const file = this.app.vault.getAbstractFileByPath(sel.path);
       if (file instanceof TFile) {
-        await this.appendTaskToNote(file, `- [ ] ${text}`);
+        const { taskInsertionMode: mode, taskInsertionSection: section } = this.settings.projects;
+        await this.appendTaskToNote(file, `- [ ] ${text}`, mode, section);
       }
       return;
     }

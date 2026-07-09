@@ -23,6 +23,9 @@ export class LeftPanel {
   private expandedGroups = new Set<string>();
   private explicitlyCollapsed = new Set<string>();
   private showAllProjects = false;
+  // When a tag is opened from the Pinned section, don't auto-expand the group
+  // that contains it in the Tags tree — the pin exists precisely to avoid that.
+  private tagSelectedFromPinned = false;
 
   constructor(
     private state: AppState,
@@ -187,6 +190,9 @@ export class LeftPanel {
   ): void {
     const visible = this.showAllProjects ? projects : projects.slice(0, PROJECTS_CAP);
     const sel = this.state.get('selectedList');
+    // Project colour is derived from its status colour (same source the Projects
+    // overview uses); build the lookup once per render.
+    const statusById = new Map(this.settings.projects.statuses.map((s) => [s.id, s]));
     for (const project of visible) {
       const isActive =
         typeof sel === 'object' && sel.type === 'project' && sel.path === project.path;
@@ -197,9 +203,16 @@ export class LeftPanel {
         cls: `tc-left-item tc-project-item${isActive ? ' is-active' : ''}`,
       });
       row.createDiv({ cls: 'tc-left-item-left' }, (l) => {
+        // Diamond colour indicator — deliberately not round, to read differently
+        // from the round tag dots. Colour comes from the project's status.
+        const status = project.statusId ? statusById.get(project.statusId) : undefined;
+        const dot = l.createEl('span', { cls: 'tc-project-dot' });
+        if (status?.color) dot.style.background = status.color;
         l.createEl('span', { cls: 'tc-left-label', text: project.name });
         this.appendCustomDot(l, { type: 'project', path: project.path });
       });
+      this.attachProjectDropZone(row, project.path);
+      this.attachProjectDragSource(row, project.path);
       if (openCount > 0) {
         row.createEl('span', { cls: 'tc-left-count', text: String(openCount) });
       }
@@ -343,6 +356,7 @@ export class LeftPanel {
     if (count > 0) row.createEl('span', { cls: 'tc-left-count', text: String(count) });
 
     row.addEventListener('click', () => {
+      this.tagSelectedFromPinned = true;
       this.state.set('selectedList', { type: 'tag', tag });
       this.state.set('mode', 'tasks');
     });
@@ -377,6 +391,7 @@ export class LeftPanel {
     if (count > 0) row.createEl('span', { cls: 'tc-left-count', text: String(count) });
 
     row.addEventListener('click', () => {
+      this.tagSelectedFromPinned = false;
       this.state.set('selectedList', { type: 'tag', tag });
       this.state.set('mode', 'tasks');
     });
@@ -439,8 +454,10 @@ export class LeftPanel {
     const hasActiveChild = tags.some(
       (t) => typeof sel === 'object' && sel.type === 'tag' && sel.tag === t,
     );
-    // Auto-expand when a child is active, UNLESS the user explicitly collapsed this group
-    if (hasActiveChild && !this.explicitlyCollapsed.has(group.id)) {
+    // Auto-expand when a child is active, UNLESS the user explicitly collapsed
+    // this group, or the tag was opened from the Pinned section (pinning exists
+    // precisely to reach the tag without unfolding the tree).
+    if (hasActiveChild && !this.explicitlyCollapsed.has(group.id) && !this.tagSelectedFromPinned) {
       this.expandedGroups.add(group.id);
     }
 
@@ -515,6 +532,7 @@ export class LeftPanel {
 
         child.addEventListener('click', (e) => {
           e.stopPropagation();
+          this.tagSelectedFromPinned = false;
           this.state.set('selectedList', { type: 'tag', tag });
           this.state.set('mode', 'tasks');
         });
@@ -644,6 +662,42 @@ export class LeftPanel {
     });
     el.addEventListener('dragend', () => {
       this.state.set('draggingTag', null);
+      el.classList.remove('tc-dragging');
+    });
+  }
+
+  /** A project row accepts a dragged task: dropping physically moves the task's
+   *  markdown block into the project note (membership == file location). */
+  private attachProjectDropZone(el: HTMLElement, projectPath: string): void {
+    el.addEventListener('dragover', (e) => {
+      const task = this.state.get('draggingTask');
+      if (!this.projectManager || !task || task.filePath === projectPath) return;
+      e.preventDefault();
+      el.classList.add('tc-drop-target');
+    });
+    el.addEventListener('dragleave', () => {
+      el.classList.remove('tc-drop-target');
+    });
+    el.addEventListener('drop', (e) => {
+      el.classList.remove('tc-drop-target');
+      const task = this.state.get('draggingTask');
+      if (!task || task.filePath === projectPath || !this.projectManager) return;
+      e.preventDefault();
+      void this.projectManager.moveTaskToProject(task, projectPath);
+    });
+  }
+
+  /** A project row can be dragged onto a task card to pull that task into the
+   *  project — the mirror gesture of dropping a task onto the project. */
+  private attachProjectDragSource(el: HTMLElement, projectPath: string): void {
+    el.setAttribute('draggable', 'true');
+    el.addEventListener('dragstart', (e) => {
+      e.stopPropagation();
+      this.state.set('draggingProject', projectPath);
+      el.classList.add('tc-dragging');
+    });
+    el.addEventListener('dragend', () => {
+      this.state.set('draggingProject', null);
       el.classList.remove('tc-dragging');
     });
   }

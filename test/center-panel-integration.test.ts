@@ -477,11 +477,15 @@ describe('CenterPanel project selection', () => {
     expect(content).toContain('- [ ] write the brief');
   });
 
-  it("sel={type:'project'} createTask honors the section-insertion setting", async () => {
+  it("sel={type:'project'} createTask honors the project section-insertion setting", async () => {
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
-      taskInsertionMode: 'section',
-      taskInsertionSection: '## Tasks',
+      // Project creation uses the project-specific insertion setting, not the global one.
+      projects: {
+        ...DEFAULT_SETTINGS.projects,
+        taskInsertionMode: 'section',
+        taskInsertionSection: '## Tasks',
+      },
     };
     const { panel, state, app } = await makePanel(
       { 'Projects/A.md': '# Project A\n\n## Tasks\n- [ ] existing\n' },
