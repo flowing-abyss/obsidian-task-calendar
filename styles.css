@@ -1146,6 +1146,231 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   display: none !important;
 }
 
+/* ===== Calendar redesign: Today/Week/Month timegrid (tc-tg-*) ===== */
+
+.tc-tg-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.tc-tg-allday-row {
+  display: flex;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  min-height: 2.25em;
+}
+
+.tc-tg-allday-gutter {
+  width: 3.5em;
+  flex-shrink: 0;
+}
+
+.tc-tg-allday-cell {
+  flex: 1;
+  position: relative;
+  border-left: 1px solid var(--background-modifier-border);
+  padding: 2px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tc-tg-grid-row {
+  display: flex;
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+
+.tc-tg-hour-gutter {
+  width: 3.5em;
+  flex-shrink: 0;
+}
+
+.tc-tg-hour-label {
+  height: 48px;
+  font-size: 0.75em;
+  color: var(--text-faint);
+  text-align: right;
+  padding-right: 4px;
+  transform: translateY(-0.5em);
+}
+
+.tc-tg-day-column {
+  flex: 1;
+  position: relative;
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.tc-tg-hour-row {
+  height: 48px;
+  border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+.tc-tg-hour-column {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* let clicks pass through gaps; blocks re-enable pointer-events themselves */
+}
+
+.tc-tg-block {
+  position: absolute;
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 0.8em;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.tc-tg-block-title {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.tc-tg-resize-handle {
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  bottom: -3px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.tc-tg-body {
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.8em;
+  cursor: grab;
+  position: relative;
+}
+
+.tc-tg-span {
+  background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--interactive-accent) 45%, transparent);
+}
+
+.tc-tg-plain {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.tc-tg-span-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+.tc-tg-span-edge--left { left: -3px; }
+.tc-tg-span-edge--right { right: -3px; }
+
+.tc-tg-deadline-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 0.78em;
+  background: color-mix(in srgb, var(--text-error) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-error) 45%, transparent);
+  color: var(--text-error);
+  cursor: pointer;
+}
+
+.tc-tg-block.is-dragging,
+.tc-tg-body.is-dragging {
+  opacity: 0.5;
+}
+
+.tc-tg-allday-cell.is-drag-over {
+  background: var(--background-modifier-hover);
+}
+
+/* ===== Calendar redesign: Month overview (tc-mg-*) ===== */
+
+.tc-mg-grid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tc-mg-head-row,
+.tc-mg-row {
+  display: flex;
+  flex: 1;
+}
+
+.tc-mg-head {
+  flex: 1;
+  text-align: center;
+  font-size: 0.75em;
+  color: var(--text-faint);
+  padding: 4px 0;
+}
+
+.tc-mg-cell {
+  flex: 1;
+  border: 1px solid var(--background-modifier-border);
+  padding: 2px 4px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tc-mg-cell.is-today {
+  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+}
+
+.tc-mg-cell.is-outside-month {
+  opacity: 0.4;
+}
+
+.tc-mg-day-label {
+  font-size: 0.75em;
+  color: var(--text-muted);
+}
+
+.tc-mg-plain,
+.tc-mg-block-dot,
+.tc-mg-span-segment,
+.tc-mg-deadline-marker {
+  font-size: 0.72em;
+  border-radius: 4px;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tc-mg-plain,
+.tc-mg-block-dot {
+  background: var(--background-secondary);
+}
+
+.tc-mg-span-segment {
+  background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+}
+
+.tc-mg-deadline-marker {
+  background: color-mix(in srgb, var(--text-error) 14%, transparent);
+  color: var(--text-error);
+}
+
+/* ===== Calendar redesign: Planning chips ===== */
+
+.tc-chip-scheduled,
+.tc-chip-start {
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+}
+
 /* Mobile View */
 body.is-mobile .tasksCalendar .gridHead,
 body.is-mobile .tasksCalendar .cellName,
