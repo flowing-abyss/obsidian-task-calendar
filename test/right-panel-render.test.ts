@@ -31,6 +31,11 @@ function click(el: HTMLElement): void {
   el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 }
 
+/** Read the textContent of the first element matching `sel` inside `el`, or '' if absent. */
+function el2Text(el: HTMLElement, sel: string): string {
+  return el.querySelector(sel)?.textContent ?? '';
+}
+
 /** Bracket-access helper to call private methods (preserves `this` binding). */
 function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
   const fn = (panel as unknown as Record<string, (...a: unknown[]) => T>)[method]!;
@@ -293,5 +298,50 @@ describe('RightPanel popovers', () => {
     const title = el.querySelector<HTMLElement>('.tc-right-title-view')!;
     click(title);
     expect(el.querySelector('.tc-priority-popover')).toBeNull();
+  });
+});
+
+describe('RightPanel Planning disclosure', () => {
+  it('Planning section is collapsed by default and shows no chip for unset start/scheduled', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25' })]);
+    expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('false');
+    expect(el.querySelector('.tc-chip-scheduled')).toBeNull();
+    expect(el.querySelector('.tc-chip-start')).toBeNull();
+  });
+
+  it('a task with scheduled set shows a scheduled chip in the main row without expanding Planning', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [task({ text: 'Sched', due: undefined, scheduled: '2026-07-05' })]);
+    expect(el.querySelector('.tc-chip-scheduled')?.textContent).toContain('5 Jul');
+    expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('false');
+  });
+
+  it('expanding Planning reveals Start and Scheduled inputs', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25' })]);
+    const toggle = el.querySelector('.tc-planning-toggle') as HTMLElement;
+    toggle.click();
+    expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('true');
+    expect(el.querySelector('.tc-planning-start-input')).not.toBeNull();
+    expect(el.querySelector('.tc-planning-scheduled-input')).not.toBeNull();
+  });
+
+  it('clicking a promoted scheduled chip reopens the Planning section', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [task({ text: 'Sched', due: undefined, scheduled: '2026-07-05' })]);
+    const chip = el.querySelector<HTMLElement>('.tc-chip-scheduled')!;
+    click(chip);
+    expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('true');
+  });
+
+  it('combined time+duration chip shows "time · duration" when both set, just time otherwise', async () => {
+    const withBothPanel = await makePanel();
+    withBothPanel.state.set('taskStack', [task({ text: 'TD', time: '15:00', duration: 90 })]);
+    expect(el2Text(withBothPanel.el, '.tc-chip-time')).toBe('⏰ 15:00 · 1h30m');
+
+    const timeOnlyPanel = await makePanel();
+    timeOnlyPanel.state.set('taskStack', [task({ text: 'T', time: '15:00' })]);
+    expect(el2Text(timeOnlyPanel.el, '.tc-chip-time')).toBe('⏰ 15:00');
   });
 });

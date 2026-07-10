@@ -249,20 +249,60 @@ export class RightPanel {
     {
       const chips = this.el.createDiv({ cls: 'tc-chips-row' });
 
-      // Date chip
+      // Date chip (due-first display; if scheduled is set, prefer showing scheduled as the
+      // "when this sits on the calendar" chip, matching the due-centric anchor-priority rule)
       this.renderDateChip(chips, task);
-      // Time chip
+
+      // Combined time + duration chip (duration only applies to top-level Task, not SubTask)
+      const duration = 'duration' in task ? task.duration : undefined;
+      let timeChipText = '⏰';
+      if (task.time) {
+        timeChipText = duration
+          ? `⏰ ${task.time} · ${formatDurationFromMinutes(duration)}`
+          : `⏰ ${task.time}`;
+      }
       const timeChip = chips.createEl('button', {
-        cls: `tc-chip${task.time ? '' : ' tc-chip-empty'}`,
-        text: task.time ? `⏰ ${task.time}` : '⏰',
-        attr: { title: 'Set time' },
+        cls: `tc-chip tc-chip-time${task.time ? '' : ' tc-chip-empty'}`,
+        text: timeChipText,
+        attr: { title: 'Set time & duration' },
       });
       timeChip.addEventListener('click', (e) => {
         e.stopPropagation();
         this.showTimePopover(timeChip, task);
       });
+
       // Priority chip
       this.renderPriorityChip(chips, task);
+
+      // Scheduled chip — only rendered when set (promoted from Planning); clicking re-opens Planning
+      if (task.scheduled) {
+        const schedChip = chips.createEl('button', {
+          cls: 'tc-chip tc-chip-scheduled',
+          text: `⏳ ${this.formatDate(task.scheduled)}`,
+          attr: { title: 'Scheduled — open planning to edit' },
+        });
+        schedChip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const section = this.el.querySelector('.tc-planning-section');
+          section?.setAttribute('data-open', 'true');
+          section?.scrollIntoView?.({ block: 'nearest' });
+        });
+      }
+      // Start chip — only rendered when set
+      if (task.start) {
+        const startChip = chips.createEl('button', {
+          cls: 'tc-chip tc-chip-start',
+          text: `🛫 ${this.formatDate(task.start)}`,
+          attr: { title: 'Start — open planning to edit' },
+        });
+        startChip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const section = this.el.querySelector('.tc-planning-section');
+          section?.setAttribute('data-open', 'true');
+          section?.scrollIntoView?.({ block: 'nearest' });
+        });
+      }
+
       // Tag chips
       const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
       for (const tag of tags) {
@@ -276,6 +316,12 @@ export class RightPanel {
           addTagBtn.removeClass('tc-chip-add--hidden'),
         );
       });
+    }
+
+    // Planning disclosure (Start + Scheduled) — collapsed by default; only rendered for Task
+    // (not SubTask, since duration/scheduling only applies to top-level calendar items)
+    if ('due' in task) {
+      this.renderPlanningSection(task);
     }
 
     // Divider
@@ -629,6 +675,43 @@ export class RightPanel {
     };
 
     showText();
+  }
+
+  private renderPlanningSection(task: Task): void {
+    const section = this.el.createDiv({ cls: 'tc-planning-section' });
+    section.setAttribute('data-open', 'false');
+
+    const toggle = section.createEl('button', {
+      cls: 'tc-planning-toggle',
+      text: 'Planning',
+    });
+    const body = section.createDiv({ cls: 'tc-planning-body' });
+    toggle.addEventListener('click', () => {
+      const isOpen = section.getAttribute('data-open') === 'true';
+      section.setAttribute('data-open', isOpen ? 'false' : 'true');
+    });
+
+    const startRow = body.createDiv({ cls: 'tc-planning-row' });
+    startRow.createEl('span', { cls: 'tc-planning-label', text: '🛫 Start' });
+    const startInput = startRow.createEl('input', {
+      cls: 'tc-planning-start-input',
+      attr: { type: 'date', value: task.start ?? '' },
+    });
+    startInput.addEventListener('change', () => {
+      if (startInput.value) void this.updateStart(task, startInput.value);
+      else void this.clearStart(task);
+    });
+
+    const schedRow = body.createDiv({ cls: 'tc-planning-row' });
+    schedRow.createEl('span', { cls: 'tc-planning-label', text: '⏳ Scheduled' });
+    const schedInput = schedRow.createEl('input', {
+      cls: 'tc-planning-scheduled-input',
+      attr: { type: 'date', value: task.scheduled ?? '' },
+    });
+    schedInput.addEventListener('change', () => {
+      if (schedInput.value) void this.updateScheduled(task, schedInput.value);
+      else void this.clearScheduled(task);
+    });
   }
 
   private renderDateChip(container: HTMLElement, task: TaskLike): void {
