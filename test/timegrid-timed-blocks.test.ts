@@ -16,6 +16,8 @@ function callbacks() {
     onTimeChange: vi.fn(),
     onDurationChange: vi.fn(),
     onToggle: vi.fn(),
+    onSetStatus: vi.fn(),
+    onSetPriority: vi.fn(),
     statusRegistry: registry,
   };
 }
@@ -31,6 +33,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -61,6 +65,45 @@ describe('renderTimedBlocksForDay', () => {
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(cbs.onToggle).toHaveBeenCalledWith(t);
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('right-clicking the status marker opens the status/priority popover and does NOT fire onTaskClick (checkbox contextmenu is distinct from the block contextmenu)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], cbs);
+    const marker = container.querySelector('.tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(document.querySelector('.tc-status-popover')).not.toBeNull();
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('picking a status from the popover fires onSetStatus with the task and chosen symbol', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], cbs);
+    const marker = container.querySelector('.tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const statusRow = document.querySelector('.tc-status-popover-row') as HTMLElement;
+    expect(statusRow).not.toBeNull();
+    statusRow.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onSetStatus).toHaveBeenCalledWith(t, expect.any(String));
+  });
+
+  it('picking a priority flag from the popover fires onSetPriority with the task and chosen priority', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], cbs);
+    const marker = container.querySelector('.tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const flagBtn = document.querySelector(
+      '.tc-status-popover-flag[data-tc-priority="A"]',
+    ) as HTMLElement;
+    expect(flagBtn).not.toBeNull();
+    flagBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onSetPriority).toHaveBeenCalledWith(t, 'A');
   });
 
   it('a real pointerdown→pointerup→click sequence on the status marker (no movement) fires only onToggle, never onTimeChange/onDurationChange', () => {
@@ -94,6 +137,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -113,6 +158,8 @@ describe('renderTimedBlocksForDay', () => {
         onTimeChange: vi.fn(),
         onDurationChange: vi.fn(),
         onToggle: vi.fn(),
+        onSetStatus: vi.fn(),
+        onSetPriority: vi.fn(),
         statusRegistry: registry,
       },
       [{ id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' }],
@@ -162,6 +209,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -181,6 +230,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -198,6 +249,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -216,6 +269,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -234,6 +289,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
@@ -252,6 +309,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const blocks = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block'));
@@ -272,6 +331,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange,
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -297,6 +358,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange,
       onDurationChange,
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
@@ -322,6 +385,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange,
       onDurationChange: vi.fn(),
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -414,6 +479,8 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange,
       onToggle: vi.fn(),
+      onSetStatus: vi.fn(),
+      onSetPriority: vi.fn(),
       statusRegistry: registry,
     });
     const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;

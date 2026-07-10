@@ -22,6 +22,8 @@ function callbacks() {
     onDueChange: vi.fn(),
     onExtendToSpan: vi.fn(),
     onToggle: vi.fn(),
+    onSetStatus: vi.fn(),
+    onSetPriority: vi.fn(),
     statusRegistry: registry,
   };
 }

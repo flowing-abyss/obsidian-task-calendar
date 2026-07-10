@@ -50,6 +50,8 @@ export class WeekTimeGridView extends BaseView {
       onTimeChange: this.callbacks.onTimeChange,
       onDurationChange: this.callbacks.onDurationChange,
       onToggle: this.callbacks.onToggle,
+      onSetStatus: this.callbacks.onSetStatus,
+      onSetPriority: this.callbacks.onSetPriority,
       statusRegistry: this.callbacks.statusRegistry,
     };
     const allDayCallbacks: AllDayCallbacks = {
@@ -61,6 +63,8 @@ export class WeekTimeGridView extends BaseView {
       onDueChange: this.callbacks.onDueChange,
       onExtendToSpan: this.callbacks.onExtendToSpan,
       onToggle: this.callbacks.onToggle,
+      onSetStatus: this.callbacks.onSetStatus,
+      onSetPriority: this.callbacks.onSetPriority,
       statusRegistry: this.callbacks.statusRegistry,
     };
 

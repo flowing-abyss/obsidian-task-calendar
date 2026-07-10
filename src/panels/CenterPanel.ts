@@ -499,6 +499,12 @@ export class CenterPanel {
           onToggle: (t) => {
             void this.store.toggleTask(t);
           },
+          onSetStatus: (t, status) => {
+            void this.store.setTaskStatus(t, status);
+          },
+          onSetPriority: (t, priority) => {
+            void this.store.setPriority(t, priority);
+          },
           statusRegistry: this.store.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });
@@ -517,6 +523,12 @@ export class CenterPanel {
           onToggle: (t) => {
             void this.store.toggleTask(t);
           },
+          onSetStatus: (t, status) => {
+            void this.store.setTaskStatus(t, status);
+          },
+          onSetPriority: (t, priority) => {
+            void this.store.setPriority(t, priority);
+          },
           statusRegistry: this.store.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });
@@ -533,6 +545,12 @@ export class CenterPanel {
           onDrop: handleDrop,
           onToggle: (t) => {
             void this.store.toggleTask(t);
+          },
+          onSetStatus: (t, status) => {
+            void this.store.setTaskStatus(t, status);
+          },
+          onSetPriority: (t, priority) => {
+            void this.store.setPriority(t, priority);
           },
           onWeekClick: (wk, yr) => {
             this.calViewType = 'week';

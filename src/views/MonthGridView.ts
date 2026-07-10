@@ -1,10 +1,11 @@
 import { Component, type App } from 'obsidian';
-import type { Task } from '../parser/types';
+import type { Task, TaskPriority } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { tagColorFor } from '../tags/tagColor';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderStatusMarker } from '../ui/StatusMarker';
+import { showStatusMenuAt } from '../ui/statusMenu';
 import { BaseView } from './BaseView';
 import { hasMeta, renderCountBadges, renderTagChips } from './timegrid/renderTaskMeta';
 import { bucketTasksForDate } from './TodayView';
@@ -16,6 +17,8 @@ export interface MonthGridViewCallbacks {
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
   onToggle: (task: Task) => void;
+  onSetStatus: (task: Task, status: string) => void;
+  onSetPriority: (task: Task, priority: TaskPriority) => void;
   onWeekClick: (weekNr: string, year: string) => void;
   statusRegistry: StatusRegistry;
   tagGroups?: TagGroup[];
@@ -231,14 +234,22 @@ export class MonthGridView extends BaseView {
   }
 
   // Status marker first: lets a user mark a compact item done without opening the modal. Its
-  // own click handler stops propagation; its contextmenu handler does NOT, so a right-click on
-  // the marker still bubbles to the item's own contextmenu handler below (opens modal).
+  // own contextmenu handler stops propagation and opens the status/priority popover instead —
+  // distinct from right-clicking the item's own contextmenu handler below (opens the task modal).
   private renderMarker(el: HTMLElement, t: Task): void {
     renderStatusMarker(el, {
       task: t,
       registry: this.callbacks.statusRegistry,
       onLeftClick: () => this.callbacks.onToggle(t),
-      onContextMenu: () => {},
+      onContextMenu: (ev) => {
+        ev.stopPropagation();
+        showStatusMenuAt(ev, {
+          task: t,
+          registry: this.callbacks.statusRegistry,
+          onPickStatus: (c) => this.callbacks.onSetStatus(t, c),
+          onPickPriority: (p) => this.callbacks.onSetPriority(t, p),
+        });
+      },
     });
   }
 

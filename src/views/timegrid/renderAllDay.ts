@@ -1,10 +1,11 @@
 import { Component, type App } from 'obsidian';
-import type { Task } from '../../parser/types';
+import type { Task, TaskPriority } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
+import { showStatusMenuAt } from '../../ui/statusMenu';
 import { hasMeta, renderCountBadges, renderTagChips } from './renderTaskMeta';
 
 export interface AllDayCallbacks {
@@ -16,6 +17,8 @@ export interface AllDayCallbacks {
   onDueChange: (task: Task, newDue: string) => void; // pointer edge-resize
   onExtendToSpan: (task: Task, newDue: string) => void; // pointer edge-resize on a plain task
   onToggle: (task: Task) => void;
+  onSetStatus: (task: Task, status: string) => void;
+  onSetPriority: (task: Task, priority: TaskPriority) => void;
   statusRegistry: StatusRegistry;
 }
 
@@ -41,13 +44,21 @@ function renderDraggableBody(
 ): HTMLElement {
   const el = cellEl.createDiv({ cls: `tc-tg-body ${cls}` });
   // Status marker first: lets a user mark the item done without opening the modal. Its own
-  // click handler stops propagation; its contextmenu handler does NOT, so a right-click on
-  // the marker still bubbles to this element's contextmenu below (opens modal).
+  // contextmenu handler stops propagation and opens the status/priority popover instead —
+  // distinct from right-clicking this element's body below (opens the task modal).
   renderStatusMarker(el, {
     task,
     registry: callbacks.statusRegistry,
     onLeftClick: () => callbacks.onToggle(task),
-    onContextMenu: () => {},
+    onContextMenu: (ev) => {
+      ev.stopPropagation();
+      showStatusMenuAt(ev, {
+        task,
+        registry: callbacks.statusRegistry,
+        onPickStatus: (c) => callbacks.onSetStatus(task, c),
+        onPickPriority: (p) => callbacks.onSetPriority(task, p),
+      });
+    },
   });
   const titleEl = el.createSpan();
   renderTaskText(titleEl, task.markdownText, {
@@ -185,7 +196,15 @@ export function renderAllDayCell(
       task: t,
       registry: callbacks.statusRegistry,
       onLeftClick: () => callbacks.onToggle(t),
-      onContextMenu: () => {},
+      onContextMenu: (ev) => {
+        ev.stopPropagation();
+        showStatusMenuAt(ev, {
+          task: t,
+          registry: callbacks.statusRegistry,
+          onPickStatus: (c) => callbacks.onSetStatus(t, c),
+          onPickPriority: (p) => callbacks.onSetPriority(t, p),
+        });
+      },
     });
     marker.createSpan({ text: '📅 ' });
     const titleEl = marker.createSpan();

@@ -1,11 +1,12 @@
 import { Component, type App } from 'obsidian';
 import { formatDurationFromMinutes } from '../../parser/TaskParser';
-import type { Task } from '../../parser/types';
+import type { Task, TaskPriority } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
+import { showStatusMenuAt } from '../../ui/statusMenu';
 import {
   minutesToPixels,
   minutesToTimeString,
@@ -23,6 +24,8 @@ export interface TimedBlockCallbacks {
   onTimeChange: (task: Task, newStartMinutes: number) => void;
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
   onToggle: (task: Task) => void;
+  onSetStatus: (task: Task, status: string) => void;
+  onSetPriority: (task: Task, priority: TaskPriority) => void;
   statusRegistry: StatusRegistry;
 }
 
@@ -64,13 +67,21 @@ export function renderTimedBlocksForDay(
     // forced a line break after the inline marker span).
     const head = block.createDiv({ cls: 'tc-tg-block-head' });
     // Status marker first: lets a user mark the block done without opening the modal.
-    // Its own click handler stops propagation; its contextmenu handler does NOT, so a
-    // right-click on the marker still bubbles to the block's contextmenu below (opens modal).
+    // Its own contextmenu handler stops propagation and opens the status/priority popover
+    // instead — distinct from right-clicking the block body below (opens the task modal).
     renderStatusMarker(head, {
       task: p.task,
       registry: callbacks.statusRegistry,
       onLeftClick: () => callbacks.onToggle(p.task),
-      onContextMenu: () => {},
+      onContextMenu: (ev) => {
+        ev.stopPropagation();
+        showStatusMenuAt(ev, {
+          task: p.task,
+          registry: callbacks.statusRegistry,
+          onPickStatus: (c) => callbacks.onSetStatus(p.task, c),
+          onPickPriority: (pr) => callbacks.onSetPriority(p.task, pr),
+        });
+      },
     });
     const titleEl = head.createDiv({ cls: 'tc-tg-block-title' });
     renderTaskText(titleEl, p.task.markdownText, {

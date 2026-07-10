@@ -17,6 +17,8 @@ function callbacks() {
     onTaskClick: vi.fn(),
     onDrop: vi.fn(),
     onToggle: vi.fn(),
+    onSetStatus: vi.fn(),
+    onSetPriority: vi.fn(),
     onWeekClick: vi.fn(),
     statusRegistry: registry,
   };
@@ -275,6 +277,43 @@ describe('MonthGridView', () => {
     (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(cbs.onToggle).toHaveBeenCalledWith(t);
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('right-clicking the status marker on a compact plain row opens the status/priority popover and does NOT fire onTaskClick (distinct from the row contextmenu)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const marker = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-plain .tc-status-marker',
+    ) as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(document.querySelector('.tc-status-popover')).not.toBeNull();
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('picking a status/priority from the popover on a compact row fires onSetStatus/onSetPriority with the task', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const marker = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-plain .tc-status-marker',
+    ) as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const statusRow = document.querySelector('.tc-status-popover-row') as HTMLElement;
+    statusRow.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onSetStatus).toHaveBeenCalledWith(t, expect.any(String));
+
+    document.querySelectorAll('.tc-status-popover').forEach((el) => el.remove());
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const flagBtn = document.querySelector(
+      '.tc-status-popover-flag[data-tc-priority="A"]',
+    ) as HTMLElement;
+    flagBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onSetPriority).toHaveBeenCalledWith(t, 'A');
   });
 
   it('destroy() does not throw', () => {

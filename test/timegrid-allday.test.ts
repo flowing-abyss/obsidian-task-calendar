@@ -17,6 +17,8 @@ const callbacks = () => ({
   onDueChange: vi.fn(),
   onExtendToSpan: vi.fn(),
   onToggle: vi.fn(),
+  onSetStatus: vi.fn(),
+  onSetPriority: vi.fn(),
   statusRegistry: registry,
 });
 
@@ -215,6 +217,53 @@ describe('renderAllDayCell', () => {
     (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(cbs.onToggle).toHaveBeenCalledWith(t);
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('right-clicking the status marker on a plain chip opens the status/priority popover and does NOT fire onTaskClick (distinct from the chip contextmenu)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
+    const marker = container.querySelector('.tc-tg-plain .tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(document.querySelector('.tc-status-popover')).not.toBeNull();
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('picking a status from the popover on a plain chip fires onSetStatus, and a priority flag fires onSetPriority', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
+    const marker = container.querySelector('.tc-tg-plain .tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const statusRow = document.querySelector('.tc-status-popover-row') as HTMLElement;
+    statusRow.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onSetStatus).toHaveBeenCalledWith(t, expect.any(String));
+
+    document.querySelectorAll('.tc-status-popover').forEach((el) => el.remove());
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const flagBtn = document.querySelector(
+      '.tc-status-popover-flag[data-tc-priority="A"]',
+    ) as HTMLElement;
+    flagBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onSetPriority).toHaveBeenCalledWith(t, 'A');
+  });
+
+  it('right-clicking the status marker on a deadline marker opens the popover, fires onSetStatus/onSetPriority, and does NOT fire onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    renderAllDayCell(container, '2026-07-10', [], [], [t], cbs);
+    const marker = container.querySelector(
+      '.tc-tg-deadline-marker .tc-status-marker',
+    ) as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(document.querySelector('.tc-status-popover')).not.toBeNull();
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+    const statusRow = document.querySelector('.tc-status-popover-row') as HTMLElement;
+    statusRow.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onSetStatus).toHaveBeenCalledWith(t, expect.any(String));
   });
 
   it("dropping onto the cell fires onDrop with the payload and this cell's date", () => {

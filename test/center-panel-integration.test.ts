@@ -567,8 +567,9 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
     panel: CenterPanel;
     state: AppState;
     el: HTMLElement;
+    app: App;
   }> {
-    const { panel, state } = await makePanel(
+    const { panel, state, app } = await makePanel(
       { 't.md': '- [ ] task 📅 2026-06-15' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
@@ -576,7 +577,7 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
     const el = freshContainer();
     panel.mount(el);
     state.set('mode', 'calendar');
-    return { panel, state, el };
+    return { panel, state, el, app };
   }
 
   it('view switcher shows Day, Week, Month (not Today/Week/Month)', async () => {
@@ -612,6 +613,39 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
   it('no 🎨 style-cycle button is rendered in the new calendar toolbar', async () => {
     const { el } = await makeCalendarPanel();
     expect(el.querySelector('.tc-cal-style-btn')).toBeNull();
+  });
+
+  it('right-clicking a Month-view checkbox opens the status/priority popover instead of the task-edit modal, and picking a priority mutates the file (onSetPriority wired through store.setPriority)', async () => {
+    // The task must fall on a currently-visible day of the default (today's) month, so it's
+    // anchored to TODAY rather than makeCalendarPanel's fixed June 2026 seed task.
+    const { panel, state, app } = await makePanel(
+      { 't.md': `- [ ] task 📅 ${TODAY}` },
+      DEFAULT_SETTINGS,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
+    const el = freshContainer();
+    panel.mount(el);
+    state.set('mode', 'calendar');
+    const marker = el.querySelector(
+      '.tc-mg-plain .tc-status-marker, .tc-mg-deadline-marker .tc-status-marker',
+    ) as HTMLElement;
+    expect(marker).not.toBeNull();
+
+    // Right-click the checkbox: opens the popover, not the TaskModal (no modal container appended).
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const popover = document.querySelector('.tc-status-popover');
+    expect(popover).not.toBeNull();
+    expect(document.querySelector('.modal')).toBeNull();
+
+    const flagBtn = popover!.querySelector(
+      '.tc-status-popover-flag[data-tc-priority="A"]',
+    ) as HTMLElement;
+    expect(flagBtn).not.toBeNull();
+    flagBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushMicrotasks();
+
+    const content = await readMd(app, 't.md');
+    expect(content).toContain('🔺');
   });
 });
 

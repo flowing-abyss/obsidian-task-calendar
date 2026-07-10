@@ -1,5 +1,5 @@
 import { Component, type App } from 'obsidian';
-import type { Task } from '../parser/types';
+import type { Task, TaskPriority } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { BaseView } from './BaseView';
@@ -20,6 +20,8 @@ export interface TimeGridCallbacks {
   onDueChange: (task: Task, newDue: string) => void;
   onExtendToSpan: (task: Task, newDue: string) => void;
   onToggle: (task: Task) => void;
+  onSetStatus: (task: Task, status: string) => void;
+  onSetPriority: (task: Task, priority: TaskPriority) => void;
   statusRegistry: StatusRegistry;
   tagGroups?: TagGroup[];
 }
@@ -106,6 +108,8 @@ export class TodayView extends BaseView {
       onTimeChange: this.callbacks.onTimeChange,
       onDurationChange: this.callbacks.onDurationChange,
       onToggle: this.callbacks.onToggle,
+      onSetStatus: this.callbacks.onSetStatus,
+      onSetPriority: this.callbacks.onSetPriority,
       statusRegistry: this.callbacks.statusRegistry,
     };
     const tagGroups = this.callbacks.tagGroups ?? [];
@@ -120,6 +124,8 @@ export class TodayView extends BaseView {
       onDueChange: this.callbacks.onDueChange,
       onExtendToSpan: this.callbacks.onExtendToSpan,
       onToggle: this.callbacks.onToggle,
+      onSetStatus: this.callbacks.onSetStatus,
+      onSetPriority: this.callbacks.onSetPriority,
       statusRegistry: this.callbacks.statusRegistry,
     };
     renderAllDayCell(day.allDayCellEl, date, spans, plain, deadlines, allDayCallbacks, tagGroups);
