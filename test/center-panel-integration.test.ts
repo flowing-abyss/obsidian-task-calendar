@@ -560,3 +560,50 @@ describe('CenterPanel projects mode teardown (regression)', () => {
     expect(el.querySelector('.tc-center-scroll')).toBeTruthy();
   });
 });
+
+describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
+  async function makeCalendarPanel(): Promise<{ panel: CenterPanel; state: AppState; el: HTMLElement }> {
+    const { panel, state } = await makePanel({ 't.md': '- [ ] task 📅 2026-06-15' }, DEFAULT_SETTINGS, [
+      { path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] },
+    ]);
+    const el = freshContainer();
+    panel.mount(el);
+    state.set('mode', 'calendar');
+    return { panel, state, el };
+  }
+
+  it('view switcher shows Today, Week, Month (not Month/Week/List)', async () => {
+    const { el } = await makeCalendarPanel();
+    const labels = Array.from(el.querySelectorAll('.tc-cal-view-btn')).map((b) => b.textContent);
+    expect(labels).toEqual(['Today', 'Week', 'Month']);
+  });
+
+  it('defaults to Month and mounts MonthGridView', async () => {
+    const { el } = await makeCalendarPanel();
+    expect(el.querySelector('.tc-mg-grid')).not.toBeNull();
+  });
+
+  it('clicking Today switches to TodayView', async () => {
+    const { el } = await makeCalendarPanel();
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === 'Today',
+      ) as HTMLElement
+    ).click();
+    expect(el.querySelector('.tc-tg-root')).not.toBeNull();
+  });
+
+  it('clicking a Month day cell drills into Week', async () => {
+    const { el } = await makeCalendarPanel();
+    const cell = el.querySelector(
+      '.tc-mg-cell:not(.is-outside-month)[data-mg-date]',
+    ) as HTMLElement;
+    cell.click();
+    expect(el.querySelector('.tc-tg-day-column')).not.toBeNull();
+  });
+
+  it('no 🎨 style-cycle button is rendered in the new calendar toolbar', async () => {
+    const { el } = await makeCalendarPanel();
+    expect(el.querySelector('.tc-cal-style-btn')).toBeNull();
+  });
+});
