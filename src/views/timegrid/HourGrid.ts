@@ -41,8 +41,11 @@ export function renderHourGrid(
   const headerRow = root.createDiv({ cls: 'tc-tg-header-row' });
   headerRow.createDiv({ cls: 'tc-tg-header-gutter' });
   for (const date of dates) {
+    // is-clickable gates the pointer-cursor/hover affordance (CSS) so it only appears when a
+    // click actually does something — e.g. Day/Today view wires no onDayHeaderClick for its
+    // single header cell, so that cell must not falsely advertise itself as clickable.
     const headerCell = headerRow.createDiv({
-      cls: `tc-tg-header-cell${date === today ? ' is-today' : ''}`,
+      cls: `tc-tg-header-cell${date === today ? ' is-today' : ''}${onDayHeaderClick ? ' is-clickable' : ''}`,
     });
     headerCell.textContent = window.moment(date).format('ddd D');
     // Drill into the Day (Today) view for this specific date — same behavior as clicking a

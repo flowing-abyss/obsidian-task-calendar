@@ -1174,10 +1174,16 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   font-weight: 600;
   color: var(--text-muted);
   border-left: 1px solid var(--background-modifier-border);
+}
+
+/* Only headers that actually drill into a day (Week's header cells — see HourGrid.ts's
+   onDayHeaderClick) advertise clickability. Day/Today view's single header wires no handler,
+   so it must not show a pointer-cursor/hover it can't honor. */
+.tc-tg-header-cell.is-clickable {
   cursor: pointer;
 }
 
-.tc-tg-header-cell:hover {
+.tc-tg-header-cell.is-clickable:hover {
   background-color: var(--background-modifier-hover);
 }
 

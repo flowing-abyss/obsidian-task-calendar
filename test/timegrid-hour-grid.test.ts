@@ -207,13 +207,17 @@ describe('renderHourGrid', () => {
     (headers[1] as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(onDayHeaderClick).toHaveBeenCalledWith('2026-07-11');
     expect(handles.days).toHaveLength(2); // sanity: handles still line up with dates
+    // Clickable headers advertise the affordance (pointer/hover is CSS-gated on is-clickable).
+    expect((headers[0] as HTMLElement).classList.contains('is-clickable')).toBe(true);
   });
 
-  it('does not wire a header click listener when onDayHeaderClick is not provided (no throw on click)', () => {
+  it('does not wire a header click listener when onDayHeaderClick is not provided (no throw on click), and does not advertise clickability', () => {
     const container = freshContainer();
     renderHourGrid(container, ['2026-07-10']);
     const header = container.querySelector('.tc-tg-header-cell') as HTMLElement;
     expect(() => header.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
+    // No handler → no false pointer-cursor/hover affordance (Day/Today view's single header).
+    expect(header.classList.contains('is-clickable')).toBe(false);
   });
 
   it('clicking inside the all-day band does not fire onDayHeaderClick (separate row from the header)', () => {
