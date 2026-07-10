@@ -14,6 +14,7 @@ import type { Task, TaskFilter, TaskPriority } from '../parser/types';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
+import { TaskDateIndex } from './TaskDateIndex';
 
 export interface StoreUpdateEvent {
   changedFile?: string; // undefined = bulk init complete
@@ -44,6 +45,7 @@ function momentToRegex(fmt: string): RegExp {
 
 export class TaskStore {
   private taskMap = new Map<string, Task[]>();
+  private dateIndex = new TaskDateIndex();
   private frontmatterMap = new Map<string, { color?: string; textColor?: string; icon?: string }>();
   private listeners: UpdateCallback[] = [];
   private metadataCacheRefs: EventRef[] = [];
@@ -103,6 +105,7 @@ export class TaskStore {
   private parseFileTasks(filePath: string, content: string, cache: CachedMetadata): void {
     if (!cache.listItems) {
       this.taskMap.delete(filePath);
+      this.dateIndex.removeFile(filePath);
       return;
     }
     const lines = content.split('\n');
@@ -173,6 +176,7 @@ export class TaskStore {
     } else {
       this.taskMap.delete(filePath);
     }
+    this.dateIndex.updateFile(filePath, tasks);
   }
 
   private registerEvents(): void {
@@ -207,6 +211,8 @@ export class TaskStore {
         const updated = tasks.map((t) => ({ ...t, filePath: file.path }));
         this.taskMap.delete(oldPath);
         this.taskMap.set(file.path, updated);
+        this.dateIndex.removeFile(oldPath);
+        this.dateIndex.updateFile(file.path, updated);
       }
       const fm = this.frontmatterMap.get(oldPath);
       if (fm) {
@@ -220,6 +226,7 @@ export class TaskStore {
     const onDelete = this.app.vault.on('delete', (file: TAbstractFile) => {
       if (!(file instanceof TFile) || file.extension !== 'md') return;
       if (this.taskMap.delete(file.path)) {
+        this.dateIndex.removeFile(file.path);
         this.frontmatterMap.delete(file.path);
         this.notify({ changedFile: file.path });
       }
@@ -252,6 +259,11 @@ export class TaskStore {
       });
     }
     return all;
+  }
+
+  /** O(1) lookup of tasks anchored on `date` (scheduled ?? due for plain tasks; every day in a start->due span). */
+  getTasksForDate(date: string): Task[] {
+    return this.dateIndex.getTasksForDate(date);
   }
 
   async toggleTask(task: Task): Promise<void> {
@@ -335,6 +347,7 @@ export class TaskStore {
     this.vaultRefs = [];
     this.listeners = [];
     this.taskMap.clear();
+    this.dateIndex.clear();
     this.frontmatterMap.clear();
   }
 }

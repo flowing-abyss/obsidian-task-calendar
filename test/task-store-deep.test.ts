@@ -1,8 +1,14 @@
-import { TFile } from 'obsidian';
+import { TFile, type CachedMetadata } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TaskStore } from '../src/store/TaskStore';
-import { createAppWithFiles, flushMicrotasks, seedTaskCache, useRealMoment } from './helpers';
+import {
+  captureChangedCallback,
+  createAppWithFiles,
+  flushMicrotasks,
+  seedTaskCache,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -10,6 +16,11 @@ function mdFile(app: Awaited<ReturnType<typeof createAppWithFiles>>, path: strin
   const f = app.vault.getAbstractFileByPath(path);
   if (!(f instanceof TFile)) throw new Error(`File not found: ${path}`);
   return f;
+}
+
+/** Cast a partial cache object to CachedMetadata (position omits col/offset). */
+function cache(obj: unknown): CachedMetadata {
+  return obj as CachedMetadata;
 }
 
 describe('TaskStore deep — frontmatter edge cases', () => {
@@ -190,5 +201,28 @@ describe('TaskStore deep — parseFileTasks edge cases', () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0]?.line).toBe(1);
     expect(tasks[0]?.text).toBe('nested');
+  });
+});
+
+describe('TaskStore.getTasksForDate (index-backed)', () => {
+  it('reflects a file edit without a full getTasks() scan', async () => {
+    const app = await createAppWithFiles({ 'a.md': '- [ ] t 📅 2026-07-10' });
+    seedTaskCache(app, 'a.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const fireChanged = captureChangedCallback(app);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+    expect(store.getTasksForDate('2026-07-10')).toHaveLength(1);
+
+    const file = mdFile(app, 'a.md');
+    fireChanged(
+      file,
+      '- [ ] t 📅 2026-07-15',
+      cache({
+        listItems: [{ task: ' ', parent: -1, position: { start: { line: 0 }, end: { line: 0 } } }],
+      }),
+    );
+    await flushMicrotasks(20);
+    expect(store.getTasksForDate('2026-07-10')).toHaveLength(0);
+    expect(store.getTasksForDate('2026-07-15')).toHaveLength(1);
   });
 });
