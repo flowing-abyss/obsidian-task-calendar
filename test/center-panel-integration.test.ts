@@ -787,4 +787,72 @@ describe('CenterPanel calendar mode — click-to-create', () => {
     block.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(el.querySelector('.tc-tg-quick-add')).toBeNull();
   });
+
+  it('clicking empty space in the all-day/"no-time" row in Today view opens an inline quick-add; Enter writes a plain (untimed) task', async () => {
+    const { el, app } = await makeClickToCreatePanel();
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === 'Day',
+      ) as HTMLElement
+    ).click();
+
+    const alldayCell = el.querySelector('.tc-tg-allday-cell') as HTMLElement;
+    const date = (el.querySelector('.tc-tg-day-column') as HTMLElement).getAttribute(
+      'data-tg-date',
+    )!;
+    alldayCell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const input = el.querySelector('.tc-tg-allday-quick-add-input') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    input.value = 'renew passport';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flushMicrotasks();
+
+    const content = await readMd(app, 'inbox.md');
+    expect(content).toContain(`- [ ] renew passport 📅 ${date}`);
+  });
+
+  it('clicking empty space in the all-day row in Week view opens an inline quick-add; Enter writes a plain task on that day', async () => {
+    const { el, app } = await makeClickToCreatePanel();
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === 'Week',
+      ) as HTMLElement
+    ).click();
+
+    const alldayCell = el.querySelector('.tc-tg-allday-cell') as HTMLElement;
+    const date = alldayCell.getAttribute('data-tg-date')!;
+    alldayCell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const input = el.querySelector('.tc-tg-allday-quick-add-input') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    input.value = 'water plants';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flushMicrotasks();
+
+    const content = await readMd(app, 'inbox.md');
+    expect(content).toContain(`- [ ] water plants 📅 ${date}`);
+  });
+
+  it('clicking on an existing item in the all-day row does not open the quick-add (guarded, same as the hour grid)', async () => {
+    const { panel, state } = await makePanel(
+      { 't.md': `- [ ] plain task 📅 ${TODAY}` },
+      clickToCreateSettings,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
+    fixedToday(TODAY);
+    const el = freshContainer();
+    panel.mount(el);
+    state.set('mode', 'calendar');
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === 'Day',
+      ) as HTMLElement
+    ).click();
+
+    const chip = el.querySelector('.tc-tg-plain') as HTMLElement;
+    expect(chip).toBeTruthy();
+    chip.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(el.querySelector('.tc-tg-allday-quick-add')).toBeNull();
+  });
 });

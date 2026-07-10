@@ -459,7 +459,17 @@ export class CenterPanel {
     const handleCreateAtDate = (date: string): void => {
       const cell = viewContainer.querySelector<HTMLElement>(`[data-mg-date="${date}"]`);
       if (!cell) return;
-      this.showMonthQuickAdd(cell, date, mountView);
+      this.showFillCellQuickAdd(cell, date, 'tc-mg-quick-add', mountView);
+    };
+    const handleCreateAtDateAllDay = (date: string): void => {
+      // Scoped to .tc-tg-allday-cell specifically: HourGrid.ts's day-column element also
+      // carries data-tg-date (for edge-resize date resolution), so a bare attribute selector
+      // would risk matching the wrong element.
+      const cell = viewContainer.querySelector<HTMLElement>(
+        `.tc-tg-allday-cell[data-tg-date="${date}"]`,
+      );
+      if (!cell) return;
+      this.showFillCellQuickAdd(cell, date, 'tc-tg-allday-quick-add', mountView);
     };
 
     const startPositionFor = (viewType: CalViewType): string => {
@@ -491,6 +501,7 @@ export class CenterPanel {
           onDrop: handleDrop,
           onDropTime: handleDropTime,
           onCreateAtTime: handleCreateAtTime,
+          onCreateAtDate: handleCreateAtDateAllDay,
           onTimeChange: handleTimeChange,
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
@@ -515,6 +526,7 @@ export class CenterPanel {
           onDrop: handleDrop,
           onDropTime: handleDropTime,
           onCreateAtTime: handleCreateAtTime,
+          onCreateAtDate: handleCreateAtDateAllDay,
           onDayHeaderClick: (date) => {
             this.calViewType = 'today';
             this.calDate = window.moment(date);
@@ -1746,17 +1758,24 @@ export class CenterPanel {
   }
 
   /**
-   * Click-to-create quick-add for a Month day cell's "+" button: an inline input that fills
-   * the cell (`inset: 2px`, matching the cell's own padding, so it never gets clipped by the
-   * cell's `overflow: hidden`) — same anchored-absolute-child-of-a-positioned-container
-   * technique as showTimeGridQuickAdd/Task 1's month-year picker fix, just sized to the cell
-   * instead of offset below it.
+   * Click-to-create quick-add that fills a cell (`inset: 2px`-style, matching the cell's own
+   * padding, so it never gets clipped by the cell's `overflow: hidden`) — same
+   * anchored-absolute-child-of-a-positioned-container technique as showTimeGridQuickAdd/Task 1's
+   * month-year picker fix, just sized to the cell instead of offset below it. Shared by Month's
+   * day-cell "+" button and the all-day/"no-time" row's empty-space click-to-create (Task 18) —
+   * both just need a plain (untimed) task name typed against a given date, so only the CSS class
+   * (for each cell shape's own styling) varies between callers.
    */
-  private showMonthQuickAdd(cell: HTMLElement, date: string, onDone: () => void): void {
-    cell.querySelectorAll('.tc-mg-quick-add').forEach((el) => el.remove());
-    const pop = cell.createDiv({ cls: 'tc-mg-quick-add' });
+  private showFillCellQuickAdd(
+    cell: HTMLElement,
+    date: string,
+    popCls: string,
+    onDone: () => void,
+  ): void {
+    cell.querySelectorAll(`.${popCls}`).forEach((el) => el.remove());
+    const pop = cell.createDiv({ cls: popCls });
     const input = pop.createEl('input', {
-      cls: 'tc-mg-quick-add-input',
+      cls: `${popCls}-input`,
       attr: { type: 'text', placeholder: 'Task name…' },
     });
 

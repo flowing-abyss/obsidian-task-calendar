@@ -75,6 +75,7 @@ export class WeekTimeGridView extends BaseView {
       onSetStatus: this.callbacks.onSetStatus,
       onSetPriority: this.callbacks.onSetPriority,
       statusRegistry: this.callbacks.statusRegistry,
+      onCreateAtDate: this.callbacks.onCreateAtDate,
     };
 
     const tagGroups = this.callbacks.tagGroups ?? [];

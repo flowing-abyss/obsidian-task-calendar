@@ -71,6 +71,13 @@ describe('renderHourGrid', () => {
     expect(container.querySelectorAll('.tc-tg-day-column')).toHaveLength(7);
   });
 
+  it('labels the all-day gutter "No-time" so its purpose is clear', () => {
+    const container = freshContainer();
+    renderHourGrid(container, ['2026-07-10']);
+    const gutter = container.querySelector('.tc-tg-allday-gutter') as HTMLElement;
+    expect(gutter.textContent).toBe('No-time');
+  });
+
   it('each day gets an independent all-day cell element', () => {
     const container = freshContainer();
     const handles = renderHourGrid(container, ['2026-07-10', '2026-07-11']);

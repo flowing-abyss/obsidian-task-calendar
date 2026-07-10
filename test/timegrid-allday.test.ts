@@ -472,4 +472,51 @@ describe('renderAllDayCell', () => {
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     expect(chip.querySelector('.tc-tg-body-meta')).toBeNull();
   });
+
+  it("clicking empty all-day-cell space fires onCreateAtDate with this cell's date", () => {
+    const container = freshContainer();
+    const onCreateAtDate = vi.fn();
+    renderAllDayCell(container, '2026-07-10', [], [], [], { ...callbacks(), onCreateAtDate });
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onCreateAtDate).toHaveBeenCalledWith('2026-07-10');
+  });
+
+  it('clicking an existing plain chip does not also fire onCreateAtDate', () => {
+    const container = freshContainer();
+    const onCreateAtDate = vi.fn();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], { ...callbacks(), onCreateAtDate });
+    (container.querySelector('.tc-tg-plain') as HTMLElement).dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    expect(onCreateAtDate).not.toHaveBeenCalled();
+  });
+
+  it('clicking an existing span body does not also fire onCreateAtDate', () => {
+    const container = freshContainer();
+    const onCreateAtDate = vi.fn();
+    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    renderAllDayCell(container, '2026-07-10', [t], [], [], { ...callbacks(), onCreateAtDate });
+    (container.querySelector('.tc-tg-span') as HTMLElement).dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    expect(onCreateAtDate).not.toHaveBeenCalled();
+  });
+
+  it('clicking an existing deadline marker does not also fire onCreateAtDate', () => {
+    const container = freshContainer();
+    const onCreateAtDate = vi.fn();
+    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    renderAllDayCell(container, '2026-07-10', [], [], [t], { ...callbacks(), onCreateAtDate });
+    (container.querySelector('.tc-tg-deadline-marker') as HTMLElement).dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    expect(onCreateAtDate).not.toHaveBeenCalled();
+  });
+
+  it('does not wire a click listener when onCreateAtDate is not provided (no throw on click)', () => {
+    const container = freshContainer();
+    renderAllDayCell(container, '2026-07-10', [], [], [], callbacks());
+    expect(() => container.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
+  });
 });

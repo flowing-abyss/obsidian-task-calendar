@@ -57,7 +57,8 @@ export function renderHourGrid(
 
   // All-day band: one cell per date
   const alldayRow = root.createDiv({ cls: 'tc-tg-allday-row' });
-  alldayRow.createDiv({ cls: 'tc-tg-allday-gutter' });
+  const alldayGutter = alldayRow.createDiv({ cls: 'tc-tg-allday-gutter' });
+  alldayGutter.textContent = 'No-time';
   const alldayCells: HTMLElement[] = dates.map(() =>
     alldayRow.createDiv({ cls: 'tc-tg-allday-cell' }),
   );

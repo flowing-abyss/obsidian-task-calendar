@@ -20,6 +20,10 @@ export interface AllDayCallbacks {
   onSetStatus: (task: Task, status: string) => void;
   onSetPriority: (task: Task, priority: TaskPriority) => void;
   statusRegistry: StatusRegistry;
+  /** Click-to-create: fires when the user clicks genuinely empty space in this all-day cell
+   * (not an existing span/plain/deadline item, and not the quick-add popover CenterPanel renders
+   * into this same cell in response). Optional, mirroring TimeGridCallbacks.onCreateAtTime. */
+  onCreateAtDate?: (date: string) => void;
 }
 
 /**
@@ -240,4 +244,20 @@ export function renderAllDayCell(
     const dragData = e.dataTransfer?.getData('text/plain');
     if (dragData) callbacks.onDrop(dragData, date);
   });
+
+  if (callbacks.onCreateAtDate) {
+    // Click-to-create: fires only for a click on genuinely empty space — not on an existing
+    // span/plain/deadline item (dragged/clicked for its own context menu) and not on the
+    // quick-add popover CenterPanel renders into this same cell in response. Mirrors
+    // HourGrid.ts's onCreateAtTime guard.
+    cellEl.addEventListener('click', (e) => {
+      if (
+        (e.target as HTMLElement).closest(
+          '.tc-tg-body, .tc-tg-deadline-marker, .tc-tg-allday-quick-add',
+        )
+      )
+        return;
+      callbacks.onCreateAtDate?.(date);
+    });
+  }
 }

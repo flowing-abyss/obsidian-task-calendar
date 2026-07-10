@@ -1492,6 +1492,29 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   background: var(--background-modifier-hover);
 }
 
+/* Click-to-create quick-add for the all-day/"no-time" row: fills the cell (inset matches the
+   cell's own padding), same technique as .tc-mg-quick-add (Month day cell). */
+.tc-tg-allday-quick-add {
+  position: absolute;
+  inset: 2px 4px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  background: var(--background-primary);
+  border: 1px solid var(--interactive-accent);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.tc-tg-allday-quick-add-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 0.8em;
+  color: var(--text-normal);
+}
+
 /* ===== Calendar redesign: Month overview (tc-mg-*) ===== */
 
 .tc-mg-grid {
