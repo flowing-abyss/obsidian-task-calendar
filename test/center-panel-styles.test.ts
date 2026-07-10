@@ -73,7 +73,7 @@ describe('Shared popover styles', () => {
   it('date and time popovers use the shared compact anchored surface', () => {
     const dateTimePopover = declarationsFor('.tc-date-popover,\n.tc-time-popover');
     const inputRow = declarationsFor('.tc-popover-input-row');
-    const dateTimeInput = declarationsFor('.tc-date-input,\n.tc-time-input');
+    const dateTimeInput = declarationsFor('.tc-date-input,\n.tc-time-input,\n.tc-duration-input');
     const dateTimeInputOverride = declarationsFor(
       '.tc-date-popover .tc-date-input,\n.tc-time-popover .tc-time-input',
     );

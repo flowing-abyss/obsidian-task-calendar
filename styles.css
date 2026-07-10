@@ -2689,7 +2689,8 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   height: 2rem;
 }
 .tc-date-input,
-.tc-time-input {
+.tc-time-input,
+.tc-duration-input {
   flex: 1;
   min-width: 0;
   height: 100%;

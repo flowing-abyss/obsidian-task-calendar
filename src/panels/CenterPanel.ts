@@ -50,8 +50,7 @@ import {
 } from '../views/taskGrouping';
 import { minutesToTimeString } from '../views/timegrid/layout';
 import { ProjectsPanel } from './projects/ProjectsPanel';
-
-type CalViewType = 'today' | 'week' | 'month';
+import { visibleCalendarDates, type CalViewType } from './visibleCalendarDates';
 
 function projectNameFromPath(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
@@ -449,7 +448,6 @@ export class CenterPanel {
     const mountView = (): void => {
       this.calViewInstance?.destroy();
       viewContainer.empty();
-      const tasks = this.store.getTasks();
       const cfg: ResolvedConfig = {
         ...DEFAULT_VIEW_CONFIG,
         ...this.settings.desktop,
@@ -458,6 +456,10 @@ export class CenterPanel {
         customFilePath: this.settings.customFilePath,
         startPosition: startPositionFor(this.calViewType),
       };
+      // Scope the render to only the tasks anchored on a visible date, via the
+      // O(1)-per-date TaskDateIndex, instead of scanning every task in the vault.
+      const visibleDates = visibleCalendarDates(this.calViewType, this.calDate, cfg.firstDayOfWeek);
+      const tasks = this.store.getTasksForDateRange(visibleDates);
 
       if (this.calViewType === 'today') {
         this.calViewInstance = new TodayView({
@@ -601,19 +603,19 @@ export class CenterPanel {
     // this still calls the full mountView() (destroy + rebuild the visible grid) on every
     // coalesced notify, rather than diffing which specific cells/blocks changed and patching
     // only those. Two of the three perf levers from the spec ARE implemented in full: (1)
-    // TaskStore.getTasksForDate is O(1) per date via TaskDateIndex (Task 4), so building the
-    // grid no longer does an O(cells x tasks) scan — Today/Week rebuild in O(visible tasks),
-    // Month in O(42) index lookups; (2) notify() is coalesced (Task 5), so a burst of file
-    // edits triggers exactly one rebuild instead of one per file. A true incremental DOM
-    // patch (diffing old vs. new task sets per cell and touching only changed nodes) is a
-    // real further optimization but adds significant complexity (diffing keyed by
-    // filePath+line across all three view shapes) for a win that may not be measurable once
-    // (1) and (2) land — verify against the real dev vault in Task 16 before deciding it's
-    // needed. If Task 16's hands-on pass shows visible lag with realistic task counts, add a
-    // follow-up task here: track the previous render's task-list-per-visible-date, diff
-    // against the new one on each notify, and only re-render cells/blocks whose task set
-    // changed, leaving `BaseView.patch()` (still the default no-op-over-render from
-    // `BaseView.ts`) as the extension point each of the three new view classes would override.
+    // `tasks` above is scoped to the visible date range via TaskStore.getTasksForDateRange,
+    // which is a union of O(1) TaskDateIndex lookups (Task 4) — mountView() no longer scans
+    // every task in the vault on every render, only the ones anchored on a currently-visible
+    // date; (2) notify() is coalesced (Task 5), so a burst of file edits triggers exactly one
+    // rebuild instead of one per file. A true incremental DOM patch (diffing old vs. new task
+    // sets per cell and touching only changed nodes) is a real further optimization but adds
+    // significant complexity (diffing keyed by filePath+line across all three view shapes) for
+    // a win that may not be measurable once (1) and (2) land — verified against the real dev
+    // vault in Task 16. If a future pass shows visible lag with realistic task counts, add a
+    // follow-up: track the previous render's task-list-per-visible-date, diff against the new
+    // one on each notify, and only re-render cells/blocks whose task set changed, leaving
+    // `BaseView.patch()` (still the default no-op-over-render from `BaseView.ts`) as the
+    // extension point each of the three new view classes would override.
     this.calUnsubscribe = this.store.onUpdate(() => mountView());
   }
 

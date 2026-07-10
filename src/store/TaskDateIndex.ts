@@ -22,6 +22,11 @@ export class TaskDateIndex {
       }
       return dates;
     }
+    // Deadline-marker case: scheduled is the body's anchor, but due (when distinct)
+    // must also be indexed so a date-scoped query can find the marker on due's day.
+    if (task.scheduled && task.due && task.scheduled !== task.due) {
+      return [task.scheduled, task.due];
+    }
     const anchor = task.scheduled ?? task.due;
     return anchor ? [anchor] : [];
   }

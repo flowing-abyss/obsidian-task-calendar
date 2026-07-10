@@ -237,6 +237,67 @@ describe('RightPanel popovers', () => {
     expect(el.querySelector('.tc-date-input')).not.toBeNull();
   });
 
+  it('time chip click → popover has both a time input and a duration input', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [
+      task({ text: 'T', time: '15:00', duration: 90, rawText: '- [ ] T ⏰ 15:00 ⏱️ 1h30m' }),
+    ]);
+    const chip = el.querySelector<HTMLElement>('.tc-chip-time')!;
+    click(chip);
+    expect(el.querySelector('.tc-time-popover')).not.toBeNull();
+    const timeInput = el.querySelector<HTMLInputElement>('.tc-time-input')!;
+    expect(timeInput.value).toBe('15:00');
+    const durationInput = el.querySelector<HTMLInputElement>('.tc-duration-input')!;
+    expect(durationInput).not.toBeNull();
+    expect(durationInput.value).toBe('1h30m');
+  });
+
+  it('editing the duration input writes ⏱️ to the file via updateDuration', async () => {
+    const app = await createAppWithFiles({ 'f.md': '- [ ] T ⏰ 15:00' });
+    const state = new AppState();
+    const panel = new RightPanel(state, app, DEFAULT_SETTINGS);
+    const el = freshContainer();
+    panel.mount(el);
+    state.set('taskStack', [
+      task({
+        filePath: 'f.md',
+        line: 0,
+        text: 'T',
+        time: '15:00',
+        duration: undefined, // real parseTask output always has this key, even when unset
+        rawText: '- [ ] T ⏰ 15:00',
+      }),
+    ]);
+    const chip = el.querySelector<HTMLElement>('.tc-chip-time')!;
+    click(chip);
+    const durationInput = el.querySelector<HTMLInputElement>('.tc-duration-input')!;
+    durationInput.value = '2h';
+    durationInput.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushMicrotasks();
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('⏱️ 2h');
+  });
+
+  it('the duration input does not render for a SubTask (no duration field)', async () => {
+    const { state, el } = await makePanel();
+    const sub: SubTask = {
+      filePath: 'f.md',
+      line: 1,
+      rawText: '  - [ ] sub ⏰ 09:00',
+      text: 'sub',
+      markdownText: 'sub',
+      status: 'open',
+      statusSymbol: ' ',
+      priority: 'D',
+      time: '09:00',
+    };
+    state.set('taskStack', [task({ text: 'Parent' }), sub]);
+    const chip = el.querySelector<HTMLElement>('.tc-chip-time')!;
+    click(chip);
+    expect(el.querySelector('.tc-time-popover')).not.toBeNull();
+    expect(el.querySelector('.tc-duration-input')).toBeNull();
+  });
+
   it('priority chip click → priority popover appears with options', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [task({ text: 'P', priority: 'B' })]);

@@ -268,6 +268,15 @@ export class TaskStore {
     return this.dateIndex.getTasksForDate(date);
   }
 
+  /** Dedup union of getTasksForDate across `dates` — for scoping a render to a visible date range (e.g. a month grid). */
+  getTasksForDateRange(dates: string[]): Task[] {
+    const seen = new Set<Task>();
+    for (const date of dates) {
+      for (const task of this.dateIndex.getTasksForDate(date)) seen.add(task);
+    }
+    return [...seen];
+  }
+
   async toggleTask(task: Task): Promise<void> {
     const today = window.moment().format('YYYY-MM-DD');
     try {

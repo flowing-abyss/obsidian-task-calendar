@@ -8,6 +8,7 @@ import {
   formatDurationFromMinutes,
   formatTaskLine,
   insertIntoTitleBody,
+  parseDurationToMinutes,
 } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
@@ -1211,6 +1212,38 @@ export class RightPanel {
     clearBtn.addEventListener('click', () => {
       void this.updateTime(task, '').then(() => pop.remove());
     });
+
+    // Duration only applies to top-level Task (SubTask has no duration field) —
+    // same 'duration' in task discriminator used for the Planning section gate.
+    if ('duration' in task) {
+      const durationRow = pop.createDiv({ cls: 'tc-popover-input-row' });
+      const durationInput = durationRow.createEl('input', {
+        cls: 'tc-duration-input',
+        attr: {
+          type: 'text',
+          // eslint-disable-next-line obsidianmd/ui/sentence-case
+          placeholder: 'Duration, e.g. 1h30m',
+          value: task.duration ? formatDurationFromMinutes(task.duration) : '',
+        },
+      });
+      durationInput.addEventListener('change', () => {
+        const minutes = parseDurationToMinutes(durationInput.value);
+        const done = minutes ? this.updateDuration(task, minutes) : this.clearDuration(task);
+        void done.then(() => pop.remove());
+      });
+      durationInput.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
+
+      const clearDurationBtn = durationRow.createEl('button', {
+        cls: 'tc-popover-clear-icon-btn',
+        attr: { title: 'Clear duration', 'aria-label': 'Clear duration' },
+      });
+      setIcon(clearDurationBtn, 'x');
+      clearDurationBtn.addEventListener('mousedown', (e) => e.preventDefault());
+      clearDurationBtn.addEventListener('click', () => {
+        void this.clearDuration(task).then(() => pop.remove());
+      });
+    }
+
     this.positionAnchoredPopover(pop, anchor);
   }
 

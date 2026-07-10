@@ -12,13 +12,13 @@ describe('TaskDateIndex', () => {
     expect(idx.getTasksForDate('2026-07-11')).toHaveLength(0);
   });
 
-  it('scheduled wins over due for placement', () => {
+  it('a scheduled+due-distinct task is queryable at BOTH dates (body on scheduled, deadline marker on due)', () => {
     const idx = new TaskDateIndex();
     idx.updateFile('a.md', [
       task({ filePath: 'a.md', due: '2026-07-10', scheduled: '2026-07-05' }),
     ]);
     expect(idx.getTasksForDate('2026-07-05')).toHaveLength(1);
-    expect(idx.getTasksForDate('2026-07-10')).toHaveLength(0);
+    expect(idx.getTasksForDate('2026-07-10')).toHaveLength(1);
   });
 
   it('a start+due span indexes under every day in the range inclusive', () => {
