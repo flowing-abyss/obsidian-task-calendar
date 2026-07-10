@@ -76,8 +76,8 @@ describe('PanelView', () => {
       state.set('taskStack', []);
       expect(() =>
         (
-          store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
-        ).listeners.forEach((l) => l({ changedFile: 'x.md' })),
+          store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
+        ).listeners.forEach((l) => l({ changedFiles: ['x.md'] })),
       ).not.toThrow();
     });
 
@@ -138,8 +138,8 @@ describe('PanelView', () => {
       state.set('taskStack', [root]);
       // emit onUpdate with matching changedFile
       (
-        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
-      ).listeners.forEach((l) => l({ changedFile: root.filePath }));
+        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
+      ).listeners.forEach((l) => l({ changedFiles: [root.filePath] }));
       const stack = state.get('taskStack');
       expect(stack).toHaveLength(1);
       // Direct listener emission does not re-parse the file, so the store returns the
@@ -153,8 +153,8 @@ describe('PanelView', () => {
       state.set('taskStack', [root]);
       const before = state.get('taskStack');
       (
-        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
-      ).listeners.forEach((l) => l({ changedFile: 'other.md' }));
+        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
+      ).listeners.forEach((l) => l({ changedFiles: ['other.md'] }));
       expect(state.get('taskStack')).toBe(before);
     });
 
@@ -166,8 +166,8 @@ describe('PanelView', () => {
       const origTasks = (store as unknown as { taskMap: Map<string, unknown> }).taskMap;
       (store as unknown as { taskMap: Map<string, unknown> }).taskMap = new Map();
       (
-        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
-      ).listeners.forEach((l) => l({ changedFile: root.filePath }));
+        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
+      ).listeners.forEach((l) => l({ changedFiles: [root.filePath] }));
       expect(state.get('taskStack')).toHaveLength(0);
       // restore for cleanup
       (store as unknown as { taskMap: Map<string, unknown> }).taskMap = origTasks;
@@ -185,8 +185,8 @@ describe('PanelView', () => {
       await app.vault.process(file, (data) => data.replace('- [ ]', '- [x]'));
       // Emit store.onUpdate to trigger left.refresh() + center.refresh()
       (
-        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
-      ).listeners.forEach((l) => l({ changedFile: file.path }));
+        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
+      ).listeners.forEach((l) => l({ changedFiles: [file.path] }));
       await flushMicrotasks();
       // After refresh: no open tasks due today → Today count badge absent (count 0 → not rendered)
       const todayItemAfter = Array.from(left.querySelectorAll('.tc-left-item')).find(
@@ -232,8 +232,8 @@ describe('PanelView', () => {
       state.set('taskStack', [root, sub!]);
       // Emit onUpdate with matching changedFile → triggers deep-stack rebuild
       (
-        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
-      ).listeners.forEach((l) => l({ changedFile: root.filePath }));
+        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
+      ).listeners.forEach((l) => l({ changedFiles: [root.filePath] }));
       const stack = state.get('taskStack');
       // Stack should still have 2 elements (root + fresh subtask found by line match)
       expect(stack).toHaveLength(2);
@@ -249,8 +249,8 @@ describe('PanelView', () => {
       const fakeSub = { ...root.subtasks?.[0]!, line: 999 };
       state.set('taskStack', [root, fakeSub]);
       (
-        store as unknown as { listeners: Array<(e: { changedFile?: string }) => void> }
-      ).listeners.forEach((l) => l({ changedFile: root.filePath }));
+        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
+      ).listeners.forEach((l) => l({ changedFiles: [root.filePath] }));
       const stack = state.get('taskStack');
       // Fresh subtask not found at line 999 → break → stack truncated to [freshRoot]
       expect(stack).toHaveLength(1);

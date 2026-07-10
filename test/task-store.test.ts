@@ -32,10 +32,11 @@ describe('TaskStore initialize + getTasks', () => {
     const app = await createAppWithFiles({});
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     await store.initialize();
+    await flushMicrotasks();
     expect(store.getTasks()).toEqual([]);
-    // first event is bulk init (changedFile undefined)
+    // first event is bulk init (changedFiles is empty)
     expect(events).toContain('bulk');
   });
 
@@ -427,7 +428,7 @@ describe('TaskStore onUpdate + events', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    const off = store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    const off = store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     off();
     // trigger a rename to see if events fire
     const file = mdFile(app, 't.md');
@@ -443,7 +444,7 @@ describe('TaskStore onUpdate + events', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = mdFile(app, 't.md');
     fireChanged(
       file,
@@ -453,6 +454,7 @@ describe('TaskStore onUpdate + events', () => {
         frontmatter: { color: '#abc' },
       }),
     );
+    await flushMicrotasks();
     expect(events).toContain('t.md');
     const tasks = store.getTasks();
     expect(tasks).toHaveLength(1);
@@ -486,7 +488,7 @@ describe('TaskStore onUpdate + events', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = mdFile(app, 'old.md');
     await app.vault.rename(file, 'new.md');
     await flushMicrotasks(20);
@@ -502,7 +504,7 @@ describe('TaskStore onUpdate + events', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = mdFile(app, 'empty.md');
     await app.vault.rename(file, 'empty2.md');
     await flushMicrotasks(20);
@@ -515,7 +517,7 @@ describe('TaskStore onUpdate + events', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = mdFile(app, 't.md');
     await app.vault.delete(file);
     await flushMicrotasks(20);
@@ -528,7 +530,7 @@ describe('TaskStore onUpdate + events', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = mdFile(app, 'empty.md');
     await app.vault.delete(file);
     await flushMicrotasks(20);
@@ -548,7 +550,7 @@ describe('TaskStore destroy', () => {
     await store.initialize();
     store.destroy();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = mdFile(app, 't.md');
     (
       app.metadataCache as unknown as {

@@ -76,7 +76,7 @@ describe('TaskStore deep — rename handler', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = app.vault.getAbstractFileByPath('data.json')!;
     await app.vault.rename(file, 'data2.json');
     await flushMicrotasks(20);
@@ -88,7 +88,7 @@ describe('TaskStore deep — rename handler', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = mdFile(app, 'empty.md');
     await app.vault.rename(file, 'empty2.md');
     await flushMicrotasks(20);
@@ -119,7 +119,7 @@ describe('TaskStore deep — delete handler', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = app.vault.getAbstractFileByPath('data.json')!;
     await app.vault.delete(file);
     await flushMicrotasks(20);
@@ -131,7 +131,7 @@ describe('TaskStore deep — delete handler', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const events: string[] = [];
-    store.onUpdate((e) => events.push(e.changedFile ?? 'bulk'));
+    store.onUpdate((e) => events.push(e.changedFiles[0] ?? 'bulk'));
     const file = mdFile(app, 'empty.md');
     await app.vault.delete(file);
     await flushMicrotasks(20);

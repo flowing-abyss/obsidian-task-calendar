@@ -132,14 +132,14 @@ export class PanelView extends ItemView {
       layout.className = `tc-layout tc-layout--${mode}`;
     });
 
-    this.storeUnsub = this.store.onUpdate(({ changedFile }) => {
+    this.storeUnsub = this.store.onUpdate(({ changedFiles }) => {
       this.left.refresh();
       this.center.refresh();
       // Refresh taskStack with fresh objects from the store so the right panel re-renders
       const stack = this.state.get('taskStack');
       if (stack.length === 0) return;
       const root = stack[0];
-      if (!root || !changedFile || root.filePath !== changedFile) return;
+      if (!root || !changedFiles.includes(root.filePath)) return;
       const freshTasks = this.store.getTasks();
       const freshRoot = freshTasks.find(
         (t) => t.filePath === root.filePath && t.line === root.line,

@@ -17,7 +17,7 @@ import { StatusRegistry } from '../status/StatusRegistry';
 import { TaskDateIndex } from './TaskDateIndex';
 
 export interface StoreUpdateEvent {
-  changedFile?: string; // undefined = bulk init complete
+  changedFiles: string[]; // empty = bulk init complete, no specific file
 }
 
 type UpdateCallback = (event: StoreUpdateEvent) => void;
@@ -48,6 +48,8 @@ export class TaskStore {
   private dateIndex = new TaskDateIndex();
   private frontmatterMap = new Map<string, { color?: string; textColor?: string; icon?: string }>();
   private listeners: UpdateCallback[] = [];
+  private pendingFiles = new Set<string>();
+  private flushScheduled = false;
   private metadataCacheRefs: EventRef[] = [];
   private vaultRefs: EventRef[] = [];
   private resolver: DailyNoteResolver;
@@ -336,8 +338,16 @@ export class TaskStore {
     };
   }
 
-  private notify(event: StoreUpdateEvent): void {
-    for (const cb of this.listeners) cb(event);
+  private notify(event: { changedFile?: string }): void {
+    if (event.changedFile) this.pendingFiles.add(event.changedFile);
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    void Promise.resolve().then(() => {
+      this.flushScheduled = false;
+      const changedFiles = [...this.pendingFiles];
+      this.pendingFiles.clear();
+      for (const cb of this.listeners) cb({ changedFiles });
+    });
   }
 
   destroy(): void {
