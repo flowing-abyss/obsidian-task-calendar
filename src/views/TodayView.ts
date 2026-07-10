@@ -2,8 +2,8 @@ import type { App } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import { BaseView } from './BaseView';
-import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderHourGrid } from './timegrid/HourGrid';
+import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
 
 export interface TodayViewCallbacks {
@@ -25,6 +25,9 @@ export function bucketTasksForDate(
   const spans: Task[] = [];
   const plain: Task[] = [];
   const deadlines: Task[] = [];
+  // Identity convention for task de-duplication (matches drag-payload identity used elsewhere,
+  // e.g. MonthView.ts's `${task.filePath}:::${task.line}`).
+  const spanIdentities = new Set<string>();
 
   for (const t of tasks) {
     if (t.status === 'done' || t.status === 'cancelled') continue;
@@ -32,7 +35,10 @@ export function bucketTasksForDate(
     // Multi-day span: anchored on every day from start to due
     if (t.start && t.due) {
       const inRange = window.moment(date).isBetween(t.start, t.due, 'day', '[]');
-      if (inRange) spans.push(t);
+      if (inRange) {
+        spans.push(t);
+        spanIdentities.add(`${t.filePath}:::${t.line}`);
+      }
       continue;
     }
 
@@ -48,8 +54,11 @@ export function bucketTasksForDate(
 
   // Deadline markers: tasks whose `due` falls on this date AND a distinct `scheduled` is also set
   // (so their body renders elsewhere, on the scheduled day, per the due-centric contract).
+  // Spans take priority: a task already rendered as a span (its due edge communicates the
+  // deadline structurally) never also gets a separate deadline marker for the same date.
   for (const t of tasks) {
     if (t.status === 'done' || t.status === 'cancelled') continue;
+    if (spanIdentities.has(`${t.filePath}:::${t.line}`)) continue;
     if (t.due === date && t.scheduled && t.scheduled !== t.due) deadlines.push(t);
   }
 

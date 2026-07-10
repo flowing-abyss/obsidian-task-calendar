@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
 import type { App } from 'obsidian';
-import { TodayView } from '../src/views/TodayView';
+import { describe, expect, it, vi } from 'vitest';
+import { bucketTasksForDate, TodayView } from '../src/views/TodayView';
 import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -57,5 +57,21 @@ describe('TodayView', () => {
   it('destroy() does not throw', () => {
     const view = new TodayView(callbacks());
     expect(() => view.destroy()).not.toThrow();
+  });
+
+  it('a task with start+due+distinct scheduled lands in spans (not deadlines) on its due day', () => {
+    const t = task({ start: '2026-07-01', due: '2026-07-05', scheduled: '2026-07-03' });
+    const { spans, deadlines } = bucketTasksForDate([t], '2026-07-05');
+    expect(spans).toContain(t);
+    expect(deadlines).not.toContain(t);
+  });
+
+  it('renders only a span bar, not a deadline marker, for a start+due+distinct-scheduled task on its due day', () => {
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    const t = task({ start: '2026-07-01', due: '2026-07-05', scheduled: '2026-07-03' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07-05' }));
+    expect(container.querySelector('.tc-tg-span')).not.toBeNull();
+    expect(container.querySelector('.tc-tg-deadline-marker')).toBeNull();
   });
 });
