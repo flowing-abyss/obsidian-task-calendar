@@ -438,4 +438,33 @@ describe('MonthGridView', () => {
     expect(cbs.onDayClick).not.toHaveBeenCalled();
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
+
+  it('renders a compact tag chip and count badge (capped at 1 tag) on a plain compact item', () => {
+    const container = freshContainer();
+    const view = new MonthGridView({
+      ...callbacks(),
+      tagGroups: [{ id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' }],
+    });
+    const t = task({
+      due: '2026-07-15',
+      text: 'Plain',
+      rawText: '- [ ] Plain #work #urgent',
+      linkCount: 1,
+    });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('.tc-mg-plain') as HTMLElement;
+    const meta = row.querySelector('.tc-mg-item-meta') as HTMLElement;
+    expect(meta).not.toBeNull();
+    expect(meta.querySelector('.tc-task-count-badge')).not.toBeNull();
+    expect(meta.querySelectorAll('.tc-task-tag')).toHaveLength(1);
+  });
+
+  it('omits .tc-mg-item-meta entirely for a compact item with no tags/subtasks/comments/links', () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    const t = task({ due: '2026-07-15', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('.tc-mg-plain') as HTMLElement;
+    expect(row.querySelector('.tc-mg-item-meta')).toBeNull();
+  });
 });

@@ -6,6 +6,7 @@ import { tagColorFor } from '../tags/tagColor';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { renderTaskText } from '../ui/renderTaskText';
 import { BaseView } from './BaseView';
+import { hasMeta, renderCountBadges, renderTagChips } from './timegrid/renderTaskMeta';
 import { bucketTasksForDate } from './TodayView';
 
 export interface MonthGridViewCallbacks {
@@ -144,6 +145,7 @@ export class MonthGridView extends BaseView {
       this.renderMarker(dot, t);
       dot.createSpan({ text: `${t.time} ` });
       this.renderTitle(dot, t);
+      this.renderCompactMeta(dot, t, tagGroups);
       dot.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -156,6 +158,7 @@ export class MonthGridView extends BaseView {
       this.applyTagFill(bar, t, tagGroups);
       this.renderMarker(bar, t);
       this.renderTitle(bar, t);
+      this.renderCompactMeta(bar, t, tagGroups);
       bar.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -168,6 +171,7 @@ export class MonthGridView extends BaseView {
       this.applyTagFill(row, t, tagGroups);
       this.renderMarker(row, t);
       this.renderTitle(row, t);
+      this.renderCompactMeta(row, t, tagGroups);
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -183,12 +187,33 @@ export class MonthGridView extends BaseView {
       this.renderMarker(marker, t);
       marker.createSpan({ text: '📅 ' });
       this.renderTitle(marker, t);
+      // Count badges only (no tag chips) — deadline markers stay a compact pill with no
+      // tag fill (see comment above), so tag chips would fight that convention.
+      if ((t.subtasks?.length ?? 0) > 0 || (t.comments?.length ?? 0) > 0 || (t.linkCount ?? 0) > 0) {
+        const meta = marker.createSpan({ cls: 'tc-mg-item-meta' });
+        renderCountBadges(meta, t);
+      }
       marker.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
     }
+  }
+
+  /**
+   * Compact count badges + a single tag chip, appended after the title. Month cells are
+   * a single non-wrapping line (`.tc-mg-*` CSS: `white-space: nowrap; overflow: hidden`),
+   * so this deliberately caps at one tag (vs. renderTimedBlocks.ts's 3) — anything past
+   * that just gets clipped by the ellipsis, no point rendering it. Non-interactive, same
+   * rationale as renderTaskMeta.ts: these compact items already carry native HTML5
+   * drag-and-drop (makeDraggable) and a contextmenu handler.
+   */
+  private renderCompactMeta(container: HTMLElement, t: Task, tagGroups: TagGroup[]): void {
+    if (!hasMeta(t)) return;
+    const meta = container.createSpan({ cls: 'tc-mg-item-meta' });
+    renderCountBadges(meta, t);
+    renderTagChips(meta, t, tagGroups, 1);
   }
 
   /** Renders the task's markdown/wiki-link-aware title text as a trailing inline span. */

@@ -6,6 +6,7 @@ import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
+import { hasMeta, renderCountBadges, renderTagChips } from './renderTaskMeta';
 import {
   minutesToPixels,
   minutesToTimeString,
@@ -77,6 +78,15 @@ export function renderTimedBlocksForDay(
       sourcePath: p.task.filePath,
       component: callbacks.component,
     });
+    // Tag chips + count badges (subtasks/comments/links), matching TaskCard/CenterPanel's
+    // visual language. Skipped entirely when the task has neither, so a plain task doesn't
+    // gain an empty row. Non-interactive (see renderTaskMeta.ts) — safe to sit inside the
+    // block without needing the pointerdown exclusion-guard below.
+    if (hasMeta(p.task)) {
+      const meta = block.createDiv({ cls: 'tc-tg-block-meta' });
+      renderCountBadges(meta, p.task);
+      renderTagChips(meta, p.task, tagGroups);
+    }
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
 
     block.addEventListener('contextmenu', (e) => {

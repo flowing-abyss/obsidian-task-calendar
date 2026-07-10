@@ -378,4 +378,49 @@ describe('renderAllDayCell', () => {
     expect(cbs.onStartChange).not.toHaveBeenCalled();
     expect(cbs.onDueChange).not.toHaveBeenCalled();
   });
+
+  it('renders tag chips and count badges in a .tc-tg-body-meta span on a plain chip', () => {
+    const container = freshContainer();
+    const t = task({
+      due: '2026-07-10',
+      text: 'Plain',
+      rawText: '- [ ] Plain #work',
+      linkCount: 1,
+    });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks(), [
+      { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+    ]);
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    const meta = chip.querySelector('.tc-tg-body-meta') as HTMLElement;
+    expect(meta).not.toBeNull();
+    expect(meta.querySelector('.tc-task-count-badge')).not.toBeNull();
+    expect(meta.querySelector('.tc-task-tag')?.textContent).toBe('#work');
+  });
+
+  it('renders count badges (no tag chips) on a deadline marker, per the no-tag-fill convention', () => {
+    const container = freshContainer();
+    const t = task({
+      scheduled: '2026-07-09',
+      due: '2026-07-10',
+      text: 'Deadline',
+      rawText: '- [ ] Deadline #work',
+      comments: [{ line: 1, text: 'c' }],
+    });
+    renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks(), [
+      { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+    ]);
+    const marker = container.querySelector('.tc-tg-deadline-marker') as HTMLElement;
+    const meta = marker.querySelector('.tc-tg-body-meta') as HTMLElement;
+    expect(meta).not.toBeNull();
+    expect(meta.querySelector('.tc-task-count-badge')).not.toBeNull();
+    expect(meta.querySelector('.tc-task-tag')).toBeNull();
+  });
+
+  it('omits .tc-tg-body-meta entirely for a plain chip with no tags/subtasks/comments/links', () => {
+    const container = freshContainer();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    expect(chip.querySelector('.tc-tg-body-meta')).toBeNull();
+  });
 });

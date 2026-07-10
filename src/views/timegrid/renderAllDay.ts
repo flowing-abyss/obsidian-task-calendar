@@ -5,6 +5,7 @@ import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
+import { hasMeta, renderCountBadges, renderTagChips } from './renderTaskMeta';
 
 export interface AllDayCallbacks {
   app: App;
@@ -54,6 +55,15 @@ function renderDraggableBody(
     sourcePath: task.filePath,
     component: callbacks.component,
   });
+  // Tag chips + count badges (subtasks/comments/links), matching TaskCard/CenterPanel's
+  // visual language. Skipped when the task has neither. Non-interactive — see
+  // renderTaskMeta.ts for why (avoids needing a pointerdown exclusion-guard here, next to
+  // the whole-body drag and edge-resize handles this element carries).
+  if (hasMeta(task)) {
+    const meta = el.createSpan({ cls: 'tc-tg-body-meta' });
+    renderCountBadges(meta, task);
+    renderTagChips(meta, task, tagGroups, 2);
+  }
   // Tag-colored fill only — the priority-colored border was removed (Task 12): the
   // status marker above already conveys priority via its own border, so a second
   // priority border on the body was redundant visual noise.
@@ -184,6 +194,12 @@ export function renderAllDayCell(
       sourcePath: t.filePath,
       component: callbacks.component,
     });
+    // Count badges only (no tag chips) — deadline markers deliberately stay a compact
+    // pill with no tag fill (see comment above), so tag chips would fight that convention.
+    if ((t.subtasks?.length ?? 0) > 0 || (t.comments?.length ?? 0) > 0 || (t.linkCount ?? 0) > 0) {
+      const meta = marker.createSpan({ cls: 'tc-tg-body-meta' });
+      renderCountBadges(meta, t);
+    }
     marker.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();

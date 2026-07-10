@@ -1328,6 +1328,27 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   color: var(--text-muted);
 }
 
+/* Tag chips + count badges row (Task 13): reuses .tc-task-count-badge/.tc-task-tag's own
+   sizing (both already set an explicit font-size), so only layout is added here. */
+.tc-tg-block-meta,
+.tc-tg-body-meta,
+.tc-mg-item-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.tc-tg-block-meta {
+  display: flex;
+}
+.tc-tg-body-meta {
+  margin-inline-start: 4px;
+}
+.tc-mg-item-meta {
+  margin-inline-start: 4px;
+  gap: 2px;
+}
+
 .tc-tg-resize-handle {
   position: absolute;
   left: 25%;

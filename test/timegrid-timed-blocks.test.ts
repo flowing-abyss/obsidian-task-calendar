@@ -425,4 +425,32 @@ describe('renderTimedBlocksForDay', () => {
     window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100, pointerId: 1, button: 2 }));
     expect(onDurationChange).not.toHaveBeenCalled();
   });
+
+  it('renders tag chips and count badges in a .tc-tg-block-meta row when the task has them', () => {
+    const container = freshContainer();
+    const t = task({
+      time: '09:00',
+      rawText: '- [ ] t #work',
+      comments: [{ line: 1, text: 'note' }],
+      linkCount: 2,
+    });
+    renderTimedBlocksForDay(container, [t], callbacks(), [
+      { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+    ]);
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    const meta = block.querySelector('.tc-tg-block-meta') as HTMLElement;
+    expect(meta).not.toBeNull();
+    expect(meta.querySelectorAll('.tc-task-count-badge')).toHaveLength(2); // comment + link
+    const tagChip = meta.querySelector('.tc-task-tag') as HTMLElement;
+    expect(tagChip.textContent).toBe('#work');
+    expect(tagChip.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
+  });
+
+  it('omits .tc-tg-block-meta entirely for a plain task with no tags/subtasks/comments/links', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block.querySelector('.tc-tg-block-meta')).toBeNull();
+  });
 });
