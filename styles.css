@@ -1204,6 +1204,16 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 
 .tc-tg-grid-row {
   display: flex;
+  /* flex-start, not the stretch default: without it, flex items (the hour-gutter and each
+     day-column) are stretched to this scroll container's *visible* cross-size (its clientHeight)
+     rather than sized to their own 24-hour content (1152px). That silently truncated every
+     day-column's own box to ~viewport height, which in turn truncated .tc-tg-hour-column
+     (positioned `inset: 0` to its day-column parent) to the same short height — clipping
+     click-to-create/drag-drop hit-testing and the is-today red outline partway down the column
+     (visually: gridlines kept rendering past that point as unclipped overflow from the plain,
+     non-positioned .tc-tg-hour-row siblings, while interactivity and the outline silently
+     stopped there instead). */
+  align-items: flex-start;
   flex: 1;
   overflow-y: auto;
   position: relative;

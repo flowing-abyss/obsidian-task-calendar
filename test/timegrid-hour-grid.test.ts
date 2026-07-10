@@ -1,8 +1,18 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { renderHourGrid, repositionNowLine } from '../src/views/timegrid/HourGrid';
 import { DataTransferStub, freshContainer, useRealMoment } from './helpers';
 
 useRealMoment();
+
+const css = readFileSync(resolve(import.meta.dirname, '..', 'styles.css'), 'utf8');
+
+function declarationsFor(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\\,/gu, ',');
+  const match = new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`, 'u').exec(css);
+  return match?.groups?.['body'] ?? '';
+}
 
 describe('renderHourGrid', () => {
   it('renders a day-header cell per date with weekday + day number', () => {
@@ -192,3 +202,18 @@ describe('renderHourGrid', () => {
   });
 });
 
+describe('.tc-tg-grid-row layout (regression: today-column outline / click-drop hit-test truncation)', () => {
+  it('does not stretch day-columns to the scroll container height', () => {
+    // Regression test: .tc-tg-grid-row is a flex row whose children (the hour-gutter and each
+    // day-column) hold 24 hour-rows of real content (1152px), but the row itself is a shorter,
+    // scrollable viewport. Without `align-items: flex-start`, the default `stretch` sizes every
+    // day-column's own box to the *visible* container height instead of its 1152px content —
+    // which in turn truncates .tc-tg-hour-column (positioned `inset: 0` to its day-column parent)
+    // to that same short height, silently clipping click-to-create/drag-drop hit-testing and the
+    // is-today red outline partway down the column (confirmed live: the outline stopped around
+    // 17:00 in a viewport tall enough to show ~16.5 hours, while hour-row gridlines kept
+    // rendering past that point as unclipped normal-flow overflow).
+    const gridRow = declarationsFor('.tc-tg-grid-row');
+    expect(gridRow).toContain('align-items: flex-start');
+  });
+});
