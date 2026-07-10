@@ -6,7 +6,7 @@ import { renderHourGrid } from './timegrid/HourGrid';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
 
-export interface TodayViewCallbacks {
+export interface TimeGridCallbacks {
   app: App;
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
@@ -68,7 +68,7 @@ export function bucketTasksForDate(
 export class TodayView extends BaseView {
   private containerEl: HTMLElement | null = null;
 
-  constructor(private callbacks: TodayViewCallbacks) {
+  constructor(private callbacks: TimeGridCallbacks) {
     super();
   }
 
