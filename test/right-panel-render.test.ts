@@ -312,10 +312,9 @@ describe('RightPanel Planning disclosure', () => {
 
   it('a task with scheduled set shows a scheduled chip in the main row without expanding Planning', async () => {
     const { state, el } = await makePanel();
-    state.set(
-      'taskStack',
-      [task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined })],
-    );
+    state.set('taskStack', [
+      task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined }),
+    ]);
     expect(el.querySelector('.tc-chip-scheduled')?.textContent).toContain('5 Jul');
     expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('false');
   });
@@ -332,10 +331,9 @@ describe('RightPanel Planning disclosure', () => {
 
   it('clicking a promoted scheduled chip reopens the Planning section', async () => {
     const { state, el } = await makePanel();
-    state.set(
-      'taskStack',
-      [task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined })],
-    );
+    state.set('taskStack', [
+      task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined }),
+    ]);
     const chip = el.querySelector<HTMLElement>('.tc-chip-scheduled')!;
     click(chip);
     expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('true');
