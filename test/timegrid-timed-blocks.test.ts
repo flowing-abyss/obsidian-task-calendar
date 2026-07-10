@@ -21,7 +21,7 @@ function callbacks() {
 }
 
 describe('renderTimedBlocksForDay', () => {
-  it('sets data-priority on the block for a prioritized task', () => {
+  it('does not set data-priority on the block (calendar blocks no longer render a priority border)', () => {
     const container = freshContainer();
     const t = task({ time: '09:00', priority: 'A' });
     renderTimedBlocksForDay(container, [t], {
@@ -34,17 +34,22 @@ describe('renderTimedBlocksForDay', () => {
       statusRegistry: registry,
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
-    expect(block.getAttribute('data-priority')).toBe('A');
+    expect(block.hasAttribute('data-priority')).toBe(false);
   });
 
-  it('renders a status marker as the first child of the block', () => {
+  it('wraps the status marker and title together in a .tc-tg-block-head row, marker first', () => {
     const container = freshContainer();
     const t = task({ time: '09:00' });
     renderTimedBlocksForDay(container, [t], callbacks());
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
-    const marker = block.querySelector('.tc-status-marker');
+    const head = block.querySelector('.tc-tg-block-head') as HTMLElement;
+    expect(head).not.toBeNull();
+    const marker = head.querySelector('.tc-status-marker');
+    const title = head.querySelector('.tc-tg-block-title');
     expect(marker).not.toBeNull();
-    expect(block.firstElementChild).toBe(marker);
+    expect(title).not.toBeNull();
+    expect(head.firstElementChild).toBe(marker);
+    expect(marker?.nextElementSibling).toBe(title);
   });
 
   it('clicking the status marker fires onToggle with the task, not onTaskClick', () => {
@@ -116,21 +121,35 @@ describe('renderTimedBlocksForDay', () => {
     expect(block.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
   });
 
-  it('shows a start–end time range in the block subtitle', () => {
+  it('shows the start time with duration in parentheses in the block subtitle', () => {
     const container = freshContainer();
     const t = task({ time: '15:00', duration: 90 });
     renderTimedBlocksForDay(container, [t], callbacks());
     const subtitle = container.querySelector('.tc-tg-block-subtitle') as HTMLElement;
     expect(subtitle).not.toBeNull();
-    expect(subtitle.textContent).toContain('15:00–16:30');
+    expect(subtitle.textContent).toBe('15:00 (1h30m)');
   });
 
-  it('defaults the end of the range to start+60min when duration is unset', () => {
+  it('defaults duration to 60min when unset, shown as "(1h)" in the subtitle', () => {
     const container = freshContainer();
     const t = task({ time: '09:00' });
     renderTimedBlocksForDay(container, [t], callbacks());
     const subtitle = container.querySelector('.tc-tg-block-subtitle') as HTMLElement;
-    expect(subtitle.textContent).toContain('09:00–10:00');
+    expect(subtitle.textContent).toBe('09:00 (1h)');
+  });
+
+  it('renders the subtitle before the head row (time+duration at the top of the block)', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    const subtitle = block.querySelector('.tc-tg-block-subtitle');
+    const head = block.querySelector('.tc-tg-block-head');
+    expect(subtitle).not.toBeNull();
+    expect(head).not.toBeNull();
+    expect(Array.from(block.children).indexOf(subtitle as Element)).toBeLessThan(
+      Array.from(block.children).indexOf(head as Element),
+    );
   });
 
   it('renders one block per timed task, positioned by time and sized by duration', () => {

@@ -1,4 +1,5 @@
 import { Component, type App } from 'obsidian';
+import { formatDurationFromMinutes } from '../../parser/TaskParser';
 import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
@@ -47,29 +48,34 @@ export function renderTimedBlocksForDay(
     block.style.height = `${minutesToPixels(p.durationMinutes)}px`;
     block.style.width = `${widthPct}%`;
     block.style.left = `${p.column * widthPct}%`;
-    // Priority-colored left border (color = priority convention) + tag-colored fill.
-    if (p.task.priority !== 'D') block.setAttribute('data-priority', p.task.priority);
+    // Tag-colored fill only — the priority-colored border was removed (Task 12): the
+    // status marker below already conveys priority via its own border, so a second
+    // priority border on the block itself was redundant visual noise.
     const tagColor = tagColorFor(p.task.rawText, tagGroups);
     if (tagColor) block.setCssProps({ '--tc-tag-color': tagColor });
+    // Time+duration subtitle renders first (top of the block), e.g. "10:00 (1h)".
+    block.createDiv({
+      cls: 'tc-tg-block-subtitle',
+      text: `${minutesToTimeString(p.startMinutes)} (${formatDurationFromMinutes(p.durationMinutes)})`,
+    });
+    // Status marker + title share one flex row so the checkbox and title render on the
+    // same line instead of stacking (the title div is block-level, which previously
+    // forced a line break after the inline marker span).
+    const head = block.createDiv({ cls: 'tc-tg-block-head' });
     // Status marker first: lets a user mark the block done without opening the modal.
     // Its own click handler stops propagation; its contextmenu handler does NOT, so a
     // right-click on the marker still bubbles to the block's contextmenu below (opens modal).
-    renderStatusMarker(block, {
+    renderStatusMarker(head, {
       task: p.task,
       registry: callbacks.statusRegistry,
       onLeftClick: () => callbacks.onToggle(p.task),
       onContextMenu: () => {},
     });
-    const titleEl = block.createDiv({ cls: 'tc-tg-block-title' });
+    const titleEl = head.createDiv({ cls: 'tc-tg-block-title' });
     renderTaskText(titleEl, p.task.markdownText, {
       app: callbacks.app,
       sourcePath: p.task.filePath,
       component: callbacks.component,
-    });
-    const endMinutes = p.startMinutes + p.durationMinutes;
-    block.createDiv({
-      cls: 'tc-tg-block-subtitle',
-      text: `${minutesToTimeString(p.startMinutes)}–${minutesToTimeString(endMinutes)}`,
     });
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
 

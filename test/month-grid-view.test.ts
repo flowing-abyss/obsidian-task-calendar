@@ -39,13 +39,13 @@ describe('MonthGridView', () => {
     expect(cell?.querySelector('.tc-mg-plain')?.textContent).toContain('Plain');
   });
 
-  it('sets data-priority on compact items for a prioritized task, omits it for D', () => {
+  it('never sets data-priority on compact items, even for a prioritized task (calendar items no longer render a priority border)', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());
     const t = task({ due: '2026-07-15', priority: 'C', text: 'Plain' });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
-    expect(row.getAttribute('data-priority')).toBe('C');
+    expect(row.hasAttribute('data-priority')).toBe(false);
 
     const container2 = freshContainer();
     const view2 = new MonthGridView(callbacks());

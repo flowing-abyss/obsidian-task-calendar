@@ -1238,6 +1238,10 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-tg-hour-column {
   position: absolute;
   inset: 0;
+  /* Explicit, deliberate stacking (not DOM-order accident): sits above the hour-grid
+     lines painted by the day-column's plain (non-positioned) .tc-tg-hour-row siblings,
+     below .tc-tg-block (z-index: 2) and .tc-tg-now-line (z-index: 3). */
+  z-index: 1;
   /* Auto (not none): empty space now has a meaning of its own (click-to-create — see
      onCreateAtTime), so this layer needs to receive the click. Blocks/the quick-add popover
      sit on top as ordinary auto-pointer-events children either way. */
@@ -1250,7 +1254,9 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   right: 0;
   height: 2px;
   background: var(--text-error);
-  z-index: 5;
+  /* Deliberately above .tc-tg-block's z-index (2, below): the now-line must always be
+     visible crossing over a block, never hidden beneath one. */
+  z-index: 3;
   pointer-events: none;
 }
 
@@ -1267,17 +1273,54 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 
 .tc-tg-block {
   position: absolute;
+  /* Explicit, deliberate stacking (not DOM-order accident): above the hour-grid lines
+     (implicit z-index: auto/0), below .tc-tg-now-line (z-index: 3) so the now-line
+     always visibly crosses over a block instead of disappearing beneath it. */
+  z-index: 2;
   pointer-events: auto;
   border-radius: 6px;
   padding: 2px 6px;
   font-size: 0.8em;
   overflow: hidden;
   cursor: grab;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Checkbox + title share one row (not stacked): the marker is an inline span but the
+   title is block-level, so without this row wrapper the title used to force a line
+   break after the checkbox. */
+.tc-tg-block-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  min-width: 0;
+}
+
+/* Scale the checkbox with the block's own font-size (0.8em) instead of the fixed 19px
+   used everywhere else (RightPanel/TaskCard's card-sized marker) — `font-size: 1em`
+   makes the marker inherit .tc-tg-block-head's computed size, and its width/height
+   follow proportionally, mirroring the original ~19px-for-12px-font ratio. */
+.tc-tg-block-head .tc-status-marker {
+  font-size: 1em;
+  width: 1.6em;
+  height: 1.6em;
+  min-width: 1.6em;
+  flex: 0 0 1.6em;
+}
+.tc-tg-block-head .tc-status-marker svg {
+  width: 0.85em;
+  height: 0.85em;
 }
 
 .tc-tg-block-title {
   font-weight: 600;
   color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .tc-tg-block-subtitle {
@@ -1310,11 +1353,13 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   border: 1px solid var(--background-modifier-border);
 }
 
-/* Tag-colored fill (color = priority is for the border only; fill reflects the task's
-   tag group, falling back to the neutral accent when no tag/group matches) + priority-
-   colored left border (color = priority convention). Timed blocks/spans/plain chips share
-   this pattern; deadline markers deliberately do NOT (see .tc-tg-deadline-marker below —
-   their shape, not a filled body, is what signals "deadline"). */
+/* Tag-colored fill only (fill reflects the task's tag group, falling back to the neutral
+   accent when no tag/group matches). The priority-colored left border was removed
+   (Task 12): the status marker inside each item already conveys priority via its own
+   border, so a second priority border here was redundant visual noise. Timed
+   blocks/spans/plain chips share this fill pattern; deadline markers deliberately do
+   NOT (see .tc-tg-deadline-marker below — their shape, not a filled body, is what
+   signals "deadline", and they keep their own priority-colored border). */
 .tc-tg-block,
 .tc-tg-span,
 .tc-tg-plain,
@@ -1322,51 +1367,6 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-mg-span-segment,
 .tc-mg-plain {
   background: color-mix(in srgb, var(--tc-tag-color, var(--interactive-accent)) 16%, transparent);
-  border-left: 3px solid var(--interactive-accent);
-}
-
-/* Priority-colored left border (color = priority convention), matching
-   .tc-status-marker[data-priority=...] above. No-priority (D) items keep the
-   neutral accent-colored border from the base rule above. */
-.tc-tg-block[data-priority='A'],
-.tc-tg-span[data-priority='A'],
-.tc-tg-plain[data-priority='A'],
-.tc-mg-block-dot[data-priority='A'],
-.tc-mg-span-segment[data-priority='A'],
-.tc-mg-plain[data-priority='A'] {
-  border-left-color: var(--tc-priority-a);
-}
-.tc-tg-block[data-priority='B'],
-.tc-tg-span[data-priority='B'],
-.tc-tg-plain[data-priority='B'],
-.tc-mg-block-dot[data-priority='B'],
-.tc-mg-span-segment[data-priority='B'],
-.tc-mg-plain[data-priority='B'] {
-  border-left-color: var(--tc-priority-b);
-}
-.tc-tg-block[data-priority='C'],
-.tc-tg-span[data-priority='C'],
-.tc-tg-plain[data-priority='C'],
-.tc-mg-block-dot[data-priority='C'],
-.tc-mg-span-segment[data-priority='C'],
-.tc-mg-plain[data-priority='C'] {
-  border-left-color: var(--tc-priority-c);
-}
-.tc-tg-block[data-priority='E'],
-.tc-tg-span[data-priority='E'],
-.tc-tg-plain[data-priority='E'],
-.tc-mg-block-dot[data-priority='E'],
-.tc-mg-span-segment[data-priority='E'],
-.tc-mg-plain[data-priority='E'] {
-  border-left-color: var(--tc-priority-e);
-}
-.tc-tg-block[data-priority='F'],
-.tc-tg-span[data-priority='F'],
-.tc-tg-plain[data-priority='F'],
-.tc-mg-block-dot[data-priority='F'],
-.tc-mg-span-segment[data-priority='F'],
-.tc-mg-plain[data-priority='F'] {
-  border-left-color: var(--tc-priority-f);
 }
 
 .tc-tg-span-edge {
@@ -1594,8 +1594,8 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   cursor: pointer;
 }
 
-/* .tc-mg-plain / .tc-mg-block-dot / .tc-mg-span-segment fill + left border are set by the
-   shared tag-fill/priority-border rule above (grouped with the tc-tg-* equivalents). */
+/* .tc-mg-plain / .tc-mg-block-dot / .tc-mg-span-segment tag-colored fill is set by the
+   shared fill rule above (grouped with the tc-tg-* equivalents); no priority border. */
 
 /* Deadline markers: shape (compact pill) signals "deadline", not color — priority-driven,
    matching .tc-tg-deadline-marker. Neutral/muted when no priority is set. */

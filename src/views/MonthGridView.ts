@@ -140,7 +140,7 @@ export class MonthGridView extends BaseView {
 
     for (const t of timed) {
       const dot = cell.createDiv({ cls: 'tc-mg-block-dot' });
-      this.applyPriorityAndTag(dot, t, tagGroups);
+      this.applyTagFill(dot, t, tagGroups);
       this.renderMarker(dot, t);
       dot.createSpan({ text: `${t.time} ` });
       this.renderTitle(dot, t);
@@ -153,7 +153,7 @@ export class MonthGridView extends BaseView {
     }
     for (const t of spans) {
       const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
-      this.applyPriorityAndTag(bar, t, tagGroups);
+      this.applyTagFill(bar, t, tagGroups);
       this.renderMarker(bar, t);
       this.renderTitle(bar, t);
       bar.addEventListener('contextmenu', (e) => {
@@ -165,7 +165,7 @@ export class MonthGridView extends BaseView {
     }
     for (const t of plain) {
       const row = cell.createDiv({ cls: 'tc-mg-plain' });
-      this.applyPriorityAndTag(row, t, tagGroups);
+      this.applyTagFill(row, t, tagGroups);
       this.renderMarker(row, t);
       this.renderTitle(row, t);
       row.addEventListener('contextmenu', (e) => {
@@ -229,9 +229,12 @@ export class MonthGridView extends BaseView {
     el.addEventListener('dragend', () => el.removeClass('is-dragging'));
   }
 
-  /** Priority-colored left border (color = priority convention) + tag-colored fill. */
-  private applyPriorityAndTag(el: HTMLElement, t: Task, tagGroups: TagGroup[]): void {
-    if (t.priority !== 'D') el.setAttribute('data-priority', t.priority);
+  /**
+   * Tag-colored fill only — the priority-colored border was removed (Task 12): the
+   * status marker already conveys priority via its own border, so a second priority
+   * border on the compact item itself was redundant visual noise.
+   */
+  private applyTagFill(el: HTMLElement, t: Task, tagGroups: TagGroup[]): void {
     const tagColor = tagColorFor(t.rawText, tagGroups);
     if (tagColor) el.setCssProps({ '--tc-tag-color': tagColor });
   }

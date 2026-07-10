@@ -21,12 +21,12 @@ const callbacks = () => ({
 });
 
 describe('renderAllDayCell', () => {
-  it('sets data-priority on a plain chip and span for a prioritized task, omits it for D', () => {
+  it('never sets data-priority on a plain chip or span, even for a prioritized task (calendar body no longer renders a priority border)', () => {
     const container = freshContainer();
     const prioritized = task({ due: '2026-07-10', priority: 'B', text: 'Plain' });
     renderAllDayCell(container, '2026-07-10', [], [prioritized], [], callbacks());
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
-    expect(chip.getAttribute('data-priority')).toBe('B');
+    expect(chip.hasAttribute('data-priority')).toBe(false);
 
     const container2 = freshContainer();
     const none = task({ due: '2026-07-10', priority: 'D', text: 'Plain' });
