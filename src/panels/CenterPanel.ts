@@ -397,7 +397,7 @@ export class CenterPanel {
     for (const v of CAL_VIEWS) {
       const btn = viewSwitcher.createEl('button', {
         cls: `tc-cal-view-btn${this.calViewType === v ? ' is-active' : ''}`,
-        text: v.charAt(0).toUpperCase() + v.slice(1),
+        text: v === 'today' ? 'Day' : v.charAt(0).toUpperCase() + v.slice(1),
       });
       btn.addEventListener('click', () => {
         this.calViewType = v;

@@ -371,20 +371,10 @@ describe('CalendarSettingsTab renderViewConfigSettings', () => {
     expect(plugin.settings.desktop.defaultView).toBe('week');
   });
 
-  it('style dropdown has 11 options', () => {
+  it('does not render a legacy "Default style" dropdown (desktop)', () => {
     const { tab } = makeTab();
     const body = openSection(tab, 1);
-    const dd = findDropdown(body, 'Default style');
-    expect(dd).not.toBeNull();
-    expect(dd!.options).toHaveLength(11);
-  });
-
-  it('style change saves', () => {
-    const { tab, plugin, captured } = makeTab();
-    openSection(tab, 1);
-    findComp(captured, 'Default style', 'dropdown')!.comp.setValue('style3');
-    expect(plugin.saveSettings).toHaveBeenCalled();
-    expect(plugin.settings.desktop.style).toBe('style3');
+    expect(findDropdown(body, 'Default style')).toBeNull();
   });
 
   it('first day of week dropdown parses int on change', () => {
@@ -464,11 +454,11 @@ describe('CalendarSettingsTab renderViewConfigSettings', () => {
     expect(plugin.settings.desktop.upcomingDays).toBe(7);
   });
 
-  it('mobile section has same view config settings', () => {
+  it('mobile section has same view config settings, and no "Default style" dropdown', () => {
     const { tab } = makeTab({ dailyNoteProvider: 'manual' });
     const body = openSection(tab, 2); // Mobile
     expect(findDropdown(body, 'Default view')).not.toBeNull();
-    expect(findDropdown(body, 'Default style')).not.toBeNull();
+    expect(findDropdown(body, 'Default style')).toBeNull();
     expect(findInput(body, 'Daily note folder')).not.toBeNull();
   });
 });

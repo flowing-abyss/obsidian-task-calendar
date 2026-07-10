@@ -579,10 +579,10 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
     return { panel, state, el };
   }
 
-  it('view switcher shows Today, Week, Month (not Month/Week/List)', async () => {
+  it('view switcher shows Day, Week, Month (not Today/Week/Month)', async () => {
     const { el } = await makeCalendarPanel();
     const labels = Array.from(el.querySelectorAll('.tc-cal-view-btn')).map((b) => b.textContent);
-    expect(labels).toEqual(['Today', 'Week', 'Month']);
+    expect(labels).toEqual(['Day', 'Week', 'Month']);
   });
 
   it('defaults to Month and mounts MonthGridView', async () => {
@@ -594,7 +594,7 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
     const { el } = await makeCalendarPanel();
     (
       Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
-        (b) => b.textContent === 'Today',
+        (b) => b.textContent === 'Day',
       ) as HTMLElement
     ).click();
     expect(el.querySelector('.tc-tg-root')).not.toBeNull();
@@ -675,7 +675,7 @@ describe('CenterPanel calendar mode — click-to-create', () => {
     const { el, app } = await makeClickToCreatePanel();
     (
       Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
-        (b) => b.textContent === 'Today',
+        (b) => b.textContent === 'Day',
       ) as HTMLElement
     ).click();
 
@@ -711,7 +711,7 @@ describe('CenterPanel calendar mode — click-to-create', () => {
     state.set('mode', 'calendar');
     (
       Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
-        (b) => b.textContent === 'Today',
+        (b) => b.textContent === 'Day',
       ) as HTMLElement
     ).click();
 

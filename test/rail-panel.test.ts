@@ -13,14 +13,14 @@ describe('RailPanel', () => {
     expect(buttons).toHaveLength(5);
   });
 
-  it('mode buttons have correct aria-labels', () => {
+  it('mode buttons have correct aria-labels, Calendar in 2nd position', () => {
     const state = new AppState();
     const panel = new RailPanel(state, { setting: {} });
     panel.mount(freshContainer());
     const labels = Array.from(panel['el'].querySelectorAll('button')).map((b) =>
       b.getAttribute('aria-label'),
     );
-    expect(labels).toEqual(['Tasks', 'Projects', 'Calendar', 'Search', 'Settings']);
+    expect(labels).toEqual(['Tasks', 'Calendar', 'Projects', 'Search', 'Settings']);
   });
 
   it('click Projects button sets mode to projects', () => {

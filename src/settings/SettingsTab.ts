@@ -782,17 +782,6 @@ export class CalendarSettingsTab extends PluginSettingTab {
         }),
     );
 
-    new Setting(container)
-      .setName('Default style')
-      .setDesc('Visual style (style1–style11).')
-      .addDropdown((d) => {
-        for (let i = 1; i <= 11; i++) d.addOption(`style${i}`, `Style ${i}`);
-        return d.setValue(cfg.style).onChange(async (v) => {
-          cfg.style = v;
-          await this.plugin.saveSettings();
-        });
-      });
-
     new Setting(container).setName('First day of week').addDropdown((d) =>
       d
         .addOptions({ '0': 'Sunday', '1': 'Monday', '6': 'Saturday' })
