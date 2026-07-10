@@ -17,6 +17,7 @@ export interface TimeGridCallbacks {
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
   onStartChange: (task: Task, newStart: string) => void;
   onDueChange: (task: Task, newDue: string) => void;
+  onExtendToSpan: (task: Task, newDue: string) => void;
   onToggle: (task: Task) => void;
   statusRegistry: StatusRegistry;
   tagGroups?: TagGroup[];
@@ -111,6 +112,7 @@ export class TodayView extends BaseView {
       onDrop: this.callbacks.onDrop,
       onStartChange: this.callbacks.onStartChange,
       onDueChange: this.callbacks.onDueChange,
+      onExtendToSpan: this.callbacks.onExtendToSpan,
       onToggle: this.callbacks.onToggle,
       statusRegistry: this.callbacks.statusRegistry,
     };

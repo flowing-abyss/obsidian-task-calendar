@@ -441,6 +441,9 @@ export class CenterPanel {
     const handleDueChange = (t: Task, newDue: string): void => {
       void this.rescheduleTaskDue(t, newDue);
     };
+    const handleExtendToSpan = (t: Task, newDue: string): void => {
+      void this.extendTaskToSpan(t, newDue);
+    };
 
     const startPositionFor = (viewType: CalViewType): string => {
       if (viewType === 'week') return this.calDate.format('YYYY-ww');
@@ -474,6 +477,7 @@ export class CenterPanel {
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
           onDueChange: handleDueChange,
+          onExtendToSpan: handleExtendToSpan,
           onToggle: (t) => {
             void this.store.toggleTask(t);
           },
@@ -490,6 +494,7 @@ export class CenterPanel {
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
           onDueChange: handleDueChange,
+          onExtendToSpan: handleExtendToSpan,
           onToggle: (t) => {
             void this.store.toggleTask(t);
           },
@@ -2029,6 +2034,21 @@ export class CenterPanel {
       const withDue = task.due
         ? line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`)
         : line.trimEnd() + ` 📅 ${newDue}`;
+      lines[taskLine] = formatTaskLine(withDue);
+    });
+  }
+
+  // A plain task has no `start` yet, so extending it into a span needs both ends
+  // written in one mutation: the original `due` is frozen as the new `start`, and
+  // `due` moves to the dragged-to date.
+  private async extendTaskToSpan(task: Task, newDue: string): Promise<void> {
+    if (!task.due) return;
+    const originalDue = task.due;
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const withStart = line.trimEnd() + ` 🛫 ${originalDue}`;
+      const withDue = withStart.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`);
       lines[taskLine] = formatTaskLine(withDue);
     });
   }

@@ -54,6 +54,7 @@ export class WeekTimeGridView extends BaseView {
       onDrop: this.callbacks.onDrop,
       onStartChange: this.callbacks.onStartChange,
       onDueChange: this.callbacks.onDueChange,
+      onExtendToSpan: this.callbacks.onExtendToSpan,
       onToggle: this.callbacks.onToggle,
       statusRegistry: this.callbacks.statusRegistry,
     };

@@ -20,6 +20,7 @@ function callbacks() {
     onDurationChange: vi.fn(),
     onStartChange: vi.fn(),
     onDueChange: vi.fn(),
+    onExtendToSpan: vi.fn(),
     onToggle: vi.fn(),
     statusRegistry: registry,
   };

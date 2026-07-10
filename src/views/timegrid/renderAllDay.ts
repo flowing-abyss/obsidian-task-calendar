@@ -13,6 +13,7 @@ export interface AllDayCallbacks {
   onDrop: (dragData: string, targetDate: string) => void; // native HTML5 DnD, existing convention
   onStartChange: (task: Task, newStart: string) => void; // pointer edge-resize
   onDueChange: (task: Task, newDue: string) => void; // pointer edge-resize
+  onExtendToSpan: (task: Task, newDue: string) => void; // pointer edge-resize on a plain task
   onToggle: (task: Task) => void;
   statusRegistry: StatusRegistry;
 }
@@ -73,22 +74,33 @@ function renderDraggableBody(
 }
 
 /**
- * Attach pointer-based edge-resize to a span's start/due handle. In real usage the
- * pointerup handler resolves the date under the pointer via `activeDocument.elementFromPoint`,
- * finding the nearest ancestor with `data-tg-date` (stamped by whichever `renderAllDayCell`
- * call rendered that day column). Also registers a direct-invocation callback on `cellEl`
- * for the jsdom test seam (see `endDragTestHook`).
+ * Attach pointer-based edge-resize to a handle (a span's start/due edge, or a plain
+ * task's new right edge). In real usage the pointerup handler resolves the date under
+ * the pointer via `activeDocument.elementFromPoint`, finding the nearest ancestor with
+ * `data-tg-date` (stamped by whichever `renderAllDayCell` call rendered that day
+ * column). Also registers a direct-invocation callback on `cellEl` for the jsdom test
+ * seam (see `endDragTestHook`).
+ *
+ * `onResolve` is called with the resolved date once the drag ends over a valid day
+ * cell; callers pass whichever mutation the handle should trigger (`onStartChange`,
+ * `onDueChange`, or `onExtendToSpan`) so the drag mechanics stay shared.
  */
 function attachEdgeResize(
   handle: HTMLElement,
   cellEl: HTMLElement,
   task: Task,
-  edge: 'start' | 'due',
-  callbacks: AllDayCallbacks,
+  onResolve: (task: Task, date: string) => void,
 ): void {
+  // The handle sits inside a `draggable="true"` body (renderDraggableBody, for the
+  // whole-task cross-day move). Without opting the handle itself out, a mousedown+drag
+  // gesture starting on the handle could arm the ancestor's native HTML5 dragstart at
+  // the same time as this pointer-based resize — draggable="false" here (the standard
+  // technique for a non-draggable island inside a draggable element) keeps the two
+  // gestures from racing.
+  handle.setAttribute('draggable', 'false');
+
   const resolve = (date: string): void => {
-    if (edge === 'start') callbacks.onStartChange(task, date);
-    else callbacks.onDueChange(task, date);
+    onResolve(task, date);
   };
 
   const onPointerMove = (e: PointerEvent): void => {
@@ -138,15 +150,20 @@ export function renderAllDayCell(
     // dragging one doesn't accidentally exist mid-span.
     if (t.start === date) {
       const leftEdge = bar.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--left' });
-      attachEdgeResize(leftEdge, cellEl, t, 'start', callbacks);
+      attachEdgeResize(leftEdge, cellEl, t, callbacks.onStartChange);
     }
     if (t.due === date) {
       const rightEdge = bar.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--right' });
-      attachEdgeResize(rightEdge, cellEl, t, 'due', callbacks);
+      attachEdgeResize(rightEdge, cellEl, t, callbacks.onDueChange);
     }
   }
   for (const t of plain) {
-    renderDraggableBody(cellEl, 'tc-tg-plain', t, callbacks, tagGroups);
+    const chip = renderDraggableBody(cellEl, 'tc-tg-plain', t, callbacks, tagGroups);
+    // A plain task has no `start` yet: dragging this handle doesn't just move `due`
+    // (there'd be nothing anchoring the other end) — it extends the task into a real
+    // multi-day span, so it's wired to onExtendToSpan rather than onDueChange.
+    const rightEdge = chip.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--right' });
+    attachEdgeResize(rightEdge, cellEl, t, callbacks.onExtendToSpan);
   }
   for (const t of deadlines) {
     const marker = cellEl.createDiv({ cls: 'tc-tg-deadline-marker' });

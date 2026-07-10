@@ -15,6 +15,7 @@ const callbacks = () => ({
   onDrop: vi.fn(),
   onStartChange: vi.fn(),
   onDueChange: vi.fn(),
+  onExtendToSpan: vi.fn(),
   onToggle: vi.fn(),
   statusRegistry: registry,
 });
@@ -291,6 +292,58 @@ describe('renderAllDayCell', () => {
     );
     expect(cbs.onStartChange).toHaveBeenCalledWith(t, '2026-07-07');
     expect(cbs.onDueChange).not.toHaveBeenCalled();
+  });
+
+  it('a plain task gets a right-edge handle that fires onExtendToSpan (not onDueChange) on pointerup', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
+    const handle = container.querySelector('.tc-tg-plain .tc-tg-span-edge--right') as HTMLElement;
+    expect(handle).not.toBeNull();
+    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+    (container as unknown as { __tgTestEndDrag: (date: string) => void }).__tgTestEndDrag(
+      '2026-07-12',
+    );
+    expect(cbs.onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-12');
+    expect(cbs.onDueChange).not.toHaveBeenCalled();
+  });
+
+  it('sets draggable="false" on edge handles so a drag started on one never races the ancestor\'s native cross-day dragstart', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const span = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+    renderAllDayCell(container, '2026-07-10', [span], [], [], cbs);
+    const spanHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+    expect(spanHandle.getAttribute('draggable')).toBe('false');
+
+    const plainContainer = freshContainer();
+    const plainTask = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(plainContainer, '2026-07-10', [], [plainTask], [], cbs);
+    const plainHandle = plainContainer.querySelector(
+      '.tc-tg-plain .tc-tg-span-edge--right',
+    ) as HTMLElement;
+    expect(plainHandle.getAttribute('draggable')).toBe('false');
+  });
+
+  it('a span keeps exactly one right-edge handle, never a second one from the plain-task extend feature', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+    renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
+    const handles = container.querySelectorAll('.tc-tg-span .tc-tg-span-edge--right');
+    expect(handles.length).toBe(1);
+  });
+
+  it('clicking the status marker on a plain task with an edge handle still toggles it (handle does not steal the click)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    const marker = chip.querySelector('.tc-status-marker, [data-task-status]') ?? chip.firstElementChild;
+    (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
   });
 
   it('a stationary right-click (pointerdown button=2, pointerup at same position, no move) on an edge handle does NOT fire onStartChange/onDueChange', () => {

@@ -142,6 +142,24 @@ describe('CenterPanel.rescheduleTask anchor priority', () => {
   });
 });
 
+describe('CenterPanel.extendTaskToSpan', () => {
+  it('freezes the original due as the new start and writes the new due, in one mutation', async () => {
+    const raw = '- [ ] t 📅 2026-07-10';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      due: '2026-07-10',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'extendTaskToSpan', t, '2026-07-12');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('🛫 2026-07-10');
+    expect(content).toContain('📅 2026-07-12');
+    expect(content).not.toContain('📅 2026-07-10');
+  });
+});
+
 describe('CenterPanel.setTaskTimeFromDrop', () => {
   it('adds both a new due date and a new time when neither is set (plain task dropped into hour grid)', async () => {
     const raw = '- [ ] t';
