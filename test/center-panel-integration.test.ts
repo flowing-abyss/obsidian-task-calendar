@@ -562,10 +562,16 @@ describe('CenterPanel projects mode teardown (regression)', () => {
 });
 
 describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
-  async function makeCalendarPanel(): Promise<{ panel: CenterPanel; state: AppState; el: HTMLElement }> {
-    const { panel, state } = await makePanel({ 't.md': '- [ ] task 📅 2026-06-15' }, DEFAULT_SETTINGS, [
-      { path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] },
-    ]);
+  async function makeCalendarPanel(): Promise<{
+    panel: CenterPanel;
+    state: AppState;
+    el: HTMLElement;
+  }> {
+    const { panel, state } = await makePanel(
+      { 't.md': '- [ ] task 📅 2026-06-15' },
+      DEFAULT_SETTINGS,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
     const el = freshContainer();
     panel.mount(el);
     state.set('mode', 'calendar');

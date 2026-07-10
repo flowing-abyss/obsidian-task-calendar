@@ -38,6 +38,8 @@ import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip
 import { buildStatusSubmenu, showStatusMenuAt } from '../ui/statusMenu';
 import { openInFile } from '../ui/taskNavigation';
 import { MonthGridView } from '../views/MonthGridView';
+import { TodayView } from '../views/TodayView';
+import { WeekTimeGridView } from '../views/WeekTimeGridView';
 import {
   filterTasksByStatusGroups,
   groupTasksByDate,
@@ -47,8 +49,6 @@ import {
   sortTasksByField,
 } from '../views/taskGrouping';
 import { minutesToTimeString } from '../views/timegrid/layout';
-import { TodayView } from '../views/TodayView';
-import { WeekTimeGridView } from '../views/WeekTimeGridView';
 import { ProjectsPanel } from './projects/ProjectsPanel';
 
 type CalViewType = 'today' | 'week' | 'month';
@@ -572,7 +572,8 @@ export class CenterPanel {
     });
 
     prevBtn.addEventListener('click', () => {
-      if (this.calViewType === 'week') this.calDate = this.calDate.clone().subtract(7, 'days').startOf('isoWeek');
+      if (this.calViewType === 'week')
+        this.calDate = this.calDate.clone().subtract(7, 'days').startOf('isoWeek');
       else if (this.calViewType === 'today') this.calDate = this.calDate.clone().subtract(1, 'day');
       else this.calDate = this.calDate.clone().subtract(1, 'months').date(1);
       updateTitle();
@@ -580,7 +581,8 @@ export class CenterPanel {
     });
 
     nextBtn.addEventListener('click', () => {
-      if (this.calViewType === 'week') this.calDate = this.calDate.clone().add(7, 'days').startOf('isoWeek');
+      if (this.calViewType === 'week')
+        this.calDate = this.calDate.clone().add(7, 'days').startOf('isoWeek');
       else if (this.calViewType === 'today') this.calDate = this.calDate.clone().add(1, 'day');
       else this.calDate = this.calDate.clone().add(1, 'months').date(1);
       updateTitle();
