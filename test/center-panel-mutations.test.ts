@@ -141,3 +141,43 @@ describe('CenterPanel.rescheduleTask anchor priority', () => {
     expect(content).toContain('📅 2026-07-12');
   });
 });
+
+describe('CenterPanel.setTaskTimeFromDrop', () => {
+  it('adds both a new due date and a new time when neither is set (plain task dropped into hour grid)', async () => {
+    const raw = '- [ ] t';
+    const t = task({ filePath: 'f.md', line: 0, rawText: raw });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'setTaskTimeFromDrop', 'f.md:::0', '2026-07-12', '14:30');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('📅 2026-07-12');
+    expect(content).toContain('⏰ 14:30');
+  });
+
+  it('writes the scheduled date (not due) when the task already has a scheduled date (scheduled wins)', async () => {
+    const raw = '- [ ] t ⏳ 2026-07-02';
+    const t = task({ filePath: 'f.md', line: 0, rawText: raw, scheduled: '2026-07-02' });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'setTaskTimeFromDrop', 'f.md:::0', '2026-07-03', '09:00');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('⏳ 2026-07-03');
+    expect(content).toContain('⏰ 09:00');
+  });
+
+  it('replaces an existing time rather than duplicating the emoji', async () => {
+    const raw = '- [ ] t 📅 2026-07-10 ⏰ 09:00';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      due: '2026-07-10',
+      time: '09:00',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'setTaskTimeFromDrop', 'f.md:::0', '2026-07-10', '16:45');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('⏰ 16:45');
+    expect(content).not.toContain('⏰ 09:00');
+    const matches = content.match(/⏰/gu);
+    expect(matches).toHaveLength(1);
+  });
+});

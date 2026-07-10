@@ -17,6 +17,10 @@ export function minutesToPixels(minutes: number): number {
   return (minutes / 60) * PIXELS_PER_HOUR;
 }
 
+export function pixelsToMinutes(pixels: number): number {
+  return (pixels / PIXELS_PER_HOUR) * 60;
+}
+
 export function timeStringToMinutes(time: string): number {
   const [h, m] = time.split(':').map((n) => parseInt(n, 10));
   return (h ?? 0) * 60 + (m ?? 0);

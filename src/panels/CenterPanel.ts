@@ -426,6 +426,9 @@ export class CenterPanel {
     const handleDrop = (dragData: string, targetDate: string): void => {
       void this.rescheduleTask(dragData, targetDate);
     };
+    const handleDropTime = (dragData: string, date: string, time: string): void => {
+      void this.setTaskTimeFromDrop(dragData, date, time);
+    };
     const handleTimeChange = (t: Task, newStartMinutes: number): void => {
       void this.updateTaskTime(t, newStartMinutes);
     };
@@ -466,6 +469,7 @@ export class CenterPanel {
           app: this.app,
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
+          onDropTime: handleDropTime,
           onTimeChange: handleTimeChange,
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
@@ -481,6 +485,7 @@ export class CenterPanel {
           app: this.app,
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
+          onDropTime: handleDropTime,
           onTimeChange: handleTimeChange,
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
@@ -1950,6 +1955,34 @@ export class CenterPanel {
       } else {
         updated = tl.trimEnd() + ` 📅 ${targetDate}`;
       }
+      lines[taskLine] = formatTaskLine(updated);
+    });
+  }
+
+  private async setTaskTimeFromDrop(dragData: string, date: string, time: string): Promise<void> {
+    const parts = dragData.split(':::');
+    if (parts.length < 2) return;
+    const [filePath, lineStr] = parts;
+    const line = parseInt(lineStr ?? '0', 10);
+    if (!filePath || isNaN(line)) return;
+
+    const task = this.store.getTasks().find((t) => t.filePath === filePath && t.line === line);
+    if (!task) return;
+
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const tl = lines[taskLine];
+      if (!tl) return;
+      let updated: string;
+      if (task.scheduled) {
+        updated = tl.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${date}`);
+      } else if (task.due) {
+        updated = tl.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${date}`);
+      } else {
+        updated = tl.trimEnd() + ` 📅 ${date}`;
+      }
+      updated = task.time
+        ? updated.replace(/⏰\s*\d{1,2}:\d{2}/u, `⏰ ${time}`)
+        : updated.trimEnd() + ` ⏰ ${time}`;
       lines[taskLine] = formatTaskLine(updated);
     });
   }

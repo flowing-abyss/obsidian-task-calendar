@@ -12,6 +12,7 @@ export interface TimeGridCallbacks {
   app: App;
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
+  onDropTime: (dragData: string, date: string, time: string) => void;
   onTimeChange: (task: Task, newStartMinutes: number) => void;
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
   onStartChange: (task: Task, newStart: string) => void;
@@ -86,7 +87,7 @@ export class TodayView extends BaseView {
     this.containerEl = container;
     const date = config.startPosition || window.moment().format('YYYY-MM-DD');
 
-    const handles = renderHourGrid(container, [date]);
+    const handles = renderHourGrid(container, [date], this.callbacks.onDropTime);
     const day = handles.days[0]!;
 
     const { timed, spans, plain, deadlines } = bucketTasksForDate(tasks, date);

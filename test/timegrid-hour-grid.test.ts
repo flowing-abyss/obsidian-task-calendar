@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderHourGrid } from '../src/views/timegrid/HourGrid';
-import { freshContainer, useRealMoment } from './helpers';
+import { DataTransferStub, freshContainer, useRealMoment } from './helpers';
 
 useRealMoment();
 
@@ -88,5 +88,38 @@ describe('renderHourGrid', () => {
     const container = freshContainer();
     const handles = renderHourGrid(container, ['2026-07-10']);
     expect(handles.gridRowEl.hasClass('tc-tg-grid-row')).toBe(true);
+  });
+
+  it('dropping onto a day column computes the time from the drop Y-position', () => {
+    const container = freshContainer();
+    const onDropTime = vi.fn();
+    const handles = renderHourGrid(container, ['2026-07-10'], onDropTime);
+    const hourColumnEl = handles.days[0]!.hourColumnEl;
+    // Stub getBoundingClientRect so a clientY of 148 maps to a known offset
+    vi.spyOn(hourColumnEl, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      left: 0,
+    } as DOMRect);
+    const dt = new DataTransferStub();
+    dt.setData('text/plain', 'f.md:::0');
+    const ev = new MouseEvent('drop', { bubbles: true, clientY: 148 });
+    Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
+    hourColumnEl.dispatchEvent(ev);
+    expect(onDropTime).toHaveBeenCalledWith('f.md:::0', '2026-07-10', '01:00'); // (148-100)px = 48px = 60min
+  });
+
+  it('does not wire drop listeners when onDropTime is not provided (no throw on drop)', () => {
+    const container = freshContainer();
+    const handles = renderHourGrid(container, ['2026-07-10']);
+    const hourColumnEl = handles.days[0]!.hourColumnEl;
+    vi.spyOn(hourColumnEl, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      left: 0,
+    } as DOMRect);
+    const dt = new DataTransferStub();
+    dt.setData('text/plain', 'f.md:::0');
+    const ev = new MouseEvent('drop', { bubbles: true, clientY: 148 });
+    Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
+    expect(() => hourColumnEl.dispatchEvent(ev)).not.toThrow();
   });
 });

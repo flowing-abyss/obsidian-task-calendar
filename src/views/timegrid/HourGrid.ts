@@ -1,4 +1,6 @@
-import { minutesToPixels } from './layout';
+import { minutesToPixels, minutesToTimeString, pixelsToMinutes, snapMinutes } from './layout';
+
+const DROP_SNAP_MINUTES = 15;
 
 interface DayColumnHandles {
   date: string;
@@ -13,7 +15,11 @@ export interface HourGridHandles {
 }
 
 /** Render the static hour-grid + all-day band skeleton for the given dates (1 = Today, 7 = Week). */
-export function renderHourGrid(container: HTMLElement, dates: string[]): HourGridHandles {
+export function renderHourGrid(
+  container: HTMLElement,
+  dates: string[],
+  onDropTime?: (dragData: string, date: string, time: string) => void,
+): HourGridHandles {
   container.empty();
   const root = container.createDiv({ cls: 'tc-tg-root' });
 
@@ -55,6 +61,21 @@ export function renderHourGrid(container: HTMLElement, dates: string[]): HourGri
       const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
       const nowLine = hourColumnEl.createDiv({ cls: 'tc-tg-now-line' });
       nowLine.style.top = `${minutesToPixels(nowMinutes)}px`;
+    }
+
+    if (onDropTime) {
+      hourColumnEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+      });
+      hourColumnEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const dragData = e.dataTransfer?.getData('text/plain');
+        if (!dragData) return;
+        const offsetY = e.clientY - hourColumnEl.getBoundingClientRect().top;
+        const rawMinutes = pixelsToMinutes(offsetY);
+        const snapped = Math.max(0, snapMinutes(rawMinutes, DROP_SNAP_MINUTES));
+        onDropTime(dragData, date, minutesToTimeString(snapped));
+      });
     }
 
     return { date, hourColumnEl, allDayCellEl: alldayCells[i]! };

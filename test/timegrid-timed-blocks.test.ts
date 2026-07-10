@@ -116,6 +116,23 @@ describe('renderTimedBlocksForDay', () => {
     expect(block.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
   });
 
+  it('shows a start–end time range in the block subtitle', () => {
+    const container = freshContainer();
+    const t = task({ time: '15:00', duration: 90 });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const subtitle = container.querySelector('.tc-tg-block-subtitle') as HTMLElement;
+    expect(subtitle).not.toBeNull();
+    expect(subtitle.textContent).toContain('15:00–16:30');
+  });
+
+  it('defaults the end of the range to start+60min when duration is unset', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const subtitle = container.querySelector('.tc-tg-block-subtitle') as HTMLElement;
+    expect(subtitle.textContent).toContain('09:00–10:00');
+  });
+
   it('renders one block per timed task, positioned by time and sized by duration', () => {
     const container = freshContainer();
     const t = task({ time: '15:00', duration: 120, text: 'Gym' });

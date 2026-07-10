@@ -4,6 +4,7 @@ import {
   minutesToTimeString,
   packOverlaps,
   PIXELS_PER_HOUR,
+  pixelsToMinutes,
   snapMinutes,
   timeStringToMinutes,
   type TimedBlockInput,
@@ -14,6 +15,12 @@ describe('time/pixel conversions', () => {
   it('minutesToPixels scales by PIXELS_PER_HOUR', () => {
     expect(minutesToPixels(60)).toBe(PIXELS_PER_HOUR);
     expect(minutesToPixels(30)).toBe(PIXELS_PER_HOUR / 2);
+  });
+  it('pixelsToMinutes is the inverse of minutesToPixels', () => {
+    expect(pixelsToMinutes(PIXELS_PER_HOUR)).toBe(60);
+    expect(pixelsToMinutes(48)).toBe(60);
+    expect(pixelsToMinutes(minutesToPixels(90))).toBe(90);
+    expect(minutesToPixels(pixelsToMinutes(120))).toBe(120);
   });
   it('timeStringToMinutes/minutesToTimeString round-trip', () => {
     expect(timeStringToMinutes('15:00')).toBe(900);

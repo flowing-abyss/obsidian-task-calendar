@@ -15,6 +15,7 @@ function callbacks() {
     app: fakeApp,
     onTaskClick: vi.fn(),
     onDrop: vi.fn(),
+    onDropTime: vi.fn(),
     onTimeChange: vi.fn(),
     onDurationChange: vi.fn(),
     onStartChange: vi.fn(),
@@ -31,6 +32,19 @@ describe('TodayView', () => {
     const t = task({ due: '2026-07-10', time: '15:00', duration: 60 });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     expect(container.querySelector('.tc-tg-block')).not.toBeNull();
+  });
+
+  it('threads onDropTime through to the hour-grid column, firing on drop', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new TodayView(cbs);
+    view.render(container, [], resolvedConfig({ startPosition: '2026-07-10' }));
+    const hourColumnEl = container.querySelector('.tc-tg-hour-column') as HTMLElement;
+    const dt = { getData: () => 'f.md:::0' } as unknown as DataTransfer;
+    const ev = new MouseEvent('drop', { bubbles: true, clientY: 148 });
+    Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
+    hourColumnEl.dispatchEvent(ev);
+    expect(cbs.onDropTime).toHaveBeenCalledWith('f.md:::0', '2026-07-10', expect.any(String));
   });
 
   it('renders a plain due-only task in the all-day band, not the hour grid', () => {

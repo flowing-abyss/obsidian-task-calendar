@@ -1277,6 +1277,11 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   color: var(--text-normal);
 }
 
+.tc-tg-block-subtitle {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
 .tc-tg-resize-handle {
   position: absolute;
   left: 25%;

@@ -7,6 +7,7 @@ import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import {
   minutesToPixels,
+  minutesToTimeString,
   packOverlaps,
   snapMinutes,
   timeStringToMinutes,
@@ -64,6 +65,11 @@ export function renderTimedBlocksForDay(
       app: callbacks.app,
       sourcePath: p.task.filePath,
       component: callbacks.component,
+    });
+    const endMinutes = p.startMinutes + p.durationMinutes;
+    block.createDiv({
+      cls: 'tc-tg-block-subtitle',
+      text: `${minutesToTimeString(p.startMinutes)}–${minutesToTimeString(endMinutes)}`,
     });
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
 
