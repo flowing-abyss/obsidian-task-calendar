@@ -304,7 +304,7 @@ describe('RightPanel popovers', () => {
 describe('RightPanel Planning disclosure', () => {
   it('Planning section is collapsed by default and shows no chip for unset start/scheduled', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25' })]);
+    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
     expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('false');
     expect(el.querySelector('.tc-chip-scheduled')).toBeNull();
     expect(el.querySelector('.tc-chip-start')).toBeNull();
@@ -312,14 +312,17 @@ describe('RightPanel Planning disclosure', () => {
 
   it('a task with scheduled set shows a scheduled chip in the main row without expanding Planning', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Sched', due: undefined, scheduled: '2026-07-05' })]);
+    state.set(
+      'taskStack',
+      [task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined })],
+    );
     expect(el.querySelector('.tc-chip-scheduled')?.textContent).toContain('5 Jul');
     expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('false');
   });
 
   it('expanding Planning reveals Start and Scheduled inputs', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25' })]);
+    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
     const toggle = el.querySelector('.tc-planning-toggle') as HTMLElement;
     toggle.click();
     expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('true');
@@ -329,10 +332,31 @@ describe('RightPanel Planning disclosure', () => {
 
   it('clicking a promoted scheduled chip reopens the Planning section', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Sched', due: undefined, scheduled: '2026-07-05' })]);
+    state.set(
+      'taskStack',
+      [task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined })],
+    );
     const chip = el.querySelector<HTMLElement>('.tc-chip-scheduled')!;
     click(chip);
     expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('true');
+  });
+
+  it('a SubTask with its own due date (but no duration field) does NOT render the Planning section', async () => {
+    const { state, el } = await makePanel();
+    const sub: SubTask = {
+      filePath: 'f.md',
+      line: 1,
+      rawText: '  - [ ] sub-thing 📅 2026-07-10',
+      text: 'sub-thing',
+      markdownText: 'sub-thing',
+      status: 'open',
+      statusSymbol: ' ',
+      priority: 'D',
+      due: '2026-07-10', // a real sub-item can carry its own 📅 date via extractMetadata
+    };
+    // Drill into the sub-task directly, the same way clicking its label would.
+    state.set('taskStack', [task({ text: 'Parent', subtasks: [sub] }), sub]);
+    expect(el.querySelector('.tc-planning-section')).toBeNull();
   });
 
   it('combined time+duration chip shows "time · duration" when both set, just time otherwise', async () => {

@@ -2758,6 +2758,62 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   background: var(--background-modifier-border);
   margin: 0 16px;
 }
+.tc-planning-section {
+  padding: 0 16px 8px;
+}
+.tc-planning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: var(--font-ui-smaller, 11px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tc-planning-toggle:hover {
+  color: var(--text-normal);
+}
+.tc-planning-toggle::before {
+  content: '▸';
+  font-size: 9px;
+  transition: transform 0.1s;
+}
+.tc-planning-section[data-open='true'] .tc-planning-toggle::before {
+  transform: rotate(90deg);
+}
+.tc-planning-body {
+  display: none;
+}
+.tc-planning-section[data-open='true'] .tc-planning-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.tc-planning-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tc-planning-label {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+.tc-planning-start-input,
+.tc-planning-scheduled-input {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  padding: 2px 6px;
+  font-size: var(--font-ui-small);
+}
 .tc-right-section {
   padding: 16px 16px 0;
 }

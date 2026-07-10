@@ -319,8 +319,12 @@ export class RightPanel {
     }
 
     // Planning disclosure (Start + Scheduled) — collapsed by default; only rendered for Task
-    // (not SubTask, since duration/scheduling only applies to top-level calendar items)
-    if ('due' in task) {
+    // (not SubTask). Discriminate on 'duration' rather than 'due': `due` is optional on BOTH
+    // Task and SubTask (a sub-item can legitimately carry its own 📅 date), so it doesn't
+    // narrow the union at all. `duration` only exists on the Task interface — SubTask has no
+    // duration field and no parse path ever spreads one in — so it's the only property that
+    // reliably distinguishes "top-level calendar item" from "sub-item" here.
+    if ('duration' in task) {
       this.renderPlanningSection(task);
     }
 
