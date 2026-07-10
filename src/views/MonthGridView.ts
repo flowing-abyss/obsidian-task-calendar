@@ -37,7 +37,10 @@ export class MonthGridView extends BaseView {
       h < 7 - firstDayOfMonth + config.firstDayOfWeek;
       h++
     ) {
-      headRow.createDiv({ cls: 'tc-mg-head', text: window.moment(month).add(h, 'days').format('ddd') });
+      headRow.createDiv({
+        cls: 'tc-mg-head',
+        text: window.moment(month).add(h, 'days').format('ddd'),
+      });
     }
 
     let starts = 0 - firstDayOfMonth + config.firstDayOfWeek;

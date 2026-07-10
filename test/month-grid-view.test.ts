@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
 import type { App } from 'obsidian';
-import { MonthGridView } from '../src/views/MonthGridView';
+import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
+import { MonthGridView } from '../src/views/MonthGridView';
 import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -50,7 +50,11 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    view.render(container, [], resolvedConfig({ startPosition: '2026-07', dailyNoteFolder: 'Daily' }));
+    view.render(
+      container,
+      [],
+      resolvedConfig({ startPosition: '2026-07', dailyNoteFolder: 'Daily' }),
+    );
     const cell = container.querySelector('[data-mg-date="2026-07-15"]') as HTMLElement;
     const link = cell.querySelector('a.internal-link') as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('Daily/2026-07-15');
