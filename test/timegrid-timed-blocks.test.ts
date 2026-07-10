@@ -52,6 +52,27 @@ describe('renderTimedBlocksForDay', () => {
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 
+  it('a real pointerdown→pointerup→click sequence on the status marker (no movement) fires only onToggle, never onTimeChange/onDurationChange', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ time: '09:00', duration: 60 });
+    renderTimedBlocksForDay(container, [t], cbs);
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    block.setPointerCapture = () => {};
+    block.releasePointerCapture = () => {};
+    const marker = container.querySelector('.tc-status-marker') as HTMLElement;
+    // Real browser event order for a click on a child element: pointerdown bubbles first,
+    // then pointerup, then click — reproduced here exactly, targeting the marker.
+    marker.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+    );
+    window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100, pointerId: 1 }));
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTimeChange).not.toHaveBeenCalled();
+    expect(cbs.onDurationChange).not.toHaveBeenCalled();
+  });
+
   it('omits data-priority entirely when the task has no priority (D)', () => {
     const container = freshContainer();
     const t = task({ time: '09:00', priority: 'D' });

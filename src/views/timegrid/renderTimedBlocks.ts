@@ -110,6 +110,11 @@ function attachDrag(
 
   const onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return;
+    // A pointerdown that starts on the status marker must never arm move/resize — otherwise
+    // a plain checkbox click also fires onTimeChange/onDurationChange as an unwanted side
+    // effect (pointerdown→pointerup fires and completes before the marker's own click handler
+    // runs onToggle). Mirrors the existing resize-handle exclusion below.
+    if ((e.target as HTMLElement).closest('.tc-status-marker')) return;
     mode = (e.target as HTMLElement).closest('.tc-tg-resize-handle') ? 'resize' : 'move';
     startY = e.clientY;
     startMinutes = initialStart;
