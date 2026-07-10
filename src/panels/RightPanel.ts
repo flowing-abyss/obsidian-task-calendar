@@ -4,7 +4,11 @@ import type { AppState } from '../app/AppState';
 import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
 import { rewriteNthLink, type LinkToken } from '../parser/links';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
-import { formatTaskLine, insertIntoTitleBody } from '../parser/TaskParser';
+import {
+  formatDurationFromMinutes,
+  formatTaskLine,
+  insertIntoTitleBody,
+} from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
 import type { CalendarSettings } from '../settings/types';
@@ -705,7 +709,7 @@ export class RightPanel {
       attr: { type: 'date', value: task.due ?? task.scheduled ?? '' },
     });
     input.addEventListener('change', () => {
-      void this.updateDate(task, input.value);
+      void this.updateDue(task, input.value);
       pop.remove();
     });
     input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
@@ -964,7 +968,7 @@ export class RightPanel {
     });
   }
 
-  private async updateDate(task: TaskLike, date: string): Promise<void> {
+  private async updateDue(task: TaskLike, date: string): Promise<void> {
     await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
       const line = lines[taskLine];
       if (!line) return;
@@ -981,6 +985,76 @@ export class RightPanel {
       if (!line) return;
       const stripped = line
         .replace(/[📅⏳🛫]\s*\d{4}-\d{2}-\d{2}/gu, '')
+        .replace(/\s{2,}/gu, ' ')
+        .trimEnd();
+      lines[taskLine] = formatTaskLine(stripped);
+    });
+  }
+
+  private async updateScheduled(task: TaskLike, date: string): Promise<void> {
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const withDate = task.scheduled
+        ? line.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${date}`)
+        : line.trimEnd() + ` ⏳ ${date}`;
+      lines[taskLine] = formatTaskLine(withDate);
+    });
+  }
+
+  private async clearScheduled(task: TaskLike): Promise<void> {
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const stripped = line
+        .replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, '')
+        .replace(/\s{2,}/gu, ' ')
+        .trimEnd();
+      lines[taskLine] = formatTaskLine(stripped);
+    });
+  }
+
+  private async updateStart(task: TaskLike, date: string): Promise<void> {
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const withDate = task.start
+        ? line.replace(/🛫\s*\d{4}-\d{2}-\d{2}/u, `🛫 ${date}`)
+        : line.trimEnd() + ` 🛫 ${date}`;
+      lines[taskLine] = formatTaskLine(withDate);
+    });
+  }
+
+  private async clearStart(task: TaskLike): Promise<void> {
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const stripped = line
+        .replace(/🛫\s*\d{4}-\d{2}-\d{2}/u, '')
+        .replace(/\s{2,}/gu, ' ')
+        .trimEnd();
+      lines[taskLine] = formatTaskLine(stripped);
+    });
+  }
+
+  private async updateDuration(task: Task, minutes: number): Promise<void> {
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const token = `⏱️ ${formatDurationFromMinutes(minutes)}`;
+      const withDuration = task.duration
+        ? line.replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/u, token)
+        : line.trimEnd() + ` ${token}`;
+      lines[taskLine] = formatTaskLine(withDuration);
+    });
+  }
+
+  private async clearDuration(task: Task): Promise<void> {
+    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
+      const line = lines[taskLine];
+      if (!line) return;
+      const stripped = line
+        .replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/u, '')
         .replace(/\s{2,}/gu, ' ')
         .trimEnd();
       lines[taskLine] = formatTaskLine(stripped);

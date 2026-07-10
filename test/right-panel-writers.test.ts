@@ -4,7 +4,7 @@ import { TFile, type App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
-import type { SubTask, TaskComment } from '../src/parser/types';
+import type { SubTask, Task, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
 import { openInFile } from '../src/ui/taskNavigation';
@@ -557,7 +557,7 @@ describe('RightPanel.deleteComment', () => {
   });
 });
 
-describe('RightPanel.updateDate', () => {
+describe('RightPanel.updateDue', () => {
   it('with due: replaces existing 📅 date', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task 📅 2026-06-20' });
     const t = task({
@@ -567,7 +567,7 @@ describe('RightPanel.updateDate', () => {
       rawText: '- [ ] task 📅 2026-06-20',
       due: '2026-06-20',
     });
-    await call<Promise<void>>(panel, 'updateDate', t, '2026-06-28');
+    await call<Promise<void>>(panel, 'updateDue', t, '2026-06-28');
     const after = await readMd(app, 't.md');
     expect(after).toContain('📅 2026-06-28');
     expect(after).not.toContain('2026-06-20');
@@ -576,7 +576,7 @@ describe('RightPanel.updateDate', () => {
   it('without due: appends " 📅 <date>" to the line', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
     const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
-    await call<Promise<void>>(panel, 'updateDate', t, '2026-06-28');
+    await call<Promise<void>>(panel, 'updateDue', t, '2026-06-28');
     const after = await readMd(app, 't.md');
     expect(after).toContain('📅 2026-06-28');
   });
@@ -585,8 +585,126 @@ describe('RightPanel.updateDate', () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
     await expect(
-      call<Promise<void>>(panel, 'updateDate', t, '2026-06-28'),
+      call<Promise<void>>(panel, 'updateDue', t, '2026-06-28'),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('RightPanel scheduled/start/duration writers', () => {
+  it('updateScheduled adds ⏳ without touching an existing 📅', async () => {
+    const { panel, app } = await makePanel({ 't.md': '- [ ] t 📅 2026-07-01' });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 't',
+      rawText: '- [ ] t 📅 2026-07-01',
+      due: '2026-07-01',
+    });
+    await call<Promise<void>>(panel, 'updateScheduled', t, '2026-07-02');
+    const content = await readMd(app, 't.md');
+    expect(content).toContain('⏳ 2026-07-02');
+    expect(content).toContain('📅 2026-07-01');
+  });
+
+  it('clearScheduled strips only ⏳, leaves 📅 intact', async () => {
+    const { panel, app } = await makePanel({
+      't.md': '- [ ] t ⏳ 2026-07-02 📅 2026-07-01',
+    });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 't',
+      rawText: '- [ ] t ⏳ 2026-07-02 📅 2026-07-01',
+      due: '2026-07-01',
+      scheduled: '2026-07-02',
+    });
+    await call<Promise<void>>(panel, 'clearScheduled', t);
+    const content = await readMd(app, 't.md');
+    expect(content).not.toContain('⏳');
+    expect(content).toContain('📅 2026-07-01');
+  });
+
+  it('updateStart adds 🛫 alongside 📅', async () => {
+    const { panel, app } = await makePanel({ 't.md': '- [ ] t 📅 2026-07-05' });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 't',
+      rawText: '- [ ] t 📅 2026-07-05',
+      due: '2026-07-05',
+    });
+    await call<Promise<void>>(panel, 'updateStart', t, '2026-07-01');
+    const content = await readMd(app, 't.md');
+    expect(content).toContain('🛫 2026-07-01');
+    expect(content).toContain('📅 2026-07-05');
+  });
+
+  it('clearStart strips only 🛫', async () => {
+    const { panel, app } = await makePanel({
+      't.md': '- [ ] t 🛫 2026-07-01 📅 2026-07-05',
+    });
+    const t = task({
+      filePath: 't.md',
+      line: 0,
+      text: 't',
+      rawText: '- [ ] t 🛫 2026-07-01 📅 2026-07-05',
+      due: '2026-07-05',
+      start: '2026-07-01',
+    });
+    await call<Promise<void>>(panel, 'clearStart', t);
+    const content = await readMd(app, 't.md');
+    expect(content).not.toContain('🛫');
+    expect(content).toContain('📅 2026-07-05');
+  });
+
+  it('updateDuration writes ⏱️ in shortest form', async () => {
+    const { panel, app } = await makePanel({ 't.md': '- [ ] t ⏰ 15:00' });
+    const t: Task = task({
+      filePath: 't.md',
+      line: 0,
+      text: 't',
+      rawText: '- [ ] t ⏰ 15:00',
+      time: '15:00',
+    });
+    await call<Promise<void>>(panel, 'updateDuration', t, 90);
+    const content = await readMd(app, 't.md');
+    expect(content).toContain('⏱️ 1h30m');
+  });
+
+  it('clearDuration strips ⏱️', async () => {
+    const { panel, app } = await makePanel({ 't.md': '- [ ] t ⏰ 15:00 ⏱️ 1h30m' });
+    const t: Task = task({
+      filePath: 't.md',
+      line: 0,
+      text: 't',
+      rawText: '- [ ] t ⏰ 15:00 ⏱️ 1h30m',
+      time: '15:00',
+      duration: 90,
+    });
+    await call<Promise<void>>(panel, 'clearDuration', t);
+    const content = await readMd(app, 't.md');
+    expect(content).not.toContain('⏱️');
+    expect(content).toContain('⏰ 15:00');
+  });
+
+  it('file not found → no-op for updateScheduled/clearScheduled/updateStart/clearStart', async () => {
+    const { panel } = await makePanel({ 't.md': '- [ ] x' });
+    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    await expect(
+      call<Promise<void>>(panel, 'updateScheduled', t, '2026-07-02'),
+    ).resolves.toBeUndefined();
+    await expect(call<Promise<void>>(panel, 'clearScheduled', t)).resolves.toBeUndefined();
+    await expect(
+      call<Promise<void>>(panel, 'updateStart', t, '2026-07-01'),
+    ).resolves.toBeUndefined();
+    await expect(call<Promise<void>>(panel, 'clearStart', t)).resolves.toBeUndefined();
+  });
+
+  it('file not found → no-op for updateDuration/clearDuration', async () => {
+    const { panel } = await makePanel({ 't.md': '- [ ] x' });
+    const t: Task = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    await expect(call<Promise<void>>(panel, 'updateDuration', t, 30)).resolves.toBeUndefined();
+    await expect(call<Promise<void>>(panel, 'clearDuration', t)).resolves.toBeUndefined();
   });
 });
 
