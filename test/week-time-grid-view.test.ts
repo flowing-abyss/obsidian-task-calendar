@@ -51,7 +51,7 @@ describe('WeekTimeGridView', () => {
     expect(cbs.onDropTime).toHaveBeenCalledWith('f.md:::0', expect.any(String), expect.any(String));
   });
 
-  it('threads onDayHeaderClick through to each header cell, firing with that column\'s date', () => {
+  it("threads onDayHeaderClick through to each header cell, firing with that column's date", () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new WeekTimeGridView(cbs);

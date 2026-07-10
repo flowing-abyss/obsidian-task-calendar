@@ -206,9 +206,7 @@ describe('renderHourGrid', () => {
     const container = freshContainer();
     renderHourGrid(container, ['2026-07-10']);
     const header = container.querySelector('.tc-tg-header-cell') as HTMLElement;
-    expect(() =>
-      header.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    ).not.toThrow();
+    expect(() => header.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
   });
 
   it('clicking inside the all-day band does not fire onDayHeaderClick (separate row from the header)', () => {
