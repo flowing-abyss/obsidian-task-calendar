@@ -1,0 +1,96 @@
+import { describe, expect, it, vi } from 'vitest';
+import { renderTimedBlocksForDay } from '../src/views/timegrid/renderTimedBlocks';
+import { freshContainer, task } from './helpers';
+
+describe('renderTimedBlocksForDay', () => {
+  it('renders one block per timed task, positioned by time and sized by duration', () => {
+    const container = freshContainer();
+    const t = task({ time: '15:00', duration: 120, text: 'Gym' });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick: vi.fn(),
+      onTimeChange: vi.fn(),
+      onDurationChange: vi.fn(),
+    });
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block).not.toBeNull();
+    expect(block.style.top).toBe(`${((15 * 60) / 60) * 48}px`);
+    expect(block.style.height).toBe(`${(120 / 60) * 48}px`);
+    expect(block.textContent).toContain('Gym');
+  });
+
+  it('defaults duration to 60 minutes when unset', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick: vi.fn(),
+      onTimeChange: vi.fn(),
+      onDurationChange: vi.fn(),
+    });
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block.style.height).toBe('48px');
+  });
+
+  it('clicking a block (not the resize handle) fires onTaskClick', () => {
+    const container = freshContainer();
+    const onTaskClick = vi.fn();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick,
+      onTimeChange: vi.fn(),
+      onDurationChange: vi.fn(),
+    });
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    block.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onTaskClick).toHaveBeenCalledWith(t);
+  });
+
+  it('two overlapping blocks are given proportional widths/left offsets (no visual overlap)', () => {
+    const container = freshContainer();
+    const a = task({ time: '09:00', duration: 60, line: 0 });
+    const b = task({ time: '09:30', duration: 60, line: 1 });
+    renderTimedBlocksForDay(container, [a, b], {
+      onTaskClick: vi.fn(),
+      onTimeChange: vi.fn(),
+      onDurationChange: vi.fn(),
+    });
+    const blocks = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block'));
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]!.style.width).toBe('50%');
+    expect(blocks[1]!.style.width).toBe('50%');
+    expect(blocks[0]!.style.left).not.toBe(blocks[1]!.style.left);
+  });
+
+  it('dragging the block body by one hour snaps to 15-minute steps and fires onTimeChange on pointerup', () => {
+    const container = freshContainer();
+    const onTimeChange = vi.fn();
+    const t = task({ time: '09:00', duration: 60 });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick: vi.fn(),
+      onTimeChange,
+      onDurationChange: vi.fn(),
+    });
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    block.setPointerCapture = () => {}; // jsdom stub
+    block.releasePointerCapture = () => {};
+    block.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 })); // +48px = +60min
+    window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+    expect(onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 60);
+  });
+
+  it('dragging the resize handle fires onDurationChange, not onTimeChange', () => {
+    const container = freshContainer();
+    const onDurationChange = vi.fn();
+    const onTimeChange = vi.fn();
+    const t = task({ time: '09:00', duration: 60 });
+    renderTimedBlocksForDay(container, [t], { onTaskClick: vi.fn(), onTimeChange, onDurationChange });
+    const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+    handle.setPointerCapture = () => {};
+    handle.releasePointerCapture = () => {};
+    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }));
+    window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+    expect(onDurationChange).toHaveBeenCalledWith(t, 120);
+    expect(onTimeChange).not.toHaveBeenCalled();
+  });
+});
