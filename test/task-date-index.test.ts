@@ -14,7 +14,9 @@ describe('TaskDateIndex', () => {
 
   it('scheduled wins over due for placement', () => {
     const idx = new TaskDateIndex();
-    idx.updateFile('a.md', [task({ filePath: 'a.md', due: '2026-07-10', scheduled: '2026-07-05' })]);
+    idx.updateFile('a.md', [
+      task({ filePath: 'a.md', due: '2026-07-10', scheduled: '2026-07-05' }),
+    ]);
     expect(idx.getTasksForDate('2026-07-05')).toHaveLength(1);
     expect(idx.getTasksForDate('2026-07-10')).toHaveLength(0);
   });

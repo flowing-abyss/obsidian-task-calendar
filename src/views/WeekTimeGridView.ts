@@ -2,8 +2,8 @@ import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import { BaseView } from './BaseView';
 import { bucketTasksForDate, type TimeGridCallbacks } from './TodayView';
-import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderHourGrid } from './timegrid/HourGrid';
+import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
 
 export type { TimeGridCallbacks as WeekTimeGridViewCallbacks };

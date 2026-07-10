@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { task } from './helpers';
 import {
   minutesToPixels,
   minutesToTimeString,
@@ -9,6 +8,7 @@ import {
   timeStringToMinutes,
   type TimedBlockInput,
 } from '../src/views/timegrid/layout';
+import { task } from './helpers';
 
 describe('time/pixel conversions', () => {
   it('minutesToPixels scales by PIXELS_PER_HOUR', () => {

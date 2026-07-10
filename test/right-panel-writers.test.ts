@@ -584,9 +584,7 @@ describe('RightPanel.updateDue', () => {
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(
-      call<Promise<void>>(panel, 'updateDue', t, '2026-06-28'),
-    ).resolves.toBeUndefined();
+    await expect(call<Promise<void>>(panel, 'updateDue', t, '2026-06-28')).resolves.toBeUndefined();
   });
 });
 

@@ -13,7 +13,15 @@ describe('renderHourGrid', () => {
 
   it('renders 7 day columns for a week of dates', () => {
     const container = freshContainer();
-    const dates = ['2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11', '2026-07-12'];
+    const dates = [
+      '2026-07-06',
+      '2026-07-07',
+      '2026-07-08',
+      '2026-07-09',
+      '2026-07-10',
+      '2026-07-11',
+      '2026-07-12',
+    ];
     const handles = renderHourGrid(container, dates);
     expect(handles.days).toHaveLength(7);
     expect(handles.days.map((d) => d.date)).toEqual(dates);

@@ -72,7 +72,9 @@ describe('renderTimedBlocksForDay', () => {
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     block.setPointerCapture = () => {}; // jsdom stub
     block.releasePointerCapture = () => {};
-    block.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }));
+    block.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+    );
     window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 })); // +48px = +60min
     window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
     expect(onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 60);
@@ -83,11 +85,17 @@ describe('renderTimedBlocksForDay', () => {
     const onDurationChange = vi.fn();
     const onTimeChange = vi.fn();
     const t = task({ time: '09:00', duration: 60 });
-    renderTimedBlocksForDay(container, [t], { onTaskClick: vi.fn(), onTimeChange, onDurationChange });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick: vi.fn(),
+      onTimeChange,
+      onDurationChange,
+    });
     const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
     handle.setPointerCapture = () => {};
     handle.releasePointerCapture = () => {};
-    handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }));
+    handle.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+    );
     window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
     window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
     expect(onDurationChange).toHaveBeenCalledWith(t, 120);
