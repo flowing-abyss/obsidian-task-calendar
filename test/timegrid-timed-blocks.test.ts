@@ -166,4 +166,43 @@ describe('renderTimedBlocksForDay', () => {
     expect(onDurationChange).toHaveBeenCalledWith(t, 120);
     expect(onTimeChange).not.toHaveBeenCalled();
   });
+
+  it('a stationary right-click (pointerdown button=2, pointerup at same position, no move) does NOT fire onTimeChange', () => {
+    const container = freshContainer();
+    const onTimeChange = vi.fn();
+    const t = task({ time: '09:00', duration: 60 });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick: vi.fn(),
+      onTimeChange,
+      onDurationChange: vi.fn(),
+    });
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    block.setPointerCapture = () => {};
+    block.releasePointerCapture = () => {};
+    block.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1, button: 2 }),
+    );
+    // No pointermove — a real stationary right-click never moves the pointer.
+    window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100, pointerId: 1, button: 2 }));
+    expect(onTimeChange).not.toHaveBeenCalled();
+  });
+
+  it('a stationary right-click on the resize handle does NOT fire onDurationChange', () => {
+    const container = freshContainer();
+    const onDurationChange = vi.fn();
+    const t = task({ time: '09:00', duration: 60 });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick: vi.fn(),
+      onTimeChange: vi.fn(),
+      onDurationChange,
+    });
+    const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+    handle.setPointerCapture = () => {};
+    handle.releasePointerCapture = () => {};
+    handle.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1, button: 2 }),
+    );
+    window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100, pointerId: 1, button: 2 }));
+    expect(onDurationChange).not.toHaveBeenCalled();
+  });
 });

@@ -205,4 +205,30 @@ describe('renderAllDayCell', () => {
     expect(cbs.onStartChange).toHaveBeenCalledWith(t, '2026-07-07');
     expect(cbs.onDueChange).not.toHaveBeenCalled();
   });
+
+  it('a stationary right-click (pointerdown button=2, pointerup at same position, no move) on an edge handle does NOT fire onStartChange/onDueChange', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+    renderAllDayCell(container, '2026-07-08', [t], [], [], cbs);
+    const leftHandle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+    // Simulate a real browser resolving an element under a stationary cursor (jsdom's
+    // elementFromPoint always returns null, unlike a real browser where a right-click on
+    // the edge handle would resolve to the day cell beneath it).
+    const originalElementFromPoint = activeDocument.elementFromPoint;
+    activeDocument.elementFromPoint = () => container;
+    try {
+      leftHandle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, button: 2, clientX: 5, clientY: 5 }),
+      );
+      // No pointermove — a real stationary right-click never moves the pointer.
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { pointerId: 1, button: 2, clientX: 5, clientY: 5 }),
+      );
+    } finally {
+      activeDocument.elementFromPoint = originalElementFromPoint;
+    }
+    expect(cbs.onStartChange).not.toHaveBeenCalled();
+    expect(cbs.onDueChange).not.toHaveBeenCalled();
+  });
 });

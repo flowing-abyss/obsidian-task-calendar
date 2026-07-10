@@ -96,6 +96,7 @@ function attachDrag(
   };
 
   const onPointerDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
     mode = (e.target as HTMLElement).closest('.tc-tg-resize-handle') ? 'resize' : 'move';
     startY = e.clientY;
     startMinutes = initialStart;
