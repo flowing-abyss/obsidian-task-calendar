@@ -16,7 +16,12 @@ export function visibleCalendarDates(
   }
 
   if (viewType === 'week') {
-    const week = calDate.clone().startOf('week');
+    // Must reproduce WeekTimeGridView's own 'YYYY-ww' round-trip exactly (not just
+    // calDate.startOf('week') directly) — moment's non-ISO week-of-year token
+    // misassigns late-December dates to week 01 of a different year, so a
+    // "more correct" independent computation here would silently diverge from
+    // what the view actually renders and produce an empty grid at year boundaries.
+    const week = window.moment(calDate.format('YYYY-ww'), 'YYYY-ww').startOf('week');
     const currentWeekday = parseInt(week.format('d'), 10);
     const dates: string[] = [];
     for (
