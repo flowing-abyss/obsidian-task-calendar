@@ -219,7 +219,13 @@ describe('renderAllDayCell', () => {
     activeDocument.elementFromPoint = () => container;
     try {
       leftHandle.dispatchEvent(
-        new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, button: 2, clientX: 5, clientY: 5 }),
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          pointerId: 1,
+          button: 2,
+          clientX: 5,
+          clientY: 5,
+        }),
       );
       // No pointermove — a real stationary right-click never moves the pointer.
       window.dispatchEvent(
