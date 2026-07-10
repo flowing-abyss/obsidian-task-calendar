@@ -341,7 +341,8 @@ describe('renderAllDayCell', () => {
     const t = task({ due: '2026-07-10', text: 'Plain' });
     renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
-    const marker = chip.querySelector('.tc-status-marker, [data-task-status]') ?? chip.firstElementChild;
+    const marker =
+      chip.querySelector('.tc-status-marker, [data-task-status]') ?? chip.firstElementChild;
     (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(cbs.onToggle).toHaveBeenCalledWith(t);
   });
