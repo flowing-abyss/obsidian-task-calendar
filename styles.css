@@ -1241,6 +1241,27 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   pointer-events: none; /* let clicks pass through gaps; blocks re-enable pointer-events themselves */
 }
 
+.tc-tg-now-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--text-error);
+  z-index: 5;
+  pointer-events: none;
+}
+
+.tc-tg-now-line::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-error);
+}
+
 .tc-tg-block {
   position: absolute;
   pointer-events: auto;

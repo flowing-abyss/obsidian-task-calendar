@@ -131,4 +131,19 @@ describe('TodayView', () => {
     expect(container.querySelector('.tc-tg-span')).not.toBeNull();
     expect(container.querySelector('.tc-tg-deadline-marker')).toBeNull();
   });
+
+  it('auto-scrolls the grid row to center the now-line when the rendered day is today', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T14:30:00'));
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    view.render(container, [], resolvedConfig());
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
+    expect(gridRowEl.scrollTop).toBe(0);
+    vi.runAllTimers();
+    // 14:30 = 870 minutes -> 696px at 48px/hour; centered in a 400px viewport -> 696 - 200 = 496
+    expect(gridRowEl.scrollTop).toBe(496);
+    vi.useRealTimers();
+  });
 });

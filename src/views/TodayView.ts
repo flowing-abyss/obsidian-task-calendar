@@ -4,6 +4,7 @@ import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { BaseView } from './BaseView';
 import { renderHourGrid } from './timegrid/HourGrid';
+import { minutesToPixels } from './timegrid/layout';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
 
@@ -113,6 +114,15 @@ export class TodayView extends BaseView {
       statusRegistry: this.callbacks.statusRegistry,
     };
     renderAllDayCell(day.allDayCellEl, date, spans, plain, deadlines, allDayCallbacks, tagGroups);
+
+    if (date === window.moment().format('YYYY-MM-DD')) {
+      const gridRowEl = handles.gridRowEl;
+      const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
+      const nowPx = minutesToPixels(nowMinutes);
+      window.setTimeout(() => {
+        gridRowEl.scrollTop = Math.max(0, nowPx - gridRowEl.clientHeight / 2);
+      }, 0);
+    }
   }
 
   destroy(): void {

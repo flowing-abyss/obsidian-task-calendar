@@ -78,4 +78,33 @@ describe('WeekTimeGridView', () => {
     expect(cbs.onToggle).toHaveBeenCalledWith(t);
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
+
+  it('auto-scrolls the grid row to center the now-line when the rendered week contains today', () => {
+    vi.useFakeTimers();
+    // 2026-06-15 is a Monday within ISO week 25 of 2026, at 14:30
+    vi.setSystemTime(new Date('2026-06-15T14:30:00'));
+    const container = freshContainer();
+    const view = new WeekTimeGridView(callbacks());
+    view.render(container, [], resolvedConfig({ startPosition: '2026-25', firstDayOfWeek: 1 }));
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
+    expect(gridRowEl.scrollTop).toBe(0);
+    vi.runAllTimers();
+    expect(gridRowEl.scrollTop).toBe(496);
+    vi.useRealTimers();
+  });
+
+  it('does not auto-scroll when today is not in the rendered week', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T14:30:00'));
+    const container = freshContainer();
+    const view = new WeekTimeGridView(callbacks());
+    // 2026-28 is a different week than the current system time's week
+    view.render(container, [], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
+    vi.runAllTimers();
+    expect(gridRowEl.scrollTop).toBe(0);
+    vi.useRealTimers();
+  });
 });

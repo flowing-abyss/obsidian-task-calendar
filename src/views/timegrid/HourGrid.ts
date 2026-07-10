@@ -1,3 +1,5 @@
+import { minutesToPixels } from './layout';
+
 interface DayColumnHandles {
   date: string;
   hourColumnEl: HTMLElement;
@@ -6,6 +8,7 @@ interface DayColumnHandles {
 
 export interface HourGridHandles {
   rootEl: HTMLElement;
+  gridRowEl: HTMLElement;
   days: DayColumnHandles[];
 }
 
@@ -47,8 +50,15 @@ export function renderHourGrid(container: HTMLElement, dates: string[]): HourGri
       dayColumn.createDiv({ cls: 'tc-tg-hour-row' });
     }
     const hourColumnEl = dayColumn.createDiv({ cls: 'tc-tg-hour-column' });
+
+    if (date === today) {
+      const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
+      const nowLine = hourColumnEl.createDiv({ cls: 'tc-tg-now-line' });
+      nowLine.style.top = `${minutesToPixels(nowMinutes)}px`;
+    }
+
     return { date, hourColumnEl, allDayCellEl: alldayCells[i]! };
   });
 
-  return { rootEl: root, days };
+  return { rootEl: root, gridRowEl: gridRow, days };
 }

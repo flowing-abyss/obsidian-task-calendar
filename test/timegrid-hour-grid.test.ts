@@ -70,4 +70,23 @@ describe('renderHourGrid', () => {
     renderHourGrid(container, ['2026-07-11']);
     expect(container.querySelectorAll('.tc-tg-day-column')).toHaveLength(1);
   });
+
+  it('renders a now-line only on the day column matching today, positioned by current time', () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    const other = window.moment().add(1, 'day').format('YYYY-MM-DD');
+    const handles = renderHourGrid(container, [today, other]);
+    const nowLines = container.querySelectorAll('.tc-tg-now-line');
+    expect(nowLines).toHaveLength(1);
+    expect(handles.days[0]?.hourColumnEl.querySelector('.tc-tg-now-line')).not.toBeNull();
+    expect(handles.days[1]?.hourColumnEl.querySelector('.tc-tg-now-line')).toBeNull();
+    const top = parseFloat((nowLines[0] as HTMLElement).style.top);
+    expect(top).toBeGreaterThanOrEqual(0);
+  });
+
+  it('exposes the scrollable grid-row container so callers can scroll to now', () => {
+    const container = freshContainer();
+    const handles = renderHourGrid(container, ['2026-07-10']);
+    expect(handles.gridRowEl.hasClass('tc-tg-grid-row')).toBe(true);
+  });
 });

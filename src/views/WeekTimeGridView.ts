@@ -4,6 +4,7 @@ import type { ResolvedConfig } from '../settings/types';
 import { BaseView } from './BaseView';
 import { bucketTasksForDate, type TimeGridCallbacks } from './TodayView';
 import { renderHourGrid } from './timegrid/HourGrid';
+import { minutesToPixels } from './timegrid/layout';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
 
@@ -70,6 +71,16 @@ export class WeekTimeGridView extends BaseView {
         allDayCallbacks,
         tagGroups,
       );
+    }
+
+    const today = window.moment().format('YYYY-MM-DD');
+    if (dates.includes(today)) {
+      const gridRowEl = handles.gridRowEl;
+      const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
+      const nowPx = minutesToPixels(nowMinutes);
+      window.setTimeout(() => {
+        gridRowEl.scrollTop = Math.max(0, nowPx - gridRowEl.clientHeight / 2);
+      }, 0);
     }
   }
 
