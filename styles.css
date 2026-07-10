@@ -1174,6 +1174,11 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   font-weight: 600;
   color: var(--text-muted);
   border-left: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+
+.tc-tg-header-cell:hover {
+  background-color: var(--background-modifier-hover);
 }
 
 .tc-tg-header-cell.is-today {

@@ -49,6 +49,7 @@ export class WeekTimeGridView extends BaseView {
       dates,
       this.callbacks.onDropTime,
       this.callbacks.onCreateAtTime,
+      this.callbacks.onDayHeaderClick,
     );
 
     const timedCallbacks: TimedBlockCallbacks = {

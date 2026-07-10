@@ -14,6 +14,9 @@ export interface TimeGridCallbacks {
   onDrop: (dragData: string, targetDate: string) => void;
   onDropTime: (dragData: string, date: string, time: string) => void;
   onCreateAtTime: (date: string, time: string) => void;
+  /** Header-cell click (Week's day headers): drills into the Day view for that date, same as
+   * Month's onDayClick. Optional since TodayView itself has no need to re-drill into itself. */
+  onDayHeaderClick?: (date: string) => void;
   onTimeChange: (task: Task, newStartMinutes: number) => void;
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
   onStartChange: (task: Task, newStart: string) => void;
@@ -107,6 +110,7 @@ export class TodayView extends BaseView {
       [date],
       this.callbacks.onDropTime,
       this.callbacks.onCreateAtTime,
+      this.callbacks.onDayHeaderClick,
     );
     const day = handles.days[0]!;
 

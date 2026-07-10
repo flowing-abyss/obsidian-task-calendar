@@ -30,6 +30,7 @@ export function renderHourGrid(
   dates: string[],
   onDropTime?: (dragData: string, date: string, time: string) => void,
   onCreateAtTime?: (date: string, time: string) => void,
+  onDayHeaderClick?: (date: string) => void,
 ): HourGridHandles {
   container.empty();
   const root = container.createDiv({ cls: 'tc-tg-root' });
@@ -44,6 +45,14 @@ export function renderHourGrid(
       cls: `tc-tg-header-cell${date === today ? ' is-today' : ''}`,
     });
     headerCell.textContent = window.moment(date).format('ddd D');
+    // Drill into the Day (Today) view for this specific date — same behavior as clicking a
+    // Month day cell (CenterPanel's onDayClick). Optional so callers that don't need it (or
+    // haven't opted in yet) pay no listener cost.
+    if (onDayHeaderClick) {
+      headerCell.addEventListener('click', () => {
+        onDayHeaderClick(date);
+      });
+    }
   }
 
   // All-day band: one cell per date

@@ -16,6 +16,7 @@ function callbacks() {
     onDrop: vi.fn(),
     onDropTime: vi.fn(),
     onCreateAtTime: vi.fn(),
+    onDayHeaderClick: vi.fn(),
     onTimeChange: vi.fn(),
     onDurationChange: vi.fn(),
     onStartChange: vi.fn(),
@@ -48,6 +49,20 @@ describe('WeekTimeGridView', () => {
     Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
     hourColumnEl.dispatchEvent(ev);
     expect(cbs.onDropTime).toHaveBeenCalledWith('f.md:::0', expect.any(String), expect.any(String));
+  });
+
+  it('threads onDayHeaderClick through to each header cell, firing with that column\'s date', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new WeekTimeGridView(cbs);
+    view.render(container, [], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
+    const headerCells = Array.from(container.querySelectorAll('.tc-tg-header-cell'));
+    expect(headerCells).toHaveLength(7);
+    const dates = Array.from(container.querySelectorAll('.tc-tg-day-column')).map((el) =>
+      el.getAttribute('data-tg-date'),
+    );
+    (headerCells[2] as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onDayHeaderClick).toHaveBeenCalledWith(dates[2]);
   });
 
   it('places a timed task in the correct day column within the week', () => {

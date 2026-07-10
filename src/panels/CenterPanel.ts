@@ -515,6 +515,11 @@ export class CenterPanel {
           onDrop: handleDrop,
           onDropTime: handleDropTime,
           onCreateAtTime: handleCreateAtTime,
+          onDayHeaderClick: (date) => {
+            this.calViewType = 'today';
+            this.calDate = window.moment(date);
+            this.render();
+          },
           onTimeChange: handleTimeChange,
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
@@ -536,8 +541,8 @@ export class CenterPanel {
         this.calViewInstance = new MonthGridView({
           app: this.app,
           onDayClick: (date) => {
-            this.calViewType = 'week';
-            this.calDate = window.moment(date).startOf('isoWeek');
+            this.calViewType = 'today';
+            this.calDate = window.moment(date);
             this.render();
           },
           onCreateAtDate: handleCreateAtDate,

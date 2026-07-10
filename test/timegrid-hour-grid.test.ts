@@ -186,6 +186,40 @@ describe('renderHourGrid', () => {
     ).not.toThrow();
   });
 
+  it('clicking a header cell fires onDayHeaderClick with that date', () => {
+    const container = freshContainer();
+    const onDayHeaderClick = vi.fn();
+    const handles = renderHourGrid(
+      container,
+      ['2026-07-10', '2026-07-11'],
+      undefined,
+      undefined,
+      onDayHeaderClick,
+    );
+    const headers = Array.from(container.querySelectorAll('.tc-tg-header-cell'));
+    (headers[1] as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onDayHeaderClick).toHaveBeenCalledWith('2026-07-11');
+    expect(handles.days).toHaveLength(2); // sanity: handles still line up with dates
+  });
+
+  it('does not wire a header click listener when onDayHeaderClick is not provided (no throw on click)', () => {
+    const container = freshContainer();
+    renderHourGrid(container, ['2026-07-10']);
+    const header = container.querySelector('.tc-tg-header-cell') as HTMLElement;
+    expect(() =>
+      header.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    ).not.toThrow();
+  });
+
+  it('clicking inside the all-day band does not fire onDayHeaderClick (separate row from the header)', () => {
+    const container = freshContainer();
+    const onDayHeaderClick = vi.fn();
+    renderHourGrid(container, ['2026-07-10'], undefined, undefined, onDayHeaderClick);
+    const alldayCell = container.querySelector('.tc-tg-allday-cell') as HTMLElement;
+    alldayCell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onDayHeaderClick).not.toHaveBeenCalled();
+  });
+
   it('does not wire drop listeners when onDropTime is not provided (no throw on drop)', () => {
     const container = freshContainer();
     const handles = renderHourGrid(container, ['2026-07-10']);

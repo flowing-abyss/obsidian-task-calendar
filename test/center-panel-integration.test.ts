@@ -601,13 +601,46 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
     expect(el.querySelector('.tc-tg-root')).not.toBeNull();
   });
 
-  it('clicking a Month day cell drills into Week', async () => {
+  it('clicking a Month day cell drills into Day (Today) view for that specific date', async () => {
     const { el } = await makeCalendarPanel();
     const cell = el.querySelector(
       '.tc-mg-cell:not(.is-outside-month)[data-mg-date]',
     ) as HTMLElement;
+    const date = cell.getAttribute('data-mg-date')!;
     cell.click();
-    expect(el.querySelector('.tc-tg-day-column')).not.toBeNull();
+    // A single day column for the clicked date — not a 7-column week — confirms Today, not Week.
+    const columns = el.querySelectorAll('.tc-tg-day-column');
+    expect(columns).toHaveLength(1);
+    expect(columns[0]?.getAttribute('data-tg-date')).toBe(date);
+  });
+
+  it('clicking a Week header cell drills into Day (Today) view for that specific date', async () => {
+    const { el } = await makeCalendarPanel();
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === 'Week',
+      ) as HTMLElement
+    ).click();
+    const headerCells = Array.from(el.querySelectorAll('.tc-tg-header-cell'));
+    expect(headerCells.length).toBeGreaterThan(1); // sanity: still in Week (multi-column)
+    const dayColumnsBefore = Array.from(el.querySelectorAll('.tc-tg-day-column'));
+    const targetDate = dayColumnsBefore[2]?.getAttribute('data-tg-date');
+    (headerCells[2] as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const columns = el.querySelectorAll('.tc-tg-day-column');
+    expect(columns).toHaveLength(1);
+    expect(columns[0]?.getAttribute('data-tg-date')).toBe(targetDate);
+  });
+
+  it('clicking inside the all-day band in Week view does not drill into Today (separate row from the header)', async () => {
+    const { el } = await makeCalendarPanel();
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === 'Week',
+      ) as HTMLElement
+    ).click();
+    const alldayCell = el.querySelector('.tc-tg-allday-cell') as HTMLElement;
+    alldayCell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(el.querySelectorAll('.tc-tg-day-column')).toHaveLength(7);
   });
 
   it('no 🎨 style-cycle button is rendered in the new calendar toolbar', async () => {
@@ -696,13 +729,13 @@ describe('CenterPanel calendar mode — click-to-create', () => {
     expect(el.querySelector('.tc-tg-day-column')).toBeNull();
   });
 
-  it('clicking elsewhere in a Month day cell still drills into Week, unaffected by the + button', async () => {
+  it('clicking elsewhere in a Month day cell still drills into Day (Today) view, unaffected by the + button', async () => {
     const { el } = await makeClickToCreatePanel();
     const cell = el.querySelector(
       '.tc-mg-cell:not(.is-outside-month)[data-mg-date]',
     ) as HTMLElement;
     cell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(el.querySelector('.tc-tg-day-column')).not.toBeNull();
+    expect(el.querySelectorAll('.tc-tg-day-column')).toHaveLength(1);
   });
 
   it('clicking empty hour-grid space in Today view opens an inline quick-add; Enter writes a timed task', async () => {
