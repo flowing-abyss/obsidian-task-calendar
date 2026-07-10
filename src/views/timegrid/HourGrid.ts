@@ -52,7 +52,9 @@ export function renderHourGrid(
   }
 
   const days: DayColumnHandles[] = dates.map((date, i) => {
-    const dayColumn = gridRow.createDiv({ cls: 'tc-tg-day-column' });
+    const dayColumn = gridRow.createDiv({
+      cls: `tc-tg-day-column${date === today ? ' is-today' : ''}`,
+    });
     // Lets CenterPanel locate a specific day's column from outside this module (e.g. to
     // anchor the click-to-create quick-add popover — see onCreateAtTime below).
     dayColumn.setAttribute('data-tg-date', date);

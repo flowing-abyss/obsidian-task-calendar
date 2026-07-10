@@ -32,6 +32,15 @@ describe('MonthGridView', () => {
     expect(container.querySelectorAll('.tc-mg-cell')).toHaveLength(42);
   });
 
+  it("marks today's cell with is-today", () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    const today = window.moment().format('YYYY-MM-DD');
+    view.render(container, [], resolvedConfig({}));
+    const cell = container.querySelector(`[data-mg-date="${today}"]`);
+    expect(cell?.classList.contains('is-today')).toBe(true);
+  });
+
   it('a plain task on a given day renders a compact row in that cell', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());

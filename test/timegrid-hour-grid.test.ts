@@ -26,6 +26,16 @@ describe('renderHourGrid', () => {
     expect(headers[1]?.hasClass('is-today')).toBe(false);
   });
 
+  it('marks the day-column matching today with is-today', () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    const other = window.moment().add(1, 'day').format('YYYY-MM-DD');
+    renderHourGrid(container, [today, other]);
+    const columns = Array.from(container.querySelectorAll('.tc-tg-day-column'));
+    expect(columns[0]?.hasClass('is-today')).toBe(true);
+    expect(columns[1]?.hasClass('is-today')).toBe(false);
+  });
+
   it('renders one day column per date, with 24 hour rows each', () => {
     const container = freshContainer();
     const handles = renderHourGrid(container, ['2026-07-10']);
