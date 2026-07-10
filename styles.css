@@ -1207,6 +1207,7 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   flex: 1;
   overflow-y: auto;
   position: relative;
+  scrollbar-gutter: stable;
 }
 
 .tc-tg-hour-gutter {
@@ -1328,7 +1329,11 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   height: 100%;
 }
 
-.tc-mg-head-row,
+.tc-mg-head-row {
+  display: flex;
+  flex-shrink: 0;
+}
+
 .tc-mg-row {
   display: flex;
   flex: 1;
@@ -2207,6 +2212,7 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   display: flex;
   align-items: center;
   gap: 4px;
+  position: relative;
 }
 
 .tc-cal-nav-month,
@@ -2322,6 +2328,8 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   padding: 8px;
   min-width: 180px;
   position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
   z-index: 100;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
