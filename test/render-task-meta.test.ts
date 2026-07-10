@@ -45,10 +45,7 @@ describe('renderTaskMeta', () => {
 
   describe('extractTags', () => {
     it('extracts hashtags from rawText', () => {
-      expect(extractTags(task({ rawText: '- [ ] t #work #urgent' }))).toEqual([
-        '#work',
-        '#urgent',
-      ]);
+      expect(extractTags(task({ rawText: '- [ ] t #work #urgent' }))).toEqual(['#work', '#urgent']);
     });
     it('caps at max', () => {
       expect(extractTags(task({ rawText: '- [ ] t #a #b #c' }), 2)).toEqual(['#a', '#b']);
@@ -99,7 +96,12 @@ describe('renderTaskMeta', () => {
 
     it('renders a comment count badge', () => {
       const container = freshContainer();
-      const t = task({ comments: [{ line: 1, text: 'a' }, { line: 2, text: 'b' }] });
+      const t = task({
+        comments: [
+          { line: 1, text: 'a' },
+          { line: 2, text: 'b' },
+        ],
+      });
       renderCountBadges(container, t);
       const badges = container.querySelectorAll('.tc-task-count-badge');
       expect(badges).toHaveLength(1);

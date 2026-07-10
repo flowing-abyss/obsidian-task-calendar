@@ -3,8 +3,8 @@ import type { Task } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { tagColorFor } from '../tags/tagColor';
-import { renderStatusMarker } from '../ui/StatusMarker';
 import { renderTaskText } from '../ui/renderTaskText';
+import { renderStatusMarker } from '../ui/StatusMarker';
 import { BaseView } from './BaseView';
 import { hasMeta, renderCountBadges, renderTagChips } from './timegrid/renderTaskMeta';
 import { bucketTasksForDate } from './TodayView';
@@ -189,7 +189,11 @@ export class MonthGridView extends BaseView {
       this.renderTitle(marker, t);
       // Count badges only (no tag chips) — deadline markers stay a compact pill with no
       // tag fill (see comment above), so tag chips would fight that convention.
-      if ((t.subtasks?.length ?? 0) > 0 || (t.comments?.length ?? 0) > 0 || (t.linkCount ?? 0) > 0) {
+      if (
+        (t.subtasks?.length ?? 0) > 0 ||
+        (t.comments?.length ?? 0) > 0 ||
+        (t.linkCount ?? 0) > 0
+      ) {
         const meta = marker.createSpan({ cls: 'tc-mg-item-meta' });
         renderCountBadges(meta, t);
       }

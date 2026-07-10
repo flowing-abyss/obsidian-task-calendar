@@ -6,7 +6,6 @@ import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
-import { hasMeta, renderCountBadges, renderTagChips } from './renderTaskMeta';
 import {
   minutesToPixels,
   minutesToTimeString,
@@ -15,6 +14,7 @@ import {
   timeStringToMinutes,
   type TimedBlockInput,
 } from './layout';
+import { hasMeta, renderCountBadges, renderTagChips } from './renderTaskMeta';
 
 export interface TimedBlockCallbacks {
   app: App;
