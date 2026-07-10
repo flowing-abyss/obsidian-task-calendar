@@ -768,11 +768,10 @@ describe('CenterPanel calendar mode — click-to-create', () => {
 
   it('clicking on an existing timed block in the hour grid does not open the quick-add', async () => {
     const { panel, state } = await makePanel(
-      { 't.md': '- [ ] timed ⏰ 09:00 📅 2026-07-10' },
+      { 't.md': `- [ ] timed ⏰ 09:00 📅 ${TODAY}` },
       clickToCreateSettings,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    fixedToday('2026-07-10');
     const el = freshContainer();
     panel.mount(el);
     state.set('mode', 'calendar');
