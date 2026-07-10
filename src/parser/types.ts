@@ -16,7 +16,7 @@ export interface Task {
   completion?: string; // YYYY-MM-DD from ✅
   cancelledDate?: string; // YYYY-MM-DD from ❌
   time?: string; // HH:MM from ⏰
-  duration?: number; // minutes, reserved for time-blocking
+  duration?: number; // minutes, parsed from ⏱️
   recurrence?: string; // text after 🔁, e.g. "every week"
   priority: TaskPriority;
   subtasks?: SubTask[];
