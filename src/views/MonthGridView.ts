@@ -11,6 +11,7 @@ import { bucketTasksForDate } from './TodayView';
 export interface MonthGridViewCallbacks {
   app: App;
   onDayClick: (date: string) => void;
+  onCreateAtDate: (date: string) => void;
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
   onToggle: (task: Task) => void;
@@ -92,13 +93,27 @@ export class MonthGridView extends BaseView {
         });
         dayLink.addEventListener('click', (e) => e.stopPropagation());
 
+        // Hover-visible "+" affordance: a second meaning for clicking a day cell
+        // (create a task) can't share plain left-click with the existing drill-into-Week
+        // behavior below, so it gets its own small button instead (stops propagation so
+        // it never also fires onDayClick).
+        const addBtn = cell.createEl('button', {
+          cls: 'tc-mg-add-btn',
+          attr: { type: 'button', 'aria-label': 'Add task', title: 'Add task' },
+          text: '+',
+        });
+        addBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.callbacks.onCreateAtDate(currentDate);
+        });
+
         this.renderCompactCell(cell, tasks, currentDate);
 
         if (inCurrentMonth) {
           cell.addEventListener('click', (e) => {
             if (
               (e.target as HTMLElement).closest(
-                '.tc-mg-plain, .tc-mg-block-dot, .tc-mg-span-segment, .tc-mg-deadline-marker, .tc-mg-day-label',
+                '.tc-mg-plain, .tc-mg-block-dot, .tc-mg-span-segment, .tc-mg-deadline-marker, .tc-mg-day-label, .tc-mg-add-btn, .tc-mg-quick-add',
               )
             )
               return;

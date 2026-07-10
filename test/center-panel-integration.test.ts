@@ -1,6 +1,6 @@
 import moment from 'moment';
 import { TFile, type App } from 'obsidian';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
@@ -10,6 +10,7 @@ import { TaskStore } from '../src/store/TaskStore';
 import {
   createAppWithFiles,
   fixedToday,
+  flushMicrotasks,
   freshContainer,
   makeStubStore,
   seedTaskCache,
@@ -611,5 +612,112 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
   it('no 🎨 style-cycle button is rendered in the new calendar toolbar', async () => {
     const { el } = await makeCalendarPanel();
     expect(el.querySelector('.tc-cal-style-btn')).toBeNull();
+  });
+});
+
+describe('CenterPanel calendar mode — click-to-create', () => {
+  const clickToCreateSettings: CalendarSettings = {
+    ...DEFAULT_SETTINGS,
+    addToToday: false,
+    customFilePath: 'inbox.md',
+    taskPrefix: '',
+  };
+
+  async function makeClickToCreatePanel(): Promise<{ state: AppState; el: HTMLElement; app: App }> {
+    const { panel, state, app } = await makePanel({ 'inbox.md': '' }, clickToCreateSettings);
+    const el = freshContainer();
+    panel.mount(el);
+    state.set('mode', 'calendar');
+    return { state, el, app };
+  }
+
+  it("Month day cell's + button opens an inline quick-add; Enter writes a plain task on that date", async () => {
+    const { el, app } = await makeClickToCreatePanel();
+    const cell = el.querySelector(
+      '.tc-mg-cell:not(.is-outside-month)[data-mg-date]',
+    ) as HTMLElement;
+    const date = cell.getAttribute('data-mg-date')!;
+    const addBtn = cell.querySelector('.tc-mg-add-btn') as HTMLElement;
+    addBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const input = el.querySelector('.tc-mg-quick-add-input') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    input.value = 'water the plants';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flushMicrotasks();
+
+    const content = await readMd(app, 'inbox.md');
+    expect(content).toContain(`- [ ] water the plants 📅 ${date}`);
+  });
+
+  it('clicking the + button does not also drill into Week (onDayClick suppressed)', async () => {
+    const { el } = await makeClickToCreatePanel();
+    const cell = el.querySelector(
+      '.tc-mg-cell:not(.is-outside-month)[data-mg-date]',
+    ) as HTMLElement;
+    const addBtn = cell.querySelector('.tc-mg-add-btn') as HTMLElement;
+    addBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // Still on Month (a drill-down would swap in the hour grid).
+    expect(el.querySelector('.tc-mg-grid')).not.toBeNull();
+    expect(el.querySelector('.tc-tg-day-column')).toBeNull();
+  });
+
+  it('clicking elsewhere in a Month day cell still drills into Week, unaffected by the + button', async () => {
+    const { el } = await makeClickToCreatePanel();
+    const cell = el.querySelector(
+      '.tc-mg-cell:not(.is-outside-month)[data-mg-date]',
+    ) as HTMLElement;
+    cell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(el.querySelector('.tc-tg-day-column')).not.toBeNull();
+  });
+
+  it('clicking empty hour-grid space in Today view opens an inline quick-add; Enter writes a timed task', async () => {
+    const { el, app } = await makeClickToCreatePanel();
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === 'Today',
+      ) as HTMLElement
+    ).click();
+
+    const hourColumnEl = el.querySelector('.tc-tg-hour-column') as HTMLElement;
+    const date = (el.querySelector('.tc-tg-day-column') as HTMLElement).getAttribute(
+      'data-tg-date',
+    )!;
+    vi.spyOn(hourColumnEl, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      left: 0,
+    } as DOMRect);
+    hourColumnEl.dispatchEvent(new MouseEvent('click', { bubbles: true, clientY: 480 })); // 480px = 10:00
+
+    const input = el.querySelector('.tc-tg-quick-add-input') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    input.value = 'stand-up';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flushMicrotasks();
+
+    const content = await readMd(app, 'inbox.md');
+    expect(content).toContain(`- [ ] stand-up ⏰ 10:00 📅 ${date}`);
+  });
+
+  it('clicking on an existing timed block in the hour grid does not open the quick-add', async () => {
+    const { panel, state } = await makePanel(
+      { 't.md': '- [ ] timed ⏰ 09:00 📅 2026-07-10' },
+      clickToCreateSettings,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
+    fixedToday('2026-07-10');
+    const el = freshContainer();
+    panel.mount(el);
+    state.set('mode', 'calendar');
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === 'Today',
+      ) as HTMLElement
+    ).click();
+
+    const block = el.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block).toBeTruthy();
+    block.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(el.querySelector('.tc-tg-quick-add')).toBeNull();
   });
 });

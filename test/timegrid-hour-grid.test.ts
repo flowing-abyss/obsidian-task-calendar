@@ -108,6 +108,38 @@ describe('renderHourGrid', () => {
     expect(onDropTime).toHaveBeenCalledWith('f.md:::0', '2026-07-10', '01:00'); // (148-100)px = 48px = 60min
   });
 
+  it('clicking empty hour-grid space fires onCreateAtTime with the computed time', () => {
+    const container = freshContainer();
+    const onCreateAtTime = vi.fn();
+    const handles = renderHourGrid(container, ['2026-07-10'], undefined, onCreateAtTime);
+    const hourColumnEl = handles.days[0]!.hourColumnEl;
+    vi.spyOn(hourColumnEl, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      left: 0,
+    } as DOMRect);
+    hourColumnEl.dispatchEvent(new MouseEvent('click', { bubbles: true, clientY: 148 }));
+    expect(onCreateAtTime).toHaveBeenCalledWith('2026-07-10', '01:00');
+  });
+
+  it('clicking on an existing timed block does not also fire onCreateAtTime', () => {
+    const container = freshContainer();
+    const onCreateAtTime = vi.fn();
+    const handles = renderHourGrid(container, ['2026-07-10'], undefined, onCreateAtTime);
+    const hourColumnEl = handles.days[0]!.hourColumnEl;
+    const block = hourColumnEl.createDiv({ cls: 'tc-tg-block' });
+    block.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onCreateAtTime).not.toHaveBeenCalled();
+  });
+
+  it('does not wire a click listener when onCreateAtTime is not provided (no throw on click)', () => {
+    const container = freshContainer();
+    const handles = renderHourGrid(container, ['2026-07-10']);
+    const hourColumnEl = handles.days[0]!.hourColumnEl;
+    expect(() =>
+      hourColumnEl.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    ).not.toThrow();
+  });
+
   it('does not wire drop listeners when onDropTime is not provided (no throw on drop)', () => {
     const container = freshContainer();
     const handles = renderHourGrid(container, ['2026-07-10']);

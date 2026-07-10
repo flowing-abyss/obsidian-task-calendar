@@ -36,7 +36,12 @@ export class WeekTimeGridView extends BaseView {
       dates.push(window.moment(week).add(i, 'days').format('YYYY-MM-DD'));
     }
 
-    const handles = renderHourGrid(container, dates, this.callbacks.onDropTime);
+    const handles = renderHourGrid(
+      container,
+      dates,
+      this.callbacks.onDropTime,
+      this.callbacks.onCreateAtTime,
+    );
 
     const timedCallbacks: TimedBlockCallbacks = {
       app: this.callbacks.app,

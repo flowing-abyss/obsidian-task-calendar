@@ -19,6 +19,7 @@ export function renderHourGrid(
   container: HTMLElement,
   dates: string[],
   onDropTime?: (dragData: string, date: string, time: string) => void,
+  onCreateAtTime?: (date: string, time: string) => void,
 ): HourGridHandles {
   container.empty();
   const root = container.createDiv({ cls: 'tc-tg-root' });
@@ -52,6 +53,9 @@ export function renderHourGrid(
 
   const days: DayColumnHandles[] = dates.map((date, i) => {
     const dayColumn = gridRow.createDiv({ cls: 'tc-tg-day-column' });
+    // Lets CenterPanel locate a specific day's column from outside this module (e.g. to
+    // anchor the click-to-create quick-add popover — see onCreateAtTime below).
+    dayColumn.setAttribute('data-tg-date', date);
     for (let h = 0; h < 24; h++) {
       dayColumn.createDiv({ cls: 'tc-tg-hour-row' });
     }
@@ -75,6 +79,19 @@ export function renderHourGrid(
         const rawMinutes = pixelsToMinutes(offsetY);
         const snapped = Math.max(0, snapMinutes(rawMinutes, DROP_SNAP_MINUTES));
         onDropTime(dragData, date, minutesToTimeString(snapped));
+      });
+    }
+
+    if (onCreateAtTime) {
+      // Click-to-create: fires only for a click on genuinely empty space — not on an
+      // existing timed block (dragged/clicked for its own context menu) and not on the
+      // quick-add popover CenterPanel renders into this same column in response.
+      hourColumnEl.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.tc-tg-block, .tc-tg-quick-add')) return;
+        const offsetY = e.clientY - hourColumnEl.getBoundingClientRect().top;
+        const rawMinutes = pixelsToMinutes(offsetY);
+        const snapped = Math.max(0, snapMinutes(rawMinutes, DROP_SNAP_MINUTES));
+        onCreateAtTime(date, minutesToTimeString(snapped));
       });
     }
 

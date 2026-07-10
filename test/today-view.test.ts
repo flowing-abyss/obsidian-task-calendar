@@ -16,6 +16,7 @@ function callbacks() {
     onTaskClick: vi.fn(),
     onDrop: vi.fn(),
     onDropTime: vi.fn(),
+    onCreateAtTime: vi.fn(),
     onTimeChange: vi.fn(),
     onDurationChange: vi.fn(),
     onStartChange: vi.fn(),

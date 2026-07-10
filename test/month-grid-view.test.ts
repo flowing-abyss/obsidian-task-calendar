@@ -13,6 +13,7 @@ function callbacks() {
   return {
     app: fakeApp,
     onDayClick: vi.fn(),
+    onCreateAtDate: vi.fn(),
     onTaskClick: vi.fn(),
     onDrop: vi.fn(),
     onToggle: vi.fn(),
@@ -79,6 +80,19 @@ describe('MonthGridView', () => {
     const cell = container.querySelector('[data-mg-date="2026-07-15"]') as HTMLElement;
     cell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(cbs.onDayClick).toHaveBeenCalledWith('2026-07-15');
+  });
+
+  it('each day cell has a hover-visible add button that fires onCreateAtDate, not onDayClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    view.render(container, [], resolvedConfig({ startPosition: '2026-07' }));
+    const cell = container.querySelector('[data-mg-date="2026-07-15"]') as HTMLElement;
+    const addBtn = cell.querySelector('.tc-mg-add-btn') as HTMLElement;
+    expect(addBtn).not.toBeNull();
+    addBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onCreateAtDate).toHaveBeenCalledWith('2026-07-15');
+    expect(cbs.onDayClick).not.toHaveBeenCalled();
   });
 
   it('each day cell keeps a daily-note internal-link, separate from the drill-down click', () => {

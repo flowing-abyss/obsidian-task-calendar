@@ -48,7 +48,11 @@ import {
   groupTasksByTag,
   sortTasksByField,
 } from '../views/taskGrouping';
-import { minutesToTimeString } from '../views/timegrid/layout';
+import {
+  minutesToPixels,
+  minutesToTimeString,
+  timeStringToMinutes,
+} from '../views/timegrid/layout';
 import { ProjectsPanel } from './projects/ProjectsPanel';
 import { visibleCalendarDates, type CalViewType } from './visibleCalendarDates';
 
@@ -444,6 +448,19 @@ export class CenterPanel {
     const handleExtendToSpan = (t: Task, newDue: string): void => {
       void this.extendTaskToSpan(t, newDue);
     };
+    const handleCreateAtTime = (date: string, time: string): void => {
+      const dayColumn = viewContainer.querySelector<HTMLElement>(
+        `.tc-tg-day-column[data-tg-date="${date}"]`,
+      );
+      const hourColumnEl = dayColumn?.querySelector<HTMLElement>('.tc-tg-hour-column');
+      if (!hourColumnEl) return;
+      this.showTimeGridQuickAdd(hourColumnEl, date, time, mountView);
+    };
+    const handleCreateAtDate = (date: string): void => {
+      const cell = viewContainer.querySelector<HTMLElement>(`[data-mg-date="${date}"]`);
+      if (!cell) return;
+      this.showMonthQuickAdd(cell, date, mountView);
+    };
 
     const startPositionFor = (viewType: CalViewType): string => {
       if (viewType === 'week') return this.calDate.format('YYYY-ww');
@@ -473,6 +490,7 @@ export class CenterPanel {
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
           onDropTime: handleDropTime,
+          onCreateAtTime: handleCreateAtTime,
           onTimeChange: handleTimeChange,
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
@@ -490,6 +508,7 @@ export class CenterPanel {
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
           onDropTime: handleDropTime,
+          onCreateAtTime: handleCreateAtTime,
           onTimeChange: handleTimeChange,
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
@@ -509,6 +528,7 @@ export class CenterPanel {
             this.calDate = window.moment(date).startOf('isoWeek');
             this.render();
           },
+          onCreateAtDate: handleCreateAtDate,
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
           onToggle: (t) => {
@@ -1647,6 +1667,105 @@ export class CenterPanel {
     window.setTimeout(() => {
       activeDocument.addEventListener('click', dismiss, true);
     }, 0);
+  }
+
+  /**
+   * Click-to-create quick-add for the hour grid (Today/Week): an inline input positioned
+   * absolutely inside `hourColumnEl`, at the same `top` a timed block for `time` would use
+   * (mirrors renderTimedBlocksForDay's own `block.style.top` positioning — the technique Task 1
+   * fixed for the month/year pickers: an absolutely-positioned child anchored via inline
+   * top/left inside a `position: relative`/`position: absolute` container, not one that shoves
+   * surrounding layout). On Enter, appends `⏰ {time}` to the text and writes via store.addTask.
+   */
+  private showTimeGridQuickAdd(
+    hourColumnEl: HTMLElement,
+    date: string,
+    time: string,
+    onDone: () => void,
+  ): void {
+    hourColumnEl.querySelectorAll('.tc-tg-quick-add').forEach((el) => el.remove());
+    const pop = hourColumnEl.createDiv({ cls: 'tc-tg-quick-add' });
+    pop.style.top = `${minutesToPixels(timeStringToMinutes(time))}px`;
+    const input = pop.createEl('input', {
+      cls: 'tc-tg-quick-add-input',
+      attr: { type: 'text', placeholder: `Task at ${time}…` },
+    });
+
+    let committed = false;
+    const commit = (): void => {
+      if (committed) return;
+      committed = true;
+      const text = input.value.trim();
+      pop.remove();
+      if (text) void this.store.addTask(date, `${text} ⏰ ${time}`).then(() => onDone());
+    };
+    const cancel = (): void => {
+      committed = true;
+      pop.remove();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+    });
+    input.addEventListener('blur', () => {
+      window.setTimeout(() => {
+        if (activeDocument.activeElement !== input) commit();
+      }, 150);
+    });
+    window.setTimeout(() => input.focus(), 0);
+  }
+
+  /**
+   * Click-to-create quick-add for a Month day cell's "+" button: an inline input that fills
+   * the cell (`inset: 2px`, matching the cell's own padding, so it never gets clipped by the
+   * cell's `overflow: hidden`) — same anchored-absolute-child-of-a-positioned-container
+   * technique as showTimeGridQuickAdd/Task 1's month-year picker fix, just sized to the cell
+   * instead of offset below it.
+   */
+  private showMonthQuickAdd(cell: HTMLElement, date: string, onDone: () => void): void {
+    cell.querySelectorAll('.tc-mg-quick-add').forEach((el) => el.remove());
+    const pop = cell.createDiv({ cls: 'tc-mg-quick-add' });
+    const input = pop.createEl('input', {
+      cls: 'tc-mg-quick-add-input',
+      attr: { type: 'text', placeholder: 'Task name…' },
+    });
+
+    let committed = false;
+    const commit = (): void => {
+      if (committed) return;
+      committed = true;
+      const text = input.value.trim();
+      pop.remove();
+      if (text) void this.store.addTask(date, text).then(() => onDone());
+    };
+    const cancel = (): void => {
+      committed = true;
+      pop.remove();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+      }
+    });
+    input.addEventListener('blur', () => {
+      window.setTimeout(() => {
+        if (activeDocument.activeElement !== input) commit();
+      }, 150);
+    });
+    window.setTimeout(() => input.focus(), 0);
   }
 
   private renderAddTaskBar(): void {
