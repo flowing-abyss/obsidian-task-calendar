@@ -1,6 +1,8 @@
 import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
+import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
+import { renderStatusMarker } from '../../ui/StatusMarker';
 import {
   minutesToPixels,
   packOverlaps,
@@ -13,6 +15,8 @@ export interface TimedBlockCallbacks {
   onTaskClick: (task: Task) => void;
   onTimeChange: (task: Task, newStartMinutes: number) => void;
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
+  onToggle: (task: Task) => void;
+  statusRegistry: StatusRegistry;
 }
 
 const DEFAULT_DURATION_MINUTES = 60;
@@ -42,6 +46,15 @@ export function renderTimedBlocksForDay(
     if (p.task.priority !== 'D') block.setAttribute('data-priority', p.task.priority);
     const tagColor = tagColorFor(p.task.rawText, tagGroups);
     if (tagColor) block.setCssProps({ '--tc-tag-color': tagColor });
+    // Status marker first: lets a user mark the block done without opening the modal.
+    // Its own click handler stops propagation; its contextmenu handler does NOT, so a
+    // right-click on the marker still bubbles to the block's contextmenu below (opens modal).
+    renderStatusMarker(block, {
+      task: p.task,
+      registry: callbacks.statusRegistry,
+      onLeftClick: () => callbacks.onToggle(p.task),
+      onContextMenu: () => {},
+    });
     block.createDiv({ cls: 'tc-tg-block-title', text: p.task.text });
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
 

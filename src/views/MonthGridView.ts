@@ -3,6 +3,7 @@ import type { Task } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { tagColorFor } from '../tags/tagColor';
+import { renderStatusMarker } from '../ui/StatusMarker';
 import { BaseView } from './BaseView';
 import { bucketTasksForDate } from './TodayView';
 
@@ -11,6 +12,7 @@ export interface MonthGridViewCallbacks {
   onDayClick: (date: string) => void;
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
+  onToggle: (task: Task) => void;
   statusRegistry: StatusRegistry;
   tagGroups?: TagGroup[];
 }
@@ -103,7 +105,8 @@ export class MonthGridView extends BaseView {
     for (const t of timed) {
       const dot = cell.createDiv({ cls: 'tc-mg-block-dot' });
       this.applyPriorityAndTag(dot, t, tagGroups);
-      dot.textContent = `${t.time} ${t.text}`;
+      this.renderMarker(dot, t);
+      dot.createSpan({ text: `${t.time} ${t.text}` });
       dot.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -113,7 +116,8 @@ export class MonthGridView extends BaseView {
     for (const t of spans) {
       const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
       this.applyPriorityAndTag(bar, t, tagGroups);
-      bar.textContent = t.text;
+      this.renderMarker(bar, t);
+      bar.createSpan({ text: t.text });
       bar.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -123,7 +127,8 @@ export class MonthGridView extends BaseView {
     for (const t of plain) {
       const row = cell.createDiv({ cls: 'tc-mg-plain' });
       this.applyPriorityAndTag(row, t, tagGroups);
-      row.textContent = t.text;
+      this.renderMarker(row, t);
+      row.createSpan({ text: t.text });
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -135,13 +140,26 @@ export class MonthGridView extends BaseView {
       // Priority-colored border (color = priority convention); no tag fill — deadline
       // markers stay a compact pill, not a filled colored body (structural distinction).
       if (t.priority !== 'D') marker.setAttribute('data-priority', t.priority);
-      marker.textContent = `📅 ${t.text}`;
+      this.renderMarker(marker, t);
+      marker.createSpan({ text: `📅 ${t.text}` });
       marker.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
     }
+  }
+
+  // Status marker first: lets a user mark a compact item done without opening the modal. Its
+  // own click handler stops propagation; its contextmenu handler does NOT, so a right-click on
+  // the marker still bubbles to the item's own contextmenu handler below (opens modal).
+  private renderMarker(el: HTMLElement, t: Task): void {
+    renderStatusMarker(el, {
+      task: t,
+      registry: this.callbacks.statusRegistry,
+      onLeftClick: () => this.callbacks.onToggle(t),
+      onContextMenu: () => {},
+    });
   }
 
   /** Priority-colored left border (color = priority convention) + tag-colored fill. */

@@ -1,10 +1,13 @@
 import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
+import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import { WeekTimeGridView } from '../src/views/WeekTimeGridView';
 import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
 const fakeApp = {} as App;
+const registry = new StatusRegistry(buildDefaultTaskStatuses());
 
 function callbacks() {
   return {
@@ -15,6 +18,8 @@ function callbacks() {
     onDurationChange: vi.fn(),
     onStartChange: vi.fn(),
     onDueChange: vi.fn(),
+    onToggle: vi.fn(),
+    statusRegistry: registry,
   };
 }
 
@@ -46,5 +51,17 @@ describe('WeekTimeGridView', () => {
   it('destroy() does not throw', () => {
     const view = new WeekTimeGridView(callbacks());
     expect(() => view.destroy()).not.toThrow();
+  });
+
+  it('clicking the status marker on a timed block fires onToggle, not onTaskClick (threaded through WeekTimeGridView)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new WeekTimeGridView(cbs);
+    const t = task({ due: '2026-07-08', time: '10:00' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
+    const marker = container.querySelector('.tc-tg-block .tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 });

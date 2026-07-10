@@ -15,6 +15,7 @@ function callbacks() {
     onDayClick: vi.fn(),
     onTaskClick: vi.fn(),
     onDrop: vi.fn(),
+    onToggle: vi.fn(),
     statusRegistry: registry,
   };
 }
@@ -193,6 +194,72 @@ describe('MonthGridView', () => {
     ) as HTMLElement;
     marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
+  });
+
+  it('renders a status marker as the first child of a compact plain row; clicking it fires onToggle, not onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
+    const marker = row.querySelector('.tc-status-marker');
+    expect(marker).not.toBeNull();
+    expect(row.firstElementChild).toBe(marker);
+    (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('renders a status marker as the first child of a compact block-dot; clicking it fires onToggle, not onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const dot = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-block-dot',
+    ) as HTMLElement;
+    const marker = dot.querySelector('.tc-status-marker');
+    expect(marker).not.toBeNull();
+    expect(dot.firstElementChild).toBe(marker);
+    (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('renders a status marker as the first child of a compact span-segment; clicking it fires onToggle, not onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const bar = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
+    ) as HTMLElement;
+    const marker = bar.querySelector('.tc-status-marker');
+    expect(marker).not.toBeNull();
+    expect(bar.firstElementChild).toBe(marker);
+    (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('renders a status marker as the first child of a compact deadline marker; clicking it fires onToggle, not onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const markerEl = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker',
+    ) as HTMLElement;
+    const marker = markerEl.querySelector('.tc-status-marker');
+    expect(marker).not.toBeNull();
+    expect(markerEl.firstElementChild).toBe(marker);
+    (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 
   it('destroy() does not throw', () => {

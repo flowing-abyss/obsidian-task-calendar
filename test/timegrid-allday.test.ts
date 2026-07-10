@@ -1,12 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
+import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import { renderAllDayCell } from '../src/views/timegrid/renderAllDay';
 import { dispatchDnD, freshContainer, task } from './helpers';
+
+const registry = new StatusRegistry(buildDefaultTaskStatuses());
 
 const callbacks = () => ({
   onTaskClick: vi.fn(),
   onDrop: vi.fn(),
   onStartChange: vi.fn(),
   onDueChange: vi.fn(),
+  onToggle: vi.fn(),
+  statusRegistry: registry,
 });
 
 describe('renderAllDayCell', () => {
@@ -162,6 +168,48 @@ describe('renderAllDayCell', () => {
       new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
     );
     expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
+  });
+
+  it('renders a status marker as the first child of a plain chip; clicking it fires onToggle, not onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    const marker = chip.querySelector('.tc-status-marker');
+    expect(marker).not.toBeNull();
+    expect(chip.firstElementChild).toBe(marker);
+    (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('renders a status marker as the first child of a span body; clicking it fires onToggle, not onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
+    const bar = container.querySelector('.tc-tg-span') as HTMLElement;
+    const marker = bar.querySelector('.tc-status-marker');
+    expect(marker).not.toBeNull();
+    expect(bar.firstElementChild).toBe(marker);
+    (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('renders a status marker as the first child of a deadline marker; clicking it fires onToggle, not onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    renderAllDayCell(container, '2026-07-10', [], [], [t], cbs);
+    const marker_el = container.querySelector('.tc-tg-deadline-marker') as HTMLElement;
+    const marker = marker_el.querySelector('.tc-status-marker');
+    expect(marker).not.toBeNull();
+    expect(marker_el.firstElementChild).toBe(marker);
+    (marker as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 
   it("dropping onto the cell fires onDrop with the payload and this cell's date", () => {

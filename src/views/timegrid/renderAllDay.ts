@@ -1,12 +1,16 @@
 import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
+import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
+import { renderStatusMarker } from '../../ui/StatusMarker';
 
 export interface AllDayCallbacks {
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void; // native HTML5 DnD, existing convention
   onStartChange: (task: Task, newStart: string) => void; // pointer edge-resize
   onDueChange: (task: Task, newDue: string) => void; // pointer edge-resize
+  onToggle: (task: Task) => void;
+  statusRegistry: StatusRegistry;
 }
 
 /**
@@ -30,7 +34,16 @@ function renderDraggableBody(
   tagGroups: TagGroup[],
 ): HTMLElement {
   const el = cellEl.createDiv({ cls: `tc-tg-body ${cls}` });
-  el.textContent = task.text;
+  // Status marker first: lets a user mark the item done without opening the modal. Its own
+  // click handler stops propagation; its contextmenu handler does NOT, so a right-click on
+  // the marker still bubbles to this element's contextmenu below (opens modal).
+  renderStatusMarker(el, {
+    task,
+    registry: callbacks.statusRegistry,
+    onLeftClick: () => callbacks.onToggle(task),
+    onContextMenu: () => {},
+  });
+  el.createSpan({ text: task.text });
   // Priority-colored left border (color = priority convention) + tag-colored fill.
   if (task.priority !== 'D') el.setAttribute('data-priority', task.priority);
   const tagColor = tagColorFor(task.rawText, tagGroups);
@@ -131,7 +144,13 @@ export function renderAllDayCell(
     // Priority-colored border (color = priority convention); no tag fill — deadline
     // markers stay a compact pill, not a filled colored body (structural distinction).
     if (t.priority !== 'D') marker.setAttribute('data-priority', t.priority);
-    marker.textContent = `📅 ${t.text}`;
+    renderStatusMarker(marker, {
+      task: t,
+      registry: callbacks.statusRegistry,
+      onLeftClick: () => callbacks.onToggle(t),
+      onContextMenu: () => {},
+    });
+    marker.createSpan({ text: `📅 ${t.text}` });
     marker.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();

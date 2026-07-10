@@ -470,6 +470,10 @@ export class CenterPanel {
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
           onDueChange: handleDueChange,
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
+          statusRegistry: this.store.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });
       } else if (this.calViewType === 'week') {
@@ -481,6 +485,10 @@ export class CenterPanel {
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
           onDueChange: handleDueChange,
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
+          statusRegistry: this.store.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });
       } else {
@@ -493,6 +501,9 @@ export class CenterPanel {
           },
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
+          onToggle: (t) => {
+            void this.store.toggleTask(t);
+          },
           statusRegistry: this.store.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });

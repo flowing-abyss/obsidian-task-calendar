@@ -1,11 +1,14 @@
 import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
+import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import { bucketTasksForDate, TodayView } from '../src/views/TodayView';
 import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
 
 const fakeApp = {} as App;
+const registry = new StatusRegistry(buildDefaultTaskStatuses());
 
 function callbacks() {
   return {
@@ -16,6 +19,8 @@ function callbacks() {
     onDurationChange: vi.fn(),
     onStartChange: vi.fn(),
     onDueChange: vi.fn(),
+    onToggle: vi.fn(),
+    statusRegistry: registry,
   };
 }
 
@@ -57,6 +62,30 @@ describe('TodayView', () => {
   it('destroy() does not throw', () => {
     const view = new TodayView(callbacks());
     expect(() => view.destroy()).not.toThrow();
+  });
+
+  it('clicking the status marker on a timed block fires onToggle, not onTaskClick (threaded through TodayView)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new TodayView(cbs);
+    const t = task({ due: '2026-07-10', time: '15:00', duration: 60 });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
+    const marker = container.querySelector('.tc-tg-block .tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('clicking the status marker on a plain all-day chip fires onToggle, not onTaskClick (threaded through TodayView)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new TodayView(cbs);
+    const t = task({ due: '2026-07-10' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
+    const marker = container.querySelector('.tc-tg-plain .tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 
   it('a task with start+due+distinct scheduled lands in spans (not deadlines) on its due day', () => {

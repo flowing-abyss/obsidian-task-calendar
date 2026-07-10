@@ -35,12 +35,16 @@ export class WeekTimeGridView extends BaseView {
       onTaskClick: this.callbacks.onTaskClick,
       onTimeChange: this.callbacks.onTimeChange,
       onDurationChange: this.callbacks.onDurationChange,
+      onToggle: this.callbacks.onToggle,
+      statusRegistry: this.callbacks.statusRegistry,
     };
     const allDayCallbacks: AllDayCallbacks = {
       onTaskClick: this.callbacks.onTaskClick,
       onDrop: this.callbacks.onDrop,
       onStartChange: this.callbacks.onStartChange,
       onDueChange: this.callbacks.onDueChange,
+      onToggle: this.callbacks.onToggle,
+      statusRegistry: this.callbacks.statusRegistry,
     };
 
     const tagGroups = this.callbacks.tagGroups ?? [];

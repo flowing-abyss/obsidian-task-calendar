@@ -1,6 +1,7 @@
 import type { App } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
 import { BaseView } from './BaseView';
 import { renderHourGrid } from './timegrid/HourGrid';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
@@ -14,6 +15,8 @@ export interface TimeGridCallbacks {
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
   onStartChange: (task: Task, newStart: string) => void;
   onDueChange: (task: Task, newDue: string) => void;
+  onToggle: (task: Task) => void;
+  statusRegistry: StatusRegistry;
   tagGroups?: TagGroup[];
 }
 
@@ -86,6 +89,8 @@ export class TodayView extends BaseView {
       onTaskClick: this.callbacks.onTaskClick,
       onTimeChange: this.callbacks.onTimeChange,
       onDurationChange: this.callbacks.onDurationChange,
+      onToggle: this.callbacks.onToggle,
+      statusRegistry: this.callbacks.statusRegistry,
     };
     const tagGroups = this.callbacks.tagGroups ?? [];
     renderTimedBlocksForDay(day.hourColumnEl, timed, timedCallbacks, tagGroups);
@@ -95,6 +100,8 @@ export class TodayView extends BaseView {
       onDrop: this.callbacks.onDrop,
       onStartChange: this.callbacks.onStartChange,
       onDueChange: this.callbacks.onDueChange,
+      onToggle: this.callbacks.onToggle,
+      statusRegistry: this.callbacks.statusRegistry,
     };
     renderAllDayCell(day.allDayCellEl, date, spans, plain, deadlines, allDayCallbacks, tagGroups);
   }
