@@ -1266,8 +1266,12 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   width: 6px;
   cursor: ew-resize;
 }
-.tc-tg-span-edge--left { left: -3px; }
-.tc-tg-span-edge--right { right: -3px; }
+.tc-tg-span-edge--left {
+  left: -3px;
+}
+.tc-tg-span-edge--right {
+  right: -3px;
+}
 
 .tc-tg-deadline-marker {
   display: inline-flex;
