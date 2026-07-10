@@ -41,6 +41,22 @@ export function formatDurationFromMinutes(minutes: number): string {
   return `${m}m`;
 }
 
+/**
+ * Find a ⏱️ duration token in `text` and parse it via `parseDurationToMinutes`,
+ * the single source of truth for h/m parsing (including the "0m -> undefined"
+ * rule). Returns `undefined` when no digit group follows ⏱️ at all (a bare/
+ * malformed token) — callers should then treat it as ordinary title text, not
+ * metadata, matching `parseTask`'s behavior for malformed input.
+ */
+function matchDuration(text: string): { raw: string; minutes: number | undefined } | undefined {
+  const m = DURATION_RE.exec(text);
+  if (!m || (!m[1] && !m[2])) return undefined;
+  const parts: string[] = [];
+  if (m[1]) parts.push(`${m[1]}h`);
+  if (m[2]) parts.push(`${m[2]}m`);
+  return { raw: m[0], minutes: parseDurationToMinutes(parts.join('')) };
+}
+
 export function parseTask(rawText: string, ctx: ParseContext): Task | null {
   const match = CHECKBOX_RE.exec(rawText);
   if (!match) return null;
@@ -105,12 +121,10 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
   }
 
   let duration: number | undefined;
-  const durationMatch = DURATION_RE.exec(text);
-  if (durationMatch && (durationMatch[1] || durationMatch[2])) {
-    const h = durationMatch[1] ? parseInt(durationMatch[1], 10) : 0;
-    const m = durationMatch[2] ? parseInt(durationMatch[2], 10) : 0;
-    duration = h * 60 + m;
-    text = text.replace(durationMatch[0], '');
+  const durationMatch = matchDuration(text);
+  if (durationMatch) {
+    duration = durationMatch.minutes;
+    text = text.replace(durationMatch.raw, '');
   }
 
   const recurrenceMatch = RECURRENCE_RE.exec(text);
@@ -208,11 +222,8 @@ export function formatTaskLine(line: string): string {
 
   // Extract each metadata field
   const time = /⏰\s*(\d{1,2}:\d{2})/u.exec(rest)?.[1];
-  const durationMinutes = (() => {
-    const m = /⏱️\s*(?:(\d+)h)?(?:(\d+)m)?/u.exec(rest);
-    if (!m || (!m[1] && !m[2])) return undefined;
-    return (m[1] ? parseInt(m[1], 10) * 60 : 0) + (m[2] ? parseInt(m[2], 10) : 0);
-  })();
+  const durationMatch = matchDuration(rest);
+  const durationMinutes = durationMatch?.minutes;
   // All five Tasks priority levels: 🔺⏫🔼🔽⏬
   const priorityMatch = /([🔺⏫🔼🔽⏬])/u.exec(rest);
   const priority = priorityMatch?.[1];
@@ -226,10 +237,13 @@ export function formatTaskLine(line: string): string {
   const doneDate = /✅\s*(\d{4}-\d{2}-\d{2})/u.exec(rest)?.[1];
   const tags = Array.from(rest.matchAll(/#[\w/-]+/gu)).map((m) => m[0]);
 
-  // Strip all recognized metadata to isolate the title
-  const title = rest
+  // Strip all recognized metadata to isolate the title. Duration is only
+  // stripped when matchDuration recognized a valid token (has digits) — a
+  // bare/malformed ⏱️ with no digits is left in place, matching parseTask's
+  // treatment of malformed duration input as ordinary title text.
+  const restWithoutDuration = durationMatch ? rest.replace(durationMatch.raw, '') : rest;
+  const title = restWithoutDuration
     .replace(/⏰\s*\d{1,2}:\d{2}/gu, '')
-    .replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/gu, '')
     .replace(/[🔺⏫🔼🔽⏬]/gu, '')
     .replace(/🔁\s*[^📅⏳🛫✅❌⏰🔺⏫🔼🔽⏬\n]*/gu, '')
     .replace(/➕\s*\d{4}-\d{2}-\d{2}/gu, '')

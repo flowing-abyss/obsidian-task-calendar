@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatDurationFromMinutes,
   formatTaskLine,
+  insertIntoTitleBody,
   parseDurationToMinutes,
   parseTask,
 } from '../src/parser/TaskParser';
@@ -44,9 +45,38 @@ describe('duration parsing', () => {
   });
 
   it('formatTaskLine drops duration cleanly when title is re-edited without it', () => {
-    // insertIntoTitleBody's boundary regex must recognize ⏱️ so it is not swallowed into the title
     const line = formatTaskLine('- [ ] gym ⏰ 15:00 ⏱️ 45m');
     expect(line).toContain('⏱️ 45m');
     expect(line).not.toContain('gym ⏱️'); // title itself must not contain the emoji
+  });
+
+  it('insertIntoTitleBody recognizes ⏱️ as a metadata boundary, not swallowing it into the title', () => {
+    const line = '- [ ] gym ⏱️ 45m';
+    const result = insertIntoTitleBody(line, '#tag');
+    expect(result).toContain('#tag');
+    expect(result).toContain('⏱️ 45m');
+    expect(result).not.toContain('gym ⏱️'); // title itself must not carry the duration emoji
+  });
+
+  it('zero-minute duration ("0m") is treated as no duration by both parseTask and formatTaskLine', () => {
+    // parseDurationToMinutes itself already returns undefined for a total of 0 minutes.
+    expect(parseDurationToMinutes('0m')).toBeUndefined();
+
+    const t = parseTask('- [ ] gym ⏱️ 0m', { filePath: 'f.md', line: 0 });
+    expect(t?.duration).toBeUndefined();
+    expect(t?.text).toBe('gym'); // token still stripped from title even though minutes is 0
+
+    const line = formatTaskLine('- [ ] gym ⏱️ 0m');
+    expect(line).not.toContain('⏱️'); // no duration is re-emitted for a zero-minute token
+    expect(line).toBe('- [ ] gym');
+  });
+
+  it('a bare/malformed ⏱️ with no digits is left as ordinary title text by both parseTask and formatTaskLine', () => {
+    const t = parseTask('- [ ] gym ⏱️', { filePath: 'f.md', line: 0 });
+    expect(t?.duration).toBeUndefined();
+    expect(t?.text).toBe('gym ⏱️'); // malformed token is not metadata, so it stays in the title
+
+    const line = formatTaskLine('- [ ] gym ⏱️');
+    expect(line).toBe('- [ ] gym ⏱️'); // formatTaskLine must not silently delete it either
   });
 });
