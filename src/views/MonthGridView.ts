@@ -14,6 +14,7 @@ export interface MonthGridViewCallbacks {
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
   onToggle: (task: Task) => void;
+  onWeekClick: (weekNr: string, year: string) => void;
   statusRegistry: StatusRegistry;
   tagGroups?: TagGroup[];
 }
@@ -42,6 +43,7 @@ export class MonthGridView extends BaseView {
 
     const grid = container.createDiv({ cls: 'tc-mg-grid' });
     const headRow = grid.createDiv({ cls: 'tc-mg-head-row' });
+    headRow.createDiv({ cls: 'tc-mg-week-head' }); // empty corner, aligns with the week-number column
     for (
       let h = 0 - firstDayOfMonth + config.firstDayOfWeek;
       h < 7 - firstDayOfMonth + config.firstDayOfWeek;
@@ -56,6 +58,19 @@ export class MonthGridView extends BaseView {
     let starts = 0 - firstDayOfMonth + config.firstDayOfWeek;
     for (let w = 0; w < 6; w++) {
       const row = grid.createDiv({ cls: 'tc-mg-row' });
+
+      // Week-number column: clicking it drills into the Week view for that ISO week
+      // (mirrors legacy MonthView.ts's wrapperButton pattern exactly).
+      const weekNr = window.moment(month).add(starts, 'days').format('w');
+      const yearNr = window.moment(month).add(starts, 'days').format('YYYY');
+      const weekBtn = row.createDiv({ cls: 'tc-mg-week-btn', text: weekNr });
+      weekBtn.setAttribute('data-week', weekNr);
+      weekBtn.setAttribute('data-year', yearNr);
+      weekBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.callbacks.onWeekClick(weekNr, yearNr);
+      });
+
       for (let i = starts; i < starts + 7; i++) {
         const currentDate = window.moment(month).add(i, 'days').format('YYYY-MM-DD');
         const inCurrentMonth =
@@ -119,6 +134,7 @@ export class MonthGridView extends BaseView {
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
+      this.makeDraggable(dot, t);
     }
     for (const t of spans) {
       const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
@@ -130,6 +146,7 @@ export class MonthGridView extends BaseView {
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
+      this.makeDraggable(bar, t);
     }
     for (const t of plain) {
       const row = cell.createDiv({ cls: 'tc-mg-plain' });
@@ -141,6 +158,7 @@ export class MonthGridView extends BaseView {
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
+      this.makeDraggable(row, t);
     }
     for (const t of deadlines) {
       const marker = cell.createDiv({ cls: 'tc-mg-deadline-marker' });
@@ -178,6 +196,22 @@ export class MonthGridView extends BaseView {
       onLeftClick: () => this.callbacks.onToggle(t),
       onContextMenu: () => {},
     });
+  }
+
+  // Native HTML5 drag source, mirroring renderAllDay.ts's renderDraggableBody pattern
+  // exactly: `dragstart`/`dragend` are independent of `click`, so a plain click on a
+  // child (status marker, rendered link) inside a draggable item still fires that
+  // child's own click handler undisturbed — only an actual drag gesture (pointer moves
+  // while down) fires `dragstart`. Deadline markers are deliberately excluded — they
+  // stay non-draggable per the existing structural rule (Task 2).
+  private makeDraggable(el: HTMLElement, t: Task): void {
+    el.setAttribute('draggable', 'true');
+    el.addEventListener('dragstart', (e) => {
+      e.dataTransfer?.setData('text/plain', `${t.filePath}:::${t.line}`);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      el.addClass('is-dragging');
+    });
+    el.addEventListener('dragend', () => el.removeClass('is-dragging'));
   }
 
   /** Priority-colored left border (color = priority convention) + tag-colored fill. */

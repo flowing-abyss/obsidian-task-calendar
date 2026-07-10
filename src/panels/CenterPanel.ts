@@ -504,6 +504,15 @@ export class CenterPanel {
           onToggle: (t) => {
             void this.store.toggleTask(t);
           },
+          onWeekClick: (wk, yr) => {
+            this.calViewType = 'week';
+            this.calDate = window
+              .moment()
+              .isoWeekYear(parseInt(yr, 10))
+              .isoWeek(parseInt(wk, 10))
+              .startOf('isoWeek');
+            this.render();
+          },
           statusRegistry: this.store.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });

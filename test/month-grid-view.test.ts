@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import { MonthGridView } from '../src/views/MonthGridView';
-import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
+import { DataTransferStub, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
 const fakeApp = {} as App;
@@ -16,6 +16,7 @@ function callbacks() {
     onTaskClick: vi.fn(),
     onDrop: vi.fn(),
     onToggle: vi.fn(),
+    onWeekClick: vi.fn(),
     statusRegistry: registry,
   };
 }
@@ -289,5 +290,138 @@ describe('MonthGridView', () => {
     const titleEl = row.querySelector('.tc-md') as HTMLElement;
     titleEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(cbs.onDayClick).not.toHaveBeenCalled();
+  });
+
+  it('renders a week-number button per row, clicking it fires onWeekClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    view.render(container, [], resolvedConfig({ startPosition: '2026-07' }));
+    const weekBtns = container.querySelectorAll('.tc-mg-week-btn');
+    expect(weekBtns.length).toBe(6);
+    (weekBtns[0] as HTMLElement).click();
+    expect(cbs.onWeekClick).toHaveBeenCalled();
+  });
+
+  it('the week-number button passes the correct week number and year', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    view.render(container, [], resolvedConfig({ startPosition: '2026-07' }));
+    const weekBtns = container.querySelectorAll('.tc-mg-week-btn');
+    (weekBtns[0] as HTMLElement).click();
+    const expectedWeek = window.moment('2026-06-29', 'YYYY-MM-DD').format('w');
+    const expectedYear = window.moment('2026-06-29', 'YYYY-MM-DD').format('YYYY');
+    expect(cbs.onWeekClick).toHaveBeenCalledWith(expectedWeek, expectedYear);
+  });
+
+  it('clicking the week-number button does not bubble into any day-cell click handling', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    view.render(container, [], resolvedConfig({ startPosition: '2026-07' }));
+    const weekBtn = container.querySelector('.tc-mg-week-btn') as HTMLElement;
+    weekBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onDayClick).not.toHaveBeenCalled();
+  });
+
+  it('a plain-task item is draggable with the filePath:::line payload', () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    const t = task({ due: '2026-07-15', filePath: 'f.md', line: 3, text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const item = container.querySelector('.tc-mg-plain') as HTMLElement;
+    expect(item.getAttribute('draggable')).toBe('true');
+    const dt = new DataTransferStub();
+    const ev = new MouseEvent('dragstart', { bubbles: true });
+    Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
+    item.dispatchEvent(ev);
+    expect(dt.getData('text/plain')).toBe('f.md:::3');
+    expect(item.classList.contains('is-dragging')).toBe(true);
+  });
+
+  it('a block-dot (timed) item is draggable with the filePath:::line payload', () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    const t = task({ due: '2026-07-15', time: '09:00', filePath: 'f.md', line: 7, text: 'Timed' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const item = container.querySelector('.tc-mg-block-dot') as HTMLElement;
+    expect(item.getAttribute('draggable')).toBe('true');
+    const dt = new DataTransferStub();
+    const ev = new MouseEvent('dragstart', { bubbles: true });
+    Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
+    item.dispatchEvent(ev);
+    expect(dt.getData('text/plain')).toBe('f.md:::7');
+  });
+
+  it('a span-segment item is draggable with the filePath:::line payload', () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    const t = task({
+      start: '2026-07-14',
+      due: '2026-07-16',
+      filePath: 'f.md',
+      line: 9,
+      text: 'Trip',
+    });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const item = container.querySelector('.tc-mg-span-segment') as HTMLElement;
+    expect(item.getAttribute('draggable')).toBe('true');
+    const dt = new DataTransferStub();
+    const ev = new MouseEvent('dragstart', { bubbles: true });
+    Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
+    item.dispatchEvent(ev);
+    expect(dt.getData('text/plain')).toBe('f.md:::9');
+  });
+
+  it('deadline markers stay non-draggable', () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    const t = task({
+      due: '2026-07-15',
+      scheduled: '2026-07-10',
+      filePath: 'f.md',
+      line: 11,
+      text: 'Deadline',
+    });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const marker = container.querySelector('.tc-mg-deadline-marker') as HTMLElement;
+    expect(marker.hasAttribute('draggable')).toBe(false);
+  });
+
+  it('a click on the status marker inside a now-draggable plain item still fires onToggle, not treated as a drag', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', filePath: 'f.md', line: 3, text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('.tc-mg-plain') as HTMLElement;
+    const marker = row.querySelector('.tc-status-marker') as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onToggle).toHaveBeenCalledWith(t);
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a click on the rendered link inside a now-draggable plain item still navigates (does not start a drag)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({
+      due: '2026-07-15',
+      filePath: 'f.md',
+      line: 3,
+      text: 'see [[Note]]',
+      markdownText: 'see [[Note]]',
+    });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('.tc-mg-plain') as HTMLElement;
+    expect(row.getAttribute('draggable')).toBe('true');
+    // A plain click on the title (not a dragstart) must not be swallowed — it's a normal
+    // click event, distinct from the native HTML5 drag gesture which only starts on
+    // dragstart, not click.
+    const titleEl = row.querySelector('.tc-md') as HTMLElement;
+    titleEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onDayClick).not.toHaveBeenCalled();
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 });

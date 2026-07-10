@@ -1424,6 +1424,31 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   padding: 4px 0;
 }
 
+/* Empty corner cell above the week-number column, keeps day-of-week headers aligned
+   with the 7 day columns below (mirrors legacy MonthView.ts's empty gridHead corner). */
+.tc-mg-week-head {
+  flex: 0 0 22px;
+  width: 22px;
+}
+
+.tc-mg-week-btn {
+  flex: 0 0 22px;
+  width: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68em;
+  color: var(--text-faint);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+
+.tc-mg-week-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 .tc-mg-cell {
   flex: 1;
   border: 1px solid var(--background-modifier-border);
