@@ -266,4 +266,28 @@ describe('MonthGridView', () => {
     const view = new MonthGridView(callbacks());
     expect(() => view.destroy()).not.toThrow();
   });
+
+  it('renders a compact plain-row title via renderTaskText (markdown-link-aware) for a task with a [[wikilink]]', () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    const t = task({ due: '2026-07-15', text: 'see [[Note]]', markdownText: 'see [[Note]]' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
+    // MarkdownRenderer is a noop in this test harness (see test/center-panel-integration.test.ts
+    // and friends); `.tc-md` is the reliable signal that renderTaskText's markdown path (not a
+    // raw textContent assignment) was taken.
+    expect(row.querySelector('.tc-md')).not.toBeNull();
+  });
+
+  it('a click on the compact row title (inside a [[wikilink]]-bearing task) still does not fire onDayClick, since the row container class is excluded regardless of nested content', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', text: 'see [[Note]]', markdownText: 'see [[Note]]' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
+    const titleEl = row.querySelector('.tc-md') as HTMLElement;
+    titleEl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onDayClick).not.toHaveBeenCalled();
+  });
 });

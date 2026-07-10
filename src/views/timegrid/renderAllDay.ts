@@ -1,10 +1,14 @@
+import { Component, type App } from 'obsidian';
 import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { renderStatusMarker } from '../../ui/StatusMarker';
+import { renderTaskText } from '../../ui/renderTaskText';
 
 export interface AllDayCallbacks {
+  app: App;
+  component: Component;
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void; // native HTML5 DnD, existing convention
   onStartChange: (task: Task, newStart: string) => void; // pointer edge-resize
@@ -43,7 +47,12 @@ function renderDraggableBody(
     onLeftClick: () => callbacks.onToggle(task),
     onContextMenu: () => {},
   });
-  el.createSpan({ text: task.text });
+  const titleEl = el.createSpan();
+  renderTaskText(titleEl, task.markdownText, {
+    app: callbacks.app,
+    sourcePath: task.filePath,
+    component: callbacks.component,
+  });
   // Priority-colored left border (color = priority convention) + tag-colored fill.
   if (task.priority !== 'D') el.setAttribute('data-priority', task.priority);
   const tagColor = tagColorFor(task.rawText, tagGroups);
@@ -150,7 +159,13 @@ export function renderAllDayCell(
       onLeftClick: () => callbacks.onToggle(t),
       onContextMenu: () => {},
     });
-    marker.createSpan({ text: `📅 ${t.text}` });
+    marker.createSpan({ text: '📅 ' });
+    const titleEl = marker.createSpan();
+    renderTaskText(titleEl, t.markdownText, {
+      app: callbacks.app,
+      sourcePath: t.filePath,
+      component: callbacks.component,
+    });
     marker.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();

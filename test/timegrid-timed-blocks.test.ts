@@ -1,3 +1,4 @@
+import { Component, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
@@ -5,9 +6,12 @@ import { renderTimedBlocksForDay } from '../src/views/timegrid/renderTimedBlocks
 import { freshContainer, task } from './helpers';
 
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
+const fakeApp = {} as App;
 
 function callbacks() {
   return {
+    app: fakeApp,
+    component: new Component(),
     onTaskClick: vi.fn(),
     onTimeChange: vi.fn(),
     onDurationChange: vi.fn(),
@@ -21,6 +25,8 @@ describe('renderTimedBlocksForDay', () => {
     const container = freshContainer();
     const t = task({ time: '09:00', priority: 'A' });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
@@ -77,6 +83,8 @@ describe('renderTimedBlocksForDay', () => {
     const container = freshContainer();
     const t = task({ time: '09:00', priority: 'D' });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
@@ -94,6 +102,8 @@ describe('renderTimedBlocksForDay', () => {
       container,
       [t],
       {
+        app: fakeApp,
+        component: new Component(),
         onTaskClick: vi.fn(),
         onTimeChange: vi.fn(),
         onDurationChange: vi.fn(),
@@ -110,6 +120,8 @@ describe('renderTimedBlocksForDay', () => {
     const container = freshContainer();
     const t = task({ time: '15:00', duration: 120, text: 'Gym' });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
@@ -127,6 +139,8 @@ describe('renderTimedBlocksForDay', () => {
     const container = freshContainer();
     const t = task({ time: '09:00' });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
@@ -142,6 +156,8 @@ describe('renderTimedBlocksForDay', () => {
     const onTaskClick = vi.fn();
     const t = task({ time: '09:00' });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick,
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
@@ -158,6 +174,8 @@ describe('renderTimedBlocksForDay', () => {
     const onTaskClick = vi.fn();
     const t = task({ time: '09:00' });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick,
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
@@ -174,6 +192,8 @@ describe('renderTimedBlocksForDay', () => {
     const onTaskClick = vi.fn();
     const t = task({ time: '09:00' });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick,
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
@@ -190,6 +210,8 @@ describe('renderTimedBlocksForDay', () => {
     const a = task({ time: '09:00', duration: 60, line: 0 });
     const b = task({ time: '09:30', duration: 60, line: 1 });
     renderTimedBlocksForDay(container, [a, b], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
@@ -208,6 +230,8 @@ describe('renderTimedBlocksForDay', () => {
     const onTimeChange = vi.fn();
     const t = task({ time: '09:00', duration: 60 });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange,
       onDurationChange: vi.fn(),
@@ -231,6 +255,8 @@ describe('renderTimedBlocksForDay', () => {
     const onTimeChange = vi.fn();
     const t = task({ time: '09:00', duration: 60 });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange,
       onDurationChange,
@@ -254,6 +280,8 @@ describe('renderTimedBlocksForDay', () => {
     const onTimeChange = vi.fn();
     const t = task({ time: '09:00', duration: 60 });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange,
       onDurationChange: vi.fn(),
@@ -271,11 +299,81 @@ describe('renderTimedBlocksForDay', () => {
     expect(onTimeChange).not.toHaveBeenCalled();
   });
 
+  it('renders the title via renderTaskText (markdown-link-aware), not raw textContent, for a task with a [[wikilink]]', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00', text: 'see [[Note]]', markdownText: 'see [[Note]]' });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
+    // renderTaskText only wraps in a `.tc-md` holder (and defers to MarkdownRenderer) when it
+    // detects link syntax — a plain `.textContent =` assignment would show the raw brackets
+    // instead of taking this path. MarkdownRenderer itself is a noop in this test harness (see
+    // test/center-panel-integration.test.ts and friends), so real <a> production is not
+    // observable here; the `.tc-md` holder is the reliable signal that markdown rendering (not
+    // raw text) is in effect, matching this codebase's existing MarkdownRenderer-mock convention.
+    expect(title.querySelector('.tc-md')).not.toBeNull();
+  });
+
+  it('renders plain title text (no [[links]]) via the renderTaskText fast path, unchanged from before', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00', text: 'Gym', markdownText: 'Gym' });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
+    expect(title.querySelector('.tc-md')).toBeNull();
+    expect(title.textContent).toBe('Gym');
+  });
+
+  it('a real pointerdown→pointerup→click sequence on a rendered link inside the title fires only the link click, never onTimeChange (regression: link click must not arm drag, mirroring the status-marker fix)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({
+      time: '09:00',
+      duration: 60,
+      text: 'see [[Note]]',
+      markdownText: 'see [[Note]]',
+    });
+    renderTimedBlocksForDay(container, [t], cbs);
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    block.setPointerCapture = () => {};
+    block.releasePointerCapture = () => {};
+    // renderTaskText's MarkdownRenderer.render is a noop in this test harness, so simulate the
+    // real post-render DOM it would eventually produce: an <a> inside the title holder.
+    const holder = block.querySelector('.tc-md') as HTMLElement;
+    const link = holder.createEl('a', { cls: 'internal-link', text: 'Note' });
+    // Real browser event order for a click on a nested link: pointerdown bubbles first, then
+    // pointerup, then click — reproduced here exactly, targeting the link.
+    link.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+    );
+    window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100, pointerId: 1 }));
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onTimeChange).not.toHaveBeenCalled();
+    expect(cbs.onDurationChange).not.toHaveBeenCalled();
+  });
+
+  it('dragging that starts on the title text itself (not a link) still arms move and fires onTimeChange (guard is link-specific, not title-wide)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ time: '09:00', duration: 60, text: 'Gym', markdownText: 'Gym' });
+    renderTimedBlocksForDay(container, [t], cbs);
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    block.setPointerCapture = () => {};
+    block.releasePointerCapture = () => {};
+    const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
+    title.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+    );
+    window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+    window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+    expect(cbs.onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 60);
+  });
+
   it('a stationary right-click on the resize handle does NOT fire onDurationChange', () => {
     const container = freshContainer();
     const onDurationChange = vi.fn();
     const t = task({ time: '09:00', duration: 60 });
     renderTimedBlocksForDay(container, [t], {
+      app: fakeApp,
+      component: new Component(),
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange,

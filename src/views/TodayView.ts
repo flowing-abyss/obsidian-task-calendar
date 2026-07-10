@@ -1,4 +1,4 @@
-import type { App } from 'obsidian';
+import { Component, type App } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
@@ -71,12 +71,17 @@ export function bucketTasksForDate(
 
 export class TodayView extends BaseView {
   private containerEl: HTMLElement | null = null;
+  private md = new Component();
 
   constructor(private callbacks: TimeGridCallbacks) {
     super();
   }
 
   render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+    this.md.unload();
+    this.md = new Component();
+    this.md.load();
+
     this.containerEl = container;
     const date = config.startPosition || window.moment().format('YYYY-MM-DD');
 
@@ -86,6 +91,8 @@ export class TodayView extends BaseView {
     const { timed, spans, plain, deadlines } = bucketTasksForDate(tasks, date);
 
     const timedCallbacks: TimedBlockCallbacks = {
+      app: this.callbacks.app,
+      component: this.md,
       onTaskClick: this.callbacks.onTaskClick,
       onTimeChange: this.callbacks.onTimeChange,
       onDurationChange: this.callbacks.onDurationChange,
@@ -96,6 +103,8 @@ export class TodayView extends BaseView {
     renderTimedBlocksForDay(day.hourColumnEl, timed, timedCallbacks, tagGroups);
 
     const allDayCallbacks: AllDayCallbacks = {
+      app: this.callbacks.app,
+      component: this.md,
       onTaskClick: this.callbacks.onTaskClick,
       onDrop: this.callbacks.onDrop,
       onStartChange: this.callbacks.onStartChange,
@@ -108,5 +117,6 @@ export class TodayView extends BaseView {
 
   destroy(): void {
     this.containerEl = null;
+    this.md.unload();
   }
 }

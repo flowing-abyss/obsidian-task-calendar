@@ -1,3 +1,4 @@
+import { Component, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
@@ -5,8 +6,11 @@ import { renderAllDayCell } from '../src/views/timegrid/renderAllDay';
 import { dispatchDnD, freshContainer, task } from './helpers';
 
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
+const fakeApp = {} as App;
 
 const callbacks = () => ({
+  app: fakeApp,
+  component: new Component(),
   onTaskClick: vi.fn(),
   onDrop: vi.fn(),
   onStartChange: vi.fn(),
@@ -238,6 +242,41 @@ describe('renderAllDayCell', () => {
       '2026-07-11',
     );
     expect(cbs.onDueChange).toHaveBeenCalledWith(t, '2026-07-11');
+  });
+
+  it('renders a plain chip title via renderTaskText (markdown-link-aware), not raw textContent, for a task with a [[wikilink]]', () => {
+    const container = freshContainer();
+    const t = task({ due: '2026-07-10', text: 'see [[Note]]', markdownText: 'see [[Note]]' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    // MarkdownRenderer is a noop in this test harness (see test/center-panel-integration.test.ts
+    // and friends); the `.tc-md` holder — only created when renderTaskText detects link syntax —
+    // is the reliable signal that markdown rendering (not a raw textContent assignment showing
+    // literal brackets) is in effect.
+    expect(chip.querySelector('.tc-md')).not.toBeNull();
+  });
+
+  it('renders a deadline marker title via renderTaskText for a task with a [[wikilink]]', () => {
+    const container = freshContainer();
+    const t = task({
+      due: '2026-07-10',
+      scheduled: '2026-07-05',
+      text: 'see [[Note]]',
+      markdownText: 'see [[Note]]',
+    });
+    renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks());
+    const marker = container.querySelector('.tc-tg-deadline-marker') as HTMLElement;
+    expect(marker.querySelector('.tc-md')).not.toBeNull();
+    expect(marker.textContent).toContain('📅');
+  });
+
+  it('renders plain title text (no [[links]]) via the renderTaskText fast path, unchanged from before', () => {
+    const container = freshContainer();
+    const t = task({ due: '2026-07-10', text: 'Plain', markdownText: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    expect(chip.querySelector('.tc-md')).toBeNull();
+    expect(chip.textContent).toContain('Plain');
   });
 
   it("pointer-dragging a span's left edge fires onStartChange on pointerup", () => {

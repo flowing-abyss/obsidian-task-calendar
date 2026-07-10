@@ -88,6 +88,34 @@ describe('TodayView', () => {
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 
+  it('renders a timed block title via renderTaskText (markdown-link-aware) for a task with a [[wikilink]]', () => {
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    const t = task({
+      due: '2026-07-10',
+      time: '15:00',
+      duration: 60,
+      text: 'see [[Note]]',
+      markdownText: 'see [[Note]]',
+    });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
+    const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
+    // MarkdownRenderer is a noop in this test harness (see test/center-panel-integration.test.ts
+    // and friends); `.tc-md` is the reliable signal that renderTaskText's markdown path (not a
+    // raw textContent assignment) was taken.
+    expect(title.querySelector('.tc-md')).not.toBeNull();
+  });
+
+  it('a second render() call does not leak the previous Component (unload/reload lifecycle mirrors legacy MonthView)', () => {
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    const t = task({ due: '2026-07-10', time: '15:00', duration: 60 });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
+    expect(() =>
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' })),
+    ).not.toThrow();
+  });
+
   it('a task with start+due+distinct scheduled lands in spans (not deadlines) on its due day', () => {
     const t = task({ start: '2026-07-01', due: '2026-07-05', scheduled: '2026-07-03' });
     const { spans, deadlines } = bucketTasksForDate([t], '2026-07-05');

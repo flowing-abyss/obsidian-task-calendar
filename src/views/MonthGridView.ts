@@ -1,9 +1,10 @@
-import type { App } from 'obsidian';
+import { Component, type App } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { tagColorFor } from '../tags/tagColor';
 import { renderStatusMarker } from '../ui/StatusMarker';
+import { renderTaskText } from '../ui/renderTaskText';
 import { BaseView } from './BaseView';
 import { bucketTasksForDate } from './TodayView';
 
@@ -19,12 +20,17 @@ export interface MonthGridViewCallbacks {
 
 export class MonthGridView extends BaseView {
   private containerEl: HTMLElement | null = null;
+  private md = new Component();
 
   constructor(private callbacks: MonthGridViewCallbacks) {
     super();
   }
 
   render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+    this.md.unload();
+    this.md = new Component();
+    this.md.load();
+
     this.containerEl = container;
     container.empty();
 
@@ -106,7 +112,8 @@ export class MonthGridView extends BaseView {
       const dot = cell.createDiv({ cls: 'tc-mg-block-dot' });
       this.applyPriorityAndTag(dot, t, tagGroups);
       this.renderMarker(dot, t);
-      dot.createSpan({ text: `${t.time} ${t.text}` });
+      dot.createSpan({ text: `${t.time} ` });
+      this.renderTitle(dot, t);
       dot.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -117,7 +124,7 @@ export class MonthGridView extends BaseView {
       const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
       this.applyPriorityAndTag(bar, t, tagGroups);
       this.renderMarker(bar, t);
-      bar.createSpan({ text: t.text });
+      this.renderTitle(bar, t);
       bar.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -128,7 +135,7 @@ export class MonthGridView extends BaseView {
       const row = cell.createDiv({ cls: 'tc-mg-plain' });
       this.applyPriorityAndTag(row, t, tagGroups);
       this.renderMarker(row, t);
-      row.createSpan({ text: t.text });
+      this.renderTitle(row, t);
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -141,13 +148,24 @@ export class MonthGridView extends BaseView {
       // markers stay a compact pill, not a filled colored body (structural distinction).
       if (t.priority !== 'D') marker.setAttribute('data-priority', t.priority);
       this.renderMarker(marker, t);
-      marker.createSpan({ text: `📅 ${t.text}` });
+      marker.createSpan({ text: '📅 ' });
+      this.renderTitle(marker, t);
       marker.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
     }
+  }
+
+  /** Renders the task's markdown/wiki-link-aware title text as a trailing inline span. */
+  private renderTitle(container: HTMLElement, t: Task): void {
+    const titleEl = container.createSpan();
+    renderTaskText(titleEl, t.markdownText, {
+      app: this.callbacks.app,
+      sourcePath: t.filePath,
+      component: this.md,
+    });
   }
 
   // Status marker first: lets a user mark a compact item done without opening the modal. Its
@@ -171,5 +189,6 @@ export class MonthGridView extends BaseView {
 
   destroy(): void {
     this.containerEl = null;
+    this.md.unload();
   }
 }

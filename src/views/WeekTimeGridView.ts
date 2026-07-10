@@ -1,3 +1,4 @@
+import { Component } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import { BaseView } from './BaseView';
@@ -8,12 +9,17 @@ import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/re
 
 export class WeekTimeGridView extends BaseView {
   private containerEl: HTMLElement | null = null;
+  private md = new Component();
 
   constructor(private callbacks: TimeGridCallbacks) {
     super();
   }
 
   render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+    this.md.unload();
+    this.md = new Component();
+    this.md.load();
+
     this.containerEl = container;
     const week = config.startPosition
       ? window.moment(config.startPosition, 'YYYY-ww').startOf('week')
@@ -32,6 +38,8 @@ export class WeekTimeGridView extends BaseView {
     const handles = renderHourGrid(container, dates);
 
     const timedCallbacks: TimedBlockCallbacks = {
+      app: this.callbacks.app,
+      component: this.md,
       onTaskClick: this.callbacks.onTaskClick,
       onTimeChange: this.callbacks.onTimeChange,
       onDurationChange: this.callbacks.onDurationChange,
@@ -39,6 +47,8 @@ export class WeekTimeGridView extends BaseView {
       statusRegistry: this.callbacks.statusRegistry,
     };
     const allDayCallbacks: AllDayCallbacks = {
+      app: this.callbacks.app,
+      component: this.md,
       onTaskClick: this.callbacks.onTaskClick,
       onDrop: this.callbacks.onDrop,
       onStartChange: this.callbacks.onStartChange,
@@ -65,5 +75,6 @@ export class WeekTimeGridView extends BaseView {
 
   destroy(): void {
     this.containerEl = null;
+    this.md.unload();
   }
 }

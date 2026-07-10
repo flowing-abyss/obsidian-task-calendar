@@ -53,6 +53,20 @@ describe('WeekTimeGridView', () => {
     expect(() => view.destroy()).not.toThrow();
   });
 
+  it('renders a timed block title via renderTaskText (markdown-link-aware) for a task with a [[wikilink]]', () => {
+    const container = freshContainer();
+    const view = new WeekTimeGridView(callbacks());
+    const t = task({
+      due: '2026-07-08',
+      time: '10:00',
+      text: 'see [[Note]]',
+      markdownText: 'see [[Note]]',
+    });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
+    const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
+    expect(title.querySelector('.tc-md')).not.toBeNull();
+  });
+
   it('clicking the status marker on a timed block fires onToggle, not onTaskClick (threaded through WeekTimeGridView)', () => {
     const container = freshContainer();
     const cbs = callbacks();

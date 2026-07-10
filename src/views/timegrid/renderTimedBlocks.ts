@@ -1,8 +1,10 @@
+import { Component, type App } from 'obsidian';
 import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { renderStatusMarker } from '../../ui/StatusMarker';
+import { renderTaskText } from '../../ui/renderTaskText';
 import {
   minutesToPixels,
   packOverlaps,
@@ -12,6 +14,8 @@ import {
 } from './layout';
 
 export interface TimedBlockCallbacks {
+  app: App;
+  component: Component;
   onTaskClick: (task: Task) => void;
   onTimeChange: (task: Task, newStartMinutes: number) => void;
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
@@ -55,7 +59,12 @@ export function renderTimedBlocksForDay(
       onLeftClick: () => callbacks.onToggle(p.task),
       onContextMenu: () => {},
     });
-    block.createDiv({ cls: 'tc-tg-block-title', text: p.task.text });
+    const titleEl = block.createDiv({ cls: 'tc-tg-block-title' });
+    renderTaskText(titleEl, p.task.markdownText, {
+      app: callbacks.app,
+      sourcePath: p.task.filePath,
+      component: callbacks.component,
+    });
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
 
     block.addEventListener('contextmenu', (e) => {
@@ -110,11 +119,14 @@ function attachDrag(
 
   const onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0) return;
-    // A pointerdown that starts on the status marker must never arm move/resize — otherwise
-    // a plain checkbox click also fires onTimeChange/onDurationChange as an unwanted side
-    // effect (pointerdown→pointerup fires and completes before the marker's own click handler
-    // runs onToggle). Mirrors the existing resize-handle exclusion below.
-    if ((e.target as HTMLElement).closest('.tc-status-marker')) return;
+    // A pointerdown that starts on the status marker or a rendered markdown link must never
+    // arm move/resize — otherwise a plain checkbox click, or a click that navigates a
+    // [[wikilink]]/markdown link in the title, also fires onTimeChange/onDurationChange as an
+    // unwanted side effect (pointerdown→pointerup fires and completes before the marker's own
+    // click handler runs onToggle, or before the link's own click handler navigates). Mirrors
+    // the existing resize-handle exclusion below. `a` covers renderTaskText's rendered links —
+    // matched by tag, not a task-calendar-specific class, since MarkdownRenderer owns that markup.
+    if ((e.target as HTMLElement).closest('.tc-status-marker, a')) return;
     mode = (e.target as HTMLElement).closest('.tc-tg-resize-handle') ? 'resize' : 'move';
     startY = e.clientY;
     startMinutes = initialStart;
