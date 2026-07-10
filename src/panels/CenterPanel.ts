@@ -12,6 +12,7 @@ import {
   rewriteLinkInTask,
   TaskMutationService,
 } from '../mutation';
+import { formatTaskLine } from '../parser/TaskParser';
 import type { LinkToken } from '../parser/links';
 import type { Task, TaskPriority } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
@@ -1950,14 +1951,14 @@ export class CenterPanel {
       const tl = lines[taskLine];
       if (!tl) return;
       let updated: string;
-      if (task.due) {
-        updated = tl.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${targetDate}`);
-      } else if (task.scheduled) {
+      if (task.scheduled) {
         updated = tl.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${targetDate}`);
+      } else if (task.due) {
+        updated = tl.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${targetDate}`);
       } else {
         updated = tl.trimEnd() + ` 📅 ${targetDate}`;
       }
-      lines[taskLine] = updated;
+      lines[taskLine] = formatTaskLine(updated);
     });
   }
 

@@ -96,3 +96,48 @@ describe('CenterPanel.setPriority', () => {
     expect(content).not.toContain('⏫');
   });
 });
+
+describe('CenterPanel.rescheduleTask anchor priority', () => {
+  it('moves scheduled date when both scheduled and due are set (scheduled wins)', async () => {
+    const raw = '- [ ] t ⏳ 2026-07-02 📅 2026-07-10';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      scheduled: '2026-07-02',
+      due: '2026-07-10',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'rescheduleTask', 'f.md:::0', '2026-07-03');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('⏳ 2026-07-03');
+    expect(content).toContain('📅 2026-07-10'); // due untouched
+  });
+
+  it('moves due date when only due is set', async () => {
+    const raw = '- [ ] t 📅 2026-07-10';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      due: '2026-07-10',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'rescheduleTask', 'f.md:::0', '2026-07-11');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('📅 2026-07-11');
+  });
+
+  it('adds a new due date when neither is set', async () => {
+    const raw = '- [ ] t';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'rescheduleTask', 'f.md:::0', '2026-07-12');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('📅 2026-07-12');
+  });
+});
