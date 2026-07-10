@@ -67,7 +67,7 @@ describe('renderTimedBlocksForDay', () => {
     expect(block.style.height).toBe('48px');
   });
 
-  it('clicking a block (not the resize handle) fires onTaskClick', () => {
+  it('a plain click does NOT fire onTaskClick (reserved for drag)', () => {
     const container = freshContainer();
     const onTaskClick = vi.fn();
     const t = task({ time: '09:00' });
@@ -78,7 +78,35 @@ describe('renderTimedBlocksForDay', () => {
     });
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     block.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a right-click (contextmenu) fires onTaskClick', () => {
+    const container = freshContainer();
+    const onTaskClick = vi.fn();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick,
+      onTimeChange: vi.fn(),
+      onDurationChange: vi.fn(),
+    });
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    block.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     expect(onTaskClick).toHaveBeenCalledWith(t);
+  });
+
+  it('right-clicking the resize handle does NOT fire onTaskClick', () => {
+    const container = freshContainer();
+    const onTaskClick = vi.fn();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick,
+      onTimeChange: vi.fn(),
+      onDurationChange: vi.fn(),
+    });
+    const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+    handle.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(onTaskClick).not.toHaveBeenCalled();
   });
 
   it('two overlapping blocks are given proportional widths/left offsets (no visual overlap)', () => {

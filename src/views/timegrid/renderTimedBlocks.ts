@@ -45,7 +45,8 @@ export function renderTimedBlocksForDay(
     block.createDiv({ cls: 'tc-tg-block-title', text: p.task.text });
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
 
-    block.addEventListener('click', (e) => {
+    block.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
       if ((e.target as HTMLElement).closest('.tc-tg-resize-handle')) return;
       callbacks.onTaskClick(p.task);
     });

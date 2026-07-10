@@ -42,7 +42,8 @@ function renderDraggableBody(
     el.addClass('is-dragging');
   });
   el.addEventListener('dragend', () => el.removeClass('is-dragging'));
-  el.addEventListener('click', (e) => {
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
     e.stopPropagation();
     callbacks.onTaskClick(task);
   });
@@ -130,7 +131,8 @@ export function renderAllDayCell(
     // markers stay a compact pill, not a filled colored body (structural distinction).
     if (t.priority !== 'D') marker.setAttribute('data-priority', t.priority);
     marker.textContent = `📅 ${t.text}`;
-    marker.addEventListener('click', (e) => {
+    marker.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
       e.stopPropagation();
       callbacks.onTaskClick(t);
     });

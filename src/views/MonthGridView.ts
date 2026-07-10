@@ -104,7 +104,8 @@ export class MonthGridView extends BaseView {
       const dot = cell.createDiv({ cls: 'tc-mg-block-dot' });
       this.applyPriorityAndTag(dot, t, tagGroups);
       dot.textContent = `${t.time} ${t.text}`;
-      dot.addEventListener('click', (e) => {
+      dot.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
@@ -113,7 +114,8 @@ export class MonthGridView extends BaseView {
       const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
       this.applyPriorityAndTag(bar, t, tagGroups);
       bar.textContent = t.text;
-      bar.addEventListener('click', (e) => {
+      bar.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
@@ -122,7 +124,8 @@ export class MonthGridView extends BaseView {
       const row = cell.createDiv({ cls: 'tc-mg-plain' });
       this.applyPriorityAndTag(row, t, tagGroups);
       row.textContent = t.text;
-      row.addEventListener('click', (e) => {
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
@@ -133,7 +136,8 @@ export class MonthGridView extends BaseView {
       // markers stay a compact pill, not a filled colored body (structural distinction).
       if (t.priority !== 'D') marker.setAttribute('data-priority', t.priority);
       marker.textContent = `📅 ${t.text}`;
-      marker.addEventListener('click', (e) => {
+      marker.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });

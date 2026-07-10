@@ -98,7 +98,7 @@ describe('renderAllDayCell', () => {
     expect(container.querySelector('.tc-tg-span')).toBeNull();
   });
 
-  it('clicking any of the three shapes fires onTaskClick with that task', () => {
+  it('a plain click on a plain chip does NOT fire onTaskClick (reserved for drag)', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const t = task({ due: '2026-07-10', text: 'Plain' });
@@ -106,16 +106,60 @@ describe('renderAllDayCell', () => {
     (container.querySelector('.tc-tg-plain') as HTMLElement).dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
     );
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a right-click (contextmenu) on a plain chip fires onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
+    (container.querySelector('.tc-tg-plain') as HTMLElement).dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
     expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
   });
 
-  it('clicking a deadline marker fires onTaskClick with that task', () => {
+  it('a plain click on a span body does NOT fire onTaskClick (reserved for drag)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
+    (container.querySelector('.tc-tg-span') as HTMLElement).dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a right-click (contextmenu) on a span body fires onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
+    (container.querySelector('.tc-tg-span') as HTMLElement).dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+    expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
+  });
+
+  it('a plain click on a deadline marker does NOT fire onTaskClick (reserved for drag)', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
     renderAllDayCell(container, '2026-07-10', [], [], [t], cbs);
     (container.querySelector('.tc-tg-deadline-marker') as HTMLElement).dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
+    );
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a right-click (contextmenu) on a deadline marker fires onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    renderAllDayCell(container, '2026-07-10', [], [], [t], cbs);
+    (container.querySelector('.tc-tg-deadline-marker') as HTMLElement).dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
     );
     expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
   });

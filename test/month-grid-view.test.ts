@@ -95,6 +95,106 @@ describe('MonthGridView', () => {
     expect(cbs.onDayClick).not.toHaveBeenCalled(); // link click must not also trigger drill-down
   });
 
+  it('a plain click on a compact plain row does NOT fire onTaskClick (reserved for drag)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a right-click (contextmenu) on a compact plain row fires onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
+  });
+
+  it('a plain click on a compact block-dot does NOT fire onTaskClick (reserved for drag)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const dot = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-block-dot',
+    ) as HTMLElement;
+    dot.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a right-click (contextmenu) on a compact block-dot fires onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const dot = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-block-dot',
+    ) as HTMLElement;
+    dot.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
+  });
+
+  it('a plain click on a compact span-segment does NOT fire onTaskClick (reserved for drag)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const bar = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
+    ) as HTMLElement;
+    bar.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a right-click (contextmenu) on a compact span-segment fires onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const bar = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
+    ) as HTMLElement;
+    bar.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
+  });
+
+  it('a plain click on a compact deadline marker does NOT fire onTaskClick (reserved for drag)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const marker = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker',
+    ) as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onTaskClick).not.toHaveBeenCalled();
+  });
+
+  it('a right-click (contextmenu) on a compact deadline marker fires onTaskClick', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const marker = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker',
+    ) as HTMLElement;
+    marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
+  });
+
   it('destroy() does not throw', () => {
     const view = new MonthGridView(callbacks());
     expect(() => view.destroy()).not.toThrow();
