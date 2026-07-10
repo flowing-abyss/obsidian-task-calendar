@@ -1,8 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { renderHourGrid } from '../src/views/timegrid/HourGrid';
-import { freshContainer } from './helpers';
+import { freshContainer, useRealMoment } from './helpers';
+
+useRealMoment();
 
 describe('renderHourGrid', () => {
+  it('renders a day-header cell per date with weekday + day number', () => {
+    const container = freshContainer();
+    renderHourGrid(container, ['2026-07-10', '2026-07-11']);
+    const headers = container.querySelectorAll('.tc-tg-header-cell');
+    expect(headers).toHaveLength(2);
+    expect(headers[0]?.textContent).toContain('Fri');
+    expect(headers[0]?.textContent).toContain('10');
+    expect(headers[1]?.textContent).toContain('Sat');
+    expect(headers[1]?.textContent).toContain('11');
+  });
+
+  it('marks the header cell matching today with is-today', () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    const other = window.moment().add(1, 'day').format('YYYY-MM-DD');
+    renderHourGrid(container, [today, other]);
+    const headers = Array.from(container.querySelectorAll('.tc-tg-header-cell'));
+    expect(headers[0]?.hasClass('is-today')).toBe(true);
+    expect(headers[1]?.hasClass('is-today')).toBe(false);
+  });
+
   it('renders one day column per date, with 24 hour rows each', () => {
     const container = freshContainer();
     const handles = renderHourGrid(container, ['2026-07-10']);

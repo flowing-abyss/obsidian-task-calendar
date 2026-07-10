@@ -14,6 +14,18 @@ export function renderHourGrid(container: HTMLElement, dates: string[]): HourGri
   container.empty();
   const root = container.createDiv({ cls: 'tc-tg-root' });
 
+  // Day headers: weekday + day number per date, so multi-column views (Week)
+  // can be read without cross-referencing the nav bar's week number.
+  const today = window.moment().format('YYYY-MM-DD');
+  const headerRow = root.createDiv({ cls: 'tc-tg-header-row' });
+  headerRow.createDiv({ cls: 'tc-tg-header-gutter' });
+  for (const date of dates) {
+    const headerCell = headerRow.createDiv({
+      cls: `tc-tg-header-cell${date === today ? ' is-today' : ''}`,
+    });
+    headerCell.textContent = window.moment(date).format('ddd D');
+  }
+
   // All-day band: one cell per date
   const alldayRow = root.createDiv({ cls: 'tc-tg-allday-row' });
   alldayRow.createDiv({ cls: 'tc-tg-allday-gutter' });

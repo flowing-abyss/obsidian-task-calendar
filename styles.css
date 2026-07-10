@@ -1155,6 +1155,31 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   overflow: hidden;
 }
 
+.tc-tg-header-row {
+  display: flex;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+}
+
+.tc-tg-header-gutter {
+  width: 3.5em;
+  flex-shrink: 0;
+}
+
+.tc-tg-header-cell {
+  flex: 1;
+  text-align: center;
+  padding: 6px 0;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-left: 1px solid var(--background-modifier-border);
+}
+
+.tc-tg-header-cell.is-today {
+  color: var(--interactive-accent);
+}
+
 .tc-tg-allday-row {
   display: flex;
   border-bottom: 1px solid var(--background-modifier-border);
