@@ -14,6 +14,7 @@ import type { SubTask, Task, TaskComment } from '../parser/types';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
+import { colorForTag } from '../tags/tagColor';
 import {
   enableAttachmentDrop,
   enableAttachmentPaste,
@@ -765,19 +766,7 @@ export class RightPanel {
 
   private getTagColor(tag: string): string | undefined {
     if (!this.settings) return undefined;
-    const noHash = tag.replace(/^#/, '');
-    for (const group of this.settings.tagGroups) {
-      if (group.mode === 'prefix' && group.prefix) {
-        if (noHash === group.prefix || noHash.startsWith(`${group.prefix}/`)) {
-          return group.color;
-        }
-      } else if (group.mode === 'manual' && group.tags) {
-        if (group.tags.includes(tag) || group.tags.includes(noHash)) {
-          return group.color;
-        }
-      }
-    }
-    return undefined;
+    return colorForTag(tag, this.settings.tagGroups);
   }
 
   private clearPopovers(): void {

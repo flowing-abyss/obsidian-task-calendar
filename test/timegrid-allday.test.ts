@@ -10,6 +10,47 @@ const callbacks = () => ({
 });
 
 describe('renderAllDayCell', () => {
+  it('sets data-priority on a plain chip and span for a prioritized task, omits it for D', () => {
+    const container = freshContainer();
+    const prioritized = task({ due: '2026-07-10', priority: 'B', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [prioritized], [], callbacks());
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    expect(chip.getAttribute('data-priority')).toBe('B');
+
+    const container2 = freshContainer();
+    const none = task({ due: '2026-07-10', priority: 'D', text: 'Plain' });
+    renderAllDayCell(container2, '2026-07-10', [], [none], [], callbacks());
+    const chip2 = container2.querySelector('.tc-tg-plain') as HTMLElement;
+    expect(chip2.hasAttribute('data-priority')).toBe(false);
+  });
+
+  it('sets --tc-tag-color on a plain chip when a tag matches a configured tag group', () => {
+    const container = freshContainer();
+    const t = task({ due: '2026-07-10', rawText: '- [ ] t #work', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks(), [
+      { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+    ]);
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    expect(chip.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
+  });
+
+  it('sets data-priority on a deadline marker but never --tc-tag-color (structural pill, no fill)', () => {
+    const container = freshContainer();
+    const t = task({
+      due: '2026-07-10',
+      scheduled: '2026-07-05',
+      priority: 'A',
+      rawText: '- [ ] t #work 📅 2026-07-10',
+      text: 'Deadline',
+    });
+    renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks(), [
+      { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+    ]);
+    const marker = container.querySelector('.tc-tg-deadline-marker') as HTMLElement;
+    expect(marker.getAttribute('data-priority')).toBe('A');
+    expect(marker.style.getPropertyValue('--tc-tag-color')).toBe('');
+  });
+
   it('renders a plain task as a draggable chip', () => {
     const container = freshContainer();
     const t = task({ due: '2026-07-10', text: 'Plain' });

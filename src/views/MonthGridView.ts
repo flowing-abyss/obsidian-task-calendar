@@ -1,7 +1,8 @@
 import type { App } from 'obsidian';
 import type { Task } from '../parser/types';
-import type { ResolvedConfig } from '../settings/types';
+import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import { tagColorFor } from '../tags/tagColor';
 import { BaseView } from './BaseView';
 import { bucketTasksForDate } from './TodayView';
 
@@ -11,6 +12,7 @@ export interface MonthGridViewCallbacks {
   onTaskClick: (task: Task) => void;
   onDrop: (dragData: string, targetDate: string) => void;
   statusRegistry: StatusRegistry;
+  tagGroups?: TagGroup[];
 }
 
 export class MonthGridView extends BaseView {
@@ -96,9 +98,11 @@ export class MonthGridView extends BaseView {
 
   private renderCompactCell(cell: HTMLElement, tasks: Task[], date: string): void {
     const { timed, spans, plain, deadlines } = bucketTasksForDate(tasks, date);
+    const tagGroups = this.callbacks.tagGroups ?? [];
 
     for (const t of timed) {
       const dot = cell.createDiv({ cls: 'tc-mg-block-dot' });
+      this.applyPriorityAndTag(dot, t, tagGroups);
       dot.textContent = `${t.time} ${t.text}`;
       dot.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -107,6 +111,7 @@ export class MonthGridView extends BaseView {
     }
     for (const t of spans) {
       const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
+      this.applyPriorityAndTag(bar, t, tagGroups);
       bar.textContent = t.text;
       bar.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -115,6 +120,7 @@ export class MonthGridView extends BaseView {
     }
     for (const t of plain) {
       const row = cell.createDiv({ cls: 'tc-mg-plain' });
+      this.applyPriorityAndTag(row, t, tagGroups);
       row.textContent = t.text;
       row.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -123,12 +129,22 @@ export class MonthGridView extends BaseView {
     }
     for (const t of deadlines) {
       const marker = cell.createDiv({ cls: 'tc-mg-deadline-marker' });
+      // Priority-colored border (color = priority convention); no tag fill — deadline
+      // markers stay a compact pill, not a filled colored body (structural distinction).
+      if (t.priority !== 'D') marker.setAttribute('data-priority', t.priority);
       marker.textContent = `📅 ${t.text}`;
       marker.addEventListener('click', (e) => {
         e.stopPropagation();
         this.callbacks.onTaskClick(t);
       });
     }
+  }
+
+  /** Priority-colored left border (color = priority convention) + tag-colored fill. */
+  private applyPriorityAndTag(el: HTMLElement, t: Task, tagGroups: TagGroup[]): void {
+    if (t.priority !== 'D') el.setAttribute('data-priority', t.priority);
+    const tagColor = tagColorFor(t.rawText, tagGroups);
+    if (tagColor) el.setCssProps({ '--tc-tag-color': tagColor });
   }
 
   destroy(): void {

@@ -43,10 +43,19 @@ export class WeekTimeGridView extends BaseView {
       onDueChange: this.callbacks.onDueChange,
     };
 
+    const tagGroups = this.callbacks.tagGroups ?? [];
     for (const day of handles.days) {
       const { timed, spans, plain, deadlines } = bucketTasksForDate(tasks, day.date);
-      renderTimedBlocksForDay(day.hourColumnEl, timed, timedCallbacks);
-      renderAllDayCell(day.allDayCellEl, day.date, spans, plain, deadlines, allDayCallbacks);
+      renderTimedBlocksForDay(day.hourColumnEl, timed, timedCallbacks, tagGroups);
+      renderAllDayCell(
+        day.allDayCellEl,
+        day.date,
+        spans,
+        plain,
+        deadlines,
+        allDayCallbacks,
+        tagGroups,
+      );
     }
   }
 

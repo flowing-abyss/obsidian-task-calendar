@@ -1,6 +1,6 @@
 import type { App } from 'obsidian';
 import type { Task } from '../parser/types';
-import type { ResolvedConfig } from '../settings/types';
+import type { ResolvedConfig, TagGroup } from '../settings/types';
 import { BaseView } from './BaseView';
 import { renderHourGrid } from './timegrid/HourGrid';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
@@ -14,6 +14,7 @@ export interface TimeGridCallbacks {
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
   onStartChange: (task: Task, newStart: string) => void;
   onDueChange: (task: Task, newDue: string) => void;
+  tagGroups?: TagGroup[];
 }
 
 /** Bucket tasks for a single date per the due-centric anchor rule (spec: due-centric contract). */
@@ -86,7 +87,8 @@ export class TodayView extends BaseView {
       onTimeChange: this.callbacks.onTimeChange,
       onDurationChange: this.callbacks.onDurationChange,
     };
-    renderTimedBlocksForDay(day.hourColumnEl, timed, timedCallbacks);
+    const tagGroups = this.callbacks.tagGroups ?? [];
+    renderTimedBlocksForDay(day.hourColumnEl, timed, timedCallbacks, tagGroups);
 
     const allDayCallbacks: AllDayCallbacks = {
       onTaskClick: this.callbacks.onTaskClick,
@@ -94,7 +96,7 @@ export class TodayView extends BaseView {
       onStartChange: this.callbacks.onStartChange,
       onDueChange: this.callbacks.onDueChange,
     };
-    renderAllDayCell(day.allDayCellEl, date, spans, plain, deadlines, allDayCallbacks);
+    renderAllDayCell(day.allDayCellEl, date, spans, plain, deadlines, allDayCallbacks, tagGroups);
   }
 
   destroy(): void {

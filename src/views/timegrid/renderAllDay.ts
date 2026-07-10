@@ -1,4 +1,6 @@
 import type { Task } from '../../parser/types';
+import type { TagGroup } from '../../settings/types';
+import { tagColorFor } from '../../tags/tagColor';
 
 export interface AllDayCallbacks {
   onTaskClick: (task: Task) => void;
@@ -25,9 +27,14 @@ function renderDraggableBody(
   cls: string,
   task: Task,
   callbacks: AllDayCallbacks,
+  tagGroups: TagGroup[],
 ): HTMLElement {
   const el = cellEl.createDiv({ cls: `tc-tg-body ${cls}` });
   el.textContent = task.text;
+  // Priority-colored left border (color = priority convention) + tag-colored fill.
+  if (task.priority !== 'D') el.setAttribute('data-priority', task.priority);
+  const tagColor = tagColorFor(task.rawText, tagGroups);
+  if (tagColor) el.setCssProps({ '--tc-tag-color': tagColor });
   el.setAttribute('draggable', 'true');
   el.addEventListener('dragstart', (e) => {
     e.dataTransfer?.setData('text/plain', `${task.filePath}:::${task.line}`);
@@ -94,6 +101,7 @@ export function renderAllDayCell(
   plain: Task[], // tasks with a due-or-scheduled anchor but no time/start (single-day chip)
   deadlines: Task[], // tasks where scheduled is set AND due is set (due renders as marker, not body)
   callbacks: AllDayCallbacks,
+  tagGroups: TagGroup[] = [],
 ): void {
   cellEl.setAttribute('data-tg-date', date);
   (cellEl as unknown as { __tgTestEndDrag?: (targetDate: string) => void }).__tgTestEndDrag = (
@@ -101,7 +109,7 @@ export function renderAllDayCell(
   ) => endDragTestHook(cellEl, targetDate);
 
   for (const t of spans) {
-    const bar = renderDraggableBody(cellEl, 'tc-tg-span', t, callbacks);
+    const bar = renderDraggableBody(cellEl, 'tc-tg-span', t, callbacks, tagGroups);
     // Edge handles: only rendered on the day matching start/due respectively, so
     // dragging one doesn't accidentally exist mid-span.
     if (t.start === date) {
@@ -114,10 +122,13 @@ export function renderAllDayCell(
     }
   }
   for (const t of plain) {
-    renderDraggableBody(cellEl, 'tc-tg-plain', t, callbacks);
+    renderDraggableBody(cellEl, 'tc-tg-plain', t, callbacks, tagGroups);
   }
   for (const t of deadlines) {
     const marker = cellEl.createDiv({ cls: 'tc-tg-deadline-marker' });
+    // Priority-colored border (color = priority convention); no tag fill — deadline
+    // markers stay a compact pill, not a filled colored body (structural distinction).
+    if (t.priority !== 'D') marker.setAttribute('data-priority', t.priority);
     marker.textContent = `📅 ${t.text}`;
     marker.addEventListener('click', (e) => {
       e.stopPropagation();

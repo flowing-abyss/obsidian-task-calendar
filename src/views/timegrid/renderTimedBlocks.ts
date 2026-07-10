@@ -1,4 +1,6 @@
 import type { Task } from '../../parser/types';
+import type { TagGroup } from '../../settings/types';
+import { tagColorFor } from '../../tags/tagColor';
 import {
   minutesToPixels,
   packOverlaps,
@@ -20,6 +22,7 @@ export function renderTimedBlocksForDay(
   hourColumnEl: HTMLElement,
   tasksWithTime: Task[],
   callbacks: TimedBlockCallbacks,
+  tagGroups: TagGroup[] = [],
 ): void {
   const inputs: TimedBlockInput[] = tasksWithTime.map((t) => ({
     task: t,
@@ -35,6 +38,10 @@ export function renderTimedBlocksForDay(
     block.style.height = `${minutesToPixels(p.durationMinutes)}px`;
     block.style.width = `${widthPct}%`;
     block.style.left = `${p.column * widthPct}%`;
+    // Priority-colored left border (color = priority convention) + tag-colored fill.
+    if (p.task.priority !== 'D') block.setAttribute('data-priority', p.task.priority);
+    const tagColor = tagColorFor(p.task.rawText, tagGroups);
+    if (tagColor) block.setCssProps({ '--tc-tag-color': tagColor });
     block.createDiv({ cls: 'tc-tg-block-title', text: p.task.text });
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
 

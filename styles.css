@@ -1244,8 +1244,6 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-tg-block {
   position: absolute;
   pointer-events: auto;
-  background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
-  border-left: 3px solid var(--interactive-accent);
   border-radius: 6px;
   padding: 2px 6px;
   font-size: 0.8em;
@@ -1276,13 +1274,70 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 }
 
 .tc-tg-span {
-  background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--interactive-accent) 45%, transparent);
 }
 
 .tc-tg-plain {
-  background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
+}
+
+/* Tag-colored fill (color = priority is for the border only; fill reflects the task's
+   tag group, falling back to the neutral accent when no tag/group matches) + priority-
+   colored left border (color = priority convention). Timed blocks/spans/plain chips share
+   this pattern; deadline markers deliberately do NOT (see .tc-tg-deadline-marker below —
+   their shape, not a filled body, is what signals "deadline"). */
+.tc-tg-block,
+.tc-tg-span,
+.tc-tg-plain,
+.tc-mg-block-dot,
+.tc-mg-span-segment,
+.tc-mg-plain {
+  background: color-mix(in srgb, var(--tc-tag-color, var(--interactive-accent)) 16%, transparent);
+  border-left: 3px solid var(--interactive-accent);
+}
+
+/* Priority-colored left border (color = priority convention), matching
+   .tc-status-marker[data-priority=...] above. No-priority (D) items keep the
+   neutral accent-colored border from the base rule above. */
+.tc-tg-block[data-priority='A'],
+.tc-tg-span[data-priority='A'],
+.tc-tg-plain[data-priority='A'],
+.tc-mg-block-dot[data-priority='A'],
+.tc-mg-span-segment[data-priority='A'],
+.tc-mg-plain[data-priority='A'] {
+  border-left-color: var(--tc-priority-a);
+}
+.tc-tg-block[data-priority='B'],
+.tc-tg-span[data-priority='B'],
+.tc-tg-plain[data-priority='B'],
+.tc-mg-block-dot[data-priority='B'],
+.tc-mg-span-segment[data-priority='B'],
+.tc-mg-plain[data-priority='B'] {
+  border-left-color: var(--tc-priority-b);
+}
+.tc-tg-block[data-priority='C'],
+.tc-tg-span[data-priority='C'],
+.tc-tg-plain[data-priority='C'],
+.tc-mg-block-dot[data-priority='C'],
+.tc-mg-span-segment[data-priority='C'],
+.tc-mg-plain[data-priority='C'] {
+  border-left-color: var(--tc-priority-c);
+}
+.tc-tg-block[data-priority='E'],
+.tc-tg-span[data-priority='E'],
+.tc-tg-plain[data-priority='E'],
+.tc-mg-block-dot[data-priority='E'],
+.tc-mg-span-segment[data-priority='E'],
+.tc-mg-plain[data-priority='E'] {
+  border-left-color: var(--tc-priority-e);
+}
+.tc-tg-block[data-priority='F'],
+.tc-tg-span[data-priority='F'],
+.tc-tg-plain[data-priority='F'],
+.tc-mg-block-dot[data-priority='F'],
+.tc-mg-span-segment[data-priority='F'],
+.tc-mg-plain[data-priority='F'] {
+  border-left-color: var(--tc-priority-f);
 }
 
 .tc-tg-span-edge {
@@ -1299,6 +1354,9 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   right: -3px;
 }
 
+/* Deadline markers: shape (small non-draggable pill, no fill/body) is what signals
+   "deadline" now, not color — color follows the plugin-wide color=priority convention
+   instead of a hardcoded red. Neutral/muted when no priority is set. */
 .tc-tg-deadline-marker {
   display: inline-flex;
   align-items: center;
@@ -1306,10 +1364,29 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   border-radius: 5px;
   padding: 2px 6px;
   font-size: 0.78em;
-  background: color-mix(in srgb, var(--text-error) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text-error) 45%, transparent);
-  color: var(--text-error);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
   cursor: pointer;
+}
+.tc-tg-deadline-marker[data-priority='A'] {
+  border-color: var(--tc-priority-a);
+  color: var(--tc-priority-a);
+}
+.tc-tg-deadline-marker[data-priority='B'] {
+  border-color: var(--tc-priority-b);
+  color: var(--tc-priority-b);
+}
+.tc-tg-deadline-marker[data-priority='C'] {
+  border-color: var(--tc-priority-c);
+  color: var(--tc-priority-c);
+}
+.tc-tg-deadline-marker[data-priority='E'] {
+  border-color: var(--tc-priority-e);
+  color: var(--tc-priority-e);
+}
+.tc-tg-deadline-marker[data-priority='F'] {
+  border-color: var(--tc-priority-f);
+  color: var(--tc-priority-f);
 }
 
 .tc-tg-block.is-dragging,
@@ -1384,18 +1461,34 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   cursor: pointer;
 }
 
-.tc-mg-plain,
-.tc-mg-block-dot {
-  background: var(--background-secondary);
-}
+/* .tc-mg-plain / .tc-mg-block-dot / .tc-mg-span-segment fill + left border are set by the
+   shared tag-fill/priority-border rule above (grouped with the tc-tg-* equivalents). */
 
-.tc-mg-span-segment {
-  background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
-}
-
+/* Deadline markers: shape (compact pill) signals "deadline", not color — priority-driven,
+   matching .tc-tg-deadline-marker. Neutral/muted when no priority is set. */
 .tc-mg-deadline-marker {
-  background: color-mix(in srgb, var(--text-error) 14%, transparent);
-  color: var(--text-error);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+.tc-mg-deadline-marker[data-priority='A'] {
+  border-color: var(--tc-priority-a);
+  color: var(--tc-priority-a);
+}
+.tc-mg-deadline-marker[data-priority='B'] {
+  border-color: var(--tc-priority-b);
+  color: var(--tc-priority-b);
+}
+.tc-mg-deadline-marker[data-priority='C'] {
+  border-color: var(--tc-priority-c);
+  color: var(--tc-priority-c);
+}
+.tc-mg-deadline-marker[data-priority='E'] {
+  border-color: var(--tc-priority-e);
+  color: var(--tc-priority-e);
+}
+.tc-mg-deadline-marker[data-priority='F'] {
+  border-color: var(--tc-priority-f);
+  color: var(--tc-priority-f);
 }
 
 /* ===== Calendar redesign: Planning chips ===== */

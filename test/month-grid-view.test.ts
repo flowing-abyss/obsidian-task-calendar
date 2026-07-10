@@ -36,6 +36,39 @@ describe('MonthGridView', () => {
     expect(cell?.querySelector('.tc-mg-plain')?.textContent).toContain('Plain');
   });
 
+  it('sets data-priority on compact items for a prioritized task, omits it for D', () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    const t = task({ due: '2026-07-15', priority: 'C', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
+    expect(row.getAttribute('data-priority')).toBe('C');
+
+    const container2 = freshContainer();
+    const view2 = new MonthGridView(callbacks());
+    const none = task({ due: '2026-07-15', priority: 'D', text: 'Plain' });
+    view2.render(container2, [none], resolvedConfig({ startPosition: '2026-07' }));
+    const row2 = container2.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-plain',
+    ) as HTMLElement;
+    expect(row2.hasAttribute('data-priority')).toBe(false);
+  });
+
+  it('sets --tc-tag-color on compact items when a tag matches a configured tag group', () => {
+    const container = freshContainer();
+    const cbs = {
+      ...callbacks(),
+      tagGroups: [
+        { id: '1', name: 'Work', mode: 'prefix' as const, prefix: 'work', color: '#3498db' },
+      ],
+    };
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', rawText: '- [ ] t #work', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
+    expect(row.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
+  });
+
   it('clicking a current-month day cell (not a task) fires onDayClick with that date', () => {
     const container = freshContainer();
     const cbs = callbacks();

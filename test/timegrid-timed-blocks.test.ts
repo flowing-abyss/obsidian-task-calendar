@@ -3,6 +3,43 @@ import { renderTimedBlocksForDay } from '../src/views/timegrid/renderTimedBlocks
 import { freshContainer, task } from './helpers';
 
 describe('renderTimedBlocksForDay', () => {
+  it('sets data-priority on the block for a prioritized task', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00', priority: 'A' });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick: vi.fn(),
+      onTimeChange: vi.fn(),
+      onDurationChange: vi.fn(),
+    });
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block.getAttribute('data-priority')).toBe('A');
+  });
+
+  it('omits data-priority entirely when the task has no priority (D)', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00', priority: 'D' });
+    renderTimedBlocksForDay(container, [t], {
+      onTaskClick: vi.fn(),
+      onTimeChange: vi.fn(),
+      onDurationChange: vi.fn(),
+    });
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block.hasAttribute('data-priority')).toBe(false);
+  });
+
+  it('sets --tc-tag-color when the task has a tag matching a configured tag group', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00', rawText: '- [ ] t #work' });
+    renderTimedBlocksForDay(
+      container,
+      [t],
+      { onTaskClick: vi.fn(), onTimeChange: vi.fn(), onDurationChange: vi.fn() },
+      [{ id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' }],
+    );
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
+  });
+
   it('renders one block per timed task, positioned by time and sized by duration', () => {
     const container = freshContainer();
     const t = task({ time: '15:00', duration: 120, text: 'Gym' });

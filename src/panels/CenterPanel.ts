@@ -470,6 +470,7 @@ export class CenterPanel {
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
           onDueChange: handleDueChange,
+          tagGroups: this.settings.tagGroups,
         });
       } else if (this.calViewType === 'week') {
         this.calViewInstance = new WeekTimeGridView({
@@ -480,6 +481,7 @@ export class CenterPanel {
           onDurationChange: handleDurationChange,
           onStartChange: handleStartChange,
           onDueChange: handleDueChange,
+          tagGroups: this.settings.tagGroups,
         });
       } else {
         this.calViewInstance = new MonthGridView({
@@ -492,6 +494,7 @@ export class CenterPanel {
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
           statusRegistry: this.store.statusRegistry,
+          tagGroups: this.settings.tagGroups,
         });
       }
       this.calViewInstance.render(viewContainer, tasks, cfg);
