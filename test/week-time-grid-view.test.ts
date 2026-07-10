@@ -71,6 +71,62 @@ describe('WeekTimeGridView', () => {
     expect(() => view.destroy()).not.toThrow();
   });
 
+  it('periodically repositions the now-line while the mounted week includes today, and clears the interval on destroy', () => {
+    vi.useFakeTimers();
+    try {
+      const container = freshContainer();
+      const view = new WeekTimeGridView(callbacks());
+      const todayWeek = window.moment().format('YYYY-ww');
+      view.render(container, [], resolvedConfig({ startPosition: todayWeek, firstDayOfWeek: 1 }));
+
+      const nowLineEl = container.querySelector('.tc-tg-now-line') as HTMLElement;
+      expect(nowLineEl).not.toBeNull();
+      const initialTop = nowLineEl.style.top;
+
+      const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+
+      vi.setSystemTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(nowLineEl.style.top).not.toBe(initialTop);
+
+      view.destroy();
+      expect(clearIntervalSpy).toHaveBeenCalled();
+
+      const topAfterDestroy = nowLineEl.style.top;
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(nowLineEl.style.top).toBe(topAfterDestroy);
+
+      clearIntervalSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('re-rendering without an intervening destroy() clears the previous interval instead of stacking a second one', () => {
+    vi.useFakeTimers();
+    try {
+      const container = freshContainer();
+      const view = new WeekTimeGridView(callbacks());
+      const todayWeek = window.moment().format('YYYY-ww');
+
+      const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+      const setIntervalSpy = vi.spyOn(window, 'setInterval');
+
+      view.render(container, [], resolvedConfig({ startPosition: todayWeek, firstDayOfWeek: 1 }));
+      expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+
+      view.render(container, [], resolvedConfig({ startPosition: todayWeek, firstDayOfWeek: 1 }));
+      expect(clearIntervalSpy).toHaveBeenCalled();
+      expect(setIntervalSpy).toHaveBeenCalledTimes(2);
+
+      view.destroy();
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('renders a timed block title via renderTaskText (markdown-link-aware) for a task with a [[wikilink]]', () => {
     const container = freshContainer();
     const view = new WeekTimeGridView(callbacks());
@@ -107,7 +163,9 @@ describe('WeekTimeGridView', () => {
     const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
     Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
     expect(gridRowEl.scrollTop).toBe(0);
-    vi.runAllTimers();
+    // Use runOnlyPendingTimers, not runAllTimers: render() now also registers a repeating
+    // now-line-refresh interval, and runAllTimers would loop on it forever.
+    vi.runOnlyPendingTimers();
     expect(gridRowEl.scrollTop).toBe(496);
     vi.useRealTimers();
   });

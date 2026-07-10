@@ -82,6 +82,70 @@ describe('TodayView', () => {
     expect(() => view.destroy()).not.toThrow();
   });
 
+  it('periodically repositions the now-line while mounted on today, and clears the interval on destroy', () => {
+    vi.useFakeTimers();
+    try {
+      const container = freshContainer();
+      const view = new TodayView(callbacks());
+      const today = window.moment().format('YYYY-MM-DD');
+      view.render(container, [], resolvedConfig({ startPosition: today }));
+
+      const nowLineEl = container.querySelector('.tc-tg-now-line') as HTMLElement;
+      expect(nowLineEl).not.toBeNull();
+      const initialTop = nowLineEl.style.top;
+
+      const setIntervalSpy = vi.spyOn(window, 'setInterval');
+      const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+
+      // Advance real+fake clock together by moving forward 2 hours, then let the 5-minute
+      // interval fire; the now-line's `top` should change to reflect the new time.
+      vi.setSystemTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(nowLineEl.style.top).not.toBe(initialTop);
+
+      view.destroy();
+      expect(clearIntervalSpy).toHaveBeenCalled();
+
+      // A destroyed view's interval must not still be running: further time advancement
+      // must not throw and must not keep moving the (now-detached) now-line.
+      const topAfterDestroy = nowLineEl.style.top;
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(nowLineEl.style.top).toBe(topAfterDestroy);
+
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('re-rendering without an intervening destroy() clears the previous interval instead of stacking a second one', () => {
+    vi.useFakeTimers();
+    try {
+      const container = freshContainer();
+      const view = new TodayView(callbacks());
+      const today = window.moment().format('YYYY-MM-DD');
+
+      const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+      const setIntervalSpy = vi.spyOn(window, 'setInterval');
+
+      view.render(container, [], resolvedConfig({ startPosition: today }));
+      expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+
+      view.render(container, [], resolvedConfig({ startPosition: today }));
+      // The stale interval from the first render must be cleared before/when the second
+      // render registers its own, so at most one interval is ever live at a time.
+      expect(clearIntervalSpy).toHaveBeenCalled();
+      expect(setIntervalSpy).toHaveBeenCalledTimes(2);
+
+      view.destroy();
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('clicking the status marker on a timed block fires onToggle, not onTaskClick (threaded through TodayView)', () => {
     const container = freshContainer();
     const cbs = callbacks();
@@ -159,7 +223,9 @@ describe('TodayView', () => {
     const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
     Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
     expect(gridRowEl.scrollTop).toBe(0);
-    vi.runAllTimers();
+    // Use runOnlyPendingTimers, not runAllTimers: render() now also registers a repeating
+    // now-line-refresh interval, and runAllTimers would loop on it forever.
+    vi.runOnlyPendingTimers();
     // 14:30 = 870 minutes -> 696px at 48px/hour; centered in a 400px viewport -> 696 - 200 = 496
     expect(gridRowEl.scrollTop).toBe(496);
     vi.useRealTimers();

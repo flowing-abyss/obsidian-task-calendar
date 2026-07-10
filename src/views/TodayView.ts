@@ -3,7 +3,7 @@ import type { Task, TaskPriority } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { BaseView } from './BaseView';
-import { renderHourGrid } from './timegrid/HourGrid';
+import { renderHourGrid, repositionNowLine } from './timegrid/HourGrid';
 import { minutesToPixels } from './timegrid/layout';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
@@ -75,9 +75,13 @@ export function bucketTasksForDate(
   return { timed, spans, plain, deadlines };
 }
 
+/** How often the now-line is repositioned while a Today/Week view showing today stays mounted. */
+export const NOW_LINE_REFRESH_MS = 5 * 60 * 1000;
+
 export class TodayView extends BaseView {
   private containerEl: HTMLElement | null = null;
   private md = new Component();
+  private nowLineIntervalId: number | null = null;
 
   constructor(private callbacks: TimeGridCallbacks) {
     super();
@@ -87,6 +91,13 @@ export class TodayView extends BaseView {
     this.md.unload();
     this.md = new Component();
     this.md.load();
+
+    // A re-render on the same instance (e.g. config change) must not stack a second interval
+    // on top of one already registered from a prior render() without an intervening destroy().
+    if (this.nowLineIntervalId !== null) {
+      window.clearInterval(this.nowLineIntervalId);
+      this.nowLineIntervalId = null;
+    }
 
     this.containerEl = container;
     const date = config.startPosition || window.moment().format('YYYY-MM-DD');
@@ -137,11 +148,22 @@ export class TodayView extends BaseView {
       window.setTimeout(() => {
         gridRowEl.scrollTop = Math.max(0, nowPx - gridRowEl.clientHeight / 2);
       }, 0);
+
+      const nowLineEl = handles.nowLineEl;
+      if (nowLineEl) {
+        this.nowLineIntervalId = window.setInterval(() => {
+          repositionNowLine(nowLineEl);
+        }, NOW_LINE_REFRESH_MS);
+      }
     }
   }
 
   destroy(): void {
     this.containerEl = null;
     this.md.unload();
+    if (this.nowLineIntervalId !== null) {
+      window.clearInterval(this.nowLineIntervalId);
+      this.nowLineIntervalId = null;
+    }
   }
 }

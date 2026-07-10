@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { renderHourGrid } from '../src/views/timegrid/HourGrid';
+import { renderHourGrid, repositionNowLine } from '../src/views/timegrid/HourGrid';
 import { DataTransferStub, freshContainer, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -94,6 +94,32 @@ describe('renderHourGrid', () => {
     expect(top).toBeGreaterThanOrEqual(0);
   });
 
+  it('exposes the now-line element via handles so callers can reposition it later (periodic refresh)', () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    const handles = renderHourGrid(container, [today]);
+    expect(handles.nowLineEl).not.toBeNull();
+    expect(handles.nowLineEl?.hasClass('tc-tg-now-line')).toBe(true);
+  });
+
+  it('nowLineEl is null when today is not among the rendered dates', () => {
+    const container = freshContainer();
+    const other = window.moment().add(5, 'days').format('YYYY-MM-DD');
+    const handles = renderHourGrid(container, [other]);
+    expect(handles.nowLineEl).toBeNull();
+  });
+
+  it('repositionNowLine recomputes top from the current time', () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    const handles = renderHourGrid(container, [today]);
+    const nowLineEl = handles.nowLineEl!;
+    nowLineEl.style.top = '0px';
+    repositionNowLine(nowLineEl);
+    const top = parseFloat(nowLineEl.style.top);
+    expect(top).toBeGreaterThanOrEqual(0);
+  });
+
   it('exposes the scrollable grid-row container so callers can scroll to now', () => {
     const container = freshContainer();
     const handles = renderHourGrid(container, ['2026-07-10']);
@@ -165,3 +191,4 @@ describe('renderHourGrid', () => {
     expect(() => hourColumnEl.dispatchEvent(ev)).not.toThrow();
   });
 });
+

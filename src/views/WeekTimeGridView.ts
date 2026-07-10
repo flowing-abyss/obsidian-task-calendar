@@ -2,8 +2,8 @@ import { Component } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import { BaseView } from './BaseView';
-import { bucketTasksForDate, type TimeGridCallbacks } from './TodayView';
-import { renderHourGrid } from './timegrid/HourGrid';
+import { bucketTasksForDate, NOW_LINE_REFRESH_MS, type TimeGridCallbacks } from './TodayView';
+import { renderHourGrid, repositionNowLine } from './timegrid/HourGrid';
 import { minutesToPixels } from './timegrid/layout';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
@@ -11,6 +11,7 @@ import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/re
 export class WeekTimeGridView extends BaseView {
   private containerEl: HTMLElement | null = null;
   private md = new Component();
+  private nowLineIntervalId: number | null = null;
 
   constructor(private callbacks: TimeGridCallbacks) {
     super();
@@ -20,6 +21,13 @@ export class WeekTimeGridView extends BaseView {
     this.md.unload();
     this.md = new Component();
     this.md.load();
+
+    // A re-render on the same instance (e.g. week change) must not stack a second interval on
+    // top of one already registered from a prior render() without an intervening destroy().
+    if (this.nowLineIntervalId !== null) {
+      window.clearInterval(this.nowLineIntervalId);
+      this.nowLineIntervalId = null;
+    }
 
     this.containerEl = container;
     const week = config.startPosition
@@ -91,11 +99,22 @@ export class WeekTimeGridView extends BaseView {
       window.setTimeout(() => {
         gridRowEl.scrollTop = Math.max(0, nowPx - gridRowEl.clientHeight / 2);
       }, 0);
+
+      const nowLineEl = handles.nowLineEl;
+      if (nowLineEl) {
+        this.nowLineIntervalId = window.setInterval(() => {
+          repositionNowLine(nowLineEl);
+        }, NOW_LINE_REFRESH_MS);
+      }
     }
   }
 
   destroy(): void {
     this.containerEl = null;
     this.md.unload();
+    if (this.nowLineIntervalId !== null) {
+      window.clearInterval(this.nowLineIntervalId);
+      this.nowLineIntervalId = null;
+    }
   }
 }

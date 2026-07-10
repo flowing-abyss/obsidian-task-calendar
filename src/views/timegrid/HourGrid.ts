@@ -12,6 +12,16 @@ export interface HourGridHandles {
   rootEl: HTMLElement;
   gridRowEl: HTMLElement;
   days: DayColumnHandles[];
+  /** The "now" red-line element, present only when `dates` includes today; null otherwise. */
+  nowLineEl: HTMLElement | null;
+}
+
+/** Recompute and apply a now-line element's vertical position from the current time. Used both
+ * at initial render and by the periodic refresh (TodayView/WeekTimeGridView) so the line doesn't
+ * silently drift out of sync while the view stays mounted for a while. */
+export function repositionNowLine(nowLineEl: HTMLElement): void {
+  const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
+  nowLineEl.style.top = `${minutesToPixels(nowMinutes)}px`;
 }
 
 /** Render the static hour-grid + all-day band skeleton for the given dates (1 = Today, 7 = Week). */
@@ -51,6 +61,8 @@ export function renderHourGrid(
     label.textContent = `${h.toString().padStart(2, '0')}:00`;
   }
 
+  let nowLineEl: HTMLElement | null = null;
+
   const days: DayColumnHandles[] = dates.map((date, i) => {
     const dayColumn = gridRow.createDiv({
       cls: `tc-tg-day-column${date === today ? ' is-today' : ''}`,
@@ -64,9 +76,8 @@ export function renderHourGrid(
     const hourColumnEl = dayColumn.createDiv({ cls: 'tc-tg-hour-column' });
 
     if (date === today) {
-      const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
-      const nowLine = hourColumnEl.createDiv({ cls: 'tc-tg-now-line' });
-      nowLine.style.top = `${minutesToPixels(nowMinutes)}px`;
+      nowLineEl = hourColumnEl.createDiv({ cls: 'tc-tg-now-line' });
+      repositionNowLine(nowLineEl);
     }
 
     if (onDropTime) {
@@ -100,5 +111,5 @@ export function renderHourGrid(
     return { date, hourColumnEl, allDayCellEl: alldayCells[i]! };
   });
 
-  return { rootEl: root, gridRowEl: gridRow, days };
+  return { rootEl: root, gridRowEl: gridRow, days, nowLineEl };
 }
