@@ -6,8 +6,6 @@ import { renderHourGrid } from './timegrid/HourGrid';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
 import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
 
-export type { TimeGridCallbacks as WeekTimeGridViewCallbacks };
-
 export class WeekTimeGridView extends BaseView {
   private containerEl: HTMLElement | null = null;
 

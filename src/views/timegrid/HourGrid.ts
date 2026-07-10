@@ -1,4 +1,4 @@
-export interface DayColumnHandles {
+interface DayColumnHandles {
   date: string;
   hourColumnEl: HTMLElement;
   allDayCellEl: HTMLElement;
