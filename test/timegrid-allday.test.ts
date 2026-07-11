@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { Component, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
@@ -7,6 +9,14 @@ import { dispatchDnD, freshContainer, task } from './helpers';
 
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
 const fakeApp = {} as App;
+
+const css = readFileSync(resolve(import.meta.dirname, '..', 'styles.css'), 'utf8');
+
+function declarationsFor(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\\,/gu, ',');
+  const match = new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`, 'u').exec(css);
+  return match?.groups?.['body'] ?? '';
+}
 
 const callbacks = () => ({
   app: fakeApp,
@@ -542,5 +552,116 @@ describe('renderAllDayCell', () => {
     const container = freshContainer();
     renderAllDayCell(container, '2026-07-10', [], [], [], callbacks());
     expect(() => container.dispatchEvent(new MouseEvent('click', { bubbles: true }))).not.toThrow();
+  });
+
+  describe("Task 37: edge-resize no longer races/borrows the ancestor's native cross-day drag", () => {
+    it("'.tc-tg-body.is-edge-resizing' stays fully opaque (no opacity override) and uses a dashed outline in the tag-color convention, distinct from '.is-dragging''s opacity:0.5", () => {
+      const resizingDecls = declarationsFor('.tc-tg-body.is-edge-resizing');
+      expect(resizingDecls).not.toBe('');
+      // Opaque: unlike .is-dragging, this must never dim the item — the whole point is that it
+      // reads as a deliberate, still-fully-legible "in progress" state, not the native drag's
+      // washed-out accidental side effect this fixes.
+      expect(resizingDecls).not.toMatch(/opacity\s*:/u);
+      // Reuses the same --tc-tag-color (falling back to the neutral accent) the solid tag-fill
+      // background already uses, so the "ghost" reads as belonging to this specific item.
+      expect(resizingDecls).toMatch(
+        /outline\s*:.*var\(--tc-tag-color,\s*var\(--interactive-accent\)\)/u,
+      );
+      expect(resizingDecls).toMatch(/dashed/u);
+
+      const draggingDecls = declarationsFor('.tc-tg-body.is-dragging');
+      expect(draggingDecls).toMatch(/opacity\s*:\s*0\.5/u);
+    });
+
+    it('pointerdown on a span edge handle flips the ancestor .tc-tg-body draggable to false and adds is-edge-resizing (blocking the native-drag-ancestor-fallback that used to arm mid-resize)', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+      renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
+      const bar = container.querySelector('.tc-tg-span') as HTMLElement;
+      const rightHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+
+      expect(bar.getAttribute('draggable')).toBe('true');
+      rightHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      expect(bar.getAttribute('draggable')).toBe('false');
+      expect(bar.hasClass('is-edge-resizing')).toBe(true);
+
+      // jsdom has no elementFromPoint implementation at all; stub it (mirrors the existing
+      // stationary-right-click test above) so the real pointerup path can run to completion.
+      const originalElementFromPoint = activeDocument.elementFromPoint;
+      activeDocument.elementFromPoint = () => null;
+      try {
+        window.dispatchEvent(
+          new PointerEvent('pointerup', { pointerId: 1, clientX: 0, clientY: 0 }),
+        );
+      } finally {
+        activeDocument.elementFromPoint = originalElementFromPoint;
+      }
+      expect(bar.getAttribute('draggable')).toBe('true');
+      expect(bar.hasClass('is-edge-resizing')).toBe(false);
+    });
+
+    it('a pointercancel (native drag hijacking the session) restores draggable/removes is-edge-resizing and does not fire the resolve callback, without leaking listeners for the next gesture', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ due: '2026-07-10', text: 'Plain' });
+      renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
+      const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-plain .tc-tg-span-edge--right') as HTMLElement;
+
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      expect(chip.getAttribute('draggable')).toBe('false');
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      expect(chip.getAttribute('draggable')).toBe('true');
+      expect(chip.hasClass('is-edge-resizing')).toBe(false);
+      expect(cbs.onExtendToSpan).not.toHaveBeenCalled();
+
+      // A fresh, unrelated gesture right after must behave normally — proving the cancelled
+      // gesture's window listeners were torn down, not leaked (which would otherwise double-fire).
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 2 }));
+      (container as unknown as { __tgTestEndDrag: (date: string) => void }).__tgTestEndDrag(
+        '2026-07-12',
+      );
+      expect(cbs.onExtendToSpan).toHaveBeenCalledTimes(1);
+      expect(cbs.onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-12');
+    });
+
+    it("resizing one item does not mutate any sibling element's layout-affecting attributes/inline styles (purely a class/attribute toggle on the dragged item itself)", () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const span = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+      const plain = task({ due: '2026-07-10', text: 'Plain' });
+      renderAllDayCell(container, '2026-07-10', [span], [plain], [], cbs);
+
+      const bar = container.querySelector('.tc-tg-span') as HTMLElement;
+      const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+
+      const snapshot = (el: HTMLElement) => ({
+        style: el.getAttribute('style'),
+        class: el.className,
+        draggable: el.getAttribute('draggable'),
+      });
+      const before = { container: snapshot(container), chip: snapshot(chip) };
+
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      // The dragged bar itself changed (expected); its sibling chip and the shared cell container
+      // must not have — no layout recalculation should touch anything but the dragged element.
+      expect(snapshot(chip)).toEqual(before.chip);
+      expect(snapshot(container)).toEqual(before.container);
+      expect(bar.getAttribute('draggable')).toBe('false');
+
+      const originalElementFromPoint = activeDocument.elementFromPoint;
+      activeDocument.elementFromPoint = () => null;
+      try {
+        window.dispatchEvent(
+          new PointerEvent('pointerup', { pointerId: 1, clientX: 0, clientY: 0 }),
+        );
+      } finally {
+        activeDocument.elementFromPoint = originalElementFromPoint;
+      }
+      expect(snapshot(chip)).toEqual(before.chip);
+      expect(snapshot(container)).toEqual(before.container);
+    });
   });
 });

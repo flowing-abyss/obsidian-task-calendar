@@ -1664,6 +1664,23 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   opacity: 0.5;
 }
 
+/* Task 37: shown on a span/plain item's own `.tc-tg-body` while its edge-resize handle
+   (attachEdgeResize, renderAllDay.ts) is pointer-held. Before this, an edge-resize drag could
+   accidentally arm the item's native HTML5 dragstart (see attachEdgeResize's own comment) and
+   pick up `.is-dragging`'s opacity: 0.5 — an unstyled, unintentional "phantom" look, now fixed
+   at the source so it can never fire during a resize. This is the deliberate replacement: stays
+   fully opaque so the Round 3 Task 24 solid tag-fill convention keeps reading exactly as it does
+   at rest, and signals "in progress" via a dashed outline in the item's own tag color (falling
+   back to the neutral accent, same as the fill itself) — reusing the "dashed line reads as
+   still-connected/in-progress" language `.tc-tg-block-continuation`'s dashed border already
+   established, rather than inventing a new convention. Purely a class toggle on the dragged
+   item's own element — see attachEdgeResize: no DOM is created/measured and no sibling element
+   is touched while this is active. */
+.tc-tg-body.is-edge-resizing {
+  outline: 2px dashed var(--tc-tag-color, var(--interactive-accent));
+  outline-offset: 1px;
+}
+
 /* Click-to-create quick-add: positioned exactly like a .tc-tg-block (absolute child of the
    same hourColumnEl, anchored via inline `top`) at the clicked time, instead of a block
    spanning a duration. */

@@ -121,12 +121,21 @@ function attachEdgeResize(
   onResolve: (task: Task, date: string) => void,
 ): void {
   // The handle sits inside a `draggable="true"` body (renderDraggableBody, for the
-  // whole-task cross-day move). Without opting the handle itself out, a mousedown+drag
-  // gesture starting on the handle could arm the ancestor's native HTML5 dragstart at
-  // the same time as this pointer-based resize — draggable="false" here (the standard
-  // technique for a non-draggable island inside a draggable element) keeps the two
-  // gestures from racing.
+  // whole-task cross-day move). draggable="false" here is NOT enough on its own to stop a
+  // mousedown+drag gesture starting on the handle from arming the ancestor's native HTML5
+  // dragstart: per the HTML Drag and Drop spec, a mousedown on a non-draggable descendant of a
+  // draggable element still starts a drag FROM THE ANCESTOR (the browser walks up to the
+  // nearest draggable=true element and uses that as the drag source) — draggable="false" only
+  // stops the handle itself from being independently draggable, it does not block the ancestor
+  // fallback. Confirmed live (Task 37): dragging an edge handle armed the body's own `dragstart`,
+  // which added `.is-dragging` (opacity: 0.5, styles.css) to the whole item for the duration of
+  // the resize and fired `dragover`/`.is-drag-over` on every day cell the pointer crossed — the
+  // washed-out "phantom" look and "grid becomes uneven" reports were this accidental native drag,
+  // not a deliberate preview. Fixed below by flipping the ancestor's own `draggable` off for the
+  // duration of the gesture (armed on this handle's pointerdown, restored on pointerup/cancel),
+  // which actually prevents the fallback per spec, instead of racing it.
   handle.setAttribute('draggable', 'false');
+  const body = handle.closest<HTMLElement>('.tc-tg-body');
 
   const resolve = (date: string): void => {
     onResolve(task, date);
@@ -136,20 +145,42 @@ function attachEdgeResize(
     e.preventDefault();
   };
 
+  // Task 37: a deliberate, lightweight "this is being reshaped" state — toggled purely as a CSS
+  // class on the dragged item's own element (see .tc-tg-body.is-edge-resizing in styles.css), no
+  // DOM creation/measurement and no sibling elements touched, so it can't itself cause the sibling
+  // layout thrash the "grid becomes uneven" report described.
+  const endResize = (): void => {
+    body?.setAttribute('draggable', 'true');
+    body?.removeClass('is-edge-resizing');
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerCancel);
+  };
+
   const onPointerUp = (upEvent: PointerEvent): void => {
     const target = activeDocument.elementFromPoint(upEvent.clientX, upEvent.clientY);
     const dayEl = target?.closest('[data-tg-date]');
     const date = dayEl?.getAttribute('data-tg-date');
     if (date) resolve(date);
-    window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
+    endResize();
+  };
+
+  // Defensive belt-and-suspenders (mirrors renderTimedBlocks.ts's attachHorizontalResize): if a
+  // native drag were ever armed despite the draggable="false" flip above, the pointer session
+  // would end in `pointercancel` rather than `pointerup`, and without this the window
+  // pointermove/pointerup/pointercancel listeners would leak instead of being torn down.
+  const onPointerCancel = (): void => {
+    endResize();
   };
 
   handle.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    body?.setAttribute('draggable', 'false');
+    body?.addClass('is-edge-resizing');
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
   });
 
   const withHook = cellEl as HTMLElement & {
