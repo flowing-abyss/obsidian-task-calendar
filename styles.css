@@ -1352,8 +1352,16 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   min-width: 0;
 }
 
+/* Task 21: was 0.85em, which nests inside .tc-tg-block's own 0.8em — an em value
+   compounds against its *parent's computed* size, not the root, so 0.85em here
+   actually rendered at 0.85 * 0.8 = 0.68em of the real interface font-size (visibly
+   smaller than intended, and smaller than .tc-tg-block-title's 0.8em despite reading
+   as "only slightly smaller than the title" in the source). 0.95em keeps the same
+   *relative-to-the-block* convention (so it still scales correctly if the block's own
+   0.8em ever changes) while landing close to the title's actual rendered size instead
+   of compounding down to two-thirds of it. */
 .tc-tg-block-subtitle {
-  font-size: 0.85em;
+  font-size: 0.95em;
   color: var(--text-muted);
 }
 
@@ -1372,10 +1380,12 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 }
 .tc-tg-body-meta {
   margin-inline-start: 4px;
+  flex-shrink: 0;
 }
 .tc-mg-item-meta {
   margin-inline-start: 4px;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .tc-tg-resize-handle {
@@ -1387,12 +1397,30 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   cursor: ns-resize;
 }
 
+/* Task 21: checkbox + title share one flex row so they render on the same line
+   instead of stacking — same root cause and fix as .tc-tg-block-head (Task 12):
+   the status marker is a `<span>` but `.tc-status-marker` sets `display: grid` on
+   itself, which makes it a block-level box even though its tag is inline, so
+   without a flex (or grid) parent the title that follows always wrapped onto its
+   own line below it. */
 .tc-tg-body {
   border-radius: 6px;
   padding: 2px 8px;
   font-size: 0.8em;
   cursor: grab;
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  min-width: 0;
+}
+
+.tc-tg-body-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tc-tg-span {
@@ -1466,6 +1494,32 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-tg-deadline-marker[data-priority='F'] {
   border-color: var(--tc-priority-f);
   color: var(--tc-priority-f);
+}
+
+/* Task 21: same checkbox-scaling override as .tc-tg-block-head (Task 12), extended to
+   every other flex row that carries a status marker next to its title — without this,
+   the marker stays at .tc-status-marker's own fixed 19px (sized for TaskCard's larger
+   text) and looks oversized against these items' much smaller 0.72–0.8em text. */
+.tc-tg-body .tc-status-marker,
+.tc-tg-deadline-marker .tc-status-marker,
+.tc-mg-block-dot .tc-status-marker,
+.tc-mg-span-segment .tc-status-marker,
+.tc-mg-plain .tc-status-marker,
+.tc-mg-deadline-marker .tc-status-marker {
+  font-size: 1em;
+  width: 1.6em;
+  height: 1.6em;
+  min-width: 1.6em;
+  flex: 0 0 1.6em;
+}
+.tc-tg-body .tc-status-marker svg,
+.tc-tg-deadline-marker .tc-status-marker svg,
+.tc-mg-block-dot .tc-status-marker svg,
+.tc-mg-span-segment .tc-status-marker svg,
+.tc-mg-plain .tc-status-marker svg,
+.tc-mg-deadline-marker .tc-status-marker svg {
+  width: 0.85em;
+  height: 0.85em;
 }
 
 .tc-tg-block.is-dragging,
@@ -1656,6 +1710,12 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   color: var(--text-muted);
 }
 
+/* Task 21: checkbox + title share one flex row (same root cause/fix as
+   .tc-tg-block-head — Task 12 — and .tc-tg-body above): .tc-status-marker sets its own
+   `display: grid`, making it a block-level box despite being a `<span>`, so without a
+   flex parent the title after it always wrapped onto a new line. Text truncation moves
+   from this container (which can no longer usefully own text-overflow once it's a flex
+   row of several children) onto .tc-mg-item-title specifically, below. */
 .tc-mg-plain,
 .tc-mg-block-dot,
 .tc-mg-span-segment,
@@ -1664,9 +1724,23 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   border-radius: 4px;
   padding: 0 4px;
   overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  min-width: 0;
+}
+
+.tc-mg-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
+}
+
+.tc-mg-item-time {
+  flex-shrink: 0;
 }
 
 /* .tc-mg-plain / .tc-mg-block-dot / .tc-mg-span-segment tag-colored fill is set by the

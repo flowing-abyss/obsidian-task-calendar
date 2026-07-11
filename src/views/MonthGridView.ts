@@ -146,7 +146,7 @@ export class MonthGridView extends BaseView {
       const dot = cell.createDiv({ cls: 'tc-mg-block-dot' });
       this.applyTagFill(dot, t, tagGroups);
       this.renderMarker(dot, t);
-      dot.createSpan({ text: `${t.time} ` });
+      dot.createSpan({ cls: 'tc-mg-item-time', text: `${t.time} ` });
       this.renderTitle(dot, t);
       this.renderCompactMeta(dot, t, tagGroups);
       dot.addEventListener('contextmenu', (e) => {
@@ -223,9 +223,15 @@ export class MonthGridView extends BaseView {
     renderTagChips(meta, t, tagGroups, 1);
   }
 
-  /** Renders the task's markdown/wiki-link-aware title text as a trailing inline span. */
+  /**
+   * Renders the task's markdown/wiki-link-aware title text as a trailing inline span.
+   * `.tc-mg-item-title` (Task 21) makes it the flex child that truncates independently —
+   * the container (.tc-mg-plain/-block-dot/-span-segment/-deadline-marker) is now a flex
+   * row (marker + [time] + title + meta) instead of block-stacking, matching
+   * renderTimedBlocks.ts's `.tc-tg-block-head` pattern.
+   */
   private renderTitle(container: HTMLElement, t: Task): void {
-    const titleEl = container.createSpan();
+    const titleEl = container.createSpan({ cls: 'tc-mg-item-title' });
     renderTaskText(titleEl, t.markdownText, {
       app: this.callbacks.app,
       sourcePath: t.filePath,

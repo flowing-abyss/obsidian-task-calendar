@@ -64,7 +64,10 @@ function renderDraggableBody(
       });
     },
   });
-  const titleEl = el.createSpan();
+  // Task 21: `.tc-tg-body-title` (not a bare span) so it can be a flex child that
+  // truncates independently — `.tc-tg-body` itself is now a flex row (marker + title +
+  // meta) instead of block-stacking, matching renderTimedBlocks.ts's `.tc-tg-block-head`.
+  const titleEl = el.createSpan({ cls: 'tc-tg-body-title' });
   renderTaskText(titleEl, task.markdownText, {
     app: callbacks.app,
     sourcePath: task.filePath,

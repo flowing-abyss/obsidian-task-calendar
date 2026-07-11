@@ -219,6 +219,30 @@ describe('renderAllDayCell', () => {
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 
+  it('renders the status marker and title as flex-row siblings in one line on a plain chip (Task 21: was stacking on separate lines)', () => {
+    const container = freshContainer();
+    const t = task({ due: '2026-07-10', text: 'Plain' });
+    renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
+    const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+    const marker = chip.querySelector('.tc-status-marker');
+    const title = chip.querySelector('.tc-tg-body-title');
+    expect(marker).not.toBeNull();
+    expect(title).not.toBeNull();
+    expect(marker?.nextElementSibling).toBe(title);
+  });
+
+  it('renders the status marker and title as flex-row siblings in one line on a span body (Task 21)', () => {
+    const container = freshContainer();
+    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks());
+    const bar = container.querySelector('.tc-tg-span') as HTMLElement;
+    const marker = bar.querySelector('.tc-status-marker');
+    const title = bar.querySelector('.tc-tg-body-title');
+    expect(marker).not.toBeNull();
+    expect(title).not.toBeNull();
+    expect(marker?.nextElementSibling).toBe(title);
+  });
+
   it('right-clicking the status marker on a plain chip opens the status/priority popover and does NOT fire onTaskClick (distinct from the chip contextmenu)', () => {
     const container = freshContainer();
     const cbs = callbacks();

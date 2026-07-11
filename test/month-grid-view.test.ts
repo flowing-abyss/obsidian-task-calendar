@@ -306,6 +306,68 @@ describe('MonthGridView', () => {
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 
+  it('renders the status marker and title as flex-row siblings in one line on a compact plain row (Task 21: was stacking on separate lines)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', text: 'Plain' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
+    const marker = row.querySelector('.tc-status-marker');
+    const title = row.querySelector('.tc-mg-item-title');
+    expect(marker).not.toBeNull();
+    expect(title).not.toBeNull();
+    expect(marker?.nextElementSibling).toBe(title);
+  });
+
+  it('renders the status marker, time, and title as flex-row siblings in one line on a compact block-dot (Task 21)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const dot = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-block-dot',
+    ) as HTMLElement;
+    const marker = dot.querySelector('.tc-status-marker');
+    const time = dot.querySelector('.tc-mg-item-time');
+    const title = dot.querySelector('.tc-mg-item-title');
+    expect(marker).not.toBeNull();
+    expect(time).not.toBeNull();
+    expect(title).not.toBeNull();
+    expect(marker?.nextElementSibling).toBe(time);
+    expect(time?.nextElementSibling).toBe(title);
+  });
+
+  it('renders the status marker and title as flex-row siblings in one line on a compact span-segment (Task 21)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const bar = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
+    ) as HTMLElement;
+    const marker = bar.querySelector('.tc-status-marker');
+    const title = bar.querySelector('.tc-mg-item-title');
+    expect(marker).not.toBeNull();
+    expect(title).not.toBeNull();
+    expect(marker?.nextElementSibling).toBe(title);
+  });
+
+  it('renders the status marker and title as flex-row siblings on a compact deadline marker (Task 21)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const t = task({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+    const markerEl = container.querySelector(
+      '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker',
+    ) as HTMLElement;
+    const title = markerEl.querySelector('.tc-mg-item-title');
+    expect(title).not.toBeNull();
+  });
+
   it('right-clicking the status marker on a compact plain row opens the status/priority popover and does NOT fire onTaskClick (distinct from the row contextmenu)', () => {
     const container = freshContainer();
     const cbs = callbacks();
