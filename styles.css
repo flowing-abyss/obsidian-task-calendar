@@ -1187,8 +1187,16 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   background-color: var(--background-modifier-hover);
 }
 
-.tc-tg-header-cell.is-today {
-  color: var(--interactive-accent);
+.tc-tg-header-weekday {
+  margin-right: 0.3em;
+}
+
+/* Round 3: today used to be conveyed by a full-column red border (too aggressive in Day view,
+   too noisy in Week). Now only the day-number span is accented, keeping the weekday abbreviation
+   in its existing muted style. */
+.tc-tg-header-cell.is-today .tc-tg-header-day-number {
+  color: var(--text-error);
+  font-weight: 700;
 }
 
 .tc-tg-allday-row {
@@ -1249,12 +1257,6 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   flex: 1;
   position: relative;
   border-left: 1px solid var(--background-modifier-border);
-}
-
-/* Same red as .tc-tg-now-line, so "today" reads as one consistent visual language:
-   an outline around the whole column plus the line marking the current time within it. */
-.tc-tg-day-column.is-today {
-  box-shadow: inset 0 0 0 2px var(--text-error);
 }
 
 .tc-tg-hour-row {
@@ -1639,9 +1641,9 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   color: var(--text-normal);
 }
 
+/* Round 3: dropped the pre-existing background-color tint that used to sit alongside this
+   border — the user found the border alone sufficient and asked for the tint's removal. */
 .tc-mg-cell.is-today {
-  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
-  /* Same red as .tc-tg-now-line (Week view), so "today" reads consistently across views. */
   box-shadow: inset 0 0 0 2px var(--text-error);
 }
 

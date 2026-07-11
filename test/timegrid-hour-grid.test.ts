@@ -36,14 +36,47 @@ describe('renderHourGrid', () => {
     expect(headers[1]?.hasClass('is-today')).toBe(false);
   });
 
-  it('marks the day-column matching today with is-today', () => {
+  it('never marks the day-column itself with is-today (no full-column border in any view)', () => {
+    // Round 3: the day-column's box-shadow border was removed entirely — Day view found it
+    // redundant (only one column, obviously "today") and Week found a full-height border
+    // around one column too visually noisy. "Today" is now conveyed only via the header's
+    // accented day-number (see the header-cell tests below), never a column-level class.
     const container = freshContainer();
     const today = window.moment().format('YYYY-MM-DD');
     const other = window.moment().add(1, 'day').format('YYYY-MM-DD');
     renderHourGrid(container, [today, other]);
     const columns = Array.from(container.querySelectorAll('.tc-tg-day-column'));
-    expect(columns[0]?.hasClass('is-today')).toBe(true);
+    expect(columns[0]?.hasClass('is-today')).toBe(false);
     expect(columns[1]?.hasClass('is-today')).toBe(false);
+  });
+
+  it('single-date (Day/Today view) render has no is-today day-column anywhere', () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    renderHourGrid(container, [today]);
+    const columns = Array.from(container.querySelectorAll('.tc-tg-day-column'));
+    expect(columns.every((c) => !c.hasClass('is-today'))).toBe(true);
+  });
+
+  it("splits the header cell's date into an independently-selectable weekday span and day-number span", () => {
+    const container = freshContainer();
+    renderHourGrid(container, ['2026-07-10']);
+    const header = container.querySelector('.tc-tg-header-cell') as HTMLElement;
+    const weekday = header.querySelector('.tc-tg-header-weekday');
+    const dayNumber = header.querySelector('.tc-tg-header-day-number');
+    expect(weekday?.textContent).toBe('Fri');
+    expect(dayNumber?.textContent).toBe('10');
+  });
+
+  it("accents only today's header day-number span, in a multi-date (Week) render", () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    const other = window.moment().add(1, 'day').format('YYYY-MM-DD');
+    renderHourGrid(container, [today, other]);
+    const headers = Array.from(container.querySelectorAll('.tc-tg-header-cell'));
+    expect(headers[0]?.hasClass('is-today')).toBe(true);
+    expect(headers[0]?.querySelector('.tc-tg-header-day-number')).not.toBeNull();
+    expect(headers[1]?.hasClass('is-today')).toBe(false);
   });
 
   it('renders one day column per date, with 24 hour rows each', () => {
@@ -242,6 +275,25 @@ describe('renderHourGrid', () => {
     const ev = new MouseEvent('drop', { bubbles: true, clientY: 148 });
     Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
     expect(() => hourColumnEl.dispatchEvent(ev)).not.toThrow();
+  });
+});
+
+describe('is-today styling (Round 3: no column border anywhere, header day-number accent only)', () => {
+  it('.tc-tg-day-column.is-today no longer declares a box-shadow border', () => {
+    expect(css).not.toMatch(/\.tc-tg-day-column\.is-today\s*\{[^}]*box-shadow/u);
+  });
+
+  it('.tc-tg-header-cell.is-today no longer colors the whole header cell text', () => {
+    const declarations = declarationsFor('.tc-tg-header-cell.is-today');
+    // The old rule set `color` directly on the header cell; that's been replaced by a
+    // more specific rule targeting only the day-number span (checked below).
+    expect(declarations).toBe('');
+  });
+
+  it('accents the day-number span red/bold when its header cell is is-today', () => {
+    const declarations = declarationsFor('.tc-tg-header-cell.is-today .tc-tg-header-day-number');
+    expect(declarations).toContain('var(--text-error)');
+    expect(declarations).toMatch(/font-weight:\s*700/u);
   });
 });
 

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
@@ -8,6 +10,13 @@ import { DataTransferStub, freshContainer, resolvedConfig, task, useRealMoment }
 useRealMoment();
 const fakeApp = {} as App;
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
+const css = readFileSync(resolve(import.meta.dirname, '..', 'styles.css'), 'utf8');
+
+function declarationsFor(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\\,/gu, ',');
+  const match = new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`, 'u').exec(css);
+  return match?.groups?.['body'] ?? '';
+}
 
 function callbacks() {
   return {
@@ -39,6 +48,15 @@ describe('MonthGridView', () => {
     view.render(container, [], resolvedConfig({}));
     const cell = container.querySelector(`[data-mg-date="${today}"]`);
     expect(cell?.classList.contains('is-today')).toBe(true);
+  });
+
+  it("today's cell CSS keeps only the red border, with no separate background tint (Round 3)", () => {
+    // Round 3: the user asked for the pre-existing background-color tint on .tc-mg-cell.is-today
+    // to be removed, keeping just the border that Round 2 added. Assert against the actual
+    // declarations so a future edit can't silently reintroduce a background alongside it.
+    const declarations = declarationsFor('.tc-mg-cell.is-today');
+    expect(declarations).toContain('box-shadow');
+    expect(declarations).not.toMatch(/background/u);
   });
 
   it('a plain task on a given day renders a compact row in that cell', () => {

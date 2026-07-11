@@ -47,7 +47,15 @@ export function renderHourGrid(
     const headerCell = headerRow.createDiv({
       cls: `tc-tg-header-cell${date === today ? ' is-today' : ''}${onDayHeaderClick ? ' is-clickable' : ''}`,
     });
-    headerCell.textContent = window.moment(date).format('ddd D');
+    // Two separate spans (not one text node) so the day number can be styled independently of
+    // the weekday abbreviation — today's accent (red, bold) applies only to the number, not the
+    // whole "ddd D" string, per the Round 3 request to tone down Week's full-column red border
+    // into a smaller, header-scoped accent.
+    headerCell.createSpan({ cls: 'tc-tg-header-weekday', text: window.moment(date).format('ddd') });
+    headerCell.createSpan({
+      cls: 'tc-tg-header-day-number',
+      text: window.moment(date).format('D'),
+    });
     // Drill into the Day (Today) view for this specific date — same behavior as clicking a
     // Month day cell (CenterPanel's onDayClick). Optional so callers that don't need it (or
     // haven't opted in yet) pay no listener cost.
@@ -77,9 +85,11 @@ export function renderHourGrid(
   let nowLineEl: HTMLElement | null = null;
 
   const days: DayColumnHandles[] = dates.map((date, i) => {
-    const dayColumn = gridRow.createDiv({
-      cls: `tc-tg-day-column${date === today ? ' is-today' : ''}`,
-    });
+    // No is-today class here: Round 3 removed the day-column's full-column red border (too
+    // aggressive in Day view, where it boxed in the entire single-column view redundantly; too
+    // noisy in Week, where it outlined one of 7 columns). "Today" is now conveyed only via the
+    // header's accented day-number span above, so this column never needs the class.
+    const dayColumn = gridRow.createDiv({ cls: 'tc-tg-day-column' });
     // Lets CenterPanel locate a specific day's column from outside this module (e.g. to
     // anchor the click-to-create quick-add popover — see onCreateAtTime below).
     dayColumn.setAttribute('data-tg-date', date);
