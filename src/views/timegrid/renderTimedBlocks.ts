@@ -8,6 +8,7 @@ import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';
 import {
+  capContinuationMinHeightsPx,
   capMinHeightsPx,
   MIN_BLOCK_HEIGHT_PX,
   minutesToPixels,
@@ -60,17 +61,28 @@ const SNAP_MINUTES = 15;
 const MAX_START_MINUTES = 24 * 60 - SNAP_MINUTES; // 23:45 — the last valid quarter-hour slot.
 const MAX_DURATION_MINUTES = 24 * 60; // A full day is already a generous, unambiguous cap.
 
+/**
+ * Task 37: shared `Task[]` -> `TimedBlockInput[]` conversion, factored out of
+ * `renderTimedBlocksForDay` so callers (WeekTimeGridView.ts/TodayView.ts) can build the same
+ * `startMinutes`/`durationMinutes` shape for a day's anchor blocks and hand it to
+ * `renderTimedSpanContinuation`'s `otherBlocks` parameter — letting a continuation segment's
+ * min-height clamp see the anchor block(s) sharing its day column, not just other continuations.
+ */
+export function toTimedBlockInputs(tasks: Task[]): TimedBlockInput[] {
+  return tasks.map((t) => ({
+    task: t,
+    startMinutes: timeStringToMinutes(t.time ?? '00:00'),
+    durationMinutes: t.duration ?? DEFAULT_DURATION_MINUTES,
+  }));
+}
+
 export function renderTimedBlocksForDay(
   hourColumnEl: HTMLElement,
   tasksWithTime: Task[],
   callbacks: TimedBlockCallbacks,
   tagGroups: TagGroup[] = [],
 ): void {
-  const inputs: TimedBlockInput[] = tasksWithTime.map((t) => ({
-    task: t,
-    startMinutes: timeStringToMinutes(t.time ?? '00:00'),
-    durationMinutes: t.duration ?? DEFAULT_DURATION_MINUTES,
-  }));
+  const inputs: TimedBlockInput[] = toTimedBlockInputs(tasksWithTime);
   const positioned = packOverlaps(inputs);
   // Task 36: `.tc-tg-block`'s CSS min-height keeps a short block's checkbox+title row legible,
   // but only ever grows a block past its duration-derived height — see capMinHeightsPx's own
@@ -208,19 +220,37 @@ export function renderTimedBlocksForDay(
  * (subtasks/comments/links) the anchor block shows, so a continuation segment reads as more than
  * just a title bar — but stays purely presentational: no checkbox, and neither the subtitle nor
  * the badges container gets a click/drag handler, so this remains as non-interactive as before.
+ *
+ * Task 37: like `.tc-tg-block`, `.tc-tg-block-continuation` has a CSS min-height that keeps a
+ * short segment's title legible — but, unlike anchor blocks, continuation segments never go
+ * through `packOverlaps`'s column-collision avoidance (they're always rendered full-width, one
+ * per task). `capContinuationMinHeightsPx` closes that gap: `otherBlocks` lets a caller pass the
+ * SAME day's already-positioned anchor blocks (see `toTimedBlockInputs`) so a continuation's
+ * min-height growth is clamped against those too, not just other continuations.
  */
 export function renderTimedSpanContinuation(
   hourColumnEl: HTMLElement,
   tasks: Task[],
   onTaskClick?: (task: Task) => void,
   tagGroups: TagGroup[] = [],
+  otherBlocks: TimedBlockInput[] = [],
 ): void {
-  for (const t of tasks) {
-    const startMinutes = timeStringToMinutes(t.time ?? '00:00');
-    const durationMinutes = t.duration ?? DEFAULT_DURATION_MINUTES;
+  const continuationInputs = toTimedBlockInputs(tasks);
+  const minHeightCaps = capContinuationMinHeightsPx(continuationInputs, otherBlocks);
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i]!;
+    const continuationInput = continuationInputs[i]!;
+    const { startMinutes, durationMinutes } = continuationInput;
     const seg = hourColumnEl.createDiv({ cls: 'tc-tg-block-continuation' });
     seg.style.top = `${minutesToPixels(startMinutes)}px`;
-    seg.style.height = `${minutesToPixels(durationMinutes)}px`;
+    const heightPx = minutesToPixels(durationMinutes);
+    seg.style.height = `${heightPx}px`;
+    // Mirrors renderTimedBlocksForDay's own use of capMinHeightsPx exactly: only intervene when
+    // the CSS min-height would otherwise cross into whatever's next in this day column.
+    const cap = minHeightCaps.get(continuationInput) ?? Infinity;
+    if (cap < MIN_BLOCK_HEIGHT_PX) {
+      seg.style.minHeight = `${Math.max(heightPx, cap)}px`;
+    }
     const tagColor = tagColorFor(t.rawText, tagGroups);
     if (tagColor) seg.setCssProps({ '--tc-tag-color': tagColor });
     const topRow = seg.createDiv({ cls: 'tc-tg-block-toprow' });

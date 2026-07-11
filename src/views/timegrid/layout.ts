@@ -100,6 +100,57 @@ export function capMinHeightsPx(positioned: PositionedBlock[]): Map<PositionedBl
 }
 
 /**
+ * Task 37: `capMinHeightsPx`'s continuation-segment counterpart. `.tc-tg-block-continuation`
+ * (renderTimedSpanContinuation's non-anchor-day segment of a multi-day timed span) got the same
+ * CSS min-height treatment `.tc-tg-block` did (Task 36) — but continuation segments never go
+ * through `packOverlaps`: they're always rendered full-width, one per task, with no column
+ * packing at all. So the same growth-crossing-into-a-neighbor problem `capMinHeightsPx` solves for
+ * anchor blocks can happen here too, just without a `column` to key off of.
+ *
+ * Rather than inventing column packing for continuations (they're deliberately always
+ * full-width), this treats every continuation segment for a day as occupying one shared "column"
+ * with each other AND with that day's already-positioned anchor blocks (passed as `others`, e.g.
+ * `renderTimedBlocksForDay`'s `positioned` array for the same day) — anchor blocks and
+ * continuation segments are rendered into the very same `hourColumnEl` by the two call sites
+ * (WeekTimeGridView.ts/TodayView.ts), so a continuation's min-height can just as easily cross into
+ * an anchor block below it as into another continuation.
+ *
+ * Only continuation segments are ever capped (returned in the map) — an anchor block's own cap
+ * against OTHER anchor blocks is still `capMinHeightsPx`'s unchanged job; this function only ever
+ * uses `others` as read-only context for what a continuation might grow into.
+ */
+export function capContinuationMinHeightsPx(
+  continuations: TimedBlockInput[],
+  others: TimedBlockInput[] = [],
+): Map<TimedBlockInput, number> {
+  interface Item {
+    startMinutes: number;
+    input: TimedBlockInput;
+    isContinuation: boolean;
+  }
+  const items: Item[] = [
+    ...continuations.map((input) => ({
+      startMinutes: input.startMinutes,
+      input,
+      isContinuation: true,
+    })),
+    ...others.map((input) => ({ startMinutes: input.startMinutes, input, isContinuation: false })),
+  ].sort((a, b) => a.startMinutes - b.startMinutes);
+
+  const caps = new Map<TimedBlockInput, number>();
+  for (let i = 0; i < items.length; i++) {
+    const cur = items[i]!;
+    if (!cur.isContinuation) continue;
+    const next = items[i + 1];
+    const gapPx = next
+      ? minutesToPixels(next.startMinutes - cur.startMinutes) - MIN_BLOCK_GAP_MARGIN_PX
+      : Infinity;
+    caps.set(cur.input, gapPx);
+  }
+  return caps;
+}
+
+/**
  * Google-Calendar-style column packing for overlapping time-grid events: sort
  * by start time, assign each block the lowest-numbered column whose previous
  * occupant has already ended, then set `columns` to the max column index + 1

@@ -7,6 +7,7 @@ import { StatusRegistry } from '../src/status/StatusRegistry';
 import {
   renderTimedBlocksForDay,
   renderTimedSpanContinuation,
+  toTimedBlockInputs,
 } from '../src/views/timegrid/renderTimedBlocks';
 import { dispatchDnD, freshContainer, task } from './helpers';
 
@@ -1169,6 +1170,99 @@ describe('renderTimedBlocksForDay', () => {
       renderTimedBlocksForDay(container, [a, b], callbacks());
       const blocks = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block'));
       expect(blocks[0]!.style.minHeight).toBe('');
+    });
+  });
+
+  // Task 37: renderTimedSpanContinuation renders `.tc-tg-block-continuation` segments, which got
+  // the same CSS min-height rule `.tc-tg-block` has (Task 36) but — unlike anchor blocks — never
+  // went through any collision-avoidance pass, since continuation segments don't participate in
+  // `packOverlaps`'s column packing at all (they're always rendered full-width). These tests mirror
+  // the anchor-block "two back-to-back short blocks"/"generous gap"/"lone block" suite above,
+  // proving continuation segments now get the same guarantee.
+  describe('Task 37: continuation segments get the same min-height collision clamp as anchor blocks', () => {
+    it('a 10-minute continuation does not get an explicit inline min-height override when nothing follows it (the CSS rule alone is enough)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 10, start: '2026-07-01', due: '2026-07-03' });
+      renderTimedSpanContinuation(container, [t]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      expect(seg.style.height).toBe(`${(10 / 60) * 48}px`);
+      expect(seg.style.minHeight).toBe('');
+    });
+
+    it('two 10-minute continuation segments scheduled back-to-back (09:00-09:10, 09:10-09:20): the earlier one gets an inline min-height clamped to the real gap, so it cannot visually cross into the next one', () => {
+      const container = freshContainer();
+      const a = task({
+        time: '09:00',
+        duration: 10,
+        line: 0,
+        text: 'A',
+        start: '2026-07-01',
+        due: '2026-07-03',
+      });
+      const b = task({
+        time: '09:10',
+        duration: 10,
+        line: 1,
+        text: 'B',
+        start: '2026-07-01',
+        due: '2026-07-04',
+      });
+      renderTimedSpanContinuation(container, [a, b]);
+      const segs = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block-continuation'));
+      expect(segs).toHaveLength(2);
+      const [segA, segB] = segs;
+      const topA = parseFloat(segA!.style.top);
+      const topB = parseFloat(segB!.style.top);
+      expect(segA!.style.minHeight).not.toBe('');
+      const clampedHeight = parseFloat(segA!.style.minHeight);
+      // The geometric invariant capMinHeightsPx already guarantees for anchor blocks: the
+      // clamped segment's bottom edge must never cross the next segment's top edge.
+      expect(topA + clampedHeight).toBeLessThanOrEqual(topB);
+    });
+
+    it('two continuation segments with a generous gap (09:00-09:10, then 11:00) get no inline min-height override', () => {
+      const container = freshContainer();
+      const a = task({
+        time: '09:00',
+        duration: 10,
+        line: 0,
+        start: '2026-07-01',
+        due: '2026-07-03',
+      });
+      const b = task({
+        time: '11:00',
+        duration: 60,
+        line: 1,
+        start: '2026-07-01',
+        due: '2026-07-04',
+      });
+      renderTimedSpanContinuation(container, [a, b]);
+      const segs = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block-continuation'));
+      expect(segs[0]!.style.minHeight).toBe('');
+    });
+
+    it('a short continuation segment immediately followed by an anchor block in the same day column is capped against the anchor block, not left to grow past its top', () => {
+      const container = freshContainer();
+      const continuationTask = task({
+        time: '09:00',
+        duration: 10,
+        line: 0,
+        text: 'Continuation',
+        start: '2026-07-01',
+        due: '2026-07-03',
+      });
+      const anchorTask = task({ time: '09:10', duration: 60, line: 1, text: 'Anchor' });
+      const anchorInputs = toTimedBlockInputs([anchorTask]);
+      renderTimedSpanContinuation(container, [continuationTask], undefined, [], anchorInputs);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      const topSeg = parseFloat(seg.style.top);
+      expect(seg.style.minHeight).not.toBe('');
+      const clampedHeight = parseFloat(seg.style.minHeight);
+      // The anchor block itself is not rendered by renderTimedSpanContinuation, but its start
+      // time (09:10, i.e. minutesToPixels(9*60+10)) is the boundary the continuation must not
+      // cross into.
+      const anchorTopPx = ((9 * 60 + 10) / 60) * 48;
+      expect(topSeg + clampedHeight).toBeLessThanOrEqual(anchorTopPx);
     });
   });
 });

@@ -9,6 +9,7 @@ import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay'
 import {
   renderTimedBlocksForDay,
   renderTimedSpanContinuation,
+  toTimedBlockInputs,
   type TimedBlockCallbacks,
 } from './timegrid/renderTimedBlocks';
 
@@ -97,17 +98,16 @@ export class WeekTimeGridView extends BaseView {
       // day it covers gets the lighter, non-interactive continuation segment instead.
       const anchoredTimedSpans = timedSpans.filter((t) => t.due === day.date);
       const continuationTimedSpans = timedSpans.filter((t) => t.due !== day.date);
-      renderTimedBlocksForDay(
-        day.hourColumnEl,
-        [...timed, ...anchoredTimedSpans],
-        timedCallbacks,
-        tagGroups,
-      );
+      const anchorBlocks = [...timed, ...anchoredTimedSpans];
+      renderTimedBlocksForDay(day.hourColumnEl, anchorBlocks, timedCallbacks, tagGroups);
       renderTimedSpanContinuation(
         day.hourColumnEl,
         continuationTimedSpans,
         this.callbacks.onTaskClick,
         tagGroups,
+        // Task 37: lets a short continuation segment's min-height clamp against this same day's
+        // anchor block(s) too, not just other continuations sharing the column.
+        toTimedBlockInputs(anchorBlocks),
       );
       renderAllDayCell(
         day.allDayCellEl,

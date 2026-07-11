@@ -9,6 +9,7 @@ import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay'
 import {
   renderTimedBlocksForDay,
   renderTimedSpanContinuation,
+  toTimedBlockInputs,
   type TimedBlockCallbacks,
 } from './timegrid/renderTimedBlocks';
 
@@ -165,17 +166,16 @@ export class TodayView extends BaseView {
       statusRegistry: this.callbacks.statusRegistry,
     };
     const tagGroups = this.callbacks.tagGroups ?? [];
-    renderTimedBlocksForDay(
-      day.hourColumnEl,
-      [...timed, ...anchoredTimedSpans],
-      timedCallbacks,
-      tagGroups,
-    );
+    const anchorBlocks = [...timed, ...anchoredTimedSpans];
+    renderTimedBlocksForDay(day.hourColumnEl, anchorBlocks, timedCallbacks, tagGroups);
     renderTimedSpanContinuation(
       day.hourColumnEl,
       continuationTimedSpans,
       this.callbacks.onTaskClick,
       tagGroups,
+      // Task 37: lets a short continuation segment's min-height clamp against this same day's
+      // anchor block(s) too, not just other continuations sharing the column.
+      toTimedBlockInputs(anchorBlocks),
     );
 
     const allDayCallbacks: AllDayCallbacks = {

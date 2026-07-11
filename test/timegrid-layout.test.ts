@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  capContinuationMinHeightsPx,
   capMinHeightsPx,
   MIN_BLOCK_HEIGHT_PX,
   minutesToPixels,
@@ -12,6 +13,14 @@ import {
   type TimedBlockInput,
 } from '../src/views/timegrid/layout';
 import { task } from './helpers';
+
+// Shared by packOverlaps/capMinHeightsPx/capContinuationMinHeightsPx below — they all just need a
+// TimedBlockInput with a distinguishable task (line doubles as a cheap unique id for assertions).
+const timedBlockInput = (start: number, duration: number): TimedBlockInput => ({
+  task: task({ line: start }),
+  startMinutes: start,
+  durationMinutes: duration,
+});
 
 describe('time/pixel conversions', () => {
   it('minutesToPixels scales by PIXELS_PER_HOUR', () => {
@@ -38,37 +47,39 @@ describe('time/pixel conversions', () => {
 });
 
 describe('packOverlaps', () => {
-  const block = (start: number, duration: number): TimedBlockInput => ({
-    task: task({ line: start }), // line as a cheap unique id for assertions
-    startMinutes: start,
-    durationMinutes: duration,
-  });
-
   it('non-overlapping blocks each get column 0 of 1', () => {
-    const result = packOverlaps([block(9 * 60, 60), block(11 * 60, 60)]);
+    const result = packOverlaps([timedBlockInput(9 * 60, 60), timedBlockInput(11 * 60, 60)]);
     expect(result.every((b) => b.column === 0 && b.columns === 1)).toBe(true);
   });
 
   it('two overlapping blocks get columns 0 and 1, columns=2', () => {
-    const result = packOverlaps([block(9 * 60, 60), block(9 * 60 + 30, 60)]);
+    const result = packOverlaps([timedBlockInput(9 * 60, 60), timedBlockInput(9 * 60 + 30, 60)]);
     expect(result.map((b) => b.column).sort()).toEqual([0, 1]);
     expect(result.every((b) => b.columns === 2)).toBe(true);
   });
 
   it('three overlapping blocks get 3 distinct columns', () => {
-    const result = packOverlaps([block(9 * 60, 90), block(9 * 60, 90), block(9 * 60, 90)]);
+    const result = packOverlaps([
+      timedBlockInput(9 * 60, 90),
+      timedBlockInput(9 * 60, 90),
+      timedBlockInput(9 * 60, 90),
+    ]);
     expect(new Set(result.map((b) => b.column)).size).toBe(3);
     expect(result.every((b) => b.columns === 3)).toBe(true);
   });
 
   it('a block ending exactly when another starts does not count as overlapping', () => {
-    const result = packOverlaps([block(9 * 60, 60), block(10 * 60, 60)]);
+    const result = packOverlaps([timedBlockInput(9 * 60, 60), timedBlockInput(10 * 60, 60)]);
     expect(result.every((b) => b.column === 0 && b.columns === 1)).toBe(true);
   });
 
   it('reuses a freed column once its occupant has ended', () => {
     // A: 9-10, B: 9-10 (overlap, cols 0/1), C: 10-11 (A freed col 0 -> C takes col 0)
-    const result = packOverlaps([block(9 * 60, 60), block(9 * 60, 60), block(10 * 60, 60)]);
+    const result = packOverlaps([
+      timedBlockInput(9 * 60, 60),
+      timedBlockInput(9 * 60, 60),
+      timedBlockInput(10 * 60, 60),
+    ]);
     const c = result[2]!;
     expect(c.column).toBe(0);
   });
@@ -84,14 +95,11 @@ describe('packOverlaps', () => {
 // same column could visually grow into it. `capMinHeightsPx` computes, per block, the maximum
 // height it may safely occupy before crossing into whatever's next in its own column.
 describe('capMinHeightsPx', () => {
-  const block = (start: number, duration: number): TimedBlockInput => ({
-    task: task({ line: start }),
-    startMinutes: start,
-    durationMinutes: duration,
-  });
-
   it('two back-to-back 10-minute blocks in the same column: the earlier one is capped to the real gap between them, well under MIN_BLOCK_HEIGHT_PX', () => {
-    const positioned = packOverlaps([block(9 * 60, 10), block(9 * 60 + 10, 10)]);
+    const positioned = packOverlaps([
+      timedBlockInput(9 * 60, 10),
+      timedBlockInput(9 * 60 + 10, 10),
+    ]);
     expect(positioned.every((b) => b.column === 0)).toBe(true); // sanity: truly sequential, same column
     const caps = capMinHeightsPx(positioned);
     const [first, second] = positioned;
@@ -106,22 +114,77 @@ describe('capMinHeightsPx', () => {
   });
 
   it('a lone block in its column (no next occupant) is uncapped (Infinity), so the full CSS min-height is free to apply', () => {
-    const positioned = packOverlaps([block(9 * 60, 60)]);
+    const positioned = packOverlaps([timedBlockInput(9 * 60, 60)]);
     const caps = capMinHeightsPx(positioned);
     expect(caps.get(positioned[0]!)).toBe(Infinity);
   });
 
   it('a generous gap between two same-column blocks yields a cap comfortably above MIN_BLOCK_HEIGHT_PX (no clamping needed)', () => {
-    const positioned = packOverlaps([block(9 * 60, 10), block(11 * 60, 10)]);
+    const positioned = packOverlaps([timedBlockInput(9 * 60, 10), timedBlockInput(11 * 60, 10)]);
     const caps = capMinHeightsPx(positioned);
     expect(caps.get(positioned[0]!)!).toBeGreaterThan(MIN_BLOCK_HEIGHT_PX);
   });
 
   it('two simultaneous (overlapping) blocks land in different columns, each uncapped by the other — min-height growth is a vertical concern, not a horizontal one', () => {
-    const positioned = packOverlaps([block(9 * 60, 10), block(9 * 60, 10)]);
+    const positioned = packOverlaps([timedBlockInput(9 * 60, 10), timedBlockInput(9 * 60, 10)]);
     expect(new Set(positioned.map((b) => b.column)).size).toBe(2);
     const caps = capMinHeightsPx(positioned);
     expect(caps.get(positioned[0]!)).toBe(Infinity);
     expect(caps.get(positioned[1]!)).toBe(Infinity);
+  });
+});
+
+// Task 37: `.tc-tg-block-continuation` (the non-anchor-day segment of a multi-day timed span,
+// rendered by renderTimedSpanContinuation) picked up the same CSS min-height treatment as
+// `.tc-tg-block` (Task 36), but — unlike anchor blocks, which are column-packed via
+// `packOverlaps` and clamped via `capMinHeightsPx` — continuation segments never participate in
+// any collision-avoidance pass at all: they're always rendered full-width, one per task, with no
+// column packing. So a short continuation's min-height-inflated box can grow straight into a
+// temporally-adjacent continuation (or an anchor block sharing the same day column) below it.
+// `capContinuationMinHeightsPx` closes that gap: it treats every continuation segment for a given
+// day, plus (optionally) that day's already-positioned anchor blocks, as one combined time-sorted
+// sequence, and caps each continuation's growth to the real gap before whatever comes next.
+describe('capContinuationMinHeightsPx', () => {
+  it('two back-to-back 10-minute continuation segments: the earlier one is capped to the real gap between them, well under MIN_BLOCK_HEIGHT_PX', () => {
+    const first = timedBlockInput(9 * 60, 10);
+    const second = timedBlockInput(9 * 60 + 10, 10);
+    const caps = capContinuationMinHeightsPx([first, second]);
+    const firstCap = caps.get(first)!;
+    expect(firstCap).toBeLessThan(MIN_BLOCK_HEIGHT_PX);
+    expect(firstCap).toBeCloseTo(minutesToPixels(10) - 2, 5);
+    // The last (only remaining) segment has nothing after it to crowd into.
+    expect(caps.get(second)).toBe(Infinity);
+  });
+
+  it('a lone continuation segment (no next occupant) is uncapped (Infinity)', () => {
+    const only = timedBlockInput(9 * 60, 60);
+    const caps = capContinuationMinHeightsPx([only]);
+    expect(caps.get(only)).toBe(Infinity);
+  });
+
+  it('a generous gap between two continuation segments yields a cap comfortably above MIN_BLOCK_HEIGHT_PX (no clamping needed)', () => {
+    const first = timedBlockInput(9 * 60, 10);
+    const second = timedBlockInput(11 * 60, 10);
+    const caps = capContinuationMinHeightsPx([first, second]);
+    expect(caps.get(first)!).toBeGreaterThan(MIN_BLOCK_HEIGHT_PX);
+  });
+
+  it('a short continuation immediately followed by an anchor block (passed as `others`) is capped to the gap before that anchor block, not left uncapped', () => {
+    const continuation = timedBlockInput(9 * 60, 10);
+    const anchor = timedBlockInput(9 * 60 + 10, 60);
+    const caps = capContinuationMinHeightsPx([continuation], [anchor]);
+    const cap = caps.get(continuation)!;
+    expect(cap).toBeLessThan(MIN_BLOCK_HEIGHT_PX);
+    expect(cap).toBeCloseTo(minutesToPixels(10) - 2, 5);
+    // Anchor blocks are never in the returned map — only continuation segments are capped here
+    // (the anchor's own clamping against OTHER anchors is capMinHeightsPx's job, unchanged).
+    expect(caps.has(anchor)).toBe(false);
+  });
+
+  it('an anchor block immediately followed by a continuation segment does not cap the continuation (the anchor is not "next" relative to it — the continuation has nothing after it)', () => {
+    const anchor = timedBlockInput(9 * 60, 10);
+    const continuation = timedBlockInput(9 * 60 + 10, 60);
+    const caps = capContinuationMinHeightsPx([continuation], [anchor]);
+    expect(caps.get(continuation)).toBe(Infinity);
   });
 });
