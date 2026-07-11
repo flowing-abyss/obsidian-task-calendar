@@ -119,7 +119,12 @@ export function renderHourGrid(
       // existing timed block (dragged/clicked for its own context menu) and not on the
       // quick-add popover CenterPanel renders into this same column in response.
       hourColumnEl.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('.tc-tg-block, .tc-tg-quick-add')) return;
+        if (
+          (e.target as HTMLElement).closest(
+            '.tc-tg-block, .tc-tg-block-continuation, .tc-tg-quick-add',
+          )
+        )
+          return;
         const offsetY = e.clientY - hourColumnEl.getBoundingClientRect().top;
         const rawMinutes = pixelsToMinutes(offsetY);
         const snapped = Math.max(0, snapMinutes(rawMinutes, DROP_SNAP_MINUTES));

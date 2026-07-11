@@ -247,6 +247,16 @@ describe('renderHourGrid', () => {
     expect(onCreateAtTime).not.toHaveBeenCalled();
   });
 
+  it('clicking a multi-day timed span\'s continuation segment does not also fire onCreateAtTime', () => {
+    const container = freshContainer();
+    const onCreateAtTime = vi.fn();
+    const handles = renderHourGrid(container, ['2026-07-10'], undefined, onCreateAtTime);
+    const hourColumnEl = handles.days[0]!.hourColumnEl;
+    const continuation = hourColumnEl.createDiv({ cls: 'tc-tg-block-continuation' });
+    continuation.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onCreateAtTime).not.toHaveBeenCalled();
+  });
+
   it('does not wire a click listener when onCreateAtTime is not provided (no throw on click)', () => {
     const container = freshContainer();
     const handles = renderHourGrid(container, ['2026-07-10']);
