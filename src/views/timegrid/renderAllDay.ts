@@ -3,6 +3,7 @@ import type { Task, TaskPriority } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
+import { tagFillTextColorVar } from '../../tags/tagFillContrast';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';
@@ -86,7 +87,14 @@ function renderDraggableBody(
   // status marker above already conveys priority via its own border, so a second
   // priority border on the body was redundant visual noise.
   const tagColor = tagColorFor(task.rawText, tagGroups);
-  if (tagColor) el.setCssProps({ '--tc-tag-color': tagColor });
+  if (tagColor) {
+    el.setCssProps({ '--tc-tag-color': tagColor });
+    // Task 40 (Round 4): see tagFillContrast.ts's own doc comment — a fixed text color loses
+    // contrast against a bright/pale or very dark/desaturated tag fill; only overridden when a
+    // variant was actually computed, otherwise the CSS rule's var(--text-normal) fallback holds.
+    const textColorVar = tagFillTextColorVar(el, tagColor);
+    if (textColorVar) el.setCssProps({ '--tc-tag-text-color': textColorVar });
+  }
   el.setAttribute('draggable', 'true');
   el.addEventListener('dragstart', (e) => {
     e.dataTransfer?.setData('text/plain', `${task.filePath}:::${task.line}`);

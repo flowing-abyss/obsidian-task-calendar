@@ -4,6 +4,7 @@ import type { Task, TaskPriority } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
+import { tagFillTextColorVar } from '../../tags/tagFillContrast';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';
@@ -125,7 +126,16 @@ export function renderTimedBlocksForDay(
     // status marker below already conveys priority via its own border, so a second
     // priority border on the block itself was redundant visual noise.
     const tagColor = tagColorFor(p.task.rawText, tagGroups);
-    if (tagColor) block.setCssProps({ '--tc-tag-color': tagColor });
+    if (tagColor) {
+      block.setCssProps({ '--tc-tag-color': tagColor });
+      // Task 40 (Round 4): a single fixed var(--text-normal) title/subtitle color (the
+      // pre-existing behavior) loses contrast against a bright/pale tag color's fill in light
+      // mode, or a very dark/desaturated one in dark mode — see tagFillContrast.ts's own doc
+      // comment for the full reasoning. Only set when a variant was actually computed (falls
+      // through to the CSS rule's own var(--text-normal) fallback otherwise).
+      const textColorVar = tagFillTextColorVar(block, tagColor);
+      if (textColorVar) block.setCssProps({ '--tc-tag-text-color': textColorVar });
+    }
     // Time-range+duration subtitle renders first (top of the block), e.g. "09:00–11:00 (2h)".
     // Task 35: shares its row with the count-badges container (see below) via `.tc-tg-block-
     // toprow`'s `justify-content: space-between` — real flex layout, not an absolutely
@@ -283,7 +293,14 @@ export function renderTimedSpanContinuation(
       seg.style.minHeight = `${Math.max(heightPx, cap)}px`;
     }
     const tagColor = tagColorFor(t.rawText, tagGroups);
-    if (tagColor) seg.setCssProps({ '--tc-tag-color': tagColor });
+    if (tagColor) {
+      seg.setCssProps({ '--tc-tag-color': tagColor });
+      // Task 40 (Round 4): same contrast-driven text-color fix as the anchor block above,
+      // applied to the continuation segment's own (lighter, 22%-mix) fill — the 22% here
+      // matches .tc-tg-block-continuation's own color-mix percentage in styles.css.
+      const textColorVar = tagFillTextColorVar(seg, tagColor, 22);
+      if (textColorVar) seg.setCssProps({ '--tc-tag-text-color': textColorVar });
+    }
     const topRow = seg.createDiv({ cls: 'tc-tg-block-toprow' });
     topRow.createDiv({
       cls: 'tc-tg-block-subtitle',

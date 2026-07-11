@@ -95,6 +95,21 @@ export class PanelView extends ItemView {
       if (this.state.get('mode') === 'projects') this.center.refresh();
     });
 
+    // Task 40 (Round 4): the tag-fill text-color contrast fix (tagFillContrast.ts) bakes a
+    // computed `--tc-tag-text-color` custom property into each block/item's inline style at
+    // render time, from that moment's actual `--background-primary` — unlike a plain CSS
+    // `var(--text-normal)` reference, this does NOT automatically track a live theme switch
+    // (light/dark toggle, or swapping community themes) the way the rest of this view's colors
+    // do, since nothing else here re-renders in response to one. Obsidian fires `css-change`
+    // whenever the active theme/CSS changes; re-rendering the center panel (which owns every
+    // tag-filled block: Month grid, Week/Day time grid, all-day rows) recomputes that property
+    // against the new background so it doesn't stay stuck on a stale light/dark decision.
+    this.registerEvent(
+      this.app.workspace.on('css-change', () => {
+        this.center.refresh();
+      }),
+    );
+
     // Keep project selection / dashboard path valid across note rename & delete.
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {

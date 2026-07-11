@@ -9,6 +9,15 @@
   --tc-priority-f: var(--color-purple);
   --tc-date-overdue: var(--color-red);
   --tc-date-tomorrow: var(--color-orange);
+  /* Task 40 (Round 4): fixed contrast anchors consumed by --tc-tag-text-color (set per-element,
+     in JS, by tagFillContrast.ts's tagFillTextColorVar — see that module's own doc comment for
+     the full reasoning). Deliberately NOT theme-variable tokens like --text-normal: their whole
+     purpose is to stay a reliable, near-maximum-contrast anchor against a tag-fill background
+     whose luminance was just computed from the user's own arbitrary tag color, independent of
+     whatever the ambient theme's own text color happens to be. Softened slightly off pure
+     black/white so they don't look harsh next to the softer surrounding UI text. */
+  --tc-tag-text-light: #f5f5f5;
+  --tc-tag-text-dark: #161616;
 }
 
 /* ============================================================
@@ -1381,7 +1390,12 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 
 .tc-tg-block-title {
   font-weight: 600;
-  color: var(--text-normal);
+  /* Task 40 (Round 4): --tc-tag-text-color is set per-block in JS (tagFillContrast.ts) from the
+     ACTUAL contrast-winning variant against this block's own tag-colored fill — falls back to
+     the pre-existing var(--text-normal) when the block has no tag color at all (nothing was set)
+     or the tag/background didn't parse. See tagFillContrast.ts's own doc comment for why a single
+     fixed color here lost contrast against a bright/pale or very dark/desaturated tag color. */
+  color: var(--tc-tag-text-color, var(--text-normal));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1412,7 +1426,14 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
    of compounding down to two-thirds of it. */
 .tc-tg-block-subtitle {
   font-size: 0.95em;
-  color: var(--text-muted);
+  /* Task 40 (Round 4): same --tc-tag-text-color fallback pattern as .tc-tg-block-title above.
+     Deliberately the SAME full-strength color as the title rather than a dimmer mix of it:
+     --tc-tag-text-color is already a near-maximum-contrast anchor (plain near-black/near-white,
+     see .tc-panel-view's own comment) with no natural "muted" variant to blend toward without
+     re-introducing the exact contrast risk this task fixes — the title/subtitle's existing
+     visual hierarchy (font-weight, size, layout position) still reads clearly without it.
+     Untagged blocks are untouched: they keep the pre-existing var(--text-muted). */
+  color: var(--tc-tag-text-color, var(--text-muted));
 }
 
 /* Tag chips + count badges row (Task 13): reuses .tc-task-count-badge/.tc-task-tag's own
@@ -1509,6 +1530,12 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Task 40 (Round 4): all-day span/plain items share the same tag-colored fill (renderAllDay.ts's
+     renderDraggableBody), so their title needs the same contrast-driven override — previously
+     this had no explicit color at all and simply inherited Obsidian's own body text color, which
+     has the identical fixed-color contrast risk against a bright/pale or very dark tag fill. See
+     tagFillContrast.ts's own doc comment. */
+  color: var(--tc-tag-text-color, var(--text-normal));
 }
 
 .tc-tg-span {
@@ -1610,7 +1637,10 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   min-height: calc(1.4em + 4px);
 }
 .tc-tg-block-continuation-title {
-  color: var(--text-muted);
+  /* Task 40 (Round 4): same --tc-tag-text-color fallback pattern as .tc-tg-block-title, applied
+     to the continuation segment's own (lighter, 22%-mix) fill — see renderTimedSpanContinuation
+     (renderTimedBlocks.ts) and tagFillContrast.ts's own doc comment. */
+  color: var(--tc-tag-text-color, var(--text-muted));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1940,6 +1970,13 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Task 40 (Round 4): Month view's compact items (.tc-mg-block-dot/.tc-mg-span-segment/
+     .tc-mg-plain) share the same tag-colored fill (MonthGridView.ts's applyTagFill), so their
+     title needs the same contrast-driven override — see tagFillContrast.ts's own doc comment.
+     .tc-mg-deadline-marker never gets a tag-colored fill (priority-colored border instead, see
+     this file's own comment on it), so its title correctly keeps the var(--text-normal) fallback
+     unconditionally. */
+  color: var(--tc-tag-text-color, var(--text-normal));
 }
 
 .tc-mg-item-time {

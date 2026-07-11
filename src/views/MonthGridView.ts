@@ -3,6 +3,7 @@ import type { Task, TaskPriority } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { tagColorFor } from '../tags/tagColor';
+import { tagFillTextColorVar } from '../tags/tagFillContrast';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { showStatusMenuAt } from '../ui/statusMenu';
@@ -285,7 +286,14 @@ export class MonthGridView extends BaseView {
    */
   private applyTagFill(el: HTMLElement, t: Task, tagGroups: TagGroup[]): void {
     const tagColor = tagColorFor(t.rawText, tagGroups);
-    if (tagColor) el.setCssProps({ '--tc-tag-color': tagColor });
+    if (tagColor) {
+      el.setCssProps({ '--tc-tag-color': tagColor });
+      // Task 40 (Round 4): see tagFillContrast.ts's own doc comment — a fixed text color loses
+      // contrast against a bright/pale or very dark/desaturated tag fill; only overridden when a
+      // variant was actually computed, otherwise the CSS rule's var(--text-normal) fallback holds.
+      const textColorVar = tagFillTextColorVar(el, tagColor);
+      if (textColorVar) el.setCssProps({ '--tc-tag-text-color': textColorVar });
+    }
   }
 
   destroy(): void {
