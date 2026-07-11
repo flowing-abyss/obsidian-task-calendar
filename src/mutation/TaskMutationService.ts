@@ -1,9 +1,10 @@
 import { Notice, TFile, type App } from 'obsidian';
-import type { TaskPriority } from '../parser/types';
+import type { ParseContext, TaskPriority } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { insertTaskBlockIntoContent } from './insertTaskBlock';
 import { findTaskLine, type FindResult, type TaskLocator } from './TaskLocator';
+import { validateMutatedTaskLine } from './validateMutatedLine';
 
 /**
  * The line range `[start, end]` (inclusive) covering a task and its indented
@@ -118,6 +119,46 @@ export class TaskMutationService {
     return this.applyToLines(locator, (lines, taskLine) => {
       lines[taskLine] = newLine;
     });
+  }
+
+  /**
+   * Task 33 data-safety net: same contract as `applyToLines`, except `build` *proposes* a
+   * replacement line (returned, not written directly) which is re-parsed and validated
+   * (`validateMutatedTaskLine`) before it is ever committed to disk.
+   *
+   * Every drag/resize-triggered mutation in this project (reschedule, drop-to-time, time change,
+   * duration change, start/due edge-resize, extend-to-span) goes through this instead of the raw
+   * `applyToLines` it used to call directly. Root cause this closes: a drag gesture can compute an
+   * out-of-range value (e.g. dragging a timed block far enough that the resulting start time has
+   * a 3-digit hour like "2093:15") which `formatTaskLine`'s own metadata regexes silently fail to
+   * round-trip — the field comes back `undefined` even though the garbage token is still in the
+   * text, and the task quietly vanishes from every time-based view. If `build`'s result fails
+   * validation, the ORIGINAL line is left completely untouched (never written) and a `Notice`
+   * explains the drag could not be completed — a dropped/failed drag must never silently corrupt
+   * or delete a task, regardless of what future edge case triggers it.
+   */
+  async applyValidatedLineMutation(
+    locator: TaskLocator,
+    build: (currentLine: string) => string,
+  ): Promise<MutationResult> {
+    let rejected = false;
+    const result = await this.applyToLines(locator, (lines, taskLine) => {
+      const current = lines[taskLine];
+      if (current === undefined) return;
+      const candidate = build(current);
+      const ctx: ParseContext = { filePath: locator.filePath, line: taskLine };
+      if (!validateMutatedTaskLine(candidate, ctx)) {
+        rejected = true;
+        return; // leave `lines[taskLine]` (and hence the on-disk file) completely untouched
+      }
+      lines[taskLine] = candidate;
+    });
+    if (rejected) {
+      new Notice(
+        "Couldn't complete the drag: the result would leave the task's date/time unreadable. The task was left unchanged.",
+      );
+    }
+    return result;
   }
 
   /**

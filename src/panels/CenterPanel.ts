@@ -2152,9 +2152,7 @@ export class CenterPanel {
     const task = this.store.getTasks().find((t) => t.filePath === filePath && t.line === line);
     if (!task) return;
 
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const tl = lines[taskLine];
-      if (!tl) return;
+    await this.mutations.applyValidatedLineMutation(locatorOf(task), (tl) => {
       let updated: string;
       if (task.scheduled) {
         updated = tl.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${targetDate}`);
@@ -2175,7 +2173,7 @@ export class CenterPanel {
           .replace(/\s{2,}/gu, ' ')
           .trimEnd();
       }
-      lines[taskLine] = formatTaskLine(updated);
+      return formatTaskLine(updated);
     });
   }
 
@@ -2189,9 +2187,7 @@ export class CenterPanel {
     const task = this.store.getTasks().find((t) => t.filePath === filePath && t.line === line);
     if (!task) return;
 
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const tl = lines[taskLine];
-      if (!tl) return;
+    await this.mutations.applyValidatedLineMutation(locatorOf(task), (tl) => {
       let updated: string;
       if (task.scheduled) {
         updated = tl.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${date}`);
@@ -2203,53 +2199,45 @@ export class CenterPanel {
       updated = task.time
         ? updated.replace(/⏰\s*\d{1,2}:\d{2}/u, `⏰ ${time}`)
         : updated.trimEnd() + ` ⏰ ${time}`;
-      lines[taskLine] = formatTaskLine(updated);
+      return formatTaskLine(updated);
     });
   }
 
   private async updateTaskTime(task: Task, newStartMinutes: number): Promise<void> {
     const newTime = minutesToTimeString(newStartMinutes);
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
+    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
       const withTime = task.time
         ? line.replace(/⏰\s*\d{1,2}:\d{2}/u, `⏰ ${newTime}`)
         : line.trimEnd() + ` ⏰ ${newTime}`;
-      lines[taskLine] = formatTaskLine(withTime);
+      return formatTaskLine(withTime);
     });
   }
 
   private async updateTaskDuration(task: Task, newDurationMinutes: number): Promise<void> {
     const token = `⏱️ ${formatDurationFromMinutes(newDurationMinutes)}`;
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
+    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
       const withDuration = task.duration
         ? line.replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/u, token)
         : line.trimEnd() + ` ${token}`;
-      lines[taskLine] = formatTaskLine(withDuration);
+      return formatTaskLine(withDuration);
     });
   }
 
   private async updateTaskStart(task: Task, newStart: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
+    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
       const withStart = task.start
         ? line.replace(/🛫\s*\d{4}-\d{2}-\d{2}/u, `🛫 ${newStart}`)
         : line.trimEnd() + ` 🛫 ${newStart}`;
-      lines[taskLine] = formatTaskLine(withStart);
+      return formatTaskLine(withStart);
     });
   }
 
   private async rescheduleTaskDue(task: Task, newDue: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
+    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
       const withDue = task.due
         ? line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`)
         : line.trimEnd() + ` 📅 ${newDue}`;
-      lines[taskLine] = formatTaskLine(withDue);
+      return formatTaskLine(withDue);
     });
   }
 
@@ -2259,15 +2247,13 @@ export class CenterPanel {
   private async extendTaskToSpan(task: Task, newDue: string): Promise<void> {
     if (!task.due) return;
     const originalDue = task.due;
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
+    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
       // A task that already spans (has a start) is being re-extended, not extended for the
       // first time — only append a fresh 🛫 when one isn't already present, so re-dragging an
       // already-spanning block's anchor never appends a second, extraneous 🛫 token.
       const withStart = task.start ? line : line.trimEnd() + ` 🛫 ${originalDue}`;
       const withDue = withStart.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`);
-      lines[taskLine] = formatTaskLine(withDue);
+      return formatTaskLine(withDue);
     });
   }
 

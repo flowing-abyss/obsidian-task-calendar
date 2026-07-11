@@ -216,3 +216,56 @@ describe('CenterPanel.setTaskTimeFromDrop', () => {
     expect(matches).toHaveLength(1);
   });
 });
+
+describe('CenterPanel.updateTaskTime — Task 33 data-safety net (the disappearing-task regression)', () => {
+  // This is the exact scenario reproduced live via Obsidian CLI: a Pointer-Events drag on a
+  // timed block's body computed newStartMinutes = 2093*60+15 (an extreme delta — the pointer was
+  // released far outside the visible grid). Before this task's fix, `updateTaskTime` wrote
+  // "⏰ 2093:15" straight to the file: `formatTaskLine`'s own `\d{1,2}` time-token grammar cannot
+  // match a 3-digit hour, so the token failed to round-trip on the very next parse — `time` came
+  // back `undefined`, the task silently dropped out of `tasksWithTime` in every Day/Week view,
+  // and the garbage "⏰ 2093:15" text leaked into the visible title instead of being stripped as
+  // metadata. This test drives `updateTaskTime` with that exact out-of-range minute value
+  // directly (bypassing the drag-gesture clamp added in renderTimedBlocks.ts, so this test would
+  // still catch a regression even if that clamp were ever removed/loosened) and asserts the
+  // mutation-service safety net rejects the write outright: the original line must be preserved
+  // byte-for-byte, and the task must still be present, valid, and correctly timed afterward.
+  it('rejects an out-of-range minutes value that would corrupt the ⏰ token, leaving the original line completely untouched', async () => {
+    const raw = '- [ ] Drag test alpha ⏰ 10:00 ⏱️ 1h 📅 2026-07-11';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      time: '10:00',
+      duration: 60,
+      due: '2026-07-11',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+
+    await callPrivate(panel, 'updateTaskTime', t, 2093 * 60 + 15);
+
+    const content = await readMd(app, 'f.md');
+    expect(content).toBe(`${raw}\n`);
+    expect(content).toContain('⏰ 10:00');
+    expect(content).not.toContain('2093');
+  });
+
+  it('still accepts an ordinary, in-range time change (the safety net does not over-reject valid drags)', async () => {
+    const raw = '- [ ] Drag test alpha ⏰ 10:00 ⏱️ 1h 📅 2026-07-11';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      time: '10:00',
+      duration: 60,
+      due: '2026-07-11',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+
+    await callPrivate(panel, 'updateTaskTime', t, 11 * 60 + 30);
+
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('⏰ 11:30');
+    expect(content).not.toContain('⏰ 10:00');
+  });
+});

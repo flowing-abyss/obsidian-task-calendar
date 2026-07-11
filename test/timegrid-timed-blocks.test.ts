@@ -505,7 +505,9 @@ describe('renderTimedBlocksForDay', () => {
         new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
       );
       // +100000px is the exact live-reproduced magnitude that used to compute "2093:15".
-      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 100 + 100000, pointerId: 1 }));
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { clientY: 100 + 100000, pointerId: 1 }),
+      );
       window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100 + 100000, pointerId: 1 }));
       expect(onTimeChange).toHaveBeenCalledTimes(1);
       const [, minutes] = onTimeChange.mock.calls[0] as [unknown, number];
@@ -524,7 +526,9 @@ describe('renderTimedBlocksForDay', () => {
       handle.dispatchEvent(
         new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
       );
-      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 100 + 100000, pointerId: 1 }));
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { clientY: 100 + 100000, pointerId: 1 }),
+      );
       window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100 + 100000, pointerId: 1 }));
       expect(onDurationChange).toHaveBeenCalledTimes(1);
       const [, minutes] = onDurationChange.mock.calls[0] as [unknown, number];
