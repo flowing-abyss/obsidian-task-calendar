@@ -841,6 +841,87 @@ describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
   });
 });
 
+describe('CenterPanel calendar mode — preserve scroll position across reactive re-render (Task 31)', () => {
+  async function makeCalendarPanel(): Promise<{
+    panel: CenterPanel;
+    state: AppState;
+    store: TaskStore;
+    el: HTMLElement;
+    app: App;
+  }> {
+    const { panel, state, app } = await makePanel(
+      { 't.md': `- [ ] task 📅 ${TODAY}` },
+      DEFAULT_SETTINGS,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
+    const el = freshContainer();
+    panel.mount(el);
+    state.set('mode', 'calendar');
+    const store = (panel as unknown as { store: TaskStore }).store;
+    return { panel, state, store, el, app };
+  }
+
+  function clickViewBtn(el: HTMLElement, label: 'Day' | 'Week' | 'Month'): void {
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === label,
+      ) as HTMLElement
+    ).click();
+  }
+
+  it('a reactive re-render (checkbox toggle elsewhere) preserves the exact scrollTop the user had, instead of resetting to 0', async () => {
+    const { el, store } = await makeCalendarPanel();
+    clickViewBtn(el, 'Week');
+
+    const gridRowEl = el.querySelector('.tc-tg-grid-row') as HTMLElement;
+    expect(gridRowEl).not.toBeNull();
+    // Simulate the user having scrolled away from "now" to some arbitrary position.
+    gridRowEl.scrollTop = 777;
+    expect(gridRowEl.scrollTop).toBe(777);
+
+    // Reactive re-render of the SAME view/date, via store.onUpdate -> mountView(), exactly the
+    // path a checkbox toggle anywhere in the vault takes (not through CenterPanel.render()).
+    const seededTask = store.getTasks({ filePath: 't.md' })[0]!;
+    await store.toggleTask(seededTask);
+    await flushMicrotasks();
+
+    const newGridRowEl = el.querySelector('.tc-tg-grid-row') as HTMLElement;
+    expect(newGridRowEl).not.toBeNull();
+    // A brand-new DOM element (destroy/recreate cycle), but its scrollTop must equal the OLD
+    // value — not 0, and not re-centered on "now".
+    expect(newGridRowEl).not.toBe(gridRowEl);
+    expect(newGridRowEl.scrollTop).toBe(777);
+  });
+
+  it('a genuine navigation to a new view/date (Week -> Day) does not inherit the stale prior scroll position', async () => {
+    const { el } = await makeCalendarPanel();
+    clickViewBtn(el, 'Week');
+
+    const gridRowEl = el.querySelector('.tc-tg-grid-row') as HTMLElement;
+    gridRowEl.scrollTop = 777;
+
+    // Genuine navigation: switching view type is a new (viewType, date) pair, so
+    // shouldScrollToNow is true here and must take priority over any stale prior scrollTop.
+    clickViewBtn(el, 'Day');
+
+    const newGridRowEl = el.querySelector('.tc-tg-grid-row') as HTMLElement;
+    expect(newGridRowEl).not.toBeNull();
+    expect(newGridRowEl).not.toBe(gridRowEl);
+    // Must NOT equal the stale Week-view scrollTop (777) it never asked to inherit.
+    expect(newGridRowEl.scrollTop).not.toBe(777);
+  });
+
+  it('switching from Month (no grid-row) into Week does not error and scrolls to now as a fresh navigation', async () => {
+    const { el } = await makeCalendarPanel();
+    // Default calViewType is 'month' — no `.tc-tg-grid-row` exists yet.
+    expect(el.querySelector('.tc-tg-grid-row')).toBeNull();
+
+    clickViewBtn(el, 'Week');
+    const gridRowEl = el.querySelector('.tc-tg-grid-row') as HTMLElement;
+    expect(gridRowEl).not.toBeNull();
+  });
+});
+
 describe('CenterPanel calendar mode — click-to-create', () => {
   const clickToCreateSettings: CalendarSettings = {
     ...DEFAULT_SETTINGS,

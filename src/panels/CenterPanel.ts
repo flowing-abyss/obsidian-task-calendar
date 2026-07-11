@@ -91,6 +91,13 @@ export class CenterPanel {
   // (last `${calViewType}:${startPosition}` CenterPanel actually scrolled for) survives that
   // destroy/recreate cycle because it lives on CenterPanel, not on the torn-down view.
   private lastScrolledCalKey: string | null = null;
+  // Task 31: render()'s calendar branch calls `this.el.empty()` (destroying the current
+  // `.tc-tg-grid-row`) *before* mountView() runs, on every reactive re-render (via PanelView's
+  // store.onUpdate -> center.refresh() -> render()) — not just on the calUnsubscribe -> mountView()
+  // path mountView() itself guards against. This carries the pre-empty() scrollTop across that
+  // gap; mountView() consumes (and clears) it as a fallback when its own viewContainer-local read
+  // finds nothing (i.e. on a freshly (re)built viewContainer).
+  private pendingCalScrollTop: number | undefined = undefined;
   private taskModal: TaskModal | null = null;
   private selectedTaskKeys = new Set<string>();
   private lastClickedTaskKey: string | null = null;
@@ -290,6 +297,12 @@ export class CenterPanel {
     if (mode !== 'projects') this.destroyProjectsPanel();
 
     if (mode === 'calendar') {
+      // Task 31: a reactive re-render arrives here too (PanelView's store.onUpdate ->
+      // center.refresh() -> render(), independent of the calUnsubscribe -> mountView() path
+      // below), and `this.el.empty()` on the next line destroys the current `.tc-tg-grid-row`
+      // before mountView() ever gets a chance to read it — capture it now so mountView() (see
+      // its `preservedScrollTop` fallback) can still restore it on the fresh instance.
+      this.pendingCalScrollTop = this.el.querySelector<HTMLElement>('.tc-tg-grid-row')?.scrollTop;
       this.el.empty();
       this.el.addClass('tc-center--calendar');
       this.destroyCalendarView();
@@ -485,6 +498,19 @@ export class CenterPanel {
     };
 
     const mountView = (): void => {
+      // Task 31: before tearing down the currently-mounted view, capture its scroll position so
+      // it can be restored on the fresh instance below. A freshly-created `.tc-tg-grid-row`
+      // naturally starts at scrollTop 0, which previously reset the user's scroll position on
+      // every reactive re-render (e.g. a checkbox toggle anywhere). May be undefined (no grid-row
+      // currently mounted — e.g. first mount ever, or the current view is Month) — in which case
+      // fall back to `pendingCalScrollTop`, captured by render() just before it wiped `this.el`
+      // (and hence this viewContainer) out from under this call; see that field's own comment.
+      const outgoingGridRow = viewContainer.querySelector<HTMLElement>('.tc-tg-grid-row');
+      const preservedScrollTop = outgoingGridRow
+        ? outgoingGridRow.scrollTop
+        : this.pendingCalScrollTop;
+      this.pendingCalScrollTop = undefined;
+
       this.calViewInstance?.destroy();
       viewContainer.empty();
       const cfg: ResolvedConfig = {
@@ -598,7 +624,7 @@ export class CenterPanel {
           tagGroups: this.settings.tagGroups,
         });
       }
-      this.calViewInstance.render(viewContainer, tasks, cfg, shouldScrollToNow);
+      this.calViewInstance.render(viewContainer, tasks, cfg, shouldScrollToNow, preservedScrollTop);
     };
 
     mountView();

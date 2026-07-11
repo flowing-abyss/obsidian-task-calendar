@@ -118,6 +118,7 @@ export class TodayView extends BaseView {
     tasks: Task[],
     config: ResolvedConfig,
     shouldScrollToNow = true,
+    preservedScrollTop?: number,
   ): void {
     this.md.unload();
     this.md = new Component();
@@ -192,20 +193,31 @@ export class TodayView extends BaseView {
     };
     renderAllDayCell(day.allDayCellEl, date, spans, plain, deadlines, allDayCallbacks, tagGroups);
 
-    if (date === window.moment().format('YYYY-MM-DD')) {
-      const gridRowEl = handles.gridRowEl;
-      // One-time scroll-into-position: only when CenterPanel says this is a genuinely new
-      // (viewType, date) it hasn't scrolled for yet — NOT on every reactive re-render of the
-      // same view/date (Task 27). The periodic now-line repositioning below is unconditional
-      // and untouched — a separate, still-desired behavior (Round 2 Task 16).
-      if (shouldScrollToNow) {
+    const isToday = date === window.moment().format('YYYY-MM-DD');
+    const gridRowEl = handles.gridRowEl;
+    // One-time scroll-into-position: only when CenterPanel says this is a genuinely new
+    // (viewType, date) it hasn't scrolled for yet — NOT on every reactive re-render of the
+    // same view/date (Task 27). The periodic now-line repositioning below is unconditional
+    // and untouched — a separate, still-desired behavior (Round 2 Task 16).
+    if (shouldScrollToNow) {
+      if (isToday) {
         const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
         const nowPx = minutesToPixels(nowMinutes);
         window.setTimeout(() => {
           gridRowEl.scrollTop = Math.max(0, nowPx - gridRowEl.clientHeight / 2);
         }, 0);
       }
+    } else if (preservedScrollTop !== undefined) {
+      // Task 31: this is a reactive re-render (destroy/recreate) of the same view/date — restore
+      // the outgoing grid-row's scroll position instead of leaving the fresh one at 0. Deferred
+      // via setTimeout like the scroll-to-now branch above: setting scrollTop synchronously,
+      // before the browser has laid out the freshly-created grid, gets silently clamped to 0.
+      window.setTimeout(() => {
+        gridRowEl.scrollTop = preservedScrollTop;
+      }, 0);
+    }
 
+    if (isToday) {
       const nowLineEl = handles.nowLineEl;
       if (nowLineEl) {
         this.nowLineIntervalId = window.setInterval(() => {

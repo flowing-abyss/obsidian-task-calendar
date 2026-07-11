@@ -355,7 +355,13 @@ export class TaskStore {
       this.flushScheduled = false;
       const changedFiles = [...this.pendingFiles];
       this.pendingFiles.clear();
-      for (const cb of this.listeners) cb({ changedFiles });
+      // Task 31: snapshot before iterating. A listener's callback may itself register a new
+      // listener as a side effect (e.g. CenterPanel destroying + re-subscribing its own
+      // store.onUpdate on every calendar-mode render) — iterating the live `this.listeners`
+      // array directly would pick up that newly-appended listener and fire it again within this
+      // same flush, causing a redundant re-render that reads not-yet-settled state from the
+      // first one.
+      for (const cb of [...this.listeners]) cb({ changedFiles });
     });
   }
 

@@ -312,6 +312,46 @@ describe('TodayView', () => {
     vi.useRealTimers();
   });
 
+  it('Task 31: restores preservedScrollTop onto the fresh grid-row when shouldScrollToNow=false', () => {
+    vi.useFakeTimers();
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    view.render(container, [], resolvedConfig(), false, 321);
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    expect(gridRowEl.scrollTop).toBe(0);
+    vi.runOnlyPendingTimers();
+    expect(gridRowEl.scrollTop).toBe(321);
+    vi.useRealTimers();
+  });
+
+  it('Task 31: ignores preservedScrollTop when shouldScrollToNow=true (fresh navigation takes priority)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T14:30:00'));
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    view.render(container, [], resolvedConfig(), true, 321);
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
+    vi.runOnlyPendingTimers();
+    // Scrolls to center-on-now (496), not the stale preservedScrollTop (321).
+    expect(gridRowEl.scrollTop).toBe(496);
+    vi.useRealTimers();
+  });
+
+  it('Task 31: restores preservedScrollTop even when the rendered day is not today (no now-line context)', () => {
+    vi.useFakeTimers();
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    // A non-today date never enters the scroll-to-now/now-line branches, but the restore itself
+    // is unconditional on date — this documents that shouldScrollToNow=false with an explicit
+    // preservedScrollTop still applies regardless of which day is shown.
+    view.render(container, [], resolvedConfig({ startPosition: '2020-01-01' }), false, 55);
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    vi.runOnlyPendingTimers();
+    expect(gridRowEl.scrollTop).toBe(55);
+    vi.useRealTimers();
+  });
+
   describe('timed multi-day spans (Task 29)', () => {
     it('renders the full interactive block on the due (anchor) day', () => {
       const container = freshContainer();

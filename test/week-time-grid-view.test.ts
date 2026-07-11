@@ -260,6 +260,61 @@ describe('WeekTimeGridView', () => {
     vi.useRealTimers();
   });
 
+  it('Task 31: restores preservedScrollTop onto the fresh grid-row when shouldScrollToNow=false', () => {
+    vi.useFakeTimers();
+    const container = freshContainer();
+    const view = new WeekTimeGridView(callbacks());
+    view.render(
+      container,
+      [],
+      resolvedConfig({ startPosition: '2026-25', firstDayOfWeek: 1 }),
+      false,
+      321,
+    );
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    expect(gridRowEl.scrollTop).toBe(0);
+    vi.runOnlyPendingTimers();
+    expect(gridRowEl.scrollTop).toBe(321);
+    vi.useRealTimers();
+  });
+
+  it('Task 31: ignores preservedScrollTop when shouldScrollToNow=true (fresh navigation takes priority)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T14:30:00'));
+    const container = freshContainer();
+    const view = new WeekTimeGridView(callbacks());
+    view.render(
+      container,
+      [],
+      resolvedConfig({ startPosition: '2026-25', firstDayOfWeek: 1 }),
+      true,
+      321,
+    );
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
+    vi.runOnlyPendingTimers();
+    // Scrolls to center-on-now (496), not the stale preservedScrollTop (321).
+    expect(gridRowEl.scrollTop).toBe(496);
+    vi.useRealTimers();
+  });
+
+  it('Task 31: restores preservedScrollTop even when today is not in the rendered week', () => {
+    vi.useFakeTimers();
+    const container = freshContainer();
+    const view = new WeekTimeGridView(callbacks());
+    view.render(
+      container,
+      [],
+      resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }),
+      false,
+      55,
+    );
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    vi.runOnlyPendingTimers();
+    expect(gridRowEl.scrollTop).toBe(55);
+    vi.useRealTimers();
+  });
+
   describe('timed multi-day spans (Task 29)', () => {
     it('renders the full interactive block only on the due (anchor) day, and a continuation segment on the other spanned days, for a start+due+time task', () => {
       const container = freshContainer();

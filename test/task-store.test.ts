@@ -536,6 +536,36 @@ describe('TaskStore onUpdate + events', () => {
     await flushMicrotasks(20);
     expect(events).toHaveLength(0);
   });
+
+  it('Task 31: a listener registered by another listener mid-flush does not also fire in that same flush (prevents CenterPanel double-mountView on one toggle)', async () => {
+    // Regression: CenterPanel.render()'s calendar branch destroys + re-subscribes its own
+    // store.onUpdate listener *from within* an existing listener's callback (PanelView's
+    // storeUnsub -> center.refresh() -> renderCalendarMode() -> a fresh `store.onUpdate(...)`).
+    // Before the fix, `notify()` iterated the live `this.listeners` array directly, so a listener
+    // appended mid-iteration was picked up and fired again in the very same flush — causing a
+    // second, redundant mountView() that read the first mountView()'s not-yet-settled DOM state
+    // (e.g. scrollTop 0 before its own restore had run) instead of the true prior value.
+    const app = await createAppWithFiles({ 't.md': '- [ ] x' });
+    seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
+    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    await store.initialize();
+
+    let secondListenerCalls = 0;
+    const secondListener = (): void => {
+      secondListenerCalls++;
+    };
+    const firstListener = (): void => {
+      // Simulate CenterPanel re-subscribing a listener as a side effect of handling this update.
+      store.onUpdate(secondListener);
+    };
+    store.onUpdate(firstListener);
+
+    const file = mdFile(app, 't.md');
+    await app.vault.rename(file, 't2.md');
+    await flushMicrotasks(20);
+
+    expect(secondListenerCalls).toBe(0);
+  });
 });
 
 describe('TaskStore destroy', () => {
