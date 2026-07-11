@@ -355,12 +355,14 @@ export class TaskStore {
       this.flushScheduled = false;
       const changedFiles = [...this.pendingFiles];
       this.pendingFiles.clear();
-      // Task 31: snapshot before iterating. A listener's callback may itself register a new
-      // listener as a side effect (e.g. CenterPanel destroying + re-subscribing its own
-      // store.onUpdate on every calendar-mode render) — iterating the live `this.listeners`
-      // array directly would pick up that newly-appended listener and fire it again within this
-      // same flush, causing a redundant re-render that reads not-yet-settled state from the
-      // first one.
+      // Task 31: snapshot before iterating. Standard defensive hygiene for the general
+      // mutate-during-iterate hazard: a listener's callback may itself register a new listener
+      // as a side effect (e.g. CenterPanel re-subscribing on every calendar-mode render). In this
+      // codebase's actual call sites that's always preceded by an unsubscribe, and onUpdate's
+      // unsubscribe reassigns `this.listeners` (filter, not in-place mutation) rather than
+      // pushing onto the array a live `for...of` would still be iterating — so no double-fire is
+      // currently reachable this way. Snapshotting still guards any future listener that pushes
+      // without first unsubscribing, and costs nothing.
       for (const cb of [...this.listeners]) cb({ changedFiles });
     });
   }
