@@ -386,45 +386,83 @@ describe('RightPanel popovers', () => {
   });
 });
 
-describe('RightPanel Planning disclosure', () => {
-  it('Planning section is collapsed by default and shows no chip for unset start/scheduled', async () => {
+describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priority)', () => {
+  it('unset Start and Plan render as placeholder badges in the top chip row, not a separate disclosure', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
-    expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('false');
-    expect(el.querySelector('.tc-chip-scheduled')).toBeNull();
-    expect(el.querySelector('.tc-chip-start')).toBeNull();
+    const startChip = el.querySelector('.tc-chip-start');
+    const schedChip = el.querySelector('.tc-chip-scheduled');
+    expect(startChip?.textContent).toContain('Start');
+    expect(startChip?.classList.contains('tc-chip-empty')).toBe(true);
+    expect(schedChip?.textContent).toContain('Plan');
+    expect(schedChip?.classList.contains('tc-chip-empty')).toBe(true);
+    // No separate "Planning" disclosure exists any more — fully unified into the top row.
+    expect(el.querySelector('.tc-planning-section')).toBeNull();
   });
 
-  it('a task with scheduled set shows a scheduled chip in the main row without expanding Planning', async () => {
+  it('a task with scheduled set shows a value-bearing (non-empty) scheduled badge in the top row', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
       task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined }),
     ]);
-    expect(el.querySelector('.tc-chip-scheduled')?.textContent).toContain('5 Jul');
-    expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('false');
+    const chip = el.querySelector('.tc-chip-scheduled');
+    expect(chip?.textContent).toContain('5 Jul');
+    expect(chip?.classList.contains('tc-chip-empty')).toBe(false);
   });
 
-  it('expanding Planning reveals Start and Scheduled inputs', async () => {
-    const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
-    const toggle = el.querySelector('.tc-planning-toggle') as HTMLElement;
-    toggle.click();
-    expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('true');
-    expect(el.querySelector('.tc-planning-start-input')).not.toBeNull();
-    expect(el.querySelector('.tc-planning-scheduled-input')).not.toBeNull();
-  });
-
-  it('clicking a promoted scheduled chip reopens the Planning section', async () => {
+  it('a task with start set shows a value-bearing (non-empty) start badge in the top row', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
-      task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined }),
+      task({ text: 'Started', due: undefined, start: '2026-07-05', duration: undefined }),
     ]);
+    const chip = el.querySelector('.tc-chip-start');
+    expect(chip?.textContent).toContain('5 Jul');
+    expect(chip?.classList.contains('tc-chip-empty')).toBe(false);
+  });
+
+  it('clicking an unset Start badge opens the same date popover style used for the due-date chip', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
+    const chip = el.querySelector<HTMLElement>('.tc-chip-start')!;
+    click(chip);
+    const popover = el.querySelector('.tc-date-popover');
+    expect(popover).not.toBeNull();
+    expect(popover?.querySelector('input[type="date"]')).not.toBeNull();
+  });
+
+  it('clicking an unset Plan badge opens the same date popover style used for the due-date chip', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
     const chip = el.querySelector<HTMLElement>('.tc-chip-scheduled')!;
     click(chip);
-    expect(el.querySelector('.tc-planning-section')?.getAttribute('data-open')).toBe('true');
+    const popover = el.querySelector('.tc-date-popover');
+    expect(popover).not.toBeNull();
+    expect(popover?.querySelector('input[type="date"]')).not.toBeNull();
   });
 
-  it('a SubTask with its own due date (but no duration field) does NOT render the Planning section', async () => {
+  it('setting a Start date via the popover writes 🛫 to the file and updates the badge in place', async () => {
+    const { state, app, el } = await makePanel({ 'f.md': '- [ ] Dated 📅 2026-06-25\n' });
+    state.set('taskStack', [
+      task({
+        filePath: 'f.md',
+        line: 0,
+        text: 'Dated',
+        due: '2026-06-25',
+        duration: undefined,
+        rawText: '- [ ] Dated 📅 2026-06-25',
+      }),
+    ]);
+    const chip = el.querySelector<HTMLElement>('.tc-chip-start')!;
+    click(chip);
+    const input = el.querySelector<HTMLInputElement>('.tc-date-popover .tc-date-input')!;
+    input.value = '2026-07-01';
+    input.dispatchEvent(new Event('change'));
+    await flushMicrotasks();
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('🛫 2026-07-01');
+  });
+
+  it('a SubTask (no duration field) still renders Start/Plan badges — they are no longer gated on the removed Planning disclosure', async () => {
     const { state, el } = await makePanel();
     const sub: SubTask = {
       filePath: 'f.md',
@@ -440,6 +478,8 @@ describe('RightPanel Planning disclosure', () => {
     // Drill into the sub-task directly, the same way clicking its label would.
     state.set('taskStack', [task({ text: 'Parent', subtasks: [sub] }), sub]);
     expect(el.querySelector('.tc-planning-section')).toBeNull();
+    expect(el.querySelector('.tc-chip-start')).not.toBeNull();
+    expect(el.querySelector('.tc-chip-scheduled')).not.toBeNull();
   });
 
   it('combined time+duration chip shows "time · duration" when both set, just time otherwise', async () => {

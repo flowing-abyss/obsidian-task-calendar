@@ -2013,10 +2013,12 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   color: var(--tc-priority-f);
 }
 
-/* ===== Calendar redesign: Planning chips ===== */
-
-.tc-chip-scheduled,
-.tc-chip-start {
+/* ===== Calendar redesign: Planning chips =====
+   Value-bearing only — an unset Start/Plan chip carries .tc-chip-empty instead (same
+   dashed, untinted placeholder look as the unset Date/Priority chips), so the accent
+   tint here signals "this has a value" and doesn't apply to the placeholder state. */
+.tc-chip-scheduled:not(.tc-chip-empty),
+.tc-chip-start:not(.tc-chip-empty) {
   background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
 }
 
@@ -3640,65 +3642,6 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   height: 1px;
   background: var(--background-modifier-border);
   margin: 0 16px;
-}
-/* Planning disclosure reuses the .tc-right-section card (padding/header/label — see
-   Description, Sub-tasks below) so it reads as one more section of the panel rather
-   than a bespoke widget; only the disclosure-specific bits (arrow, collapse, row/input
-   layout) are defined here. */
-.tc-planning-section {
-  padding-bottom: 12px;
-}
-.tc-planning-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-}
-.tc-planning-toggle:hover {
-  color: var(--text-normal);
-}
-.tc-planning-toggle::before {
-  content: '▸';
-  font-size: 9px;
-  transition: transform 0.1s;
-}
-.tc-planning-section[data-open='true'] .tc-planning-toggle::before {
-  transform: rotate(90deg);
-}
-.tc-planning-body {
-  display: none;
-}
-.tc-planning-section[data-open='true'] .tc-planning-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.tc-planning-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  padding: 6px 10px;
-}
-.tc-planning-label {
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
-}
-.tc-planning-start-input,
-.tc-planning-scheduled-input {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  background: var(--background-primary);
-  color: var(--text-normal);
-  padding: 3px 8px;
-  font-size: var(--font-ui-small);
 }
 .tc-right-section {
   padding: 16px 16px 0;

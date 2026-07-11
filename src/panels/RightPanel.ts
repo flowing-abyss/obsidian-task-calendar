@@ -276,34 +276,16 @@ export class RightPanel {
       // Priority chip
       this.renderPriorityChip(chips, task);
 
-      // Scheduled chip — only rendered when set (promoted from Planning); clicking re-opens Planning
-      if (task.scheduled) {
-        const schedChip = chips.createEl('button', {
-          cls: 'tc-chip tc-chip-scheduled',
-          text: `⏳ ${this.formatDate(task.scheduled)}`,
-          attr: { title: 'Plan — open planning to edit' },
-        });
-        schedChip.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const section = this.el.querySelector('.tc-planning-section');
-          section?.setAttribute('data-open', 'true');
-          section?.scrollIntoView?.({ block: 'nearest' });
-        });
-      }
-      // Start chip — only rendered when set
-      if (task.start) {
-        const startChip = chips.createEl('button', {
-          cls: 'tc-chip tc-chip-start',
-          text: `🛫 ${this.formatDate(task.start)}`,
-          attr: { title: 'Start — open planning to edit' },
-        });
-        startChip.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const section = this.el.querySelector('.tc-planning-section');
-          section?.setAttribute('data-open', 'true');
-          section?.scrollIntoView?.({ block: 'nearest' });
-        });
-      }
+      // Scheduled ("Plan") and Start chips — always rendered, same round-pill style as the
+      // date/time/priority chips above. Unset renders as a dashed placeholder (tc-chip-empty,
+      // matching the unset Date chip's own convention); clicking either — set or unset —
+      // opens the same small date-picker popover used for the due-date chip (showDatePopover,
+      // generalized with a `field` param below) rather than a separate disclosure. This
+      // replaces the old "promoted chip only once set + reopen the Planning disclosure"
+      // scheme, which kept the *unset* affordance stuck inside a raw <input type=date> in a
+      // separate "Planning" section — visually inconsistent with every other metadata chip.
+      this.renderScheduledChip(chips, task);
+      this.renderStartChip(chips, task);
 
       // Tag chips
       const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
@@ -318,16 +300,6 @@ export class RightPanel {
           addTagBtn.removeClass('tc-chip-add--hidden'),
         );
       });
-    }
-
-    // Planning disclosure (Start + Scheduled) — collapsed by default; only rendered for Task
-    // (not SubTask). Discriminate on 'duration' rather than 'due': `due` is optional on BOTH
-    // Task and SubTask (a sub-item can legitimately carry its own 📅 date), so it doesn't
-    // narrow the union at all. `duration` only exists on the Task interface — SubTask has no
-    // duration field and no parse path ever spreads one in — so it's the only property that
-    // reliably distinguishes "top-level calendar item" from "sub-item" here.
-    if ('duration' in task) {
-      this.renderPlanningSection(task);
     }
 
     // Divider
@@ -683,49 +655,6 @@ export class RightPanel {
     showText();
   }
 
-  private renderPlanningSection(task: Task): void {
-    // Reuses the .tc-right-section card/header conventions (see Description, Sub-tasks
-    // below) rather than a bespoke style, so the disclosure — collapsed or expanded —
-    // reads as one more section of this panel instead of a visually distinct widget.
-    const section = this.el.createDiv({ cls: 'tc-right-section tc-planning-section' });
-    section.setAttribute('data-open', 'false');
-
-    const header = section.createDiv({ cls: 'tc-right-section-header' });
-    const toggle = header.createEl('button', {
-      cls: 'tc-right-section-label tc-planning-toggle',
-      text: 'Planning',
-    });
-    const body = section.createDiv({ cls: 'tc-planning-body' });
-    toggle.addEventListener('click', () => {
-      const isOpen = section.getAttribute('data-open') === 'true';
-      section.setAttribute('data-open', isOpen ? 'false' : 'true');
-    });
-
-    const startRow = body.createDiv({ cls: 'tc-planning-row' });
-    startRow.createEl('span', { cls: 'tc-planning-label', text: '🛫 Start' });
-    const startInput = startRow.createEl('input', {
-      cls: 'tc-planning-start-input',
-      attr: { type: 'date', value: task.start ?? '' },
-    });
-    startInput.addEventListener('change', () => {
-      if (startInput.value) void this.updateStart(task, startInput.value);
-      else void this.clearStart(task);
-    });
-
-    const schedRow = body.createDiv({ cls: 'tc-planning-row' });
-    // Display label only — the underlying field/emoji convention stays `scheduled`/⏳
-    // (see parser/types.ts, TaskMutationService); "Plan" is just friendlier UI copy.
-    schedRow.createEl('span', { cls: 'tc-planning-label', text: '⏳ Plan' });
-    const schedInput = schedRow.createEl('input', {
-      cls: 'tc-planning-scheduled-input',
-      attr: { type: 'date', value: task.scheduled ?? '' },
-    });
-    schedInput.addEventListener('change', () => {
-      if (schedInput.value) void this.updateScheduled(task, schedInput.value);
-      else void this.clearScheduled(task);
-    });
-  }
-
   private renderDateChip(container: HTMLElement, task: TaskLike): void {
     const d = task.due ?? task.scheduled;
     const chip = container.createEl('button', {
@@ -734,7 +663,35 @@ export class RightPanel {
     });
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.showDatePopover(chip, task);
+      this.showDatePopover(chip, task, 'due');
+    });
+  }
+
+  /** "Plan" (⏳/`scheduled`) chip — same round-pill/popover pattern as the due-date chip. */
+  private renderScheduledChip(container: HTMLElement, task: TaskLike): void {
+    const value = task.scheduled;
+    const chip = container.createEl('button', {
+      cls: `tc-chip tc-chip-scheduled${value ? '' : ' tc-chip-empty'}`,
+      text: value ? `⏳ ${this.formatDate(value)}` : '⏳ Plan',
+      attr: { title: 'Set plan date' },
+    });
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.showDatePopover(chip, task, 'scheduled');
+    });
+  }
+
+  /** "Start" (🛫/`start`) chip — same round-pill/popover pattern as the due-date chip. */
+  private renderStartChip(container: HTMLElement, task: TaskLike): void {
+    const value = task.start;
+    const chip = container.createEl('button', {
+      cls: `tc-chip tc-chip-start${value ? '' : ' tc-chip-empty'}`,
+      text: value ? `🛫 ${this.formatDate(value)}` : '🛫 Start',
+      attr: { title: 'Set start date' },
+    });
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.showDatePopover(chip, task, 'start');
     });
   }
 
@@ -779,20 +736,36 @@ export class RightPanel {
     this.el.querySelectorAll('.tc-popover').forEach((el) => el.remove());
   }
 
-  private showDatePopover(anchor: HTMLElement, task: TaskLike): void {
+  /**
+   * Small date-picker popover shared by the due/plan/start chips. `field` selects which
+   * metadata date is being edited — the popover markup, positioning, and clear-button
+   * behavior are identical for all three; only the read/write pair differs.
+   */
+  private showDatePopover(
+    anchor: HTMLElement,
+    task: TaskLike,
+    field: 'due' | 'scheduled' | 'start' = 'due',
+  ): void {
     const already = this.el.querySelector('.tc-date-popover');
     this.clearPopovers();
     if (already) return;
 
     const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover tc-popover-anchored' });
 
+    let currentValue: string | undefined;
+    if (field === 'due') currentValue = task.due ?? task.scheduled;
+    else if (field === 'scheduled') currentValue = task.scheduled;
+    else currentValue = task.start;
+
     const inputRow = pop.createDiv({ cls: 'tc-popover-input-row' });
     const input = inputRow.createEl('input', {
       cls: 'tc-date-input',
-      attr: { type: 'date', value: task.due ?? task.scheduled ?? '' },
+      attr: { type: 'date', value: currentValue ?? '' },
     });
     input.addEventListener('change', () => {
-      void this.updateDue(task, input.value);
+      if (field === 'due') void this.updateDue(task, input.value);
+      else if (field === 'scheduled') void this.updateScheduled(task, input.value);
+      else void this.updateStart(task, input.value);
       pop.remove();
     });
     input.addEventListener('blur', () => window.setTimeout(() => pop.remove(), 200));
@@ -805,7 +778,9 @@ export class RightPanel {
     setIcon(clearBtn, 'x');
     clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
     clearBtn.addEventListener('click', () => {
-      void this.clearDate(task);
+      if (field === 'due') void this.clearDate(task);
+      else if (field === 'scheduled') void this.clearScheduled(task);
+      else void this.clearStart(task);
       pop.remove();
     });
     this.positionAnchoredPopover(pop, anchor);
