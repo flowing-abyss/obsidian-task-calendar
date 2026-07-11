@@ -484,6 +484,70 @@ describe('renderTimedBlocksForDay', () => {
     expect(cbs.onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 60);
   });
 
+  describe('Task 33: clamping drag-computed move/resize values to a single real calendar day', () => {
+    // Root cause of the disappearing-task bug: onTimeChange/onDurationChange never touch the
+    // task's date, only its time-of-day/duration — so an unbounded upward drag could previously
+    // compute a start time whose hour needs 3+ digits (e.g. "2093:15"), which the ⏰ token's own
+    // \d{1,2} grammar can't round-trip on the next parse. `time` then comes back `undefined` and
+    // the task silently drops out of every time-based view. These regression tests drive the
+    // exact scenario that reproduced it live (a huge downward pointer delta) and confirm the
+    // callback is now clamped to a value that always stays inside 00:00–23:59.
+
+    it('an extreme downward drag on the block body clamps onTimeChange to the last valid slot of the day (23:45), not an out-of-range value', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '10:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      // +100000px is the exact live-reproduced magnitude that used to compute "2093:15".
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 100 + 100000, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100 + 100000, pointerId: 1 }));
+      expect(onTimeChange).toHaveBeenCalledTimes(1);
+      const [, minutes] = onTimeChange.mock.calls[0] as [unknown, number];
+      expect(minutes).toBe(24 * 60 - 15); // 23:45
+      expect(minutes).toBeLessThan(24 * 60);
+    });
+
+    it('an extreme downward drag on the resize handle clamps onDurationChange to a one-day cap, not an unbounded value', () => {
+      const container = freshContainer();
+      const onDurationChange = vi.fn();
+      const t = task({ time: '10:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onDurationChange });
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      handle.setPointerCapture = () => {};
+      handle.releasePointerCapture = () => {};
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 100 + 100000, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100 + 100000, pointerId: 1 }));
+      expect(onDurationChange).toHaveBeenCalledTimes(1);
+      const [, minutes] = onDurationChange.mock.calls[0] as [unknown, number];
+      expect(minutes).toBe(24 * 60);
+    });
+
+    it('an ordinary in-range drag is unaffected by the new clamp', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      expect(onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 60);
+    });
+  });
+
   it('a stationary right-click on the resize handle does NOT fire onDurationChange', () => {
     const container = freshContainer();
     const onDurationChange = vi.fn();

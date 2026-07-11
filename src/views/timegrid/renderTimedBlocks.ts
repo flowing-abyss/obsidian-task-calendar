@@ -36,6 +36,21 @@ export interface TimedBlockCallbacks {
 
 const DEFAULT_DURATION_MINUTES = 60;
 const SNAP_MINUTES = 15;
+// Task 33: hard bounds on drag-computed move/resize values. Neither `onTimeChange` nor
+// `onDurationChange` touches the task's date — only its time-of-day/duration — so a vertical
+// drag was previously left completely unclamped on the upper end (only `Math.max(0, ...)` /
+// `Math.max(SNAP_MINUTES, ...)` guarded the lower end). Root cause of the disappearing-task bug:
+// an extreme drag (e.g. the pointer released far outside the visible grid) could compute a start
+// time whose hour needs 3+ digits (e.g. "2093:15") — `⏰`'s own `\d{1,2}` grammar can't match
+// that, so the token silently fails to round-trip through the parser on the next read, `time`
+// comes back `undefined`, and the task drops out of every time-based view while the garbage text
+// leaks into the visible title. Clamping here keeps every value this module ever *computes*
+// inside a single real calendar day, so it can never produce that class of value in the first
+// place — the safety net in `TaskMutationService.applyValidatedLineMutation` is the last line of
+// defense for anything that still slips through (a different future bug, manual data corruption,
+// etc.), not the first one.
+const MAX_START_MINUTES = 24 * 60 - SNAP_MINUTES; // 23:45 — the last valid quarter-hour slot.
+const MAX_DURATION_MINUTES = 24 * 60; // A full day is already a generous, unambiguous cap.
 
 export function renderTimedBlocksForDay(
   hourColumnEl: HTMLElement,
@@ -196,10 +211,13 @@ function attachDrag(
     const rawDelta = ((e.clientY - startY) / minutesToPixels(60)) * 60;
     const deltaMinutes = snapMinutes(rawDelta, SNAP_MINUTES);
     if (mode === 'move') {
-      const next = Math.max(0, startMinutes + deltaMinutes);
+      const next = Math.min(MAX_START_MINUTES, Math.max(0, startMinutes + deltaMinutes));
       block.style.top = `${minutesToPixels(next)}px`;
     } else {
-      const next = Math.max(SNAP_MINUTES, startDuration + deltaMinutes);
+      const next = Math.min(
+        MAX_DURATION_MINUTES,
+        Math.max(SNAP_MINUTES, startDuration + deltaMinutes),
+      );
       block.style.height = `${minutesToPixels(next)}px`;
     }
   };
@@ -216,9 +234,15 @@ function attachDrag(
     const rawDelta = ((e.clientY - startY) / minutesToPixels(60)) * 60;
     const deltaMinutes = snapMinutes(rawDelta, SNAP_MINUTES);
     if (mode === 'move') {
-      callbacks.onTimeChange(task, Math.max(0, startMinutes + deltaMinutes));
+      callbacks.onTimeChange(
+        task,
+        Math.min(MAX_START_MINUTES, Math.max(0, startMinutes + deltaMinutes)),
+      );
     } else {
-      callbacks.onDurationChange(task, Math.max(SNAP_MINUTES, startDuration + deltaMinutes));
+      callbacks.onDurationChange(
+        task,
+        Math.min(MAX_DURATION_MINUTES, Math.max(SNAP_MINUTES, startDuration + deltaMinutes)),
+      );
     }
     cleanup();
   };
