@@ -608,7 +608,7 @@ describe('MonthGridView', () => {
       }
     });
 
-    it('prefixes the anchor (due) day\'s segment with the time, distinguishing it from an untimed span', () => {
+    it("prefixes the anchor (due) day's segment with the time, distinguishing it from an untimed span", () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
       const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
