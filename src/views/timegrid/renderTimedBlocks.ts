@@ -15,7 +15,7 @@ import {
   timeStringToMinutes,
   type TimedBlockInput,
 } from './layout';
-import { hasMeta, renderCountBadges, renderTagChips } from './renderTaskMeta';
+import { hasCountBadges, renderCountBadges } from './renderTaskMeta';
 
 export interface TimedBlockCallbacks {
   app: App;
@@ -84,10 +84,26 @@ export function renderTimedBlocksForDay(
     const tagColor = tagColorFor(p.task.rawText, tagGroups);
     if (tagColor) block.setCssProps({ '--tc-tag-color': tagColor });
     // Time-range+duration subtitle renders first (top of the block), e.g. "09:00–11:00 (2h)".
-    block.createDiv({
+    // Task 35: shares its row with the count-badges container (see below) via `.tc-tg-block-
+    // toprow`'s `justify-content: space-between` — real flex layout, not an absolutely
+    // positioned overlay, so the badges land in the block's visual top-right corner without
+    // ever covering the subtitle text (an earlier absolute-position attempt did overlap it on
+    // narrower blocks).
+    const topRow = block.createDiv({ cls: 'tc-tg-block-toprow' });
+    topRow.createDiv({
       cls: 'tc-tg-block-subtitle',
       text: `${minutesToTimeString(p.startMinutes)}–${minutesToTimeString(p.startMinutes + p.durationMinutes)} (${formatDurationFromMinutes(p.durationMinutes)})`,
     });
+    // Task 35: count badges (subtasks/comments/links) only — tag chips were removed entirely
+    // for timed blocks (the block's own tag-colored fill, set above, already conveys the tag;
+    // a chip repeating it was redundant). Skipped entirely when the task has no counts, so a
+    // plain/tag-only task doesn't gain an empty container. Non-interactive (see
+    // renderTaskMeta.ts) — safe to sit inside the block without needing the pointerdown
+    // exclusion-guard below.
+    if (hasCountBadges(p.task)) {
+      const badges = topRow.createDiv({ cls: 'tc-tg-block-badges' });
+      renderCountBadges(badges, p.task);
+    }
     // Status marker + title share one flex row so the checkbox and title render on the
     // same line instead of stacking (the title div is block-level, which previously
     // forced a line break after the inline marker span).
@@ -115,15 +131,6 @@ export function renderTimedBlocksForDay(
       sourcePath: p.task.filePath,
       component: callbacks.component,
     });
-    // Tag chips + count badges (subtasks/comments/links), matching TaskCard/CenterPanel's
-    // visual language. Skipped entirely when the task has neither, so a plain task doesn't
-    // gain an empty row. Non-interactive (see renderTaskMeta.ts) — safe to sit inside the
-    // block without needing the pointerdown exclusion-guard below.
-    if (hasMeta(p.task)) {
-      const meta = block.createDiv({ cls: 'tc-tg-block-meta' });
-      renderCountBadges(meta, p.task);
-      renderTagChips(meta, p.task, tagGroups);
-    }
     // Task 34: left-edge horizontal resize, moving/adding `start` while `due`/`⏰`/`⏱️` stay
     // untouched (see TimedBlockCallbacks.onStartChange's own comment). Rendered on the same
     // anchor-day block as the right edge below — unlike renderAllDay.ts's all-day spans, where
@@ -181,6 +188,11 @@ export function renderTimedBlocksForDay(
  * untimed spans: clearly linked to the task (same title, tag color, time-of-day position) but
  * unmistakably not a second interactive copy of it. A contextmenu still opens the task modal
  * (`onTaskClick`), same as a full block, since that's a read-only action.
+ *
+ * Task 35 (expanded scope): also shows the same time-range+duration subtitle and count badges
+ * (subtasks/comments/links) the anchor block shows, so a continuation segment reads as more than
+ * just a title bar — but stays purely presentational: no checkbox, and neither the subtitle nor
+ * the badges container gets a click/drag handler, so this remains as non-interactive as before.
  */
 export function renderTimedSpanContinuation(
   hourColumnEl: HTMLElement,
@@ -196,6 +208,15 @@ export function renderTimedSpanContinuation(
     seg.style.height = `${minutesToPixels(durationMinutes)}px`;
     const tagColor = tagColorFor(t.rawText, tagGroups);
     if (tagColor) seg.setCssProps({ '--tc-tag-color': tagColor });
+    const topRow = seg.createDiv({ cls: 'tc-tg-block-toprow' });
+    topRow.createDiv({
+      cls: 'tc-tg-block-subtitle',
+      text: `${minutesToTimeString(startMinutes)}–${minutesToTimeString(startMinutes + durationMinutes)} (${formatDurationFromMinutes(durationMinutes)})`,
+    });
+    if (hasCountBadges(t)) {
+      const badges = topRow.createDiv({ cls: 'tc-tg-block-badges' });
+      renderCountBadges(badges, t);
+    }
     seg.createSpan({ cls: 'tc-tg-block-continuation-title', text: t.markdownText });
     if (onTaskClick) {
       seg.addEventListener('contextmenu', (e) => {

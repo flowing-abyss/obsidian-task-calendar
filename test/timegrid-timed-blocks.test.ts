@@ -196,17 +196,20 @@ describe('renderTimedBlocksForDay', () => {
     expect(subtitle.textContent).toBe('09:00–10:00 (1h)');
   });
 
-  it('renders the subtitle before the head row (time+duration at the top of the block)', () => {
+  it('renders the subtitle (inside its top row) before the head row (time+duration at the top of the block)', () => {
     const container = freshContainer();
     const t = task({ time: '09:00' });
     renderTimedBlocksForDay(container, [t], callbacks());
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
-    const subtitle = block.querySelector('.tc-tg-block-subtitle');
-    const head = block.querySelector('.tc-tg-block-head');
+    const subtitle = block.querySelector('.tc-tg-block-subtitle') as HTMLElement;
+    const head = block.querySelector('.tc-tg-block-head') as HTMLElement;
     expect(subtitle).not.toBeNull();
     expect(head).not.toBeNull();
-    expect(Array.from(block.children).indexOf(subtitle as Element)).toBeLessThan(
-      Array.from(block.children).indexOf(head as Element),
+    // Task 35: the subtitle now lives inside `.tc-tg-block-toprow` (paired with the count
+    // badges) rather than as a bare direct child of `.tc-tg-block`, so DOM order is asserted
+    // via compareDocumentPosition instead of indexOf-ing `block.children` directly.
+    expect(subtitle.compareDocumentPosition(head) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
     );
   });
 
@@ -592,7 +595,7 @@ describe('renderTimedBlocksForDay', () => {
     expect(onDurationChange).not.toHaveBeenCalled();
   });
 
-  it('renders tag chips and count badges in a .tc-tg-block-meta row when the task has them', () => {
+  it('renders count badges in a top-right .tc-tg-block-badges container when the task has them, and never a tag chip even when the task has tags (Task 35)', () => {
     const container = freshContainer();
     const t = task({
       time: '09:00',
@@ -604,20 +607,20 @@ describe('renderTimedBlocksForDay', () => {
       { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
     ]);
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
-    const meta = block.querySelector('.tc-tg-block-meta') as HTMLElement;
-    expect(meta).not.toBeNull();
-    expect(meta.querySelectorAll('.tc-task-count-badge')).toHaveLength(2); // comment + link
-    const tagChip = meta.querySelector('.tc-task-tag') as HTMLElement;
-    expect(tagChip.textContent).toBe('#work');
-    expect(tagChip.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
+    const badges = block.querySelector('.tc-tg-block-badges') as HTMLElement;
+    expect(badges).not.toBeNull();
+    expect(badges.querySelectorAll('.tc-task-count-badge')).toHaveLength(2); // comment + link
+    expect(block.querySelector('.tc-task-tag')).toBeNull();
+    expect(block.querySelector('.tc-tg-block-meta')).toBeNull();
   });
 
-  it('omits .tc-tg-block-meta entirely for a plain task with no tags/subtasks/comments/links', () => {
+  it('omits .tc-tg-block-badges entirely for a task with no subtasks/comments/links (including a tag-only task, since tags no longer render anything here)', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00' });
-    renderTimedBlocksForDay(container, [t], callbacks());
-    const block = container.querySelector('.tc-tg-block') as HTMLElement;
-    expect(block.querySelector('.tc-tg-block-meta')).toBeNull();
+    const plain = task({ time: '09:00' });
+    const tagOnly = task({ time: '10:00', rawText: '- [ ] t #work', line: 1 });
+    renderTimedBlocksForDay(container, [plain, tagOnly], callbacks());
+    expect(container.querySelector('.tc-tg-block-badges')).toBeNull();
+    expect(container.querySelector('.tc-task-tag')).toBeNull();
   });
 
   describe('native HTML5 drag-out (Task 26: drop onto the all-day row)', () => {
@@ -1040,6 +1043,71 @@ describe('renderTimedBlocksForDay', () => {
       ]);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
       expect(seg.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
+    });
+
+    // Task 35 (expanded scope): continuation segments gain the same time/duration subtitle and
+    // count badges the anchor block shows, but must stay just as non-interactive as before.
+    it('shows the time range + duration subtitle, matching the anchor block\'s format', () => {
+      const container = freshContainer();
+      const t = task({ time: '15:00', duration: 90, start: '2026-07-01', due: '2026-07-03' });
+      renderTimedSpanContinuation(container, [t]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      const subtitle = seg.querySelector('.tc-tg-block-subtitle') as HTMLElement;
+      expect(subtitle).not.toBeNull();
+      expect(subtitle.textContent).toBe('15:00–16:30 (1h30m)');
+    });
+
+    it('renders count badges in a .tc-tg-block-badges container when the task has subtasks/comments/links, and never a tag chip', () => {
+      const container = freshContainer();
+      const t = task({
+        time: '09:00',
+        start: '2026-07-01',
+        due: '2026-07-03',
+        rawText: '- [ ] t #work',
+        linkCount: 1,
+      });
+      renderTimedSpanContinuation(container, [t], undefined, [
+        { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+      ]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      const badges = seg.querySelector('.tc-tg-block-badges') as HTMLElement;
+      expect(badges).not.toBeNull();
+      expect(badges.querySelectorAll('.tc-task-count-badge')).toHaveLength(1);
+      expect(seg.querySelector('.tc-task-tag')).toBeNull();
+    });
+
+    it('omits .tc-tg-block-badges entirely for a continuation task with no subtasks/comments/links', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', start: '2026-07-01', due: '2026-07-03' });
+      renderTimedSpanContinuation(container, [t]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      expect(seg.querySelector('.tc-tg-block-badges')).toBeNull();
+    });
+
+    it('still has no checkbox/status marker and no draggable/resize/pointer-driven interactivity now that the subtitle and badges were added (regression: must stay non-interactive)', () => {
+      const container = freshContainer();
+      const t = task({
+        time: '09:00',
+        duration: 60,
+        start: '2026-07-01',
+        due: '2026-07-03',
+        comments: [{ line: 1, text: 'note' }],
+      });
+      renderTimedSpanContinuation(container, [t]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      expect(seg.querySelector('.tc-status-marker')).toBeNull();
+      expect(seg.getAttribute('draggable')).not.toBe('true');
+      expect(seg.querySelector('.tc-tg-resize-handle')).toBeNull();
+      expect(seg.querySelector('.tc-tg-span-edge')).toBeNull();
+      // A pointer gesture across the segment must not throw or move anything — there is no
+      // move/resize wiring at all on a continuation segment (unlike the anchor block).
+      expect(() => {
+        seg.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+        );
+        window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      }).not.toThrow();
     });
   });
 });

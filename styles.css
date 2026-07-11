@@ -1376,21 +1376,48 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 }
 
 /* Tag chips + count badges row (Task 13): reuses .tc-task-count-badge/.tc-task-tag's own
-   sizing (both already set an explicit font-size), so only layout is added here. Day/Week's
-   timed blocks and all-day items only — Task 32 removed this meta row from Month's compact
-   items (`.tc-mg-item-meta`) as it made small Month cells feel cluttered. */
-.tc-tg-block-meta,
+   sizing (both already set an explicit font-size), so only layout is added here. All-day items
+   only now — Task 32 removed this meta row from Month's compact items (`.tc-mg-item-meta`) as
+   it made small Month cells feel cluttered, and Task 35 removed it from Week/Day's timed
+   blocks/continuation segments entirely in favor of `.tc-tg-block-badges` below. */
 .tc-tg-body-meta {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-}
-.tc-tg-block-meta {
-  display: flex;
-}
-.tc-tg-body-meta {
   margin-inline-start: 4px;
+  flex-shrink: 0;
+}
+
+/* Task 35: the block's first-row container — pairs the time/duration subtitle with the
+   count-badges group on the same line, `justify-content: space-between` pushing the badges to
+   the block's top-right corner. A real flex layout rather than an absolute-position overlay:
+   an earlier attempt at absolutely positioning `.tc-tg-block-badges` directly inside
+   `.tc-tg-block` covered the subtitle text on narrower (overlapping-column) blocks, since
+   nothing then reserved space for it. */
+.tc-tg-block-toprow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.tc-tg-block-toprow .tc-tg-block-subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+/* Count-badges-only group for Week/Day's timed blocks (`renderTimedBlocksForDay`) and their
+   multi-day continuation segments (`renderTimedSpanContinuation`) — no tag chips here (the
+   block's own tag-colored fill already conveys the tag). Sits inside `.tc-tg-block-toprow`
+   above; never shrinks, so a long subtitle ellipsizes before ever crowding the badges out. */
+.tc-tg-block-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex-shrink: 0;
 }
 

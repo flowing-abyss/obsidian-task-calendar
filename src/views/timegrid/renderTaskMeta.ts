@@ -77,3 +77,19 @@ export function hasMeta(task: Task): boolean {
     extractTags(task, 1).length > 0
   );
 }
+
+/**
+ * True if the task has anything for renderCountBadges alone to show (subtasks/comments/links)
+ * — deliberately excludes tags, unlike `hasMeta` above. Used by Week/Day's timed-block renderers
+ * (renderTimedBlocks.ts), which stopped rendering tag chips at all (Task 35: the block's own
+ * tag-colored fill already conveys the tag, so a chip was redundant) — gating on `hasMeta` there
+ * would keep reserving/showing an (now chip-less) badges container for a tag-only task that has
+ * no counts to show.
+ */
+export function hasCountBadges(task: Task): boolean {
+  return (
+    (task.subtasks?.length ?? 0) > 0 ||
+    (task.comments?.length ?? 0) > 0 ||
+    (task.linkCount ?? 0) > 0
+  );
+}
