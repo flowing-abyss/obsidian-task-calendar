@@ -204,7 +204,12 @@ describe('WeekTimeGridView', () => {
     vi.setSystemTime(new Date('2026-06-15T14:30:00'));
     const container = freshContainer();
     const view = new WeekTimeGridView(callbacks());
-    view.render(container, [], resolvedConfig({ startPosition: '2026-25', firstDayOfWeek: 1 }), false);
+    view.render(
+      container,
+      [],
+      resolvedConfig({ startPosition: '2026-25', firstDayOfWeek: 1 }),
+      false,
+    );
     const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
     Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
     vi.runOnlyPendingTimers();
