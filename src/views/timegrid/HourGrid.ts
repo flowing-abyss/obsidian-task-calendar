@@ -83,6 +83,7 @@ export function renderHourGrid(
   }
 
   let nowLineEl: HTMLElement | null = null;
+  const todayIndex = dates.indexOf(today);
 
   const days: DayColumnHandles[] = dates.map((date, i) => {
     // No is-today class here: Round 3 removed the day-column's full-column red border (too
@@ -97,11 +98,6 @@ export function renderHourGrid(
       dayColumn.createDiv({ cls: 'tc-tg-hour-row' });
     }
     const hourColumnEl = dayColumn.createDiv({ cls: 'tc-tg-hour-column' });
-
-    if (date === today) {
-      nowLineEl = hourColumnEl.createDiv({ cls: 'tc-tg-now-line' });
-      repositionNowLine(nowLineEl);
-    }
 
     if (onDropTime) {
       hourColumnEl.addEventListener('dragover', (e) => {
@@ -133,6 +129,20 @@ export function renderHourGrid(
 
     return { date, hourColumnEl, allDayCellEl: alldayCells[i]! };
   });
+
+  // Now-line: a single element spanning the full grid-row width (right after the hour-gutter to
+  // the row's right edge), a direct child of gridRow rather than any one day-column — so in Week
+  // it visually crosses all 7 day-columns at once instead of only today's. A small dot marks
+  // today's specific column: its horizontal position is expressed as a percentage of the line's
+  // own width (which already excludes the gutter, since the line itself starts right after it),
+  // computed from today's index among the equal-width flex day-columns — not a hardcoded day
+  // count, so this works unchanged for Day view's single column and Week's seven.
+  if (todayIndex !== -1) {
+    nowLineEl = gridRow.createDiv({ cls: 'tc-tg-now-line' });
+    const dot = nowLineEl.createDiv({ cls: 'tc-tg-now-line-dot' });
+    dot.style.left = `${((todayIndex + 0.5) / dates.length) * 100}%`;
+    repositionNowLine(nowLineEl);
+  }
 
   return { rootEl: root, gridRowEl: gridRow, days, nowLineEl };
 }

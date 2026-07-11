@@ -131,17 +131,47 @@ describe('renderHourGrid', () => {
     expect(container.querySelectorAll('.tc-tg-day-column')).toHaveLength(1);
   });
 
-  it('renders a now-line only on the day column matching today, positioned by current time', () => {
+  it('renders exactly one now-line for the whole grid, as a child of the grid-row (not any single day-column), positioned by current time', () => {
     const container = freshContainer();
     const today = window.moment().format('YYYY-MM-DD');
     const other = window.moment().add(1, 'day').format('YYYY-MM-DD');
     const handles = renderHourGrid(container, [today, other]);
     const nowLines = container.querySelectorAll('.tc-tg-now-line');
     expect(nowLines).toHaveLength(1);
-    expect(handles.days[0]?.hourColumnEl.querySelector('.tc-tg-now-line')).not.toBeNull();
+    const nowLine = nowLines[0] as HTMLElement;
+    expect(nowLine.parentElement).toBe(handles.gridRowEl);
+    expect(handles.days[0]?.hourColumnEl.querySelector('.tc-tg-now-line')).toBeNull();
     expect(handles.days[1]?.hourColumnEl.querySelector('.tc-tg-now-line')).toBeNull();
-    const top = parseFloat((nowLines[0] as HTMLElement).style.top);
+    const top = parseFloat(nowLine.style.top);
     expect(top).toBeGreaterThanOrEqual(0);
+  });
+
+  it("positions the now-line's dot marker at today's column offset, expressed as a percentage of the line's width", () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    const yesterday = window.moment().subtract(1, 'day').format('YYYY-MM-DD');
+    const tomorrow = window.moment().add(1, 'day').format('YYYY-MM-DD');
+    // today is index 1 of 3 dates -> dot should sit at (1 + 0.5) / 3 = 50%
+    const handles = renderHourGrid(container, [yesterday, today, tomorrow]);
+    const dot = handles.nowLineEl?.querySelector('.tc-tg-now-line-dot') as HTMLElement;
+    expect(dot).not.toBeNull();
+    expect(dot.style.left).toBe('50%');
+  });
+
+  it('single-date (Day view) render still shows a now-line with the dot centered on the only column', () => {
+    const container = freshContainer();
+    const today = window.moment().format('YYYY-MM-DD');
+    const handles = renderHourGrid(container, [today]);
+    const dot = handles.nowLineEl?.querySelector('.tc-tg-now-line-dot') as HTMLElement;
+    expect(dot).not.toBeNull();
+    expect(dot.style.left).toBe('50%');
+  });
+
+  it('no now-line dot is rendered when today is not among the rendered dates', () => {
+    const container = freshContainer();
+    const other = window.moment().add(5, 'days').format('YYYY-MM-DD');
+    renderHourGrid(container, [other]);
+    expect(container.querySelector('.tc-tg-now-line-dot')).toBeNull();
   });
 
   it('exposes the now-line element via handles so callers can reposition it later (periodic refresh)', () => {

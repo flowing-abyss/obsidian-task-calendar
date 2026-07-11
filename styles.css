@@ -1278,8 +1278,11 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 }
 
 .tc-tg-now-line {
+  /* Direct child of .tc-tg-grid-row (not any single day-column) so it spans every day-column at
+     once — `left` matches .tc-tg-hour-gutter's width, so the line starts right where the gutter
+     ends and runs to the row's right edge, crossing all rendered dates (1 in Day view, 7 in Week). */
   position: absolute;
-  left: 0;
+  left: 3.5em;
   right: 0;
   height: 2px;
   background: var(--text-error);
@@ -1289,15 +1292,18 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   pointer-events: none;
 }
 
-.tc-tg-now-line::before {
-  content: '';
+.tc-tg-now-line-dot {
+  /* Marks today's specific day-column along the otherwise-undifferentiated full-width line.
+     `left` is set inline (per-render, from today's index among the rendered dates) as a
+     percentage of the line's own width — which already excludes the gutter — so this never
+     hardcodes a day count and works the same for Day view's single column or Week's seven. */
   position: absolute;
-  left: -4px;
-  top: -3px;
+  top: 50%;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--text-error);
+  transform: translate(-50%, -50%);
 }
 
 .tc-tg-block {
