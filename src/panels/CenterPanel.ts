@@ -503,7 +503,10 @@ export class CenterPanel {
       // Only scroll-to-now when this (viewType, date) pair is new since the last time we
       // scrolled — a reactive re-render of the same view/date (e.g. a store update from a task
       // edit) must not jump the scroll position back to center. See `lastScrolledCalKey` above.
-      const scrollKey = `${this.calViewType}:${cfg.startPosition}`;
+      // Uses calDate directly (not cfg.startPosition/YYYY-ww) since Week's YYYY-ww format
+      // collides across some year boundaries (e.g. 2015-01 matches both the week starting
+      // 2014-12-28 and the one starting 2015-12-27), which would falsely suppress a re-scroll.
+      const scrollKey = `${this.calViewType}:${this.calDate.format('YYYY-MM-DD')}`;
       const shouldScrollToNow = scrollKey !== this.lastScrolledCalKey;
       this.lastScrolledCalKey = scrollKey;
 
