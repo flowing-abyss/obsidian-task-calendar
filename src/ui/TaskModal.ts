@@ -3,6 +3,7 @@ import { AppState } from '../app/AppState';
 import { RightPanel } from '../panels/RightPanel';
 import type { Task } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
+import type { TaskStore } from '../store/TaskStore';
 
 export class TaskModal {
   private backdropEl: HTMLElement | null = null;
@@ -10,10 +11,12 @@ export class TaskModal {
   private innerPanel: RightPanel | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private ownerDoc: Document | null = null;
+  private storeUnsub: (() => void) | null = null;
 
   constructor(
     private app: App,
     private settings?: CalendarSettings,
+    private store?: TaskStore,
   ) {}
 
   open(task: Task): void {
@@ -22,6 +25,40 @@ export class TaskModal {
     this.ownerDoc = activeDocument;
     this.innerState = new AppState();
     this.innerState.set('taskStack', [task]);
+
+    // Mirror PanelView's store-refresh wiring: without it, the modal's own AppState is
+    // isolated from the TaskStore, so mutating Start/Plan (or any field) via RightPanel's
+    // Planning disclosure updates the file/store but leaves this modal showing the stale
+    // task object — RightPanel's Start/Plan chips (task.start / task.scheduled) then never
+    // appear until the modal is closed and reopened.
+    if (this.store) {
+      this.storeUnsub = this.store.onUpdate(({ changedFiles }) => {
+        const stack = this.innerState?.get('taskStack');
+        if (!stack || stack.length === 0) return;
+        const root = stack[0];
+        if (!root || !changedFiles.includes(root.filePath)) return;
+        const freshTasks = this.store!.getTasks();
+        const freshRoot = freshTasks.find(
+          (t) => t.filePath === root.filePath && t.line === root.line,
+        );
+        if (!freshRoot) return;
+        if (stack.length === 1) {
+          this.innerState?.set('taskStack', [freshRoot]);
+          return;
+        }
+        // Rebuild deeper stack levels (subtask navigation), same approach as PanelView.
+        const freshStack: typeof stack = [freshRoot];
+        for (let i = 1; i < stack.length; i++) {
+          const prev = freshStack[i - 1];
+          const stale = stack[i];
+          if (!prev || !stale) break;
+          const freshSub = prev.subtasks?.find((s) => s.line === stale.line);
+          if (!freshSub) break;
+          freshStack.push(freshSub);
+        }
+        this.innerState?.set('taskStack', freshStack);
+      });
+    }
 
     const backdrop = this.ownerDoc.body.createDiv({ cls: 'tc-modal-backdrop' });
     this.backdropEl = backdrop;
@@ -63,6 +100,8 @@ export class TaskModal {
       this.ownerDoc.removeEventListener('keydown', this.keyHandler);
       this.keyHandler = null;
     }
+    this.storeUnsub?.();
+    this.storeUnsub = null;
     this.ownerDoc?.body.removeClass('tc-modal-open');
     this.ownerDoc = null;
     this.innerPanel?.destroy();

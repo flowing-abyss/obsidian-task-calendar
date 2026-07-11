@@ -3423,8 +3423,12 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   background: var(--background-modifier-border);
   margin: 0 16px;
 }
+/* Planning disclosure reuses the .tc-right-section card (padding/header/label — see
+   Description, Sub-tasks below) so it reads as one more section of the panel rather
+   than a bespoke widget; only the disclosure-specific bits (arrow, collapse, row/input
+   layout) are defined here. */
 .tc-planning-section {
-  padding: 0 16px 8px;
+  padding-bottom: 12px;
 }
 .tc-planning-toggle {
   display: inline-flex;
@@ -3432,12 +3436,8 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   gap: 4px;
   background: none;
   border: none;
-  padding: 4px 0;
-  font-size: var(--font-ui-smaller, 11px);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
+  padding: 0;
+  margin: 0;
   cursor: pointer;
 }
 .tc-planning-toggle:hover {
@@ -3457,14 +3457,17 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-planning-section[data-open='true'] .tc-planning-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
 }
 .tc-planning-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px 10px;
 }
 .tc-planning-label {
   font-size: var(--font-ui-small);
@@ -3473,10 +3476,10 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 .tc-planning-start-input,
 .tc-planning-scheduled-input {
   border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  background: var(--background-secondary);
+  border-radius: 6px;
+  background: var(--background-primary);
   color: var(--text-normal);
-  padding: 2px 6px;
+  padding: 3px 8px;
   font-size: var(--font-ui-small);
 }
 .tc-right-section {

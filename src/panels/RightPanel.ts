@@ -281,7 +281,7 @@ export class RightPanel {
         const schedChip = chips.createEl('button', {
           cls: 'tc-chip tc-chip-scheduled',
           text: `⏳ ${this.formatDate(task.scheduled)}`,
-          attr: { title: 'Scheduled — open planning to edit' },
+          attr: { title: 'Plan — open planning to edit' },
         });
         schedChip.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -684,11 +684,15 @@ export class RightPanel {
   }
 
   private renderPlanningSection(task: Task): void {
-    const section = this.el.createDiv({ cls: 'tc-planning-section' });
+    // Reuses the .tc-right-section card/header conventions (see Description, Sub-tasks
+    // below) rather than a bespoke style, so the disclosure — collapsed or expanded —
+    // reads as one more section of this panel instead of a visually distinct widget.
+    const section = this.el.createDiv({ cls: 'tc-right-section tc-planning-section' });
     section.setAttribute('data-open', 'false');
 
-    const toggle = section.createEl('button', {
-      cls: 'tc-planning-toggle',
+    const header = section.createDiv({ cls: 'tc-right-section-header' });
+    const toggle = header.createEl('button', {
+      cls: 'tc-right-section-label tc-planning-toggle',
       text: 'Planning',
     });
     const body = section.createDiv({ cls: 'tc-planning-body' });
@@ -709,7 +713,9 @@ export class RightPanel {
     });
 
     const schedRow = body.createDiv({ cls: 'tc-planning-row' });
-    schedRow.createEl('span', { cls: 'tc-planning-label', text: '⏳ Scheduled' });
+    // Display label only — the underlying field/emoji convention stays `scheduled`/⏳
+    // (see parser/types.ts, TaskMutationService); "Plan" is just friendlier UI copy.
+    schedRow.createEl('span', { cls: 'tc-planning-label', text: '⏳ Plan' });
     const schedInput = schedRow.createEl('input', {
       cls: 'tc-planning-scheduled-input',
       attr: { type: 'date', value: task.scheduled ?? '' },

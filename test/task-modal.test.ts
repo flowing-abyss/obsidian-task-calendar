@@ -1,5 +1,7 @@
 import type { App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppState } from '../src/app/AppState';
+import type { Task } from '../src/parser/types';
 import { task } from './helpers';
 
 // vi.hoisted runs BEFORE vi.mock factory execution, avoiding TDZ.
@@ -8,10 +10,14 @@ const mockState = vi.hoisted(() => ({
   mountImpl: vi.fn(),
   destroyImpl: vi.fn(),
   includeHeaderActions: { value: true },
+  // Captures the AppState instance TaskModal constructs for RightPanel, so tests can
+  // inspect taskStack after simulating a store update (RightPanel itself is mocked out).
+  capturedState: null as AppState | null,
 }));
 
 vi.mock('../src/panels/RightPanel', () => ({
-  RightPanel: vi.fn().mockImplementation(function (this: unknown) {
+  RightPanel: vi.fn().mockImplementation(function (this: unknown, state: AppState) {
+    mockState.capturedState = state;
     return {
       mount: (el: HTMLElement) => {
         mockState.mountImpl(el);
@@ -31,6 +37,23 @@ function fakeApp(): App {
   return {} as App;
 }
 
+/** Minimal fake TaskStore — just enough surface for TaskModal's store-subscription wiring. */
+function fakeStore(getTasksImpl: () => Task[]) {
+  let cb: ((event: { changedFiles: string[] }) => void) | null = null;
+  const unsub = vi.fn();
+  return {
+    onUpdate: vi.fn((listener: (event: { changedFiles: string[] }) => void) => {
+      cb = listener;
+      return unsub;
+    }),
+    getTasks: vi.fn(getTasksImpl),
+    emit(changedFiles: string[]): void {
+      cb?.({ changedFiles });
+    },
+    unsub,
+  };
+}
+
 describe('TaskModal', () => {
   let modal: InstanceType<typeof TaskModal>;
   const app = fakeApp();
@@ -39,6 +62,7 @@ describe('TaskModal', () => {
     mockState.mountImpl.mockClear();
     mockState.destroyImpl.mockClear();
     mockState.includeHeaderActions.value = true;
+    mockState.capturedState = null;
     modal = new TaskModal(app);
   });
 
@@ -160,6 +184,74 @@ describe('TaskModal', () => {
       expect(firstBackdrop.isConnected).toBe(false);
       // only one backdrop at a time
       expect(activeDocument.body.querySelectorAll('.tc-modal-backdrop')).toHaveLength(1);
+    });
+  });
+
+  // Bug: TaskModal builds its own isolated AppState, unconnected to the TaskStore that
+  // PanelView subscribes to for exactly this purpose (see PanelView's storeUnsub —
+  // "Refresh taskStack with fresh objects from the store so the right panel re-renders").
+  // Without an equivalent subscription here, picking a Start/Plan date via RightPanel's
+  // Planning disclosure mutates the file and the store, but the modal's own taskStack
+  // keeps the stale task object — so RightPanel's already-existing Start/Plan chips
+  // (rendered from task.start / task.scheduled) never appear until the modal is closed
+  // and reopened. Passing a TaskStore lets TaskModal mirror PanelView's refresh.
+  describe('store wiring (visible-summary refresh)', () => {
+    it('with no store passed, opening/closing still works (store is optional)', () => {
+      expect(() => modal.open(task())).not.toThrow();
+    });
+
+    it('subscribes to store.onUpdate on open', () => {
+      const store = fakeStore(() => []);
+      const m = new TaskModal(app, undefined, store as never);
+      m.open(task({ filePath: 'f.md', line: 0 }));
+      expect(store.onUpdate).toHaveBeenCalledTimes(1);
+      m.close();
+    });
+
+    it('refreshes taskStack with the fresh task when its file changes', () => {
+      const original = task({ filePath: 'f.md', line: 0, scheduled: undefined });
+      const fresh = task({ filePath: 'f.md', line: 0, scheduled: '2026-07-15' });
+      const store = fakeStore(() => [fresh]);
+      const m = new TaskModal(app, undefined, store as never);
+      m.open(original);
+
+      store.emit(['f.md']);
+
+      const stack = mockState.capturedState!.get('taskStack');
+      expect(stack).toHaveLength(1);
+      expect(stack[0]).toBe(fresh);
+      m.close();
+    });
+
+    it('ignores updates for unrelated files', () => {
+      const original = task({ filePath: 'f.md', line: 0, scheduled: undefined });
+      const fresh = task({ filePath: 'f.md', line: 0, scheduled: '2026-07-15' });
+      const store = fakeStore(() => [fresh]);
+      const m = new TaskModal(app, undefined, store as never);
+      m.open(original);
+
+      store.emit(['other.md']);
+
+      const stack = mockState.capturedState!.get('taskStack');
+      expect(stack[0]).toBe(original);
+      m.close();
+    });
+
+    it('unsubscribes from the store on close', () => {
+      const store = fakeStore(() => []);
+      const m = new TaskModal(app, undefined, store as never);
+      m.open(task({ filePath: 'f.md', line: 0 }));
+      m.close();
+      expect(store.unsub).toHaveBeenCalledTimes(1);
+    });
+
+    it('close twice with a store attached does not double-unsubscribe or throw', () => {
+      const store = fakeStore(() => []);
+      const m = new TaskModal(app, undefined, store as never);
+      m.open(task({ filePath: 'f.md', line: 0 }));
+      m.close();
+      expect(() => m.close()).not.toThrow();
+      expect(store.unsub).toHaveBeenCalledTimes(1);
     });
   });
 });
