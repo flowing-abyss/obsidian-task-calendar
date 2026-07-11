@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  capMinHeightsPx,
+  MIN_BLOCK_HEIGHT_PX,
   minutesToPixels,
   minutesToTimeString,
   packOverlaps,
@@ -73,5 +75,53 @@ describe('packOverlaps', () => {
 
   it('empty input returns empty output', () => {
     expect(packOverlaps([])).toEqual([]);
+  });
+});
+
+// Task 36: a min-height CSS rule on `.tc-tg-block` guarantees a short-duration block's
+// checkbox+title row stays legible, but that rule can only grow a block past its
+// duration-derived height — so a short block scheduled immediately before another block in the
+// same column could visually grow into it. `capMinHeightsPx` computes, per block, the maximum
+// height it may safely occupy before crossing into whatever's next in its own column.
+describe('capMinHeightsPx', () => {
+  const block = (start: number, duration: number): TimedBlockInput => ({
+    task: task({ line: start }),
+    startMinutes: start,
+    durationMinutes: duration,
+  });
+
+  it('two back-to-back 10-minute blocks in the same column: the earlier one is capped to the real gap between them, well under MIN_BLOCK_HEIGHT_PX', () => {
+    const positioned = packOverlaps([block(9 * 60, 10), block(9 * 60 + 10, 10)]);
+    expect(positioned.every((b) => b.column === 0)).toBe(true); // sanity: truly sequential, same column
+    const caps = capMinHeightsPx(positioned);
+    const [first, second] = positioned;
+    const firstCap = caps.get(first!)!;
+    // The gap between the two blocks' start times is exactly 10 minutes (8px) — far less than
+    // MIN_BLOCK_HEIGHT_PX (~24.5px), so the CSS min-height would otherwise grow the first block
+    // past the second one's top: this cap is what prevents that visual overlap.
+    expect(firstCap).toBeLessThan(MIN_BLOCK_HEIGHT_PX);
+    expect(firstCap).toBeCloseTo(minutesToPixels(10) - 2, 5);
+    // The last (only remaining) occupant of its column has nothing after it to crowd into.
+    expect(caps.get(second!)).toBe(Infinity);
+  });
+
+  it('a lone block in its column (no next occupant) is uncapped (Infinity), so the full CSS min-height is free to apply', () => {
+    const positioned = packOverlaps([block(9 * 60, 60)]);
+    const caps = capMinHeightsPx(positioned);
+    expect(caps.get(positioned[0]!)).toBe(Infinity);
+  });
+
+  it('a generous gap between two same-column blocks yields a cap comfortably above MIN_BLOCK_HEIGHT_PX (no clamping needed)', () => {
+    const positioned = packOverlaps([block(9 * 60, 10), block(11 * 60, 10)]);
+    const caps = capMinHeightsPx(positioned);
+    expect(caps.get(positioned[0]!)!).toBeGreaterThan(MIN_BLOCK_HEIGHT_PX);
+  });
+
+  it('two simultaneous (overlapping) blocks land in different columns, each uncapped by the other — min-height growth is a vertical concern, not a horizontal one', () => {
+    const positioned = packOverlaps([block(9 * 60, 10), block(9 * 60, 10)]);
+    expect(new Set(positioned.map((b) => b.column)).size).toBe(2);
+    const caps = capMinHeightsPx(positioned);
+    expect(caps.get(positioned[0]!)).toBe(Infinity);
+    expect(caps.get(positioned[1]!)).toBe(Infinity);
   });
 });

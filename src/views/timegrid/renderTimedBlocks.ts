@@ -8,6 +8,8 @@ import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';
 import {
+  capMinHeightsPx,
+  MIN_BLOCK_HEIGHT_PX,
   minutesToPixels,
   minutesToTimeString,
   packOverlaps,
@@ -70,12 +72,25 @@ export function renderTimedBlocksForDay(
     durationMinutes: t.duration ?? DEFAULT_DURATION_MINUTES,
   }));
   const positioned = packOverlaps(inputs);
+  // Task 36: `.tc-tg-block`'s CSS min-height keeps a short block's checkbox+title row legible,
+  // but only ever grows a block past its duration-derived height — see capMinHeightsPx's own
+  // doc comment for why a same-column neighbor can still need that growth clamped back down so
+  // the two blocks never visually cross.
+  const minHeightCaps = capMinHeightsPx(positioned);
 
   for (const p of positioned) {
     const widthPct = 100 / p.columns;
     const block = hourColumnEl.createDiv({ cls: 'tc-tg-block' });
     block.style.top = `${minutesToPixels(p.startMinutes)}px`;
-    block.style.height = `${minutesToPixels(p.durationMinutes)}px`;
+    const heightPx = minutesToPixels(p.durationMinutes);
+    block.style.height = `${heightPx}px`;
+    // Only intervene when the CSS min-height would otherwise cross into the next same-column
+    // block — leave the CSS rule (which uses real `em`s, more accurate than this JS-side
+    // approximation) in full effect everywhere else.
+    const cap = minHeightCaps.get(p) ?? Infinity;
+    if (cap < MIN_BLOCK_HEIGHT_PX) {
+      block.style.minHeight = `${Math.max(heightPx, cap)}px`;
+    }
     block.style.width = `${widthPct}%`;
     block.style.left = `${p.column * widthPct}%`;
     // Tag-colored fill only — the priority-colored border was removed (Task 12): the

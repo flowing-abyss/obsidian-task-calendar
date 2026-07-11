@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { Component, type App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
@@ -7,6 +9,14 @@ import {
   renderTimedSpanContinuation,
 } from '../src/views/timegrid/renderTimedBlocks';
 import { dispatchDnD, freshContainer, task } from './helpers';
+
+const css = readFileSync(resolve(import.meta.dirname, '..', 'styles.css'), 'utf8');
+
+function declarationsFor(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').replace(/\\,/gu, ',');
+  const match = new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`, 'u').exec(css);
+  return match?.groups?.['body'] ?? '';
+}
 
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
 const fakeApp = {} as App;
@@ -1108,6 +1118,57 @@ describe('renderTimedBlocksForDay', () => {
         window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
         window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
       }).not.toThrow();
+    });
+  });
+
+  describe('Task 36: minimum block size so very-short-duration text never becomes invisible', () => {
+    it('.tc-tg-block declares a min-height', () => {
+      expect(declarationsFor('.tc-tg-block')).toMatch(/min-height\s*:/u);
+    });
+
+    it('.tc-tg-block-continuation declares a min-height', () => {
+      expect(declarationsFor('.tc-tg-block-continuation')).toMatch(/min-height\s*:/u);
+    });
+
+    it("the subtitle/badges row (.tc-tg-block-toprow) is the one that shrinks/collapses under pressure — the checkbox+title row (.tc-tg-block-head) doesn't", () => {
+      expect(declarationsFor('.tc-tg-block-toprow')).toMatch(/flex-shrink\s*:\s*1/u);
+      expect(declarationsFor('.tc-tg-block-head')).toMatch(/flex-shrink\s*:\s*0/u);
+    });
+
+    it('a 10-minute task does not get an explicit inline min-height override when nothing follows it in its column (the CSS rule alone is enough)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 10 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      expect(block.style.height).toBe(`${(10 / 60) * 48}px`);
+      expect(block.style.minHeight).toBe('');
+    });
+
+    it('two 10-minute tasks scheduled back-to-back (09:00-09:10, 09:10-09:20): the earlier block gets an inline min-height clamped to the real gap, so growing to legibly show its title cannot visually cross into the next block', () => {
+      const container = freshContainer();
+      const a = task({ time: '09:00', duration: 10, line: 0, text: 'A' });
+      const b = task({ time: '09:10', duration: 10, line: 1, text: 'B' });
+      renderTimedBlocksForDay(container, [a, b], callbacks());
+      const blocks = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block'));
+      expect(blocks).toHaveLength(2);
+      const [blockA, blockB] = blocks;
+      const topA = parseFloat(blockA!.style.top);
+      const topB = parseFloat(blockB!.style.top);
+      // Without the fix, .tc-tg-block's CSS min-height (~24.5px) would grow block A well past
+      // block B's top (8px further down) — an inline min-height clamp is required here.
+      expect(blockA!.style.minHeight).not.toBe('');
+      const clampedHeight = parseFloat(blockA!.style.minHeight);
+      // The clamped height must never place block A's bottom edge below block B's top edge.
+      expect(topA + clampedHeight).toBeLessThanOrEqual(topB);
+    });
+
+    it('two tasks with a generous gap (09:00-09:10, then 11:00) get no inline min-height override — the CSS rule has plenty of room', () => {
+      const container = freshContainer();
+      const a = task({ time: '09:00', duration: 10, line: 0 });
+      const b = task({ time: '11:00', duration: 60, line: 1 });
+      renderTimedBlocksForDay(container, [a, b], callbacks());
+      const blocks = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block'));
+      expect(blocks[0]!.style.minHeight).toBe('');
     });
   });
 });

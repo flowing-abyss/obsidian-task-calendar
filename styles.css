@@ -1325,6 +1325,17 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  /* Task 36: a very short-duration task (e.g. 5-15min) previously rendered a block shorter than
+     one legible line of text, effectively clipping/hiding its title. Floor derived from this
+     rule's own box model, not guessed: `padding: 2px 6px` above contributes 2px top + 2px bottom
+     (4px), and the tallest row inside — `.tc-tg-block-head`, whose checkbox scales to `1.6em` of
+     this block's own `font-size: 0.8em` (see `.tc-tg-block-head .tc-status-marker` below) — needs
+     `1.6em` of height. `renderTimedBlocks.ts`'s `capMinHeightsPx`/`MIN_BLOCK_HEIGHT_PX` mirror
+     this same figure numerically so a min-height-inflated block can't be grown into visually
+     overlapping the very next block scheduled in its own day-column (see that function's doc
+     comment) — the two are kept in sync by cross-referencing comments on both sides, not by
+     sharing a single value at build time. */
+  min-height: calc(1.6em + 4px);
 }
 
 /* Checkbox + title share one row (not stacked): the marker is an inline span but the
@@ -1335,6 +1346,13 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   align-items: center;
   gap: 0.4em;
   min-width: 0;
+  /* Task 36: `.tc-tg-block`'s flex-column layout has exactly two in-flow rows — this one and
+     `.tc-tg-block-toprow` above it — so when the block is squeezed down toward its own
+     min-height (a short-duration task), something has to give. `flex-shrink: 0` here paired with
+     `.tc-tg-block-toprow`'s `flex-shrink: 1` below means the browser shrinks (and, past
+     `.tc-tg-block-toprow`'s own `min-height: 0`, fully collapses) the subtitle/badges row first,
+     leaving this checkbox+title row — the one thing a block must always show — untouched. */
+  flex-shrink: 0;
 }
 
 /* Scale the checkbox with the block's own font-size (0.8em) instead of the fixed 19px
@@ -1401,6 +1419,13 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   justify-content: space-between;
   gap: 6px;
   min-width: 0;
+  /* Task 36: the LEAST important row — collapses first (down to 0 height, `overflow: hidden`
+     clipping its content away cleanly rather than letting it spill) under the pressure of a
+     short block squeezed toward `.tc-tg-block`'s min-height, so the title in the sibling
+     `.tc-tg-block-head` row (flex-shrink: 0) always stays visible instead. */
+  flex-shrink: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 .tc-tg-block-toprow .tc-tg-block-subtitle {
   overflow: hidden;
@@ -1550,6 +1575,17 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
     var(--tc-tag-color, var(--interactive-accent)) 22%,
     var(--background-primary)
   );
+  /* Task 36: same flex-column layout as `.tc-tg-block` (see its own comment) so this segment's
+     two in-flow rows — `.tc-tg-block-toprow` (subtitle+badges) and the title below — can
+     participate in the same "collapse the subtitle first" shrink behavior at a short min-height,
+     via `.tc-tg-block-continuation-title`'s `flex-shrink: 0` below. */
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* Same derivation as `.tc-tg-block`'s min-height, minus the checkbox (this segment has none,
+     see this rule's own doc comment above): 2*2px padding plus one legible line of the title's
+     own font-size (this rule's `font-size: 0.8em`) at a generous 1.4 line-height. */
+  min-height: calc(1.4em + 4px);
 }
 .tc-tg-block-continuation-title {
   color: var(--text-muted);
@@ -1557,6 +1593,9 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
+  /* Task 36: never shrinks — see `.tc-tg-block-continuation`'s own comment on this segment's
+     flex-column "collapse the subtitle row first" behavior. */
+  flex-shrink: 0;
 }
 
 /* Deadline markers: shape (small non-draggable pill, no fill/body) is what signals
