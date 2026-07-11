@@ -1497,6 +1497,10 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-tg-block > .tc-tg-span-edge--right {
   right: 0;
 }
+/* Task 34: left edge gets the same overflow-hidden-clipping fix as the right edge above. */
+.tc-tg-block > .tc-tg-span-edge--left {
+  left: 0;
+}
 
 /* Task 29: the non-anchor-day "continuation" segment of a multi-day timed span — deliberately
    lighter/thinner than a full .tc-tg-block (lower opacity fill, dashed left border reading as

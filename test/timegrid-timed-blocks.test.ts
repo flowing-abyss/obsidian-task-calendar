@@ -19,6 +19,7 @@ function callbacks() {
     onTimeChange: vi.fn(),
     onDurationChange: vi.fn(),
     onExtendToSpan: vi.fn(),
+    onStartChange: vi.fn(),
     onToggle: vi.fn(),
     onSetStatus: vi.fn(),
     onSetPriority: vi.fn(),
@@ -37,6 +38,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -142,6 +144,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -164,6 +167,7 @@ describe('renderTimedBlocksForDay', () => {
         onTimeChange: vi.fn(),
         onDurationChange: vi.fn(),
         onExtendToSpan: vi.fn(),
+        onStartChange: vi.fn(),
         onToggle: vi.fn(),
         onSetStatus: vi.fn(),
         onSetPriority: vi.fn(),
@@ -216,6 +220,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -238,6 +243,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -258,6 +264,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -279,6 +286,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -300,6 +308,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -321,6 +330,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -344,6 +354,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange,
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -372,6 +383,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange,
       onDurationChange,
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -400,6 +412,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange,
       onDurationChange: vi.fn(),
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -563,6 +576,7 @@ describe('renderTimedBlocksForDay', () => {
       onTimeChange: vi.fn(),
       onDurationChange,
       onExtendToSpan: vi.fn(),
+      onStartChange: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -813,6 +827,164 @@ describe('renderTimedBlocksForDay', () => {
       window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
       expect(cbs.onDurationChange).toHaveBeenCalledWith(t, 120);
       expect(cbs.onExtendToSpan).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('horizontal edge-resize to a multi-day timed span (Task 34: left edge, adding/moving `start`)', () => {
+    // Same jsdom elementFromPoint caveat/stub as the Task 29 right-edge suite above.
+    let originalElementFromPoint: typeof activeDocument.elementFromPoint;
+    beforeEach(() => {
+      originalElementFromPoint = activeDocument.elementFromPoint;
+      activeDocument.elementFromPoint = () => null;
+    });
+    afterEach(() => {
+      activeDocument.elementFromPoint = originalElementFromPoint;
+    });
+
+    it('renders a left-edge horizontal resize handle on every timed block, alongside the existing right edge', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      expect(block.querySelector('.tc-tg-span-edge--left')).not.toBeNull();
+      expect(block.querySelector('.tc-tg-span-edge--right')).not.toBeNull();
+    });
+
+    it('the left-edge handle stays draggable="false" (same defensive island-in-a-draggable-ancestor pattern as the right edge and the vertical resize handle)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      expect(handle.getAttribute('draggable')).toBe('false');
+    });
+
+    it('pointer-dragging the left-edge handle fires onStartChange with the resolved date, not onExtendToSpan/onTimeChange/onDurationChange', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      // Same deterministic __tgTestEndDrag seam the right-edge suite uses, driven here via the
+      // left handle's own pointerdown so only ITS resolve is armed (see renderTimedBlocks.ts's
+      // Task 34 comment on why `__tgPendingEdgeResizes` now tracks the armed handle only, not
+      // every handle ever rendered into this hourColumnEl).
+      (container as unknown as { __tgTestEndDrag: (date: string) => void }).__tgTestEndDrag(
+        '2026-07-08',
+      );
+      expect(cbs.onStartChange).toHaveBeenCalledWith(t, '2026-07-08');
+      expect(cbs.onExtendToSpan).not.toHaveBeenCalled();
+      expect(cbs.onTimeChange).not.toHaveBeenCalled();
+      expect(cbs.onDurationChange).not.toHaveBeenCalled();
+    });
+
+    it('pointer-dragging the RIGHT edge on a block that also has a left edge still fires only onExtendToSpan, not onStartChange (the two handles do not cross-fire on the shared hourColumnEl test seam)', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const rightHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      rightHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      (container as unknown as { __tgTestEndDrag: (date: string) => void }).__tgTestEndDrag(
+        '2026-07-12',
+      );
+      expect(cbs.onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-12');
+      expect(cbs.onStartChange).not.toHaveBeenCalled();
+    });
+
+    it('a pointerdown on the left-edge handle does not arm the vertical move/resize gesture (a subsequent window pointermove/pointerup does not fire onTimeChange/onDurationChange)', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', duration: 60, due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      expect(cbs.onTimeChange).not.toHaveBeenCalled();
+      expect(cbs.onDurationChange).not.toHaveBeenCalled();
+    });
+
+    it("a pointercancel mid-gesture on the left-edge handle (mirroring the right edge's Task 29 fix) tears down its window listeners: a subsequent real pointerup that WOULD resolve to a day does not fire onStartChange", () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      const fakeDayEl = document.createElement('div');
+      fakeDayEl.setAttribute('data-tg-date', '2026-07-08');
+      activeDocument.elementFromPoint = () => fakeDayEl;
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+      expect(cbs.onStartChange).not.toHaveBeenCalled();
+    });
+
+    it('coexistence: all five interaction modes now living on one .tc-tg-block (left edge, right edge, vertical move, vertical resize, native whole-block drag) each fire only their own callback', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', duration: 60, due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const leftHandle = block.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      const rightHandle = block.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      const resizeHandle = block.querySelector('.tc-tg-resize-handle') as HTMLElement;
+
+      // Mode 5: native whole-block HTML5 drag-out — still present and independently wired.
+      expect(block.getAttribute('draggable')).toBe('true');
+
+      // Modes 1 and 2 resolve via real pointerup + a stubbed elementFromPoint (rather than the
+      // __tgTestEndDrag direct-invoke seam used by the earlier tests in this describe block):
+      // __tgTestEndDrag fires every CURRENTLY ARMED handle's resolver, and a real pointerup is
+      // what actually disarms (cleans up + unregisters) a handle after resolving it. Since both
+      // edges are exercised in this one test, going through the real pointerup path is what
+      // keeps each mode's resolver from lingering armed into the next mode's __tgTestEndDrag-free
+      // gesture — an artificial coupling that's a test-sequencing artifact of this single test,
+      // not a real interaction happening twice.
+      const leftDayEl = document.createElement('div');
+      leftDayEl.setAttribute('data-tg-date', '2026-07-08');
+      const rightDayEl = document.createElement('div');
+      rightDayEl.setAttribute('data-tg-date', '2026-07-12');
+
+      // Mode 1: left edge -> onStartChange only.
+      activeDocument.elementFromPoint = () => leftDayEl;
+      leftHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+      expect(cbs.onStartChange).toHaveBeenCalledWith(t, '2026-07-08');
+
+      // Mode 2: right edge -> onExtendToSpan only.
+      activeDocument.elementFromPoint = () => rightDayEl;
+      rightHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 2 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 2 }));
+      expect(cbs.onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-12');
+
+      // Mode 3: vertical move (block body) -> onTimeChange only.
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 3 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 3 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 3 }));
+      expect(cbs.onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 60);
+
+      // Mode 4: vertical resize (bottom handle) -> onDurationChange only.
+      resizeHandle.setPointerCapture = () => {};
+      resizeHandle.releasePointerCapture = () => {};
+      resizeHandle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 4 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 4 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 4 }));
+      expect(cbs.onDurationChange).toHaveBeenCalledWith(t, 120);
+
+      // No cross-firing across any of the four pointer-driven modes.
+      expect(cbs.onStartChange).toHaveBeenCalledTimes(1);
+      expect(cbs.onExtendToSpan).toHaveBeenCalledTimes(1);
+      expect(cbs.onTimeChange).toHaveBeenCalledTimes(1);
+      expect(cbs.onDurationChange).toHaveBeenCalledTimes(1);
     });
   });
 

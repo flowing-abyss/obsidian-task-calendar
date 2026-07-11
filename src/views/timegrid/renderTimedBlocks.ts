@@ -28,6 +28,12 @@ export interface TimedBlockCallbacks {
    * `start`, moves `due` to the dragged-to date) — reused as-is since it already leaves
    * `⏰`/`⏱️` untouched, which is exactly what preserving the task's time/duration needs. */
   onExtendToSpan: (task: Task, newDue: string) => void;
+  /** Task 34: horizontal left-edge drag-resize, moving/adding `start` while `due`/`⏰`/`⏱️`
+   * stay untouched. Same mutation as renderAllDay.ts's onStartChange/CenterPanel's
+   * updateTaskStart — reused as-is: whether the task already has a `start` (moved directly)
+   * or not (a fresh 🛫 is appended, anchored on the task's own unmoved `due`), `due` is never
+   * part of this mutation's `build()` closure, so it can't be touched by it either way. */
+  onStartChange: (task: Task, newStart: string) => void;
   onToggle: (task: Task) => void;
   onSetStatus: (task: Task, status: string) => void;
   onSetPriority: (task: Task, priority: TaskPriority) => void;
@@ -118,12 +124,20 @@ export function renderTimedBlocksForDay(
       renderCountBadges(meta, p.task);
       renderTagChips(meta, p.task, tagGroups);
     }
+    // Task 34: left-edge horizontal resize, moving/adding `start` while `due`/`⏰`/`⏱️` stay
+    // untouched (see TimedBlockCallbacks.onStartChange's own comment). Rendered on the same
+    // anchor-day block as the right edge below — unlike renderAllDay.ts's all-day spans, where
+    // start and due each get their own handle on their own (usually different) day cell, a
+    // timed span's only ever-interactive block is its `due`-anchored one (see this function's
+    // own doc comment on the due-centric anchor rule), so both edges of a timed span necessarily
+    // coexist on the same element here.
+    const hEdgeLeft = block.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--left' });
+    attachHorizontalResize(hEdgeLeft, hourColumnEl, p.task, callbacks.onStartChange);
     // Task 29: right-edge horizontal resize, extending the block into a multi-day timed span.
     // Reuses `.tc-tg-span-edge`/`.tc-tg-span-edge--right` — the same classes/CSS renderAllDay.ts's
     // span/plain right-edge handles already use — so it looks and behaves consistently with the
     // existing all-day span-extension affordance (Round 2 Task 9) instead of inventing new visual
-    // language for the same gesture. Left-edge is deliberately NOT implemented (scope cut, see
-    // Task 29's brief and the commit message — only the right edge ships).
+    // language for the same gesture.
     const hEdge = block.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--right' });
     attachHorizontalResize(hEdge, hourColumnEl, p.task, callbacks.onExtendToSpan);
 
@@ -305,14 +319,16 @@ function attachDrag(
  * renderAllDay.ts established (Round 2 Task 9), registered here per-day-column instead of
  * per-all-day-cell.
  *
- * Left-edge resize is a deliberate scope cut for this task (see Task 29's brief) — only the
- * right edge is implemented.
+ * Task 34: also used for the left edge (moves/adds `start`) — both edges share this same
+ * mechanics function, differing only in which mutation callback `onResolve` invokes on
+ * resolution, mirroring how renderAllDay.ts's single `attachEdgeResize` already serves its
+ * left/right/plain-right handles alike.
  */
 function attachHorizontalResize(
   handle: HTMLElement,
   hourColumnEl: HTMLElement,
   task: Task,
-  onExtendToSpan: (task: Task, newDue: string) => void,
+  onResolve: (task: Task, newDate: string) => void,
 ): void {
   // Same reasoning as the vertical resize handle's draggable="false" (Task 26): this handle is a
   // non-draggable island inside the block's draggable="true" ancestor, so a gesture starting here
@@ -320,17 +336,36 @@ function attachHorizontalResize(
   handle.setAttribute('draggable', 'false');
 
   const resolve = (date: string): void => {
-    onExtendToSpan(task, date);
+    onResolve(task, date);
+  };
+
+  const withHook = hourColumnEl as HTMLElement & {
+    __tgPendingEdgeResizes?: Array<(d: string) => void>;
   };
 
   const onPointerMove = (e: PointerEvent): void => {
     e.preventDefault();
   };
 
+  // Task 34: unlike Task 29 (where this was the ONLY horizontal handle sharing
+  // `hourColumnEl`'s `__tgPendingEdgeResizes` array), a block now carries both a left and a
+  // right edge handle registered against the SAME hourColumnEl — so `resolve` is pushed/removed
+  // here around the armed window (pointerdown→pointerup/cancel) rather than unconditionally at
+  // attach time. Otherwise `__tgTestEndDrag` (and, in principle, a stray real pointerup with no
+  // matching pointerdown) would resolve BOTH edges' callbacks instead of only the one actually
+  // being dragged.
+  const unregisterPending = (): void => {
+    const pending = withHook.__tgPendingEdgeResizes;
+    if (!pending) return;
+    const idx = pending.indexOf(resolve);
+    if (idx !== -1) pending.splice(idx, 1);
+  };
+
   const cleanup = (): void => {
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
+    unregisterPending();
   };
 
   const onPointerUp = (upEvent: PointerEvent): void => {
@@ -355,13 +390,9 @@ function attachHorizontalResize(
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
+    withHook.__tgPendingEdgeResizes = withHook.__tgPendingEdgeResizes ?? [];
+    withHook.__tgPendingEdgeResizes.push(resolve);
   });
-
-  const withHook = hourColumnEl as HTMLElement & {
-    __tgPendingEdgeResizes?: Array<(d: string) => void>;
-  };
-  withHook.__tgPendingEdgeResizes = withHook.__tgPendingEdgeResizes ?? [];
-  withHook.__tgPendingEdgeResizes.push(resolve);
 
   const withEndDrag = hourColumnEl as unknown as {
     __tgTestEndDrag?: (targetDate: string) => void;
