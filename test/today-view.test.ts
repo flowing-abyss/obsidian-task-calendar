@@ -69,12 +69,69 @@ describe('TodayView', () => {
     expect(container.querySelector('.tc-tg-deadline-marker')).toBeNull();
   });
 
+  it('Task 38: bucketTasksForDate does NOT filter out done/cancelled tasks (timed, plain, deadlines)', () => {
+    const doneTimed = task({
+      due: '2026-07-10',
+      time: '15:00',
+      status: 'done',
+      filePath: 'a.md',
+      line: 1,
+    });
+    const cancelledPlain = task({
+      due: '2026-07-10',
+      status: 'cancelled',
+      filePath: 'b.md',
+      line: 2,
+    });
+    const doneDeadline = task({
+      due: '2026-07-10',
+      scheduled: '2026-07-05',
+      status: 'done',
+      filePath: 'c.md',
+      line: 3,
+    });
+    const { timed, plain, deadlines } = bucketTasksForDate(
+      [doneTimed, cancelledPlain, doneDeadline],
+      '2026-07-10',
+    );
+    expect(timed).toContain(doneTimed);
+    expect(plain).toContain(cancelledPlain);
+    expect(deadlines).toContain(doneDeadline);
+  });
+
   it('a task not anchored to the configured day is excluded entirely', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
     const t = task({ due: '2026-08-01' });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     expect(container.querySelector('.tc-tg-plain')).toBeNull();
+  });
+
+  it('Task 38: a done timed task still renders as a full block in the hour grid, checkbox checked, not removed', () => {
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    const t = task({
+      due: '2026-07-10',
+      time: '15:00',
+      duration: 60,
+      status: 'done',
+      statusSymbol: 'x',
+    });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block).not.toBeNull();
+    const marker = block.querySelector('.tc-status-marker') as HTMLElement;
+    expect(marker.getAttribute('data-status-type')).toBe('done');
+    const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
+    expect(title.classList.contains('is-done')).toBe(true);
+  });
+
+  it('Task 38: a done plain (untimed) task still renders in the all-day band, not removed', () => {
+    const container = freshContainer();
+    const view = new TodayView(callbacks());
+    const t = task({ due: '2026-07-10', status: 'done', statusSymbol: 'x' });
+    view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
+    expect(container.querySelector('.tc-tg-plain')).not.toBeNull();
   });
 
   it('destroy() does not throw', () => {
@@ -237,10 +294,10 @@ describe('TodayView', () => {
       expect(bucketTasksForDate([t], '2026-06-30').timedSpans).not.toContain(t);
     });
 
-    it('a done/cancelled timed span is excluded from timedSpans', () => {
+    it('Task 38: a done/cancelled timed span is NOT excluded from timedSpans (stays visible)', () => {
       const t = task({ start: '2026-07-01', due: '2026-07-03', time: '09:00', status: 'done' });
       const { timedSpans } = bucketTasksForDate([t], '2026-07-02');
-      expect(timedSpans).not.toContain(t);
+      expect(timedSpans).toContain(t);
     });
   });
 

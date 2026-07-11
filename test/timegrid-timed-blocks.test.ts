@@ -74,6 +74,42 @@ describe('renderTimedBlocksForDay', () => {
     expect(marker?.nextElementSibling).toBe(title);
   });
 
+  it('Task 38: a done task still renders as a full timed block, checkbox showing checked, not removed', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00', status: 'done', statusSymbol: 'x' });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block).not.toBeNull();
+    const marker = block.querySelector('.tc-status-marker') as HTMLElement;
+    expect(marker.getAttribute('data-status-type')).toBe('done');
+    const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
+    expect(title.classList.contains('is-done')).toBe(true);
+  });
+
+  it('Task 38: a cancelled task still renders as a full timed block, not removed, title marked is-cancelled', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00', status: 'cancelled', statusSymbol: '-' });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const block = container.querySelector('.tc-tg-block') as HTMLElement;
+    expect(block).not.toBeNull();
+    const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
+    expect(title.classList.contains('is-cancelled')).toBe(true);
+  });
+
+  it('Task 38: an open task gets neither is-done nor is-cancelled on its title', () => {
+    const container = freshContainer();
+    const t = task({ time: '09:00' });
+    renderTimedBlocksForDay(container, [t], callbacks());
+    const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
+    expect(title.classList.contains('is-done')).toBe(false);
+    expect(title.classList.contains('is-cancelled')).toBe(false);
+  });
+
+  it('Task 38: .tc-tg-block-title.is-done gets the same strikethrough convention as .tc-list-task-title.is-done', () => {
+    const rule = /\.tc-tg-block-title\.is-done[^{]*\{[^}]*\}/u.exec(css)?.[0] ?? '';
+    expect(rule).toMatch(/text-decoration\s*:\s*line-through/u);
+  });
+
   it('clicking the status marker fires onToggle with the task, not onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();

@@ -62,6 +62,17 @@ const MAX_START_MINUTES = 24 * 60 - SNAP_MINUTES; // 23:45 — the last valid qu
 const MAX_DURATION_MINUTES = 24 * 60; // A full day is already a generous, unambiguous cap.
 
 /**
+ * Task 38: `is-done`/`is-cancelled` suffix mirroring ListView.ts's renderListTask statusClass
+ * convention — shared by the anchor block's title and the continuation segment's title so a
+ * completed/cancelled task reads the same (struck-through) wherever it renders.
+ */
+function statusTitleClass(status: Task['status']): string {
+  if (status === 'done') return ' is-done';
+  if (status === 'cancelled') return ' is-cancelled';
+  return '';
+}
+
+/**
  * Task 37: shared `Task[]` -> `TimedBlockInput[]` conversion, factored out of
  * `renderTimedBlocksForDay` so callers (WeekTimeGridView.ts/TodayView.ts) can build the same
  * `startMinutes`/`durationMinutes` shape for a day's anchor blocks and hand it to
@@ -152,7 +163,12 @@ export function renderTimedBlocksForDay(
         });
       },
     });
-    const titleEl = head.createDiv({ cls: 'tc-tg-block-title' });
+    // Task 38: a completed/cancelled task stays a full, visible block (checkbox showing its
+    // checked state via the marker above), communicating completion purely through this
+    // strikethrough title instead of disappearing.
+    const titleEl = head.createDiv({
+      cls: `tc-tg-block-title${statusTitleClass(p.task.status)}`,
+    });
     renderTaskText(titleEl, p.task.markdownText, {
       app: callbacks.app,
       sourcePath: p.task.filePath,
@@ -262,7 +278,13 @@ export function renderTimedSpanContinuation(
       const badges = topRow.createDiv({ cls: 'tc-tg-block-badges' });
       renderCountBadges(badges, t);
     }
-    seg.createSpan({ cls: 'tc-tg-block-continuation-title', text: t.markdownText });
+    // Task 38: mirrors the anchor block's is-done/is-cancelled title convention above — a
+    // continuation segment renders the same underlying task, so it must reflect completion the
+    // same way rather than looking untouched while its anchor block elsewhere shows struck-through.
+    seg.createSpan({
+      cls: `tc-tg-block-continuation-title${statusTitleClass(t.status)}`,
+      text: t.markdownText,
+    });
     if (onTaskClick) {
       seg.addEventListener('contextmenu', (e) => {
         e.preventDefault();

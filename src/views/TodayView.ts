@@ -63,7 +63,10 @@ export function bucketTasksForDate(
   const spanIdentities = new Set<string>();
 
   for (const t of tasks) {
-    if (t.status === 'done' || t.status === 'cancelled') continue;
+    // Task 38: done/cancelled tasks are NOT filtered out here — a completed timed/all-day task
+    // must stay visible in place (checkbox checked, title struck-through) so the calendar keeps
+    // a visual history of what was done and when. A separate, deliberate, user-configurable
+    // "hide done tasks" feature (if any) lives elsewhere in the plugin and is out of scope here.
 
     // Multi-day span: anchored on every day from start to due
     if (t.start && t.due) {
@@ -94,7 +97,6 @@ export function bucketTasksForDate(
   // Spans take priority: a task already rendered as a span (its due edge communicates the
   // deadline structurally) never also gets a separate deadline marker for the same date.
   for (const t of tasks) {
-    if (t.status === 'done' || t.status === 'cancelled') continue;
     if (spanIdentities.has(`${t.filePath}:::${t.line}`)) continue;
     if (t.due === date && t.scheduled && t.scheduled !== t.due) deadlines.push(t);
   }

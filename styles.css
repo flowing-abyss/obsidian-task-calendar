@@ -1380,6 +1380,20 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   min-width: 0;
 }
 
+/* Task 38: same strikethrough convention as .tc-list-task-title.is-done/.is-cancelled — a
+   completed/cancelled timed task stays a full, visible block; this is what communicates its
+   completion instead of the task disappearing from the grid. */
+.tc-tg-block-title.is-done,
+.tc-tg-block-continuation-title.is-done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.tc-tg-block-title.is-cancelled,
+.tc-tg-block-continuation-title.is-cancelled {
+  text-decoration: line-through;
+  color: var(--text-faint);
+}
+
 /* Task 21: was 0.85em, which nests inside .tc-tg-block's own 0.8em — an em value
    compounds against its *parent's computed* size, not the root, so 0.85em here
    actually rendered at 0.85 * 0.8 = 0.68em of the real interface font-size (visibly
