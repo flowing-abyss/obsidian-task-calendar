@@ -1,3 +1,5 @@
+import { weekStartOffset } from '../domain/weekGridOffset';
+
 export type CalViewType = 'today' | 'week' | 'month';
 
 /**
@@ -16,19 +18,20 @@ export function visibleCalendarDates(
   }
 
   if (viewType === 'week') {
-    // Must reproduce WeekTimeGridView's own 'YYYY-ww' round-trip exactly (not just
-    // calDate.startOf('week') directly) — moment's non-ISO week-of-year token
-    // misassigns late-December dates to week 01 of a different year, so a
-    // "more correct" independent computation here would silently diverge from
-    // what the view actually renders and produce an empty grid at year boundaries.
-    const week = window.moment(calDate.format('YYYY-ww'), 'YYYY-ww').startOf('week');
-    const currentWeekday = parseInt(week.format('d'), 10);
+    // Must reproduce CenterPanel's own startPosition computation exactly (not just
+    // calDate.startOf('week') directly) — moment's non-ISO 'ww' week-of-year token always
+    // round-trips to a Sunday anchor (misassigning late-December dates to week 01 of a
+    // different year at year boundaries, and — Task 42b — always excluding calDate itself
+    // whenever calDate IS that Sunday and firstDayOfWeek isn't 0), so a "more correct"
+    // independent computation here would silently diverge from what the view actually
+    // renders. CenterPanel.startPositionFor shifts calDate back by firstDayOfWeek days
+    // before formatting to compensate — this must mirror that exact shift, or the store
+    // query scopes to a different week than what actually renders and every cell goes empty.
+    const week = window
+      .moment(calDate.clone().subtract(firstDayOfWeek, 'days').format('YYYY-ww'), 'YYYY-ww')
+      .startOf('week');
     const dates: string[] = [];
-    for (
-      let i = 0 - currentWeekday + firstDayOfWeek;
-      i < 7 - currentWeekday + firstDayOfWeek;
-      i++
-    ) {
+    for (let i = firstDayOfWeek; i < firstDayOfWeek + 7; i++) {
       dates.push(week.clone().add(i, 'days').format('YYYY-MM-DD'));
     }
     return dates;
@@ -39,7 +42,7 @@ export function visibleCalendarDates(
   const month = calDate.clone().date(1);
   const firstDayOfMonth = parseInt(month.format('d'), 10);
   const dates: string[] = [];
-  let starts = 0 - firstDayOfMonth + firstDayOfWeek;
+  let starts = weekStartOffset(firstDayOfMonth, firstDayOfWeek);
   for (let w = 0; w < 6; w++) {
     for (let i = starts; i < starts + 7; i++) {
       dates.push(month.clone().add(i, 'days').format('YYYY-MM-DD'));

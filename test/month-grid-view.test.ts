@@ -41,6 +41,18 @@ describe('MonthGridView', () => {
     expect(container.querySelectorAll('.tc-mg-cell')).toHaveLength(42);
   });
 
+  // Task 42b: when a month's 1st falls on a Sunday and firstDayOfWeek is Monday, the naive
+  // `0 - firstDayOfMonth + config.firstDayOfWeek` (no wraparound) loop bound skipped straight
+  // past day 1 into day 2, dropping the 1st of the month from the grid entirely. 2026-02
+  // starts on a Sunday.
+  it('still renders day 1 of the month when the month starts on a Sunday and firstDayOfWeek is Monday', () => {
+    const container = freshContainer();
+    const view = new MonthGridView(callbacks());
+    view.render(container, [], resolvedConfig({ startPosition: '2026-02', firstDayOfWeek: 1 }));
+    expect(container.querySelector('[data-mg-date="2026-02-01"]')).not.toBeNull();
+    expect(container.querySelectorAll('.tc-mg-cell')).toHaveLength(42);
+  });
+
   it("marks today's cell with is-today", () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());

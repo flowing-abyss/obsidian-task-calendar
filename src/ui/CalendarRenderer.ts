@@ -146,9 +146,15 @@ export class CalendarRenderer {
   private buildConfig(): ResolvedConfig {
     return {
       ...this.config,
-      startPosition: this.selectedDate.format(
-        this.activeViewType === 'week' ? 'YYYY-ww' : 'YYYY-MM',
-      ),
+      // Task 42b: see CenterPanel's startPositionFor for the full explanation — moment's
+      // non-ISO 'ww' token always round-trips to a Sunday anchor, so `selectedDate` (itself
+      // always Sunday- or Monday-anchored here) must be shifted back by `firstDayOfWeek` days
+      // before formatting, or the reconstructed week can land one week later than intended
+      // whenever `selectedDate` itself falls on the configured firstDayOfWeek boundary.
+      startPosition:
+        this.activeViewType === 'week'
+          ? this.selectedDate.clone().subtract(this.config.firstDayOfWeek, 'days').format('YYYY-ww')
+          : this.selectedDate.format('YYYY-MM'),
     };
   }
 

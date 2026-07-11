@@ -1,4 +1,5 @@
 import { Component, type App } from 'obsidian';
+import { weekStartOffset } from '../domain/weekGridOffset';
 import type { Task, TaskPriority } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
@@ -49,18 +50,15 @@ export class MonthGridView extends BaseView {
     const grid = container.createDiv({ cls: 'tc-mg-grid' });
     const headRow = grid.createDiv({ cls: 'tc-mg-head-row' });
     headRow.createDiv({ cls: 'tc-mg-week-head' }); // empty corner, aligns with the week-number column
-    for (
-      let h = 0 - firstDayOfMonth + config.firstDayOfWeek;
-      h < 7 - firstDayOfMonth + config.firstDayOfWeek;
-      h++
-    ) {
+    const monthOffset = weekStartOffset(firstDayOfMonth, config.firstDayOfWeek);
+    for (let h = monthOffset; h < monthOffset + 7; h++) {
       headRow.createDiv({
         cls: 'tc-mg-head',
         text: window.moment(month).add(h, 'days').format('ddd'),
       });
     }
 
-    let starts = 0 - firstDayOfMonth + config.firstDayOfWeek;
+    let starts = monthOffset;
     for (let w = 0; w < 6; w++) {
       const row = grid.createDiv({ cls: 'tc-mg-row' });
 

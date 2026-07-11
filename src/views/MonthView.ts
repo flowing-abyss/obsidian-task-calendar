@@ -1,4 +1,5 @@
 import { Component, type App } from 'obsidian';
+import { weekStartOffset } from '../domain/weekGridOffset';
 import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
@@ -54,11 +55,8 @@ export class MonthView extends BaseView {
     const gridHeads = grid.createDiv('gridHeads');
     gridHeads.createDiv('gridHead'); // empty corner for week number column
 
-    for (
-      let h = 0 - firstDayOfMonth + config.firstDayOfWeek;
-      h < 7 - firstDayOfMonth + config.firstDayOfWeek;
-      h++
-    ) {
+    const monthOffset = weekStartOffset(firstDayOfMonth, config.firstDayOfWeek);
+    for (let h = monthOffset; h < monthOffset + 7; h++) {
       const m = window.moment(month).add(h, 'days');
       const weekDayNr = m.format('d');
       const isToday =
@@ -78,7 +76,7 @@ export class MonthView extends BaseView {
       window.moment(month).format('MMM').replace('.', '').substring(0, 3),
     );
 
-    let starts = 0 - firstDayOfMonth + config.firstDayOfWeek;
+    let starts = monthOffset;
 
     for (let w = 1; w < 7; w++) {
       const weekNr = window.moment(month).add(starts, 'days').format('w');

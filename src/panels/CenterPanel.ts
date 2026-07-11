@@ -491,8 +491,24 @@ export class CenterPanel {
       this.showFillCellQuickAdd(cell, date, 'tc-tg-allday-quick-add', mountView);
     };
 
-    const startPositionFor = (viewType: CalViewType): string => {
-      if (viewType === 'week') return this.calDate.format('YYYY-ww');
+    const startPositionFor = (viewType: CalViewType, firstDayOfWeek: number): string => {
+      if (viewType === 'week') {
+        // Task 42b: moment's non-ISO 'ww' token always numbers weeks Sunday-first, so
+        // `calDate.format('YYYY-ww')` round-trips to a label whose reconstructed anchor is
+        // always literally a Sunday — regardless of which day of that week `calDate` actually
+        // is (WeekTimeGridView.render, downstream, then shifts that Sunday anchor forward by
+        // `firstDayOfWeek` days to land on the user's configured week-start). That forward
+        // shift is only correct when `calDate` itself falls *after* the anchor within the same
+        // Sunday-first week (true for Mon-Sat calDate) — for a calDate that IS itself a Sunday,
+        // the anchor reconstructs to that exact same Sunday, and shifting forward by
+        // `firstDayOfWeek` (e.g. 1 for Monday-first) walks a full extra week ahead, entirely
+        // excluding `calDate` from the rendered range. Shifting calDate itself back by
+        // `firstDayOfWeek` days *before* formatting compensates: it lands the round-trip's
+        // reconstructed Sunday-anchor `firstDayOfWeek` days earlier too, so the downstream
+        // forward-shift-by-firstDayOfWeek lands back on the correct 7-day window for every
+        // weekday of calDate, Sunday included.
+        return this.calDate.clone().subtract(firstDayOfWeek, 'days').format('YYYY-ww');
+      }
       if (viewType === 'today') return this.calDate.format('YYYY-MM-DD');
       return this.calDate.format('YYYY-MM');
     };
@@ -513,13 +529,15 @@ export class CenterPanel {
 
       this.calViewInstance?.destroy();
       viewContainer.empty();
+      const firstDayOfWeek =
+        this.settings.desktop.firstDayOfWeek ?? DEFAULT_VIEW_CONFIG.firstDayOfWeek;
       const cfg: ResolvedConfig = {
         ...DEFAULT_VIEW_CONFIG,
         ...this.settings.desktop,
         isMobile: false,
         sourceNoteDisplay: this.settings.sourceNoteDisplay,
         customFilePath: this.settings.customFilePath,
-        startPosition: startPositionFor(this.calViewType),
+        startPosition: startPositionFor(this.calViewType, firstDayOfWeek),
       };
       // Scope the render to only the tasks anchored on a visible date, via the
       // O(1)-per-date TaskDateIndex, instead of scanning every task in the vault.

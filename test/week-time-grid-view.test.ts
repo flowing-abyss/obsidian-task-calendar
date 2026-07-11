@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import { WeekTimeGridView } from '../src/views/WeekTimeGridView';
-import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
+import { fixedToday, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
 const fakeApp = {} as App;
@@ -91,7 +91,11 @@ describe('WeekTimeGridView', () => {
     try {
       const container = freshContainer();
       const view = new WeekTimeGridView(callbacks());
-      const todayWeek = window.moment().format('YYYY-ww');
+      // Task 42b: mirrors CenterPanel.startPositionFor's own fix — 'YYYY-ww' always
+      // round-trips to a Sunday anchor, so the source date must be shifted back by
+      // firstDayOfWeek days before formatting for the reconstructed week to actually
+      // contain it (this test uses firstDayOfWeek: 1 below).
+      const todayWeek = window.moment().subtract(1, 'days').format('YYYY-ww');
       view.render(container, [], resolvedConfig({ startPosition: todayWeek, firstDayOfWeek: 1 }));
 
       const nowLineEl = container.querySelector('.tc-tg-now-line') as HTMLElement;
@@ -122,7 +126,11 @@ describe('WeekTimeGridView', () => {
     try {
       const container = freshContainer();
       const view = new WeekTimeGridView(callbacks());
-      const todayWeek = window.moment().format('YYYY-ww');
+      // Task 42b: mirrors CenterPanel.startPositionFor's own fix — 'YYYY-ww' always
+      // round-trips to a Sunday anchor, so the source date must be shifted back by
+      // firstDayOfWeek days before formatting for the reconstructed week to actually
+      // contain it (this test uses firstDayOfWeek: 1 below).
+      const todayWeek = window.moment().subtract(1, 'days').format('YYYY-ww');
 
       const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
       const setIntervalSpy = vi.spyOn(window, 'setInterval');
@@ -222,7 +230,11 @@ describe('WeekTimeGridView', () => {
     try {
       const container = freshContainer();
       const view = new WeekTimeGridView(callbacks());
-      const todayWeek = window.moment().format('YYYY-ww');
+      // Task 42b: mirrors CenterPanel.startPositionFor's own fix — 'YYYY-ww' always
+      // round-trips to a Sunday anchor, so the source date must be shifted back by
+      // firstDayOfWeek days before formatting for the reconstructed week to actually
+      // contain it (this test uses firstDayOfWeek: 1 below).
+      const todayWeek = window.moment().subtract(1, 'days').format('YYYY-ww');
       const setIntervalSpy = vi.spyOn(window, 'setInterval');
 
       view.render(
@@ -313,6 +325,101 @@ describe('WeekTimeGridView', () => {
     vi.runOnlyPendingTimers();
     expect(gridRowEl.scrollTop).toBe(55);
     vi.useRealTimers();
+  });
+
+  // Task 42b: the rendered week must contain "today" no matter which real weekday today
+  // is. The bug only ever showed up on a Sunday-today + Monday-first config, so this
+  // loops over all 7 weekdays for "today" (using fixedToday at describe scope, not
+  // inside the test body, so vi.setSystemTime actually takes effect) for both
+  // firstDayOfWeek settings this codebase supports (0=Sunday, 1=Monday).
+  describe('the rendered week always contains "today", for every weekday and firstDayOfWeek', () => {
+    // 2026-07-06..12 is a real Mon..Sun span.
+    const weekdays: Array<{ date: string; label: string }> = [
+      { date: '2026-07-06', label: 'Monday' },
+      { date: '2026-07-07', label: 'Tuesday' },
+      { date: '2026-07-08', label: 'Wednesday' },
+      { date: '2026-07-09', label: 'Thursday' },
+      { date: '2026-07-10', label: 'Friday' },
+      { date: '2026-07-11', label: 'Saturday' },
+      { date: '2026-07-12', label: 'Sunday' },
+    ];
+
+    for (const { date, label } of weekdays) {
+      describe(`today is ${label} (${date})`, () => {
+        fixedToday(date);
+
+        for (const firstDayOfWeek of [0, 1] as const) {
+          it(`contains today exactly once, spans 7 consecutive days, and starts on the configured firstDayOfWeek=${firstDayOfWeek}`, () => {
+            const container = freshContainer();
+            const view = new WeekTimeGridView(callbacks());
+            // No startPosition: exercises the `window.moment().startOf('week')` branch,
+            // which is the one that broke (config.startPosition undefined, "today" used
+            // directly as the anchor).
+            view.render(container, [], resolvedConfig({ firstDayOfWeek }));
+
+            const dates = Array.from(container.querySelectorAll('.tc-tg-day-column')).map(
+              (el) => el.getAttribute('data-tg-date') as string,
+            );
+
+            expect(dates).toHaveLength(7);
+            expect(dates.filter((d) => d === date)).toHaveLength(1);
+
+            for (let i = 1; i < dates.length; i++) {
+              expect(window.moment(dates[i]).diff(window.moment(dates[i - 1]), 'days')).toBe(1);
+            }
+
+            expect(parseInt(window.moment(dates[0]).format('d'), 10)).toBe(firstDayOfWeek);
+          });
+        }
+      });
+    }
+  });
+
+  // Task 42b: this is the path CenterPanel actually drives in production — it always
+  // supplies `startPosition` (never leaves it undefined), computed as
+  // `calDate.clone().subtract(firstDayOfWeek, 'days').format('YYYY-ww')` (see
+  // CenterPanel.startPositionFor's own comment for why the subtraction is required). This
+  // loop reproduces that exact call for every weekday "today" could be, confirming the
+  // rendered week genuinely contains it — this is the scenario the real bug shipped in.
+  describe('the rendered week always contains "today" via CenterPanel\'s startPosition label, for every weekday and firstDayOfWeek', () => {
+    const weekdays = [
+      '2026-07-06', // Monday
+      '2026-07-07', // Tuesday
+      '2026-07-08', // Wednesday
+      '2026-07-09', // Thursday
+      '2026-07-10', // Friday
+      '2026-07-11', // Saturday
+      '2026-07-12', // Sunday
+    ];
+
+    for (const date of weekdays) {
+      describe(`today is ${date}`, () => {
+        fixedToday(date);
+
+        for (const firstDayOfWeek of [0, 1] as const) {
+          it(`contains today for firstDayOfWeek=${firstDayOfWeek}`, () => {
+            const container = freshContainer();
+            const view = new WeekTimeGridView(callbacks());
+            const startPosition = window
+              .moment()
+              .subtract(firstDayOfWeek, 'days')
+              .format('YYYY-ww');
+            view.render(container, [], resolvedConfig({ startPosition, firstDayOfWeek }));
+
+            const dates = Array.from(container.querySelectorAll('.tc-tg-day-column')).map(
+              (el) => el.getAttribute('data-tg-date') as string,
+            );
+
+            expect(dates).toHaveLength(7);
+            expect(dates.filter((d) => d === date)).toHaveLength(1);
+            for (let i = 1; i < dates.length; i++) {
+              expect(window.moment(dates[i]).diff(window.moment(dates[i - 1]), 'days')).toBe(1);
+            }
+            expect(parseInt(window.moment(dates[0]).format('d'), 10)).toBe(firstDayOfWeek);
+          });
+        }
+      });
+    }
   });
 
   describe('timed multi-day spans (Task 29)', () => {
