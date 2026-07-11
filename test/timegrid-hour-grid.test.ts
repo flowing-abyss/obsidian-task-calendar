@@ -353,6 +353,18 @@ describe('tag-fill background (Round 3 Task 24: solid, not washed-out/gridline-b
   });
 });
 
+describe('.tc-tg-allday-gutter styling (Round 3 Task 25: match the hour-label\'s muted look)', () => {
+  it('uses the same muted color variable, font-size, and right-alignment as .tc-tg-hour-label', () => {
+    const gutter = declarationsFor('.tc-tg-allday-gutter');
+    const hourLabel = declarationsFor('.tc-tg-hour-label');
+    expect(gutter).toContain('color: var(--text-faint)');
+    expect(hourLabel).toContain('color: var(--text-faint)');
+    expect(gutter).toContain('font-size: 0.75em');
+    expect(hourLabel).toContain('font-size: 0.75em');
+    expect(gutter).toContain('text-align: right');
+  });
+});
+
 describe('.tc-tg-grid-row layout (regression: today-column outline / click-drop hit-test truncation)', () => {
   it('does not stretch day-columns to the scroll container height', () => {
     // Regression test: .tc-tg-grid-row is a flex row whose children (the hour-gutter and each

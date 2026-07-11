@@ -1209,6 +1209,10 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-tg-allday-gutter {
   width: 3.5em;
   flex-shrink: 0;
+  font-size: 0.75em;
+  color: var(--text-faint);
+  text-align: right;
+  padding-right: 4px;
 }
 
 .tc-tg-allday-cell {
