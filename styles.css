@@ -1394,11 +1394,19 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   flex-shrink: 0;
 }
 
+/* Task 33: was `bottom: -3px` — .tc-tg-block clips its content (overflow: hidden, for the
+   tag-fill background), which clipped the bottom half of this handle's 6px hit area (the half
+   sitting outside the block's own box) down to ~3px, so a click aimed at the visible handle
+   often landed on whatever sits behind/below the block instead and never armed resize mode
+   (misclassified as a plain move, or missed the block entirely) — the exact "stretch vertically
+   instead moves it" bug reported for this handle. Same root cause and fix as
+   `.tc-tg-block > .tc-tg-span-edge--right` below (Task 29 review): pull the handle fully inside
+   the block instead of straddling its edge, so the full 6px stays hittable. */
 .tc-tg-resize-handle {
   position: absolute;
   left: 25%;
   right: 25%;
-  bottom: -3px;
+  bottom: 0;
   height: 6px;
   cursor: ns-resize;
 }
