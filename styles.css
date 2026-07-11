@@ -1376,10 +1376,11 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 }
 
 /* Tag chips + count badges row (Task 13): reuses .tc-task-count-badge/.tc-task-tag's own
-   sizing (both already set an explicit font-size), so only layout is added here. */
+   sizing (both already set an explicit font-size), so only layout is added here. Day/Week's
+   timed blocks and all-day items only — Task 32 removed this meta row from Month's compact
+   items (`.tc-mg-item-meta`) as it made small Month cells feel cluttered. */
 .tc-tg-block-meta,
-.tc-tg-body-meta,
-.tc-mg-item-meta {
+.tc-tg-body-meta {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1390,11 +1391,6 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 }
 .tc-tg-body-meta {
   margin-inline-start: 4px;
-  flex-shrink: 0;
-}
-.tc-mg-item-meta {
-  margin-inline-start: 4px;
-  gap: 2px;
   flex-shrink: 0;
 }
 

@@ -7,7 +7,6 @@ import { renderTaskText } from '../ui/renderTaskText';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { showStatusMenuAt } from '../ui/statusMenu';
 import { BaseView } from './BaseView';
-import { hasMeta, renderCountBadges, renderTagChips } from './timegrid/renderTaskMeta';
 import { bucketTasksForDate } from './TodayView';
 
 export interface MonthGridViewCallbacks {
@@ -95,7 +94,16 @@ export class MonthGridView extends BaseView {
           href: dailyNotePath,
           text: window.moment(month).add(i, 'days').format('D'),
         });
-        dayLink.addEventListener('click', (e) => e.stopPropagation());
+        // Direct, unconditional drill-down: the day number is the one click target that's
+        // always present regardless of how full the cell is (Task 32) — a fully-packed cell
+        // may have no empty space left for the cell's own click handler below to catch, so
+        // this doesn't route through that handler's item-exclusion guard at all.
+        // stopPropagation avoids the cell handler also evaluating the same click (harmless
+        // since it already excludes .tc-mg-day-label, but keeps the intent explicit).
+        dayLink.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.callbacks.onDayClick(currentDate);
+        });
 
         // Hover-visible "+" affordance: a second meaning for clicking a day cell
         // (create a task) can't share plain left-click with the existing drill-into-Week
@@ -148,7 +156,6 @@ export class MonthGridView extends BaseView {
       this.renderMarker(dot, t);
       dot.createSpan({ cls: 'tc-mg-item-time', text: `${t.time} ` });
       this.renderTitle(dot, t);
-      this.renderCompactMeta(dot, t, tagGroups);
       dot.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -161,7 +168,6 @@ export class MonthGridView extends BaseView {
       this.applyTagFill(bar, t, tagGroups);
       this.renderMarker(bar, t);
       this.renderTitle(bar, t);
-      this.renderCompactMeta(bar, t, tagGroups);
       bar.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -182,7 +188,6 @@ export class MonthGridView extends BaseView {
         bar.createSpan({ cls: 'tc-mg-item-time', text: `${t.time} ` });
       }
       this.renderTitle(bar, t);
-      this.renderCompactMeta(bar, t, tagGroups);
       bar.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -195,7 +200,6 @@ export class MonthGridView extends BaseView {
       this.applyTagFill(row, t, tagGroups);
       this.renderMarker(row, t);
       this.renderTitle(row, t);
-      this.renderCompactMeta(row, t, tagGroups);
       row.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -211,16 +215,6 @@ export class MonthGridView extends BaseView {
       this.renderMarker(marker, t);
       marker.createSpan({ text: '📅 ' });
       this.renderTitle(marker, t);
-      // Count badges only (no tag chips) — deadline markers stay a compact pill with no
-      // tag fill (see comment above), so tag chips would fight that convention.
-      if (
-        (t.subtasks?.length ?? 0) > 0 ||
-        (t.comments?.length ?? 0) > 0 ||
-        (t.linkCount ?? 0) > 0
-      ) {
-        const meta = marker.createSpan({ cls: 'tc-mg-item-meta' });
-        renderCountBadges(meta, t);
-      }
       marker.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -230,26 +224,14 @@ export class MonthGridView extends BaseView {
   }
 
   /**
-   * Compact count badges + a single tag chip, appended after the title. Month cells are
-   * a single non-wrapping line (`.tc-mg-*` CSS: `white-space: nowrap; overflow: hidden`),
-   * so this deliberately caps at one tag (vs. renderTimedBlocks.ts's 3) — anything past
-   * that just gets clipped by the ellipsis, no point rendering it. Non-interactive, same
-   * rationale as renderTaskMeta.ts: these compact items already carry native HTML5
-   * drag-and-drop (makeDraggable) and a contextmenu handler.
-   */
-  private renderCompactMeta(container: HTMLElement, t: Task, tagGroups: TagGroup[]): void {
-    if (!hasMeta(t)) return;
-    const meta = container.createSpan({ cls: 'tc-mg-item-meta' });
-    renderCountBadges(meta, t);
-    renderTagChips(meta, t, tagGroups, 1);
-  }
-
-  /**
    * Renders the task's markdown/wiki-link-aware title text as a trailing inline span.
    * `.tc-mg-item-title` (Task 21) makes it the flex child that truncates independently —
-   * the container (.tc-mg-plain/-block-dot/-span-segment/-deadline-marker) is now a flex
-   * row (marker + [time] + title + meta) instead of block-stacking, matching
-   * renderTimedBlocks.ts's `.tc-tg-block-head` pattern.
+   * the container (.tc-mg-plain/-block-dot/-span-segment/-deadline-marker) is a flex row
+   * (marker + [time] + title) instead of block-stacking, matching renderTimedBlocks.ts's
+   * `.tc-tg-block-head` pattern. Task 32 removed the trailing tag-chip/count-badge meta
+   * row (`.tc-mg-item-meta`) that Round 3 Task 13 added here — Month cells are small
+   * enough that it made them feel cluttered; that meta row is kept on Day/Week's timed
+   * blocks (renderTaskMeta.ts) and all-day items, just not on Month's compact items.
    */
   private renderTitle(container: HTMLElement, t: Task): void {
     const titleEl = container.createSpan({ cls: 'tc-mg-item-title' });

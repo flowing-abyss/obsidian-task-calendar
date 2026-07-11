@@ -124,7 +124,7 @@ describe('MonthGridView', () => {
     expect(cbs.onDayClick).not.toHaveBeenCalled();
   });
 
-  it('each day cell keeps a daily-note internal-link, separate from the drill-down click', () => {
+  it('each day cell keeps a daily-note internal-link (href), and clicking the day-number label also fires onDayClick (Task 32)', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
@@ -137,7 +137,33 @@ describe('MonthGridView', () => {
     const link = cell.querySelector('a.internal-link') as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('Daily/2026-07-15');
     link.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(cbs.onDayClick).not.toHaveBeenCalled(); // link click must not also trigger drill-down
+    expect(cbs.onDayClick).toHaveBeenCalledWith('2026-07-15');
+  });
+
+  it('clicking the day-number label fires onDayClick even when the cell is completely full of items (Task 32: always-present click target)', () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    const tasks = Array.from({ length: 8 }, (_, n) =>
+      task({ due: '2026-07-15', text: `Task ${n}`, filePath: `f${n}.md`, line: n }),
+    );
+    view.render(container, tasks, resolvedConfig({ startPosition: '2026-07' }));
+    const cell = container.querySelector('[data-mg-date="2026-07-15"]') as HTMLElement;
+    expect(cell.querySelectorAll('.tc-mg-plain').length).toBe(8); // cell is fully packed
+    const dayLabel = cell.querySelector('.tc-mg-day-label') as HTMLElement;
+    dayLabel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onDayClick).toHaveBeenCalledWith('2026-07-15');
+  });
+
+  it("clicking the day-number label does not double-fire onDayClick via the cell's own empty-space click handler", () => {
+    const container = freshContainer();
+    const cbs = callbacks();
+    const view = new MonthGridView(cbs);
+    view.render(container, [], resolvedConfig({ startPosition: '2026-07' }));
+    const cell = container.querySelector('[data-mg-date="2026-07-15"]') as HTMLElement;
+    const dayLabel = cell.querySelector('.tc-mg-day-label') as HTMLElement;
+    dayLabel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(cbs.onDayClick).toHaveBeenCalledTimes(1);
   });
 
   it('a plain click on a compact plain row does NOT fire onTaskClick (reserved for drag)', () => {
@@ -567,33 +593,92 @@ describe('MonthGridView', () => {
     expect(cbs.onTaskClick).not.toHaveBeenCalled();
   });
 
-  it('renders a compact tag chip and count badge (capped at 1 tag) on a plain compact item', () => {
-    const container = freshContainer();
-    const view = new MonthGridView({
-      ...callbacks(),
-      tagGroups: [{ id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' }],
-    });
-    const t = task({
-      due: '2026-07-15',
-      text: 'Plain',
-      rawText: '- [ ] Plain #work #urgent',
-      linkCount: 1,
-    });
-    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
-    const row = container.querySelector('.tc-mg-plain') as HTMLElement;
-    const meta = row.querySelector('.tc-mg-item-meta') as HTMLElement;
-    expect(meta).not.toBeNull();
-    expect(meta.querySelector('.tc-task-count-badge')).not.toBeNull();
-    expect(meta.querySelectorAll('.tc-task-tag')).toHaveLength(1);
-  });
+  // Task 32: Month cells got too cluttered with the tag-chip/count-badge meta row Round 3
+  // Task 13 added — it's removed from all of Month's compact item types (Day/Week's timed
+  // blocks and all-day items keep it; this task only touches Month).
+  describe('no tag-chip/count-badge meta row on Month compact items (Task 32)', () => {
+    const busyOverrides = { rawText: '- [ ] t #work #urgent', linkCount: 2 };
+    const tagGroups = [
+      { id: '1', name: 'Work', mode: 'prefix' as const, prefix: 'work', color: '#3498db' },
+    ];
 
-  it('omits .tc-mg-item-meta entirely for a compact item with no tags/subtasks/comments/links', () => {
-    const container = freshContainer();
-    const view = new MonthGridView(callbacks());
-    const t = task({ due: '2026-07-15', text: 'Plain' });
-    view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
-    const row = container.querySelector('.tc-mg-plain') as HTMLElement;
-    expect(row.querySelector('.tc-mg-item-meta')).toBeNull();
+    function busyTask(overrides: Parameters<typeof task>[0]) {
+      return task({
+        ...busyOverrides,
+        ...overrides,
+        subtasks: [
+          {
+            filePath: 'f.md',
+            line: 1,
+            rawText: '  - [ ] sub',
+            text: 'sub',
+            markdownText: 'sub',
+            status: 'open',
+            statusSymbol: ' ',
+            priority: 'D',
+          },
+        ],
+        comments: [{ line: 2, text: 'a note' }],
+      });
+    }
+
+    it('omits .tc-mg-item-meta on a plain row, even with tags/subtasks/comments/links', () => {
+      const container = freshContainer();
+      const view = new MonthGridView({ ...callbacks(), tagGroups });
+      const t = busyTask({ due: '2026-07-15', text: 'Plain' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const row = container.querySelector('.tc-mg-plain') as HTMLElement;
+      expect(row.querySelector('.tc-mg-item-meta')).toBeNull();
+      expect(row.querySelector('.tc-task-tag')).toBeNull();
+      expect(row.querySelector('.tc-task-count-badge')).toBeNull();
+    });
+
+    it('omits .tc-mg-item-meta on a timed block-dot, keeping the time prefix', () => {
+      const container = freshContainer();
+      const view = new MonthGridView({ ...callbacks(), tagGroups });
+      const t = busyTask({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const dot = container.querySelector('.tc-mg-block-dot') as HTMLElement;
+      expect(dot.querySelector('.tc-mg-item-meta')).toBeNull();
+      expect(dot.querySelector('.tc-mg-item-time')?.textContent).toContain('09:00');
+    });
+
+    it('omits .tc-mg-item-meta on an untimed span-segment', () => {
+      const container = freshContainer();
+      const view = new MonthGridView({ ...callbacks(), tagGroups });
+      const t = busyTask({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const bar = container.querySelector(
+        '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
+      ) as HTMLElement;
+      expect(bar.querySelector('.tc-mg-item-meta')).toBeNull();
+    });
+
+    it("omits .tc-mg-item-meta on a timed span-segment's anchor day, keeping the time prefix", () => {
+      const container = freshContainer();
+      const view = new MonthGridView({ ...callbacks(), tagGroups });
+      const t = busyTask({
+        start: '2026-07-14',
+        due: '2026-07-16',
+        time: '09:00',
+        text: 'Conf',
+      });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const anchorBar = container.querySelector(
+        '[data-mg-date="2026-07-16"] .tc-mg-span-segment',
+      ) as HTMLElement;
+      expect(anchorBar.querySelector('.tc-mg-item-meta')).toBeNull();
+      expect(anchorBar.querySelector('.tc-mg-item-time')?.textContent).toContain('09:00');
+    });
+
+    it('omits .tc-mg-item-meta on a deadline marker', () => {
+      const container = freshContainer();
+      const view = new MonthGridView({ ...callbacks(), tagGroups });
+      const t = busyTask({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const marker = container.querySelector('.tc-mg-deadline-marker') as HTMLElement;
+      expect(marker.querySelector('.tc-mg-item-meta')).toBeNull();
+    });
   });
 
   describe('timed multi-day spans (Task 29)', () => {
