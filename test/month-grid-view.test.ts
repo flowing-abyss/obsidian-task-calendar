@@ -595,4 +595,80 @@ describe('MonthGridView', () => {
     const row = container.querySelector('.tc-mg-plain') as HTMLElement;
     expect(row.querySelector('.tc-mg-item-meta')).toBeNull();
   });
+
+  describe('timed multi-day spans (Task 29)', () => {
+    it('renders a start+due+time task as a span-segment on every spanned day', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      for (const date of ['2026-07-14', '2026-07-15', '2026-07-16']) {
+        const bar = container.querySelector(`[data-mg-date="${date}"] .tc-mg-span-segment`);
+        expect(bar).not.toBeNull();
+      }
+    });
+
+    it('prefixes the anchor (due) day\'s segment with the time, distinguishing it from an untimed span', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const anchorBar = container.querySelector(
+        '[data-mg-date="2026-07-16"] .tc-mg-span-segment',
+      ) as HTMLElement;
+      expect(anchorBar.querySelector('.tc-mg-item-time')?.textContent).toContain('09:00');
+    });
+
+    it('does not show a time prefix on non-anchor days of the same timed span', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const midBar = container.querySelector(
+        '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
+      ) as HTMLElement;
+      expect(midBar.querySelector('.tc-mg-item-time')).toBeNull();
+    });
+
+    it('an untimed start+due span still renders with no time prefix (unchanged existing behavior)', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const bar = container.querySelector(
+        '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
+      ) as HTMLElement;
+      expect(bar.querySelector('.tc-mg-item-time')).toBeNull();
+    });
+
+    it('a right-click on a timed span-segment fires onTaskClick', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const view = new MonthGridView(cbs);
+      const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const bar = container.querySelector(
+        '[data-mg-date="2026-07-16"] .tc-mg-span-segment',
+      ) as HTMLElement;
+      bar.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      expect(cbs.onTaskClick).toHaveBeenCalledWith(t);
+    });
+
+    it('a timed span-segment is draggable with the filePath:::line payload, same as an untimed span', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({
+        start: '2026-07-14',
+        due: '2026-07-16',
+        time: '09:00',
+        filePath: 'a.md',
+        line: 2,
+      });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const bar = container.querySelector(
+        '[data-mg-date="2026-07-16"] .tc-mg-span-segment',
+      ) as HTMLElement;
+      expect(bar.getAttribute('draggable')).toBe('true');
+    });
+  });
 });

@@ -139,7 +139,7 @@ export class MonthGridView extends BaseView {
   }
 
   private renderCompactCell(cell: HTMLElement, tasks: Task[], date: string): void {
-    const { timed, spans, plain, deadlines } = bucketTasksForDate(tasks, date);
+    const { timed, spans, timedSpans, plain, deadlines } = bucketTasksForDate(tasks, date);
     const tagGroups = this.callbacks.tagGroups ?? [];
 
     for (const t of timed) {
@@ -160,6 +160,27 @@ export class MonthGridView extends BaseView {
       const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
       this.applyTagFill(bar, t, tagGroups);
       this.renderMarker(bar, t);
+      this.renderTitle(bar, t);
+      this.renderCompactMeta(bar, t, tagGroups);
+      bar.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.callbacks.onTaskClick(t);
+      });
+      this.makeDraggable(bar, t);
+    }
+    // Task 29: same .tc-mg-span-segment treatment as an untimed span, but the anchor (due) day's
+    // segment is additionally prefixed with the time — the "smart algorithm" cue the task's due
+    // day matches, per this project's due-centric anchor-priority rule) so a timed multi-day span
+    // reads as visually distinguishable from an untimed one at a glance, mirroring the `timed`
+    // bucket's own time-prefix convention above.
+    for (const t of timedSpans) {
+      const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
+      this.applyTagFill(bar, t, tagGroups);
+      this.renderMarker(bar, t);
+      if (t.due === date) {
+        bar.createSpan({ cls: 'tc-mg-item-time', text: `${t.time} ` });
+      }
       this.renderTitle(bar, t);
       this.renderCompactMeta(bar, t, tagGroups);
       bar.addEventListener('contextmenu', (e) => {
