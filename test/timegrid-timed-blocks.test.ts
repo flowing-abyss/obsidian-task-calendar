@@ -1,5 +1,5 @@
 import { Component, type App } from 'obsidian';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import { renderTimedBlocksForDay } from '../src/views/timegrid/renderTimedBlocks';
@@ -15,6 +15,7 @@ function callbacks() {
     onTaskClick: vi.fn(),
     onTimeChange: vi.fn(),
     onDurationChange: vi.fn(),
+    onExtendToSpan: vi.fn(),
     onToggle: vi.fn(),
     onSetStatus: vi.fn(),
     onSetPriority: vi.fn(),
@@ -32,6 +33,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -136,6 +138,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -157,6 +160,7 @@ describe('renderTimedBlocksForDay', () => {
         onTaskClick: vi.fn(),
         onTimeChange: vi.fn(),
         onDurationChange: vi.fn(),
+        onExtendToSpan: vi.fn(),
         onToggle: vi.fn(),
         onSetStatus: vi.fn(),
         onSetPriority: vi.fn(),
@@ -208,6 +212,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -229,6 +234,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -248,6 +254,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick,
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -268,6 +275,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick,
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -288,6 +296,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick,
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -308,6 +317,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -330,6 +340,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange,
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -357,6 +368,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange,
       onDurationChange,
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -384,6 +396,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange,
       onDurationChange: vi.fn(),
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -478,6 +491,7 @@ describe('renderTimedBlocksForDay', () => {
       onTaskClick: vi.fn(),
       onTimeChange: vi.fn(),
       onDurationChange,
+      onExtendToSpan: vi.fn(),
       onToggle: vi.fn(),
       onSetStatus: vi.fn(),
       onSetPriority: vi.fn(),
@@ -601,6 +615,133 @@ describe('renderTimedBlocksForDay', () => {
       window.dispatchEvent(new PointerEvent('pointermove', { clientY: 248, pointerId: 2 }));
       window.dispatchEvent(new PointerEvent('pointerup', { clientY: 248, pointerId: 2 }));
       expect(onTimeChange).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('horizontal edge-resize to a multi-day timed span (Task 29, right edge only)', () => {
+    // jsdom has no elementFromPoint implementation at all (unlike a real browser, where it
+    // always resolves to something). Any test in this block that dispatches a real window
+    // pointerup for the horizontal handle's pointerId — including a *stale* one left behind by
+    // an earlier test that armed the gesture via pointerdown but resolved it through the
+    // __tgTestEndDrag seam instead of a real pointerup — would otherwise throw. Stubbing it to
+    // return null for the whole block keeps every test's real-pointerup path a harmless no-op,
+    // matching timegrid-allday.test.ts's per-test stub but applied uniformly here since this
+    // block mixes real-pointerup and test-hook-driven tests.
+    let originalElementFromPoint: typeof activeDocument.elementFromPoint;
+    beforeEach(() => {
+      originalElementFromPoint = activeDocument.elementFromPoint;
+      activeDocument.elementFromPoint = () => null;
+    });
+    afterEach(() => {
+      activeDocument.elementFromPoint = originalElementFromPoint;
+    });
+
+    it('renders a right-edge horizontal resize handle on every timed block', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = block.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      expect(handle).not.toBeNull();
+    });
+
+    it('the horizontal handle stays draggable="false" (same defensive island-in-a-draggable-ancestor pattern as the vertical resize handle)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      expect(handle.getAttribute('draggable')).toBe('false');
+    });
+
+    it("pointer-dragging the horizontal handle fires onExtendToSpan with the resolved date, not onTimeChange/onDurationChange", () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      // jsdom's elementFromPoint always returns null, so real coordinate-based day resolution
+      // can't be exercised here — this drives the same deterministic __tgTestEndDrag seam
+      // renderAllDay.ts established (Round 2 Task 9), registered here on the hourColumnEl
+      // (the `container` this suite renders into) rather than an all-day cell.
+      (container as unknown as { __tgTestEndDrag: (date: string) => void }).__tgTestEndDrag(
+        '2026-07-12',
+      );
+      expect(cbs.onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-12');
+      expect(cbs.onTimeChange).not.toHaveBeenCalled();
+      expect(cbs.onDurationChange).not.toHaveBeenCalled();
+    });
+
+    it('a pointerdown on the horizontal handle does not arm the vertical move/resize gesture (a subsequent window pointermove/pointerup does not fire onTimeChange/onDurationChange)', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', duration: 60, due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      expect(cbs.onTimeChange).not.toHaveBeenCalled();
+      expect(cbs.onDurationChange).not.toHaveBeenCalled();
+    });
+
+    it('a pointercancel mid-gesture on the horizontal handle (simulating the browser hijacking the pointer session into a native drag, mirroring Task 26\'s vertical-drag fix) tears down its window listeners: a subsequent real pointerup that WOULD resolve to a day does not fire onExtendToSpan', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      // Override the describe-block-wide null stub just for this test: a day-column stand-in
+      // that DOES resolve to a date, so that a still-live pointerup listener would provably
+      // fire onExtendToSpan — proving its absence here is due to pointercancel's cleanup, not
+      // just the stub returning null anyway.
+      const fakeDayEl = document.createElement('div');
+      fakeDayEl.setAttribute('data-tg-date', '2026-07-12');
+      activeDocument.elementFromPoint = () => fakeDayEl;
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      // Dispatched directly on `window` (not `handle.dispatchEvent(..., {bubbles: true})`):
+      // freshContainer()'s element is never attached to `document`, so a bubbling event
+      // dispatched on a detached descendant never actually reaches `window` in jsdom — the
+      // same reason this suite's pointermove/pointerup gestures always dispatch straight on
+      // `window` rather than relying on bubbling from the block/handle.
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+      expect(cbs.onExtendToSpan).not.toHaveBeenCalled();
+    });
+
+    it('regression: vertical Pointer-Events move on the block body still fires onTimeChange after the horizontal handle was added', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      expect(cbs.onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 60);
+    });
+
+    it('regression: dragging the vertical resize handle still fires onDurationChange after the horizontal handle was added', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      handle.setPointerCapture = () => {};
+      handle.releasePointerCapture = () => {};
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      expect(cbs.onDurationChange).toHaveBeenCalledWith(t, 120);
+      expect(cbs.onExtendToSpan).not.toHaveBeenCalled();
     });
   });
 });

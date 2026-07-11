@@ -146,6 +146,7 @@ export class TodayView extends BaseView {
       onTaskClick: this.callbacks.onTaskClick,
       onTimeChange: this.callbacks.onTimeChange,
       onDurationChange: this.callbacks.onDurationChange,
+      onExtendToSpan: this.callbacks.onExtendToSpan,
       onToggle: this.callbacks.onToggle,
       onSetStatus: this.callbacks.onSetStatus,
       onSetPriority: this.callbacks.onSetPriority,

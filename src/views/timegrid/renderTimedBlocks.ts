@@ -23,6 +23,11 @@ export interface TimedBlockCallbacks {
   onTaskClick: (task: Task) => void;
   onTimeChange: (task: Task, newStartMinutes: number) => void;
   onDurationChange: (task: Task, newDurationMinutes: number) => void;
+  /** Task 29: horizontal right-edge drag-resize, extending the block into a multi-day timed
+   * span. Same mutation as renderAllDay.ts's onExtendToSpan (freezes the original `due` as
+   * `start`, moves `due` to the dragged-to date) — reused as-is since it already leaves
+   * `⏰`/`⏱️` untouched, which is exactly what preserving the task's time/duration needs. */
+  onExtendToSpan: (task: Task, newDue: string) => void;
   onToggle: (task: Task) => void;
   onSetStatus: (task: Task, status: string) => void;
   onSetPriority: (task: Task, priority: TaskPriority) => void;
@@ -98,6 +103,15 @@ export function renderTimedBlocksForDay(
       renderCountBadges(meta, p.task);
       renderTagChips(meta, p.task, tagGroups);
     }
+    // Task 29: right-edge horizontal resize, extending the block into a multi-day timed span.
+    // Reuses `.tc-tg-span-edge`/`.tc-tg-span-edge--right` — the same classes/CSS renderAllDay.ts's
+    // span/plain right-edge handles already use — so it looks and behaves consistently with the
+    // existing all-day span-extension affordance (Round 2 Task 9) instead of inventing new visual
+    // language for the same gesture. Left-edge is deliberately NOT implemented (scope cut, see
+    // Task 29's brief and the commit message — only the right edge ships).
+    const hEdge = block.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--right' });
+    attachHorizontalResize(hEdge, hourColumnEl, p.task, callbacks.onExtendToSpan);
+
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
     // Task 26: native HTML5 DnD so a timed block can be dragged out of the hour-grid onto the
     // all-day/"No-time" row (renderAllDay.ts's existing drop target), using the SAME
@@ -117,7 +131,7 @@ export function renderTimedBlocksForDay(
 
     block.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      if ((e.target as HTMLElement).closest('.tc-tg-resize-handle')) return;
+      if ((e.target as HTMLElement).closest('.tc-tg-resize-handle, .tc-tg-span-edge')) return;
       callbacks.onTaskClick(p.task);
     });
 
@@ -192,7 +206,12 @@ function attachDrag(
     // click handler runs onToggle, or before the link's own click handler navigates). Mirrors
     // the existing resize-handle exclusion below. `a` covers renderTaskText's rendered links —
     // matched by tag, not a task-calendar-specific class, since MarkdownRenderer owns that markup.
-    if ((e.target as HTMLElement).closest('.tc-status-marker, a')) return;
+    // `.tc-tg-span-edge` (Task 29's horizontal resize handle) is excluded too: it has its own
+    // dedicated pointerdown listener (attachHorizontalResize) that stops propagation before this
+    // block-level listener would ever see it, so this closest() never actually matches in
+    // practice — kept as a defensive, explicit belt-and-suspenders guard rather than relying
+    // solely on stopPropagation ordering.
+    if ((e.target as HTMLElement).closest('.tc-status-marker, a, .tc-tg-span-edge')) return;
     mode = (e.target as HTMLElement).closest('.tc-tg-resize-handle') ? 'resize' : 'move';
     startY = e.clientY;
     startMinutes = initialStart;
@@ -205,4 +224,91 @@ function attachDrag(
 
   block.addEventListener('pointerdown', onPointerDown);
   handle.addEventListener('pointerdown', onPointerDown);
+}
+
+/**
+ * Task 29: right-edge horizontal drag-resize, extending a timed block into a multi-day timed
+ * span. Mirrors renderAllDay.ts's `attachEdgeResize` exactly (same Pointer-Events pattern: no
+ * live visual feedback while dragging, just a commit-on-release that resolves the day under the
+ * pointer) rather than inventing a new interaction style — the day boundary crossing is resolved
+ * from the pointer's final (clientX, clientY) via `activeDocument.elementFromPoint`, walking up
+ * to the nearest `[data-tg-date]` ancestor (HourGrid.ts's `.tc-tg-day-column`, one per rendered
+ * date), NOT by accumulating a per-pixel delta within a single column — so dragging across 2-3
+ * day columns resolves to whichever column the pointer is over at release, however far that is.
+ *
+ * `hourColumnEl` (the per-day column this block was rendered into) doubles as the test seam
+ * anchor: real usage never reads from it directly, but jsdom's `elementFromPoint` always returns
+ * null, so tests drive the same deterministic `__tgPendingEdgeResizes`/`__tgTestEndDrag` seam
+ * renderAllDay.ts established (Round 2 Task 9), registered here per-day-column instead of
+ * per-all-day-cell.
+ *
+ * Left-edge resize is a deliberate scope cut for this task (see Task 29's brief) — only the
+ * right edge is implemented.
+ */
+function attachHorizontalResize(
+  handle: HTMLElement,
+  hourColumnEl: HTMLElement,
+  task: Task,
+  onExtendToSpan: (task: Task, newDue: string) => void,
+): void {
+  // Same reasoning as the vertical resize handle's draggable="false" (Task 26): this handle is a
+  // non-draggable island inside the block's draggable="true" ancestor, so a gesture starting here
+  // never races the block's own native dragstart.
+  handle.setAttribute('draggable', 'false');
+
+  const resolve = (date: string): void => {
+    onExtendToSpan(task, date);
+  };
+
+  const onPointerMove = (e: PointerEvent): void => {
+    e.preventDefault();
+  };
+
+  const cleanup = (): void => {
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerCancel);
+  };
+
+  const onPointerUp = (upEvent: PointerEvent): void => {
+    const target = activeDocument.elementFromPoint(upEvent.clientX, upEvent.clientY);
+    const dayEl = target?.closest('[data-tg-date]');
+    const date = dayEl?.getAttribute('data-tg-date');
+    if (date) resolve(date);
+    cleanup();
+  };
+
+  // Same rationale as attachDrag's onPointerCancel above: the block this handle sits inside is
+  // draggable="true" (Task 26), so a native drag hijacking the pointer session mid-gesture fires
+  // pointercancel instead of pointerup — without this, the window pointermove/pointerup listeners
+  // registered below would leak.
+  const onPointerCancel = (): void => {
+    cleanup();
+  };
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+  });
+
+  const withHook = hourColumnEl as HTMLElement & {
+    __tgPendingEdgeResizes?: Array<(d: string) => void>;
+  };
+  withHook.__tgPendingEdgeResizes = withHook.__tgPendingEdgeResizes ?? [];
+  withHook.__tgPendingEdgeResizes.push(resolve);
+
+  const withEndDrag = hourColumnEl as unknown as {
+    __tgTestEndDrag?: (targetDate: string) => void;
+  };
+  if (!withEndDrag.__tgTestEndDrag) {
+    withEndDrag.__tgTestEndDrag = (targetDate: string) => {
+      const pending = (
+        hourColumnEl as unknown as { __tgPendingEdgeResizes?: Array<(d: string) => void> }
+      ).__tgPendingEdgeResizes;
+      pending?.forEach((cb) => cb(targetDate));
+    };
+  }
 }
