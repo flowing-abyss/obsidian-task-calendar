@@ -5,7 +5,7 @@ import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import { WeekView } from '../src/views/WeekView';
-import { dispatchDnD, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
+import { dispatchDnD, fixedToday, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
 
@@ -258,5 +258,74 @@ describe('WeekView', () => {
       view.render(c, [], resolvedConfig());
       expect(() => view.destroy()).not.toThrow();
     });
+  });
+
+  // Regression coverage for the CalendarRenderer/WeekView "today exclusion" bug
+  // (fixed once for WeekTimeGridView in Task 42b, then reintroduced for this legacy
+  // code-block path by a copy-pasted patch that didn't account for CalendarRenderer's
+  // different, already-week-boundary-anchored `selectedDate`). Mirrors the exhaustive
+  // 7-weekday x firstDayOfWeek matrix in test/week-time-grid-view.test.ts — this is the
+  // exact kind of test that was missing here and would have caught the regression.
+  describe('the rendered week always contains "today", for every weekday and firstDayOfWeek', () => {
+    // 2026-07-06..12 is a real Mon..Sun span.
+    const weekdays: Array<{ date: string; label: string }> = [
+      { date: '2026-07-06', label: 'Monday' },
+      { date: '2026-07-07', label: 'Tuesday' },
+      { date: '2026-07-08', label: 'Wednesday' },
+      { date: '2026-07-09', label: 'Thursday' },
+      { date: '2026-07-10', label: 'Friday' },
+      { date: '2026-07-11', label: 'Saturday' },
+      { date: '2026-07-12', label: 'Sunday' },
+    ];
+
+    function cellDates(c: HTMLElement): string[] {
+      // href is `${dailyNoteFolder}/${currentDate}` (or bare currentDate when no folder
+      // configured) — take the last path segment to recover the plain YYYY-MM-DD.
+      return Array.from(c.querySelectorAll('.cellName')).map((el) => {
+        const href = (el as HTMLAnchorElement).getAttribute('href') as string;
+        return href.split('/').pop() as string;
+      });
+    }
+
+    for (const { date, label } of weekdays) {
+      describe(`today is ${label} (${date})`, () => {
+        fixedToday(date);
+
+        for (const firstDayOfWeek of [0, 1] as const) {
+          it(`no-startPosition fallback: contains today exactly once, spans 7 consecutive days, starts on firstDayOfWeek=${firstDayOfWeek}`, () => {
+            const { view } = makeView();
+            const c = freshContainer();
+            // No startPosition: exercises `window.moment()` directly as the anchor.
+            view.render(c, [], resolvedConfig({ firstDayOfWeek }));
+
+            const dates = cellDates(c);
+            expect(dates).toHaveLength(7);
+            expect(dates.filter((d) => d === date)).toHaveLength(1);
+            for (let i = 1; i < dates.length; i++) {
+              expect(window.moment(dates[i]).diff(window.moment(dates[i - 1]), 'days')).toBe(1);
+            }
+            expect(parseInt(window.moment(dates[0]).format('d'), 10)).toBe(firstDayOfWeek);
+          });
+
+          it(`startPosition path (CalendarRenderer's own subtract-then-format compensation): contains today for firstDayOfWeek=${firstDayOfWeek}`, () => {
+            const { view } = makeView();
+            const c = freshContainer();
+            // Mirrors CenterPanel/CalendarRenderer's `startPositionFor`/`buildConfig`:
+            // shift the (real-weekday-preserving) anchor back by firstDayOfWeek days
+            // before formatting to 'YYYY-ww'.
+            const startPosition = window.moment().subtract(firstDayOfWeek, 'days').format('YYYY-ww');
+            view.render(c, [], resolvedConfig({ startPosition, firstDayOfWeek }));
+
+            const dates = cellDates(c);
+            expect(dates).toHaveLength(7);
+            expect(dates.filter((d) => d === date)).toHaveLength(1);
+            for (let i = 1; i < dates.length; i++) {
+              expect(window.moment(dates[i]).diff(window.moment(dates[i - 1]), 'days')).toBe(1);
+            }
+            expect(parseInt(window.moment(dates[0]).format('d'), 10)).toBe(firstDayOfWeek);
+          });
+        }
+      });
+    }
   });
 });

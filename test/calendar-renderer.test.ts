@@ -5,7 +5,7 @@ import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskStore } from '../src/store/TaskStore';
 import { CalendarRenderer } from '../src/ui/CalendarRenderer';
-import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
+import { fixedToday, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 
 useRealMoment();
 
@@ -489,6 +489,90 @@ describe('CalendarRenderer', () => {
       expect(store.toggleTask).toHaveBeenCalledWith(t);
       r.destroy();
     });
+  });
+
+  // Regression coverage: a commit that fixed CenterPanel/WeekTimeGridView's "today
+  // excluded when today is Sunday and week starts Monday" bug copy-pasted the same
+  // `.subtract(firstDayOfWeek, 'days')` compensation onto CalendarRenderer.buildConfig,
+  // but CalendarRenderer's `selectedDate` (unlike CenterPanel's `calDate`) was *already*
+  // collapsed to a week boundary via `.startOf('week')` before that compensation ran —
+  // so the same patch that fixed the Sunday case there broke the Mon-Sat case here. This
+  // is the exact kind of exhaustive weekday x firstDayOfWeek matrix test that was missing
+  // (test/week-time-grid-view.test.ts has one; this file and test/week-view.test.ts did
+  // not) and that would have caught the regression before it shipped.
+  describe('week view always contains "today", for every weekday and firstDayOfWeek', () => {
+    // 2026-07-06..12 is a real Mon..Sun span.
+    const weekdays: Array<{ date: string; label: string }> = [
+      { date: '2026-07-06', label: 'Monday' },
+      { date: '2026-07-07', label: 'Tuesday' },
+      { date: '2026-07-08', label: 'Wednesday' },
+      { date: '2026-07-09', label: 'Thursday' },
+      { date: '2026-07-10', label: 'Friday' },
+      { date: '2026-07-11', label: 'Saturday' },
+      { date: '2026-07-12', label: 'Sunday' },
+    ];
+
+    function cellDates(root: HTMLElement): string[] {
+      return Array.from(root.querySelectorAll('.cellName')).map((el) => {
+        const href = (el as HTMLAnchorElement).getAttribute('href') as string;
+        return href.split('/').pop() as string;
+      });
+    }
+
+    for (const { date, label } of weekdays) {
+      describe(`today is ${label} (${date})`, () => {
+        fixedToday(date);
+
+        for (const firstDayOfWeek of [0, 1] as const) {
+          it(`fresh mount with defaultView 'week' contains today exactly once, spans 7 consecutive days, starts on firstDayOfWeek=${firstDayOfWeek}`, () => {
+            const store = new StubStore();
+            const root = freshContainer();
+            const r = new CalendarRenderer(
+              root,
+              store as unknown as TaskStore,
+              resolvedConfig({ defaultView: 'week', firstDayOfWeek }),
+              fakeApp(),
+            );
+            r.mount();
+
+            const dates = cellDates(root);
+            expect(dates).toHaveLength(7);
+            expect(dates.filter((d) => d === date)).toHaveLength(1);
+            for (let i = 1; i < dates.length; i++) {
+              expect(window.moment(dates[i]).diff(window.moment(dates[i - 1]), 'days')).toBe(1);
+            }
+            expect(parseInt(window.moment(dates[0]).format('d'), 10)).toBe(firstDayOfWeek);
+
+            r.destroy();
+          });
+
+          it(`switching to week view then clicking "today" contains today exactly once, spans 7 consecutive days, starts on firstDayOfWeek=${firstDayOfWeek}`, () => {
+            const store = new StubStore();
+            const root = freshContainer();
+            const r = new CalendarRenderer(
+              root,
+              store as unknown as TaskStore,
+              resolvedConfig({ defaultView: 'month', firstDayOfWeek }),
+              fakeApp(),
+            );
+            r.mount();
+            (root.querySelector('.weekView') as HTMLButtonElement).click();
+            // "current" button triggers onToday → goToday()
+            (root.querySelector('.current') as HTMLButtonElement).click();
+
+            const dates = cellDates(root);
+            expect(dates).toHaveLength(7);
+            expect(dates.filter((d) => d === date)).toHaveLength(1);
+            for (let i = 1; i < dates.length; i++) {
+              expect(window.moment(dates[i]).diff(window.moment(dates[i - 1]), 'days')).toBe(1);
+            }
+            expect(parseInt(window.moment(dates[0]).format('d'), 10)).toBe(firstDayOfWeek);
+
+            r.destroy();
+          });
+        }
+      });
+    }
   });
 
   describe('destroy', () => {
