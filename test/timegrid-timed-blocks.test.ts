@@ -2,7 +2,10 @@ import { Component, type App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
-import { renderTimedBlocksForDay } from '../src/views/timegrid/renderTimedBlocks';
+import {
+  renderTimedBlocksForDay,
+  renderTimedSpanContinuation,
+} from '../src/views/timegrid/renderTimedBlocks';
 import { dispatchDnD, freshContainer, task } from './helpers';
 
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
@@ -653,7 +656,7 @@ describe('renderTimedBlocksForDay', () => {
       expect(handle.getAttribute('draggable')).toBe('false');
     });
 
-    it("pointer-dragging the horizontal handle fires onExtendToSpan with the resolved date, not onTimeChange/onDurationChange", () => {
+    it('pointer-dragging the horizontal handle fires onExtendToSpan with the resolved date, not onTimeChange/onDurationChange', () => {
       const container = freshContainer();
       const cbs = callbacks();
       const t = task({ time: '09:00', due: '2026-07-10' });
@@ -687,7 +690,7 @@ describe('renderTimedBlocksForDay', () => {
       expect(cbs.onDurationChange).not.toHaveBeenCalled();
     });
 
-    it('a pointercancel mid-gesture on the horizontal handle (simulating the browser hijacking the pointer session into a native drag, mirroring Task 26\'s vertical-drag fix) tears down its window listeners: a subsequent real pointerup that WOULD resolve to a day does not fire onExtendToSpan', () => {
+    it("a pointercancel mid-gesture on the horizontal handle (simulating the browser hijacking the pointer session into a native drag, mirroring Task 26's vertical-drag fix) tears down its window listeners: a subsequent real pointerup that WOULD resolve to a day does not fire onExtendToSpan", () => {
       const container = freshContainer();
       const cbs = callbacks();
       const t = task({ time: '09:00', due: '2026-07-10' });
@@ -742,6 +745,61 @@ describe('renderTimedBlocksForDay', () => {
       window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
       expect(cbs.onDurationChange).toHaveBeenCalledWith(t, 120);
       expect(cbs.onExtendToSpan).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('renderTimedSpanContinuation (Task 29: non-anchor days of a multi-day timed span)', () => {
+    it('renders a continuation segment positioned at the same time-of-day row as a full block would be', () => {
+      const container = freshContainer();
+      const t = task({ time: '15:00', duration: 90, start: '2026-07-01', due: '2026-07-03' });
+      renderTimedSpanContinuation(container, [t]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      expect(seg).not.toBeNull();
+      expect(seg.style.top).toBe(`${((15 * 60) / 60) * 48}px`);
+      expect(seg.style.height).toBe(`${(90 / 60) * 48}px`);
+    });
+
+    it('is not draggable and carries no resize handles (non-interactive continuation, not a duplicate full block)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', start: '2026-07-01', due: '2026-07-03' });
+      renderTimedSpanContinuation(container, [t]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      expect(seg.getAttribute('draggable')).not.toBe('true');
+      expect(seg.querySelector('.tc-tg-resize-handle')).toBeNull();
+      expect(seg.querySelector('.tc-tg-span-edge')).toBeNull();
+    });
+
+    it('shows the task title so the continuation reads as clearly linked to the anchor block, not an unrelated duplicate task', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', start: '2026-07-01', due: '2026-07-03', text: 'Conference' });
+      renderTimedSpanContinuation(container, [t]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      expect(seg.textContent).toContain('Conference');
+    });
+
+    it('a right-click fires onTaskClick, same as a full block', () => {
+      const container = freshContainer();
+      const onTaskClick = vi.fn();
+      const t = task({ time: '09:00', start: '2026-07-01', due: '2026-07-03' });
+      renderTimedSpanContinuation(container, [t], onTaskClick);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      seg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      expect(onTaskClick).toHaveBeenCalledWith(t);
+    });
+
+    it('renders one continuation segment per task, in tag color when a tag matches', () => {
+      const container = freshContainer();
+      const t = task({
+        time: '09:00',
+        start: '2026-07-01',
+        due: '2026-07-03',
+        rawText: '- [ ] t #work',
+      });
+      renderTimedSpanContinuation(container, [t], undefined, [
+        { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+      ]);
+      const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
+      expect(seg.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
     });
   });
 });

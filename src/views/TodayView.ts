@@ -6,7 +6,11 @@ import { BaseView } from './BaseView';
 import { renderHourGrid, repositionNowLine } from './timegrid/HourGrid';
 import { minutesToPixels } from './timegrid/layout';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
-import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
+import {
+  renderTimedBlocksForDay,
+  renderTimedSpanContinuation,
+  type TimedBlockCallbacks,
+} from './timegrid/renderTimedBlocks';
 
 export interface TimeGridCallbacks {
   app: App;
@@ -138,7 +142,13 @@ export class TodayView extends BaseView {
     );
     const day = handles.days[0]!;
 
-    const { timed, spans, plain, deadlines } = bucketTasksForDate(tasks, date);
+    const { timed, spans, timedSpans, plain, deadlines } = bucketTasksForDate(tasks, date);
+    // Task 29: a timed multi-day span renders its full interactive block only on its `due`
+    // day (the due-centric anchor, matching `spans`' existing left/right-edge convention) —
+    // every other day it covers gets the lighter, non-interactive continuation segment instead,
+    // so the same task never shows two full interactive blocks at once.
+    const anchoredTimedSpans = timedSpans.filter((t) => t.due === date);
+    const continuationTimedSpans = timedSpans.filter((t) => t.due !== date);
 
     const timedCallbacks: TimedBlockCallbacks = {
       app: this.callbacks.app,
@@ -153,7 +163,18 @@ export class TodayView extends BaseView {
       statusRegistry: this.callbacks.statusRegistry,
     };
     const tagGroups = this.callbacks.tagGroups ?? [];
-    renderTimedBlocksForDay(day.hourColumnEl, timed, timedCallbacks, tagGroups);
+    renderTimedBlocksForDay(
+      day.hourColumnEl,
+      [...timed, ...anchoredTimedSpans],
+      timedCallbacks,
+      tagGroups,
+    );
+    renderTimedSpanContinuation(
+      day.hourColumnEl,
+      continuationTimedSpans,
+      this.callbacks.onTaskClick,
+      tagGroups,
+    );
 
     const allDayCallbacks: AllDayCallbacks = {
       app: this.callbacks.app,

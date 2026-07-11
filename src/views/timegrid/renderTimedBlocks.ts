@@ -139,6 +139,45 @@ export function renderTimedBlocksForDay(
   }
 }
 
+/**
+ * Task 29: renders the lighter, non-interactive "continuation" segment for a non-anchor day of
+ * a multi-day timed span (`start` < `due`, `time` set) — the anchor day (matching `due`, per
+ * this project's due-centric anchor-priority rule) gets the full interactive block via
+ * `renderTimedBlocksForDay` instead; every OTHER day the span covers gets this instead, so the
+ * same task never renders two full interactive blocks across a Week view.
+ *
+ * Deliberately minimal — no checkbox, no drag, no resize handles, no markdown-link-aware title
+ * rendering (a plain textContent title, unlike the anchor block's renderTaskText) — visually
+ * similar in spirit to MonthGridView's existing `.tc-mg-span-segment` continuation bars for
+ * untimed spans: clearly linked to the task (same title, tag color, time-of-day position) but
+ * unmistakably not a second interactive copy of it. A contextmenu still opens the task modal
+ * (`onTaskClick`), same as a full block, since that's a read-only action.
+ */
+export function renderTimedSpanContinuation(
+  hourColumnEl: HTMLElement,
+  tasks: Task[],
+  onTaskClick?: (task: Task) => void,
+  tagGroups: TagGroup[] = [],
+): void {
+  for (const t of tasks) {
+    const startMinutes = timeStringToMinutes(t.time ?? '00:00');
+    const durationMinutes = t.duration ?? DEFAULT_DURATION_MINUTES;
+    const seg = hourColumnEl.createDiv({ cls: 'tc-tg-block-continuation' });
+    seg.style.top = `${minutesToPixels(startMinutes)}px`;
+    seg.style.height = `${minutesToPixels(durationMinutes)}px`;
+    const tagColor = tagColorFor(t.rawText, tagGroups);
+    if (tagColor) seg.setCssProps({ '--tc-tag-color': tagColor });
+    seg.createSpan({ cls: 'tc-tg-block-continuation-title', text: t.markdownText });
+    if (onTaskClick) {
+      seg.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onTaskClick(t);
+      });
+    }
+  }
+}
+
 function attachDrag(
   block: HTMLElement,
   handle: HTMLElement,

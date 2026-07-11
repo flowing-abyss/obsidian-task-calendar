@@ -1488,6 +1488,36 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   right: -3px;
 }
 
+/* Task 29: the non-anchor-day "continuation" segment of a multi-day timed span — deliberately
+   lighter/thinner than a full .tc-tg-block (lower opacity fill, dashed left border reading as
+   "this continues from elsewhere", no padding for a checkbox/subtitle row it doesn't have) so
+   it's clearly linked to the task without looking like a second interactive copy of it. */
+.tc-tg-block-continuation {
+  position: absolute;
+  z-index: 1;
+  left: 4px;
+  right: 4px;
+  pointer-events: auto;
+  border-radius: 4px;
+  border-left: 2px dashed var(--tc-tag-color, var(--interactive-accent));
+  padding: 2px 6px;
+  font-size: 0.8em;
+  overflow: hidden;
+  opacity: 0.75;
+  background: color-mix(
+    in srgb,
+    var(--tc-tag-color, var(--interactive-accent)) 22%,
+    var(--background-primary)
+  );
+}
+.tc-tg-block-continuation-title {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
 /* Deadline markers: shape (small non-draggable pill, no fill/body) is what signals
    "deadline" now, not color — color follows the plugin-wide color=priority convention
    instead of a hardcoded red. Neutral/muted when no priority is set. */

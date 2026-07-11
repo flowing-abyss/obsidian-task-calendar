@@ -6,7 +6,11 @@ import { bucketTasksForDate, NOW_LINE_REFRESH_MS, type TimeGridCallbacks } from 
 import { renderHourGrid, repositionNowLine } from './timegrid/HourGrid';
 import { minutesToPixels } from './timegrid/layout';
 import { renderAllDayCell, type AllDayCallbacks } from './timegrid/renderAllDay';
-import { renderTimedBlocksForDay, type TimedBlockCallbacks } from './timegrid/renderTimedBlocks';
+import {
+  renderTimedBlocksForDay,
+  renderTimedSpanContinuation,
+  type TimedBlockCallbacks,
+} from './timegrid/renderTimedBlocks';
 
 export class WeekTimeGridView extends BaseView {
   private containerEl: HTMLElement | null = null;
@@ -86,8 +90,23 @@ export class WeekTimeGridView extends BaseView {
 
     const tagGroups = this.callbacks.tagGroups ?? [];
     for (const day of handles.days) {
-      const { timed, spans, plain, deadlines } = bucketTasksForDate(tasks, day.date);
-      renderTimedBlocksForDay(day.hourColumnEl, timed, timedCallbacks, tagGroups);
+      const { timed, spans, timedSpans, plain, deadlines } = bucketTasksForDate(tasks, day.date);
+      // Task 29: full interactive block only on the span's `due` (anchor) day; every other
+      // day it covers gets the lighter, non-interactive continuation segment instead.
+      const anchoredTimedSpans = timedSpans.filter((t) => t.due === day.date);
+      const continuationTimedSpans = timedSpans.filter((t) => t.due !== day.date);
+      renderTimedBlocksForDay(
+        day.hourColumnEl,
+        [...timed, ...anchoredTimedSpans],
+        timedCallbacks,
+        tagGroups,
+      );
+      renderTimedSpanContinuation(
+        day.hourColumnEl,
+        continuationTimedSpans,
+        this.callbacks.onTaskClick,
+        tagGroups,
+      );
       renderAllDayCell(
         day.allDayCellEl,
         day.date,

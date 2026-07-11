@@ -311,4 +311,24 @@ describe('TodayView', () => {
     expect(gridRowEl.scrollTop).toBe(496);
     vi.useRealTimers();
   });
+
+  describe('timed multi-day spans (Task 29)', () => {
+    it('renders the full interactive block on the due (anchor) day', () => {
+      const container = freshContainer();
+      const view = new TodayView(callbacks());
+      const t = task({ start: '2026-07-06', due: '2026-07-08', time: '09:00', text: 'Conf' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07-08' }));
+      expect(container.querySelector('.tc-tg-block')).not.toBeNull();
+      expect(container.querySelector('.tc-tg-block-continuation')).toBeNull();
+    });
+
+    it('renders a continuation segment (not a full block) on a non-anchor day it spans', () => {
+      const container = freshContainer();
+      const view = new TodayView(callbacks());
+      const t = task({ start: '2026-07-06', due: '2026-07-08', time: '09:00', text: 'Conf' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07-07' }));
+      expect(container.querySelector('.tc-tg-block')).toBeNull();
+      expect(container.querySelector('.tc-tg-block-continuation')).not.toBeNull();
+    });
+  });
 });
