@@ -221,6 +221,44 @@ describe('RightPanel.renderSubTask', () => {
     const content = await readMd(app, 'f.md');
     expect(content).toContain('  - [x] sub one');
   });
+
+  // Same bug class as the priority chip fix (Round 4 Task 41): the subtask row's
+  // status marker (styles.css `.tc-status-marker[data-priority='X']`) also reads
+  // bare `--tc-priority-*`, which is only defined under `.tc-panel-view`. Subtask
+  // rows render here in RightPanel, which TaskModal mounts at document.body
+  // OUTSIDE that class — so without a hardcoded fallback the marker's
+  // priority-colored border/color was lost in the task detail modal. Guard the
+  // fallback so this can't silently regress.
+  it.each([
+    ['A', 'red'],
+    ['B', 'orange'],
+    ['C', 'yellow'],
+    ['E', 'blue'],
+    ['F', 'purple'],
+  ] as const)(
+    "status marker priority='%s' rule in styles.css falls back to var(--color-%s) (works outside .tc-panel-view)",
+    async (priority, colorName) => {
+      const { readFileSync } = await import('node:fs');
+      const { resolve } = await import('node:path');
+      const css = readFileSync(resolve(import.meta.dirname, '..', 'styles.css'), 'utf8');
+      const rule =
+        new RegExp(
+          `\\.tc-status-marker\\[data-priority='${priority}'\\]\\s*\\{([^}]*)\\}`,
+          'u',
+        ).exec(css)?.[1] ?? '';
+      const priorityVar = priority.toLowerCase();
+      expect(rule).toMatch(
+        new RegExp(
+          `border-color:\\s*var\\(--tc-priority-${priorityVar},\\s*var\\(--color-${colorName}\\)\\)`,
+        ),
+      );
+      expect(rule).toMatch(
+        new RegExp(
+          `color:\\s*var\\(--tc-priority-${priorityVar},\\s*var\\(--color-${colorName}\\)\\)`,
+        ),
+      );
+    },
+  );
 });
 
 describe('RightPanel.renderComment', () => {

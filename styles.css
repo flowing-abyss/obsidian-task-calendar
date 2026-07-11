@@ -2532,26 +2532,32 @@ body.is-mobile .tasksCalendar .statisticPopup li {
 /* Priority — colors BOTH the chip border and the inner icon (via currentColor),
    so the whole marker reads as one priority hue. Footprint stays 19px (border,
    not an outer halo). No-priority markers keep the neutral color from the base
-   rule. */
+   rule.
+
+   Falls back to the underlying global color vars (same bug/fix as
+   .tc-priority-chip above — Round 4 Task 41) because subtask rows using this
+   marker render via RightPanel, which TaskModal also mounts at document.body
+   OUTSIDE `.tc-panel-view` — there --tc-priority-* is undefined, so without a
+   fallback the marker's priority border/color was lost entirely. */
 .tc-status-marker[data-priority='A'] {
-  border-color: var(--tc-priority-a);
-  color: var(--tc-priority-a);
+  border-color: var(--tc-priority-a, var(--color-red));
+  color: var(--tc-priority-a, var(--color-red));
 }
 .tc-status-marker[data-priority='B'] {
-  border-color: var(--tc-priority-b);
-  color: var(--tc-priority-b);
+  border-color: var(--tc-priority-b, var(--color-orange));
+  color: var(--tc-priority-b, var(--color-orange));
 }
 .tc-status-marker[data-priority='C'] {
-  border-color: var(--tc-priority-c);
-  color: var(--tc-priority-c);
+  border-color: var(--tc-priority-c, var(--color-yellow));
+  color: var(--tc-priority-c, var(--color-yellow));
 }
 .tc-status-marker[data-priority='E'] {
-  border-color: var(--tc-priority-e);
-  color: var(--tc-priority-e);
+  border-color: var(--tc-priority-e, var(--color-blue));
+  color: var(--tc-priority-e, var(--color-blue));
 }
 .tc-status-marker[data-priority='F'] {
-  border-color: var(--tc-priority-f);
-  color: var(--tc-priority-f);
+  border-color: var(--tc-priority-f, var(--color-purple));
+  color: var(--tc-priority-f, var(--color-purple));
 }
 .tc-task-body {
   flex: 1;
