@@ -33,13 +33,24 @@ export interface TimeGridCallbacks {
   tagGroups?: TagGroup[];
 }
 
-/** Bucket tasks for a single date per the due-centric anchor rule (spec: due-centric contract). */
+/**
+ * Bucket tasks for a single date per the due-centric anchor rule (spec: due-centric contract).
+ *
+ * `timedSpans` (Task 29): a multi-day span (`start` && `due`) that additionally has a `time`
+ * set is kept separate from the untimed `spans` bucket — it needs hour-grid treatment (a block
+ * at its time-of-day row on every spanned day, per bucketing below) rather than the all-day
+ * band's chip treatment `spans` gets. Consumers render it on its `due` day (the due-centric
+ * anchor, matching `spans`' existing left/right-edge convention) as the full interactive block,
+ * and on every other spanned day as a lighter continuation segment — see renderTimedBlocks.ts's
+ * `renderTimedSpanContinuation` and MonthGridView's `timedSpans` handling.
+ */
 export function bucketTasksForDate(
   tasks: Task[],
   date: string,
-): { timed: Task[]; spans: Task[]; plain: Task[]; deadlines: Task[] } {
+): { timed: Task[]; spans: Task[]; timedSpans: Task[]; plain: Task[]; deadlines: Task[] } {
   const timed: Task[] = [];
   const spans: Task[] = [];
+  const timedSpans: Task[] = [];
   const plain: Task[] = [];
   const deadlines: Task[] = [];
   // Identity convention for task de-duplication (matches drag-payload identity used elsewhere,
@@ -53,7 +64,11 @@ export function bucketTasksForDate(
     if (t.start && t.due) {
       const inRange = window.moment(date).isBetween(t.start, t.due, 'day', '[]');
       if (inRange) {
-        spans.push(t);
+        if (t.time) {
+          timedSpans.push(t);
+        } else {
+          spans.push(t);
+        }
         spanIdentities.add(`${t.filePath}:::${t.line}`);
       }
       continue;
@@ -79,7 +94,7 @@ export function bucketTasksForDate(
     if (t.due === date && t.scheduled && t.scheduled !== t.due) deadlines.push(t);
   }
 
-  return { timed, spans, plain, deadlines };
+  return { timed, spans, timedSpans, plain, deadlines };
 }
 
 /** How often the now-line is repositioned while a Today/Week view showing today stays mounted. */

@@ -214,6 +214,36 @@ describe('TodayView', () => {
     expect(container.querySelector('.tc-tg-deadline-marker')).toBeNull();
   });
 
+  describe('timed multi-day spans (Task 29)', () => {
+    it('a start+due task with a time set lands in timedSpans, not the untimed spans bucket', () => {
+      const t = task({ start: '2026-07-01', due: '2026-07-03', time: '09:00' });
+      const { spans, timedSpans } = bucketTasksForDate([t], '2026-07-02');
+      expect(timedSpans).toContain(t);
+      expect(spans).not.toContain(t);
+    });
+
+    it('an untimed start+due task still lands in spans, not timedSpans', () => {
+      const t = task({ start: '2026-07-01', due: '2026-07-03' });
+      const { spans, timedSpans } = bucketTasksForDate([t], '2026-07-02');
+      expect(spans).toContain(t);
+      expect(timedSpans).not.toContain(t);
+    });
+
+    it('a timed span is present in timedSpans on every day from start to due inclusive', () => {
+      const t = task({ start: '2026-07-01', due: '2026-07-03', time: '09:00' });
+      expect(bucketTasksForDate([t], '2026-07-01').timedSpans).toContain(t);
+      expect(bucketTasksForDate([t], '2026-07-02').timedSpans).toContain(t);
+      expect(bucketTasksForDate([t], '2026-07-03').timedSpans).toContain(t);
+      expect(bucketTasksForDate([t], '2026-06-30').timedSpans).not.toContain(t);
+    });
+
+    it('a done/cancelled timed span is excluded from timedSpans', () => {
+      const t = task({ start: '2026-07-01', due: '2026-07-03', time: '09:00', status: 'done' });
+      const { timedSpans } = bucketTasksForDate([t], '2026-07-02');
+      expect(timedSpans).not.toContain(t);
+    });
+  });
+
   it('auto-scrolls the grid row to center the now-line when the rendered day is today', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-15T14:30:00'));
