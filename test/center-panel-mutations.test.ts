@@ -158,6 +158,23 @@ describe('CenterPanel.extendTaskToSpan', () => {
     expect(content).toContain('📅 2026-07-12');
     expect(content).not.toContain('📅 2026-07-10');
   });
+
+  it('re-extending an already-spanning task does not append a second 🛫 token', async () => {
+    const raw = '- [ ] t 🛫 2026-07-08 📅 2026-07-10';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      start: '2026-07-08',
+      due: '2026-07-10',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'extendTaskToSpan', t, '2026-07-12');
+    const content = await readMd(app, 'f.md');
+    expect(content.match(/🛫/gu)).toHaveLength(1);
+    expect(content).toContain('🛫 2026-07-08');
+    expect(content).toContain('📅 2026-07-12');
+  });
 });
 
 describe('CenterPanel.setTaskTimeFromDrop', () => {

@@ -2236,7 +2236,10 @@ export class CenterPanel {
     await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
       const line = lines[taskLine];
       if (!line) return;
-      const withStart = line.trimEnd() + ` 🛫 ${originalDue}`;
+      // A task that already spans (has a start) is being re-extended, not extended for the
+      // first time — only append a fresh 🛫 when one isn't already present, so re-dragging an
+      // already-spanning block's anchor never appends a second, extraneous 🛫 token.
+      const withStart = task.start ? line : line.trimEnd() + ` 🛫 ${originalDue}`;
       const withDue = withStart.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`);
       lines[taskLine] = formatTaskLine(withDue);
     });

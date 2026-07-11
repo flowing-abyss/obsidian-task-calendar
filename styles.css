@@ -1487,6 +1487,12 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-tg-span-edge--right {
   right: -3px;
 }
+/* .tc-tg-block clips its content (overflow: hidden, for the tag-fill background), which would
+   clip half of the shared -3px offset above and shrink the actual clickable/visible hit area to
+   ~3px — pull it fully inside the block instead so the full 6px handle stays hittable. */
+.tc-tg-block > .tc-tg-span-edge--right {
+  right: 0;
+}
 
 /* Task 29: the non-anchor-day "continuation" segment of a multi-day timed span — deliberately
    lighter/thinner than a full .tc-tg-block (lower opacity fill, dashed left border reading as
