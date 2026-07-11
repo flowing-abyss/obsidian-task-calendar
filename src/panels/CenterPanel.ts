@@ -2121,6 +2121,18 @@ export class CenterPanel {
       } else {
         updated = tl.trimEnd() + ` 📅 ${targetDate}`;
       }
+      // Task 26: this same generic onDrop path now also receives drops of previously-timed
+      // hour-grid blocks onto the all-day/"No-time" row (see renderTimedBlocks.ts's new
+      // draggable="true" + dragstart). Landing on the all-day row means "no longer timed" —
+      // the inverse of Round 2 Task 8's setTaskTimeFromDrop — so strip ⏰/⏱️ here rather than
+      // leaving a stale time on a task that now renders as an all-day item.
+      if (task.time) {
+        updated = updated
+          .replace(/⏰\s*\d{1,2}:\d{2}/u, '')
+          .replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/u, '')
+          .replace(/\s{2,}/gu, ' ')
+          .trimEnd();
+      }
       lines[taskLine] = formatTaskLine(updated);
     });
   }

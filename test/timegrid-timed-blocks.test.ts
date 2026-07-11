@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import { renderTimedBlocksForDay } from '../src/views/timegrid/renderTimedBlocks';
-import { freshContainer, task } from './helpers';
+import { dispatchDnD, freshContainer, task } from './helpers';
 
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
 const fakeApp = {} as App;
@@ -519,5 +519,88 @@ describe('renderTimedBlocksForDay', () => {
     renderTimedBlocksForDay(container, [t], callbacks());
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     expect(block.querySelector('.tc-tg-block-meta')).toBeNull();
+  });
+
+  describe('native HTML5 drag-out (Task 26: drop onto the all-day row)', () => {
+    it('the block is draggable="true", matching the all-day cross-day drag convention', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      expect(block.getAttribute('draggable')).toBe('true');
+    });
+
+    it('the resize handle stays draggable="false" (Round 2 Task 9 pattern: a non-draggable island inside a draggable ancestor)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      expect(handle.getAttribute('draggable')).toBe('false');
+    });
+
+    it('dragstart on the block carries the filePath:::line payload, the same convention as renderAllDay.ts', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', filePath: 'a.md', line: 3 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const dt = dispatchDnD(block, 'dragstart');
+      expect(dt.getData('text/plain')).toBe('a.md:::3');
+    });
+
+    it('dragstart adds is-dragging, dragend removes it (mirrors renderAllDay.ts body)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      dispatchDnD(block, 'dragstart');
+      expect(block.hasClass('is-dragging')).toBe(true);
+      dispatchDnD(block, 'dragend');
+      expect(block.hasClass('is-dragging')).toBe(false);
+    });
+
+    it('regression: vertical Pointer-Events move still fires onTimeChange after draggable="true" was added', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      expect(onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 60);
+    });
+
+    it('a pointercancel mid-gesture (simulating the browser hijacking the pointer session into a native drag) cleans up without firing onTimeChange/onDurationChange', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const onDurationChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange, onDurationChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      // The native drag has taken over the pointer session: the browser fires pointercancel
+      // instead of a normal pointerup for this gesture.
+      block.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 }));
+      expect(onTimeChange).not.toHaveBeenCalled();
+      expect(onDurationChange).not.toHaveBeenCalled();
+      // A subsequent, unrelated pointerdown/move/up gesture must behave normally — proving the
+      // window pointermove/pointerup listeners from the cancelled gesture were torn down, not
+      // leaked (which would otherwise double-fire onTimeChange on the next real gesture).
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 200, pointerId: 2 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 248, pointerId: 2 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 248, pointerId: 2 }));
+      expect(onTimeChange).toHaveBeenCalledTimes(1);
+    });
   });
 });

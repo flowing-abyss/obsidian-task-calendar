@@ -99,6 +99,21 @@ export function renderTimedBlocksForDay(
       renderTagChips(meta, p.task, tagGroups);
     }
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
+    // Task 26: native HTML5 DnD so a timed block can be dragged out of the hour-grid onto the
+    // all-day/"No-time" row (renderAllDay.ts's existing drop target), using the SAME
+    // filePath:::line payload convention as renderAllDay.ts's renderDraggableBody. The resize
+    // handle stays draggable="false" — the identical defensive pattern renderAllDay.ts's
+    // attachEdgeResize already established (Round 2 Task 9) for a non-draggable island inside a
+    // draggable ancestor, so a resize gesture starting on the handle never races the block's own
+    // native dragstart.
+    block.setAttribute('draggable', 'true');
+    handle.setAttribute('draggable', 'false');
+    block.addEventListener('dragstart', (e) => {
+      e.dataTransfer?.setData('text/plain', `${p.task.filePath}:::${p.task.line}`);
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      block.addClass('is-dragging');
+    });
+    block.addEventListener('dragend', () => block.removeClass('is-dragging'));
 
     block.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -136,6 +151,13 @@ function attachDrag(
     }
   };
 
+  const cleanup = (): void => {
+    mode = null;
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerCancel);
+  };
+
   const onPointerUp = (e: PointerEvent): void => {
     if (!mode) return;
     const rawDelta = ((e.clientY - startY) / minutesToPixels(60)) * 60;
@@ -145,9 +167,20 @@ function attachDrag(
     } else {
       callbacks.onDurationChange(task, Math.max(SNAP_MINUTES, startDuration + deltaMinutes));
     }
-    mode = null;
-    window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
+    cleanup();
+  };
+
+  // Now that the block is also draggable="true" (native HTML5 DnD, for dragging out to the
+  // all-day row), a pointerdown that arms move/resize can be hijacked mid-gesture by the
+  // browser starting a native drag: per the Pointer Events spec, once native DnD takes over the
+  // pointer session it fires `pointercancel` instead of `pointerup` for that pointer. Without
+  // this handler, `mode` and the window pointermove/pointerup listeners from the aborted
+  // gesture would never be torn down — leaking listeners that would double-fire on the next
+  // real gesture — and no mutation must fire here (the drop is handled by the native DnD
+  // dragend/drop path instead, not this pointer session).
+  const onPointerCancel = (): void => {
+    if (!mode) return;
+    cleanup();
   };
 
   const onPointerDown = (e: PointerEvent): void => {
@@ -167,6 +200,7 @@ function attachDrag(
     e.stopPropagation();
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
   };
 
   block.addEventListener('pointerdown', onPointerDown);

@@ -264,6 +264,49 @@ describe('CenterPanel.rescheduleTask', () => {
     expect(content).toBe('- [ ] task 📅 2026-06-20');
     expect(store.getTasks()[0]?.due).toBe('2026-06-20');
   });
+
+  // Task 26: dropping a previously-timed block onto the all-day/"No-time" row reuses this
+  // same onDrop path (renderAllDayCell's generic onDrop callback) — the inverse of Round 2
+  // Task 8's setTaskTimeFromDrop. A task carrying ⏰/⏱️ tokens must have both stripped, in
+  // addition to the date move every onDrop call already performs.
+  it('a previously-timed task dropped onto the all-day row has ⏰ time and ⏱️ duration stripped, date still moved', async () => {
+    const { panel, store, app } = await makePanel(
+      { 't.md': '- [ ] task 📅 2026-06-20 ⏰ 09:00 ⏱️ 1h30m' },
+      DEFAULT_SETTINGS,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
+    const target = store.getTasks()[0]!;
+    expect(target.time).toBe('09:00');
+    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const content = await readMd(app, 't.md');
+    expect(content).toBe('- [ ] task 📅 2026-06-28');
+    expect(content).not.toContain('⏰');
+    expect(content).not.toContain('⏱️');
+  });
+
+  it('a task with time but no duration dropped onto the all-day row strips only ⏰', async () => {
+    const { panel, store, app } = await makePanel(
+      { 't.md': '- [ ] task 📅 2026-06-20 ⏰ 09:00' },
+      DEFAULT_SETTINGS,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
+    const target = store.getTasks()[0]!;
+    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const content = await readMd(app, 't.md');
+    expect(content).toBe('- [ ] task 📅 2026-06-28');
+  });
+
+  it('a task with no time is unaffected by the time/duration-stripping branch (unchanged prior behavior)', async () => {
+    const { panel, store, app } = await makePanel(
+      { 't.md': '- [ ] task 📅 2026-06-20' },
+      DEFAULT_SETTINGS,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
+    const target = store.getTasks()[0]!;
+    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const content = await readMd(app, 't.md');
+    expect(content).toBe('- [ ] task 📅 2026-06-28');
+  });
 });
 
 describe('CenterPanel.renderWithGrouping (date grouping)', () => {

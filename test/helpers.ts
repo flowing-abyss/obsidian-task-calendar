@@ -177,12 +177,13 @@ export function dispatchDnD(
   type: 'dragstart' | 'dragover' | 'dragleave' | 'drop' | 'dragend',
   payload?: string,
   relatedTarget: Node | null = null,
-): void {
+): DataTransferStub {
   const dt = new DataTransferStub();
   if (payload !== undefined) dt.setData('text/plain', payload);
   const ev = new MouseEvent(type, { bubbles: true, cancelable: true, relatedTarget });
   Object.defineProperty(ev, 'dataTransfer', { value: dt, configurable: true });
   el.dispatchEvent(ev);
+  return dt;
 }
 
 /** Fresh detached div for view render tests. */
