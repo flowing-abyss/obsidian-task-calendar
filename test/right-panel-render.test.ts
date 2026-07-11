@@ -142,6 +142,30 @@ describe('RightPanel.renderTask', () => {
     expect(chip?.getAttribute('data-priority')).toBe('A');
   });
 
+  it.each(['A', 'B', 'C', 'E', 'F'] as const)(
+    'priority chip carries data-priority="%s" so it can be color-keyed anywhere it mounts',
+    async (priority) => {
+      const { state, el } = await makePanel();
+      state.set('taskStack', [task({ text: 'P', priority })]);
+      const chip = el.querySelector('.tc-priority-chip');
+      expect(chip?.getAttribute('data-priority')).toBe(priority);
+    },
+  );
+
+  // Round 4 Task 41: the priority chip's color rule (styles.css) reads
+  // `--tc-priority-*`, which is only defined under `.tc-panel-view` (see
+  // PanelView.ts). TaskModal mounts RightPanel at document.body OUTSIDE that
+  // class, so without a hardcoded fallback the chip rendered colorless in the
+  // task detail modal even though the correct data-priority attribute was
+  // always present. Guard the fallback so this can't silently regress.
+  it('priority chip color rule in styles.css falls back to a global color var (works outside .tc-panel-view)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const css = readFileSync(resolve(import.meta.dirname, '..', 'styles.css'), 'utf8');
+    const rule = /\.tc-priority-chip\[data-priority='A'\]\s*\{([^}]*)\}/u.exec(css)?.[1] ?? '';
+    expect(rule).toMatch(/var\(--tc-priority-a,\s*var\(--color-red\)\)/);
+  });
+
   it('tag chips render for each #tag in rawText', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [task({ text: 'Tagged', rawText: '- [ ] Tagged #work #home/kitchen' })]);

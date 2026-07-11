@@ -3613,21 +3613,26 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   height: 0.8rem;
 }
 
-/* Priority chip in right panel */
+/* Priority chip in right panel. Falls back to the underlying global color vars
+   (same aliasing --tc-priority-* does inside .tc-panel-view — see the comment on
+   .tc-status-popover above) because RightPanel is also mounted by TaskModal at
+   document.body, OUTSIDE `.tc-panel-view` (see TaskModal.ts) — there the
+   panel-scoped --tc-priority-* custom properties are undefined, so without a
+   fallback the chip rendered with no color at all (Round 4 Task 41). */
 .tc-priority-chip[data-priority='A'] {
-  color: var(--tc-priority-a);
+  color: var(--tc-priority-a, var(--color-red));
 }
 .tc-priority-chip[data-priority='B'] {
-  color: var(--tc-priority-b);
+  color: var(--tc-priority-b, var(--color-orange));
 }
 .tc-priority-chip[data-priority='C'] {
-  color: var(--tc-priority-c);
+  color: var(--tc-priority-c, var(--color-yellow));
 }
 .tc-priority-chip[data-priority='E'] {
-  color: var(--tc-priority-e);
+  color: var(--tc-priority-e, var(--color-blue));
 }
 .tc-priority-chip[data-priority='F'] {
-  color: var(--tc-priority-f);
+  color: var(--tc-priority-f, var(--color-purple));
 }
 
 /* Right panel body */
