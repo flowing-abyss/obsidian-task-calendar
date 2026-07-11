@@ -1047,7 +1047,7 @@ describe('renderTimedBlocksForDay', () => {
 
     // Task 35 (expanded scope): continuation segments gain the same time/duration subtitle and
     // count badges the anchor block shows, but must stay just as non-interactive as before.
-    it('shows the time range + duration subtitle, matching the anchor block\'s format', () => {
+    it("shows the time range + duration subtitle, matching the anchor block's format", () => {
       const container = freshContainer();
       const t = task({ time: '15:00', duration: 90, start: '2026-07-01', due: '2026-07-03' });
       renderTimedSpanContinuation(container, [t]);
