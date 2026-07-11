@@ -57,10 +57,10 @@ export function renderTimedBlocksForDay(
     // priority border on the block itself was redundant visual noise.
     const tagColor = tagColorFor(p.task.rawText, tagGroups);
     if (tagColor) block.setCssProps({ '--tc-tag-color': tagColor });
-    // Time+duration subtitle renders first (top of the block), e.g. "10:00 (1h)".
+    // Time-range+duration subtitle renders first (top of the block), e.g. "09:00–11:00 (2h)".
     block.createDiv({
       cls: 'tc-tg-block-subtitle',
-      text: `${minutesToTimeString(p.startMinutes)} (${formatDurationFromMinutes(p.durationMinutes)})`,
+      text: `${minutesToTimeString(p.startMinutes)}–${minutesToTimeString(p.startMinutes + p.durationMinutes)} (${formatDurationFromMinutes(p.durationMinutes)})`,
     });
     // Status marker + title share one flex row so the checkbox and title render on the
     // same line instead of stacking (the title div is block-level, which previously

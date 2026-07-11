@@ -168,13 +168,13 @@ describe('renderTimedBlocksForDay', () => {
     expect(block.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
   });
 
-  it('shows the start time with duration in parentheses in the block subtitle', () => {
+  it('shows the start–end time range with duration in parentheses in the block subtitle', () => {
     const container = freshContainer();
     const t = task({ time: '15:00', duration: 90 });
     renderTimedBlocksForDay(container, [t], callbacks());
     const subtitle = container.querySelector('.tc-tg-block-subtitle') as HTMLElement;
     expect(subtitle).not.toBeNull();
-    expect(subtitle.textContent).toBe('15:00 (1h30m)');
+    expect(subtitle.textContent).toBe('15:00–16:30 (1h30m)');
   });
 
   it('defaults duration to 60min when unset, shown as "(1h)" in the subtitle', () => {
@@ -182,7 +182,7 @@ describe('renderTimedBlocksForDay', () => {
     const t = task({ time: '09:00' });
     renderTimedBlocksForDay(container, [t], callbacks());
     const subtitle = container.querySelector('.tc-tg-block-subtitle') as HTMLElement;
-    expect(subtitle.textContent).toBe('09:00 (1h)');
+    expect(subtitle.textContent).toBe('09:00–10:00 (1h)');
   });
 
   it('renders the subtitle before the head row (time+duration at the top of the block)', () => {
