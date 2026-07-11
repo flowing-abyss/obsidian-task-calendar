@@ -7,6 +7,8 @@ import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import { TaskStore } from '../src/store/TaskStore';
+import { TodayView } from '../src/views/TodayView';
+import { WeekTimeGridView } from '../src/views/WeekTimeGridView';
 import {
   createAppWithFiles,
   fixedToday,
@@ -722,6 +724,120 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
 
     const content = await readMd(app, 't.md');
     expect(content).toContain('🔺');
+  });
+});
+
+describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
+  async function makeCalendarPanel(): Promise<{
+    panel: CenterPanel;
+    state: AppState;
+    store: TaskStore;
+    el: HTMLElement;
+    app: App;
+  }> {
+    const { panel, state, app } = await makePanel(
+      { 't.md': `- [ ] task 📅 ${TODAY}` },
+      DEFAULT_SETTINGS,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
+    const el = freshContainer();
+    panel.mount(el);
+    state.set('mode', 'calendar');
+    // Grab the real TaskStore instance CenterPanel was built with (see makePanel above).
+    const store = (panel as unknown as { store: TaskStore }).store;
+    return { panel, state, store, el, app };
+  }
+
+  function clickViewBtn(el: HTMLElement, label: 'Day' | 'Week' | 'Month'): void {
+    (
+      Array.from(el.querySelectorAll('.tc-cal-view-btn')).find(
+        (b) => b.textContent === label,
+      ) as HTMLElement
+    ).click();
+  }
+
+  function lastShouldScrollToNow(spy: { mock: { calls: unknown[][] } }): unknown {
+    const calls = spy.mock.calls;
+    const lastCall = calls[calls.length - 1];
+    return lastCall?.[3];
+  }
+
+  it('switching into Week view for the first time scrolls (shouldScrollToNow=true)', async () => {
+    const renderSpy = vi.spyOn(WeekTimeGridView.prototype, 'render');
+    const { el } = await makeCalendarPanel();
+    clickViewBtn(el, 'Week');
+    expect(lastShouldScrollToNow(renderSpy)).toBe(true);
+    renderSpy.mockRestore();
+  });
+
+  it('a reactive TaskStore update re-render of the same view/date does not scroll again', async () => {
+    const renderSpy = vi.spyOn(WeekTimeGridView.prototype, 'render');
+    const { el, store } = await makeCalendarPanel();
+    clickViewBtn(el, 'Week');
+    expect(lastShouldScrollToNow(renderSpy)).toBe(true);
+
+    // Simulate a store-driven re-render (e.g. toggling a checkbox anywhere), which routes
+    // through the `store.onUpdate` subscription in renderCalendarMode -> mountView(), NOT
+    // through CenterPanel.render() — this is the exact path the brief's root cause describes.
+    const seededTask = store.getTasks({ filePath: 't.md' })[0]!;
+    await store.toggleTask(seededTask);
+    await flushMicrotasks();
+
+    expect(lastShouldScrollToNow(renderSpy)).toBe(false);
+    renderSpy.mockRestore();
+  });
+
+  it('switching view type (Week -> Day -> Week) scrolls again each time, since it is a new pair', async () => {
+    const weekSpy = vi.spyOn(WeekTimeGridView.prototype, 'render');
+    const todaySpy = vi.spyOn(TodayView.prototype, 'render');
+    const { el } = await makeCalendarPanel();
+
+    clickViewBtn(el, 'Week');
+    expect(lastShouldScrollToNow(weekSpy)).toBe(true);
+
+    clickViewBtn(el, 'Day');
+    expect(lastShouldScrollToNow(todaySpy)).toBe(true);
+
+    clickViewBtn(el, 'Week');
+    expect(lastShouldScrollToNow(weekSpy)).toBe(true);
+
+    weekSpy.mockRestore();
+    todaySpy.mockRestore();
+  });
+
+  it('navigating to a different date (next week) scrolls again, since it is a new pair', async () => {
+    const renderSpy = vi.spyOn(WeekTimeGridView.prototype, 'render');
+    const { el } = await makeCalendarPanel();
+    clickViewBtn(el, 'Week');
+    expect(lastShouldScrollToNow(renderSpy)).toBe(true);
+
+    const nextBtn = el.querySelector('.tc-cal-nav-btn[aria-label="Next"]') as HTMLElement;
+    expect(nextBtn).not.toBeNull();
+    nextBtn.click();
+
+    expect(lastShouldScrollToNow(renderSpy)).toBe(true);
+    renderSpy.mockRestore();
+  });
+
+  it("Round 2 Task 16's periodic now-line-repositioning interval is unaffected: it still registers on a scroll-suppressed reactive re-render", async () => {
+    const { el, store } = await makeCalendarPanel();
+    clickViewBtn(el, 'Week');
+
+    const setIntervalSpy = vi.spyOn(window, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(window, 'clearInterval');
+
+    // Same view/date -> shouldScrollToNow will be false on this reactive re-render, but the
+    // now-line interval must still be torn down (old view destroy()) and re-registered (new
+    // view render()) exactly as before this change.
+    const seededTask = store.getTasks({ filePath: 't.md' })[0]!;
+    await store.toggleTask(seededTask);
+    await flushMicrotasks();
+
+    expect(clearIntervalSpy).toHaveBeenCalled();
+    expect(setIntervalSpy).toHaveBeenCalled();
+
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
   });
 });
 

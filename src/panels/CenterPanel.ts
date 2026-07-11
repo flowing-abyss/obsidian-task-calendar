@@ -85,6 +85,12 @@ export class CenterPanel {
   private calDate = window.moment().date(1);
   private calViewInstance: TodayView | WeekTimeGridView | MonthGridView | null = null;
   private calUnsubscribe: (() => void) | null = null;
+  // Task 27: mountView() destroys and recreates a fresh view instance on every render — including
+  // reactive re-renders driven by TaskStore updates (any task edit anywhere) — so the view
+  // instance itself can't remember "did I already scroll-to-now for this view/date". This key
+  // (last `${calViewType}:${startPosition}` CenterPanel actually scrolled for) survives that
+  // destroy/recreate cycle because it lives on CenterPanel, not on the torn-down view.
+  private lastScrolledCalKey: string | null = null;
   private taskModal: TaskModal | null = null;
   private selectedTaskKeys = new Set<string>();
   private lastClickedTaskKey: string | null = null;
@@ -117,7 +123,7 @@ export class CenterPanel {
 
   mount(container: HTMLElement): void {
     this.el = container;
-    this.taskModal = new TaskModal(this.app, this.settings);
+    this.taskModal = new TaskModal(this.app, this.settings, this.store);
 
     // Initialize per-list state before first render
     const initialKey = listSelectionToKey(this.state.get('selectedList'));
@@ -494,6 +500,13 @@ export class CenterPanel {
       const visibleDates = visibleCalendarDates(this.calViewType, this.calDate, cfg.firstDayOfWeek);
       const tasks = this.store.getTasksForDateRange(visibleDates);
 
+      // Only scroll-to-now when this (viewType, date) pair is new since the last time we
+      // scrolled — a reactive re-render of the same view/date (e.g. a store update from a task
+      // edit) must not jump the scroll position back to center. See `lastScrolledCalKey` above.
+      const scrollKey = `${this.calViewType}:${cfg.startPosition}`;
+      const shouldScrollToNow = scrollKey !== this.lastScrolledCalKey;
+      this.lastScrolledCalKey = scrollKey;
+
       if (this.calViewType === 'today') {
         this.calViewInstance = new TodayView({
           app: this.app,
@@ -582,7 +595,7 @@ export class CenterPanel {
           tagGroups: this.settings.tagGroups,
         });
       }
-      this.calViewInstance.render(viewContainer, tasks, cfg);
+      this.calViewInstance.render(viewContainer, tasks, cfg, shouldScrollToNow);
     };
 
     mountView();

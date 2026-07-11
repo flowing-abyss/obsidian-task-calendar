@@ -17,7 +17,12 @@ export class WeekTimeGridView extends BaseView {
     super();
   }
 
-  render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+  render(
+    container: HTMLElement,
+    tasks: Task[],
+    config: ResolvedConfig,
+    shouldScrollToNow = true,
+  ): void {
     this.md.unload();
     this.md = new Component();
     this.md.load();
@@ -96,11 +101,17 @@ export class WeekTimeGridView extends BaseView {
     const today = window.moment().format('YYYY-MM-DD');
     if (dates.includes(today)) {
       const gridRowEl = handles.gridRowEl;
-      const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
-      const nowPx = minutesToPixels(nowMinutes);
-      window.setTimeout(() => {
-        gridRowEl.scrollTop = Math.max(0, nowPx - gridRowEl.clientHeight / 2);
-      }, 0);
+      // One-time scroll-into-position: only when CenterPanel says this is a genuinely new
+      // (viewType, date) it hasn't scrolled for yet — NOT on every reactive re-render of the
+      // same view/date (Task 27). The periodic now-line repositioning below is unconditional
+      // and untouched — a separate, still-desired behavior (Round 2 Task 16).
+      if (shouldScrollToNow) {
+        const nowMinutes = window.moment().hours() * 60 + window.moment().minutes();
+        const nowPx = minutesToPixels(nowMinutes);
+        window.setTimeout(() => {
+          gridRowEl.scrollTop = Math.max(0, nowPx - gridRowEl.clientHeight / 2);
+        }, 0);
+      }
 
       const nowLineEl = handles.nowLineEl;
       if (nowLineEl) {

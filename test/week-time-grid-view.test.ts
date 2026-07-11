@@ -198,4 +198,60 @@ describe('WeekTimeGridView', () => {
     expect(gridRowEl.scrollTop).toBe(0);
     vi.useRealTimers();
   });
+
+  it('does not auto-scroll when shouldScrollToNow=false (Task 27: CenterPanel-driven dedup for reactive re-renders)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T14:30:00'));
+    const container = freshContainer();
+    const view = new WeekTimeGridView(callbacks());
+    view.render(container, [], resolvedConfig({ startPosition: '2026-25', firstDayOfWeek: 1 }), false);
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
+    vi.runOnlyPendingTimers();
+    expect(gridRowEl.scrollTop).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('shouldScrollToNow=false still registers the periodic now-line-repositioning interval (Round 2 Task 16 unaffected)', () => {
+    vi.useFakeTimers();
+    try {
+      const container = freshContainer();
+      const view = new WeekTimeGridView(callbacks());
+      const todayWeek = window.moment().format('YYYY-ww');
+      const setIntervalSpy = vi.spyOn(window, 'setInterval');
+
+      view.render(
+        container,
+        [],
+        resolvedConfig({ startPosition: todayWeek, firstDayOfWeek: 1 }),
+        false,
+      );
+      expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+
+      const nowLineEl = container.querySelector('.tc-tg-now-line') as HTMLElement;
+      expect(nowLineEl).not.toBeNull();
+      const initialTop = nowLineEl.style.top;
+      vi.setSystemTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+      vi.advanceTimersByTime(5 * 60 * 1000);
+      expect(nowLineEl.style.top).not.toBe(initialTop);
+
+      view.destroy();
+      setIntervalSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('defaults shouldScrollToNow to true when the 4th param is omitted (preserves prior call-site behavior)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-15T14:30:00'));
+    const container = freshContainer();
+    const view = new WeekTimeGridView(callbacks());
+    view.render(container, [], resolvedConfig({ startPosition: '2026-25', firstDayOfWeek: 1 }));
+    const gridRowEl = container.querySelector('.tc-tg-grid-row') as HTMLElement;
+    Object.defineProperty(gridRowEl, 'clientHeight', { value: 400, configurable: true });
+    vi.runOnlyPendingTimers();
+    expect(gridRowEl.scrollTop).toBe(496);
+    vi.useRealTimers();
+  });
 });
