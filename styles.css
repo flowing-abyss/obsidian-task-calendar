@@ -1701,6 +1701,18 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   z-index: 5;
 }
 
+/* Task 39: the ONLY visual indicator of which block keyboard arrow-key nudging currently
+   targets — this codebase has no broader "selected task" concept (see attachKeyboardNudge's own
+   comment), so without this a keyboard user would have no way to tell which block is about to
+   move. Reuses the dashed-in-tag-color language `.is-edge-resizing` already established rather
+   than inventing a third convention; `:focus-visible` (not bare `:focus`) so a mouse click that
+   focuses the block doesn't show it too, matching how sighted mouse users already get
+   `.is-picked-up`/`.is-edge-resizing` for their own in-progress gestures. */
+.tc-tg-block:focus-visible {
+  outline: 2px dashed var(--tc-tag-color, var(--interactive-accent));
+  outline-offset: 1px;
+}
+
 /* Task 37: shown on a span/plain item's own `.tc-tg-body` while its edge-resize handle
    (attachEdgeResize, renderAllDay.ts) is pointer-held. Before this, an edge-resize drag could
    accidentally arm the item's native HTML5 dragstart (see attachEdgeResize's own comment) and

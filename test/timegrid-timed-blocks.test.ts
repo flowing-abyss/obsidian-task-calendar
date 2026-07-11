@@ -869,6 +869,94 @@ describe('renderTimedBlocksForDay', () => {
     });
   });
 
+  describe('Task 39: keyboard nudge while the block has native DOM focus', () => {
+    it('the block is a keyboard-focusable target (tabindex="0")', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      expect(block.getAttribute('tabindex')).toBe('0');
+    });
+
+    it('ArrowDown nudges the time later by one snap increment (15 min) via onTimeChange', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(onTimeChange).toHaveBeenCalledWith(t, 9 * 60 + 15);
+    });
+
+    it('ArrowUp nudges the time earlier by one snap increment (15 min) via onTimeChange', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+      expect(onTimeChange).toHaveBeenCalledWith(t, 9 * 60 - 15);
+    });
+
+    it('repeated ArrowDown presses each nudge by one increment (uses the render-time start, matching how a re-render after each commit would supply the next base)', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(onTimeChange).toHaveBeenNthCalledWith(1, t, 9 * 60 + 15);
+      expect(onTimeChange).toHaveBeenNthCalledWith(2, t, 9 * 60 + 15);
+    });
+
+    it('ArrowUp at 00:00 clamps to 0, never going negative', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '00:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
+      expect(onTimeChange).toHaveBeenCalledWith(t, 0);
+    });
+
+    it('ArrowDown at 23:45 (the last valid slot) clamps there, never exceeding MAX_START_MINUTES', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '23:45', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+      expect(onTimeChange).toHaveBeenCalledWith(t, 24 * 60 - 15);
+    });
+
+    it('a non-arrow key is ignored (no onTimeChange call)', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      expect(onTimeChange).not.toHaveBeenCalled();
+    });
+
+    it('a keydown bubbling up from a descendant (not the block itself) is ignored, scoping the nudge to exactly the focused element', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(onTimeChange).not.toHaveBeenCalled();
+    });
+
+    it('.tc-tg-block:focus-visible gets a distinct outline so a keyboard user can see which block arrow keys will nudge', () => {
+      const rule = declarationsFor('.tc-tg-block:focus-visible');
+      expect(rule).toMatch(/outline\s*:/u);
+    });
+  });
+
   describe('horizontal edge-resize to a multi-day timed span (Task 29, right edge only)', () => {
     // jsdom has no elementFromPoint implementation at all (unlike a real browser, where it
     // always resolves to something). Any test in this block that dispatches a real window

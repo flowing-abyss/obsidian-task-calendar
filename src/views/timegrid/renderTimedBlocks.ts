@@ -104,6 +104,11 @@ export function renderTimedBlocksForDay(
   for (const p of positioned) {
     const widthPct = 100 / p.columns;
     const block = hourColumnEl.createDiv({ cls: 'tc-tg-block' });
+    // Task 39: makes the block a native keyboard-focus target (Tab/Shift+Tab reach it, click
+    // focuses it) so attachKeyboardNudge's arrow-key handling below has something to hang off
+    // — see that function's own doc comment for why this stays scoped to "has native DOM
+    // focus" rather than a broader "selected task" concept.
+    block.setAttribute('tabindex', '0');
     block.style.top = `${minutesToPixels(p.startMinutes)}px`;
     const heightPx = minutesToPixels(p.durationMinutes);
     block.style.height = `${heightPx}px`;
@@ -215,6 +220,16 @@ export function renderTimedBlocksForDay(
     });
 
     attachDrag(block, handle, p.startMinutes, p.durationMinutes, callbacks, p.task);
+    // Task 39: keyboard nudge. This codebase has no pre-existing "selected task" concept to
+    // hang this off, and building one is a larger architectural change than this task's scope
+    // — per the brief's own explicit permission to narrow, this is scoped to native DOM focus:
+    // give the block `tabindex="0"` and nudge its time by one snap increment (the same
+    // SNAP_MINUTES the pointer-drag/live-preview above already use) while it has focus, up =
+    // earlier, down = later. Routes through the SAME `onTimeChange` callback pointer-drag
+    // commits through (Task 33's `applyValidatedLineMutation` safety net lives one layer up, in
+    // whatever wires `onTimeChange` — see CenterPanel.ts's `handleTimeChange` — so this
+    // inherits it automatically rather than needing its own mutation path).
+    attachKeyboardNudge(block, p.startMinutes, callbacks, p.task);
   }
 }
 
@@ -293,6 +308,43 @@ export function renderTimedSpanContinuation(
       });
     }
   }
+}
+
+/**
+ * Task 39: keyboard nudge — ArrowUp/ArrowDown move the block's start time earlier/later by one
+ * `SNAP_MINUTES` increment, exactly mirroring the pointer-drag's own snap step, while the block
+ * has native DOM focus (see `tabindex="0"` set on it above). Scoped deliberately narrow: this
+ * codebase has no "selected task" concept broader than "which element currently has focus", and
+ * introducing one is a bigger architectural change than this task's brief calls for — the brief
+ * explicitly permits narrowing to native focus alone, so a blur (clicking/tabbing elsewhere)
+ * simply stops the block from responding to arrow keys, same as any other focusable control.
+ *
+ * `e.target !== block` guards against a bubbled keydown from some future focusable descendant
+ * (none exist today — the status marker, title links, and resize handles are none of them
+ * currently focusable — but this keeps the handler scoped to exactly the element that owns the
+ * `tabindex`, not "anything inside it", matching this file's other pointerdown handlers' own
+ * `closest()`-based scoping discipline).
+ *
+ * Reuses `callbacks.onTimeChange` — the SAME callback the vertical pointer-drag commits
+ * through — so this automatically inherits whatever mutation path that's wired to (in practice,
+ * CenterPanel.ts's `handleTimeChange` -> `updateTaskTime` -> `TaskMutationService`'s
+ * `applyValidatedLineMutation`, Task 33's validate-before-write safety net) without needing its
+ * own mutation call here.
+ */
+function attachKeyboardNudge(
+  block: HTMLElement,
+  currentStartMinutes: number,
+  callbacks: TimedBlockCallbacks,
+  task: Task,
+): void {
+  block.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.target !== block) return;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const delta = e.key === 'ArrowUp' ? -SNAP_MINUTES : SNAP_MINUTES;
+    const next = Math.min(MAX_START_MINUTES, Math.max(0, currentStartMinutes + delta));
+    callbacks.onTimeChange(task, next);
+  });
 }
 
 function attachDrag(
