@@ -1263,6 +1263,14 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   border-left: 1px solid var(--background-modifier-border);
 }
 
+/* Task 39: live "you'd land here" highlight while a horizontal (day-crossing) edge-resize is
+   in progress (renderTimedBlocks.ts's attachHorizontalResize) — reuses the same class/style
+   .tc-tg-allday-cell.is-drag-over already uses for the native cross-day drag's dragover
+   highlight below, since both signal the identical thing on a different day-cell shape. */
+.tc-tg-day-column.is-drag-over {
+  background: var(--background-modifier-hover);
+}
+
 .tc-tg-hour-row {
   height: 48px;
   border-bottom: 1px solid var(--background-modifier-border-hover);

@@ -821,6 +821,54 @@ describe('renderTimedBlocksForDay', () => {
     });
   });
 
+  describe('Task 39: live preview during vertical move/resize matches the committed value exactly', () => {
+    // attachDrag already repositions the actual block element (top/height) live on every
+    // pointermove, snapped via the same `snapMinutes(rawDelta, SNAP_MINUTES)` call the
+    // pointerup commit handler uses — this suite locks in that the two can never drift apart
+    // (e.g. a future edit that snaps one but not the other), which is exactly what "release
+    // and it lands where you saw it" depends on.
+    it('move: the live top (mid-drag) equals minutesToPixels of the value committed via onTimeChange', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      // +37px is not an exact 15-minute increment in pixels (48px/hour => 12px/15min), so this
+      // also exercises that the live preview snaps rather than tracking the raw pixel delta.
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 137, pointerId: 1 }));
+      const liveTopPx = parseFloat(block.style.top);
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 137, pointerId: 1 }));
+      expect(onTimeChange).toHaveBeenCalledTimes(1);
+      const [, committedMinutes] = onTimeChange.mock.calls[0] as [unknown, number];
+      expect(liveTopPx).toBe((committedMinutes / 60) * 48);
+    });
+
+    it('resize: the live height (mid-drag) equals minutesToPixels of the value committed via onDurationChange', () => {
+      const container = freshContainer();
+      const onDurationChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onDurationChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      handle.setPointerCapture = () => {};
+      handle.releasePointerCapture = () => {};
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 137, pointerId: 1 }));
+      const liveHeightPx = parseFloat(block.style.height);
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 137, pointerId: 1 }));
+      expect(onDurationChange).toHaveBeenCalledTimes(1);
+      const [, committedMinutes] = onDurationChange.mock.calls[0] as [unknown, number];
+      expect(liveHeightPx).toBe((committedMinutes / 60) * 48);
+    });
+  });
+
   describe('horizontal edge-resize to a multi-day timed span (Task 29, right edge only)', () => {
     // jsdom has no elementFromPoint implementation at all (unlike a real browser, where it
     // always resolves to something). Any test in this block that dispatches a real window
@@ -888,6 +936,74 @@ describe('renderTimedBlocksForDay', () => {
       window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
       expect(cbs.onTimeChange).not.toHaveBeenCalled();
       expect(cbs.onDurationChange).not.toHaveBeenCalled();
+    });
+
+    describe('Task 39: live day-target highlight while dragging the horizontal handle', () => {
+      // The commit-time resolution already depends on elementFromPoint (unimplemented in
+      // jsdom), so — per the brief's own guidance for this class of mechanism — these assert
+      // the live-highlight MECHANISM computes the right thing when fed a stand-in day element,
+      // rather than forcing a real-layout/real-elementFromPoint assertion jsdom cannot support.
+      it('pointermove over a day column adds is-drag-over to that column', () => {
+        const container = freshContainer();
+        const t = task({ time: '09:00', due: '2026-07-10' });
+        renderTimedBlocksForDay(container, [t], callbacks());
+        const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+        const dayEl = document.createElement('div');
+        dayEl.setAttribute('data-tg-date', '2026-07-12');
+        activeDocument.elementFromPoint = () => dayEl;
+        handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+        window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1 }));
+        expect(dayEl.classList.contains('is-drag-over')).toBe(true);
+      });
+
+      it('moving from one day column to another moves the highlight, never leaving two columns highlighted at once', () => {
+        const container = freshContainer();
+        const t = task({ time: '09:00', due: '2026-07-10' });
+        renderTimedBlocksForDay(container, [t], callbacks());
+        const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+        const dayA = document.createElement('div');
+        dayA.setAttribute('data-tg-date', '2026-07-11');
+        const dayB = document.createElement('div');
+        dayB.setAttribute('data-tg-date', '2026-07-12');
+        activeDocument.elementFromPoint = () => dayA;
+        handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+        window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1 }));
+        expect(dayA.classList.contains('is-drag-over')).toBe(true);
+        activeDocument.elementFromPoint = () => dayB;
+        window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1 }));
+        expect(dayA.classList.contains('is-drag-over')).toBe(false);
+        expect(dayB.classList.contains('is-drag-over')).toBe(true);
+      });
+
+      it('releasing (pointerup) clears the highlight', () => {
+        const container = freshContainer();
+        const t = task({ time: '09:00', due: '2026-07-10' });
+        renderTimedBlocksForDay(container, [t], callbacks());
+        const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+        const dayEl = document.createElement('div');
+        dayEl.setAttribute('data-tg-date', '2026-07-12');
+        activeDocument.elementFromPoint = () => dayEl;
+        handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+        window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1 }));
+        expect(dayEl.classList.contains('is-drag-over')).toBe(true);
+        window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+        expect(dayEl.classList.contains('is-drag-over')).toBe(false);
+      });
+
+      it('a pointercancel mid-gesture also clears the highlight (does not get stuck on)', () => {
+        const container = freshContainer();
+        const t = task({ time: '09:00', due: '2026-07-10' });
+        renderTimedBlocksForDay(container, [t], callbacks());
+        const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+        const dayEl = document.createElement('div');
+        dayEl.setAttribute('data-tg-date', '2026-07-12');
+        activeDocument.elementFromPoint = () => dayEl;
+        handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+        window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1 }));
+        expect(dayEl.classList.contains('is-drag-over')).toBe(true);
+        window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+        expect(dayEl.classList.contains('is-drag-over')).toBe(false);
+      });
     });
 
     it("a pointercancel mid-gesture on the horizontal handle (simulating the browser hijacking the pointer session into a native drag, mirroring Task 26's vertical-drag fix) tears down its window listeners: a subsequent real pointerup that WOULD resolve to a day does not fire onExtendToSpan", () => {

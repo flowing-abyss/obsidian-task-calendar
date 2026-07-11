@@ -141,8 +141,28 @@ function attachEdgeResize(
     onResolve(task, date);
   };
 
+  // Task 39: live feedback for this edge-resize's day-crossing, mirroring
+  // renderTimedBlocks.ts's attachHorizontalResize (Task 34/29's timed-span equivalent of this
+  // gesture) — same reasoning: the commit already resolves the day under the pointer via
+  // `elementFromPoint` on release, this just surfaces that resolution live by toggling
+  // `.is-drag-over` on whichever `[data-tg-date]` cell the pointer is currently over, reusing
+  // the SAME class the native cross-day drag (`renderAllDayCell`'s own dragover handler below)
+  // already uses for an identical "this is where you'd land" signal.
+  let hoveredDayEl: Element | null = null;
+
+  const clearHoveredDay = (): void => {
+    hoveredDayEl?.classList.remove('is-drag-over');
+    hoveredDayEl = null;
+  };
+
   const onPointerMove = (e: PointerEvent): void => {
     e.preventDefault();
+    const target = activeDocument.elementFromPoint(e.clientX, e.clientY);
+    const dayEl = target?.closest('[data-tg-date]') ?? null;
+    if (dayEl === hoveredDayEl) return;
+    hoveredDayEl?.classList.remove('is-drag-over');
+    dayEl?.classList.add('is-drag-over');
+    hoveredDayEl = dayEl;
   };
 
   // Task 37: a deliberate, lightweight "this is being reshaped" state — toggled purely as a CSS
@@ -152,6 +172,7 @@ function attachEdgeResize(
   const endResize = (): void => {
     body?.setAttribute('draggable', 'true');
     body?.removeClass('is-edge-resizing');
+    clearHoveredDay();
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);

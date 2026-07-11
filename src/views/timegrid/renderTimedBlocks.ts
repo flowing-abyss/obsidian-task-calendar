@@ -449,8 +449,31 @@ function attachHorizontalResize(
     __tgPendingEdgeResizes?: Array<(d: string) => void>;
   };
 
+  // Task 39: live feedback for horizontal (day-crossing) edge-resize, which — unlike the
+  // vertical move/resize drag above — had NO visual feedback at all while dragging, only a
+  // commit-on-release (see this function's own doc comment). The commit itself already
+  // resolves which day the pointer is over via `elementFromPoint` on release; this surfaces
+  // that same resolution live, on every pointermove, by toggling `.is-drag-over` on whichever
+  // `[data-tg-date]` day column is currently under the pointer — reusing the day cell's
+  // existing native-DnD dragover highlight (renderAllDay.ts) rather than inventing a new
+  // convention, since both signal the same thing: "this is the day you'd land on if you let
+  // go now." `hoveredDayEl` tracks the currently-highlighted column so a fast drag across
+  // several columns only ever has one column highlighted at a time.
+  let hoveredDayEl: Element | null = null;
+
+  const clearHoveredDay = (): void => {
+    hoveredDayEl?.classList.remove('is-drag-over');
+    hoveredDayEl = null;
+  };
+
   const onPointerMove = (e: PointerEvent): void => {
     e.preventDefault();
+    const target = activeDocument.elementFromPoint(e.clientX, e.clientY);
+    const dayEl = target?.closest('[data-tg-date]') ?? null;
+    if (dayEl === hoveredDayEl) return;
+    hoveredDayEl?.classList.remove('is-drag-over');
+    dayEl?.classList.add('is-drag-over');
+    hoveredDayEl = dayEl;
   };
 
   // Task 34: unlike Task 29 (where this was the ONLY horizontal handle sharing
@@ -468,6 +491,7 @@ function attachHorizontalResize(
   };
 
   const cleanup = (): void => {
+    clearHoveredDay();
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
