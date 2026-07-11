@@ -247,7 +247,7 @@ describe('renderHourGrid', () => {
     expect(onCreateAtTime).not.toHaveBeenCalled();
   });
 
-  it('clicking a multi-day timed span\'s continuation segment does not also fire onCreateAtTime', () => {
+  it("clicking a multi-day timed span's continuation segment does not also fire onCreateAtTime", () => {
     const container = freshContainer();
     const onCreateAtTime = vi.fn();
     const handles = renderHourGrid(container, ['2026-07-10'], undefined, onCreateAtTime);
