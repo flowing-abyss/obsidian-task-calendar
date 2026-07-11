@@ -1450,7 +1450,24 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-mg-block-dot,
 .tc-mg-span-segment,
 .tc-mg-plain {
-  background: color-mix(in srgb, var(--tc-tag-color, var(--interactive-accent)) 16%, transparent);
+  /* Round 3 Task 24: raised from a 16%-into-transparent mix (real alpha, which let the
+     hour-gridline bleed through and read as "sliced," and looked pale since the tag
+     color was diluted by whatever sat behind it) to an opaque mix against the panel's
+     own solid background. Two changes at once: (1) mixing against a solid color instead
+     of `transparent` makes the result opaque at *any* percentage, so nothing behind it —
+     gridlines, the now-line's track, anything — can ever show through again; solidity is
+     no longer coupled to how vivid the tint reads. (2) 40% was chosen after comparing it
+     against 16% (too pale, gridline visible) and 58% (highly saturated blocks read as
+     overwhelming next to each other, and — more importantly — .tc-task-tag's chip text,
+     which is colored with the same --tc-tag-color at full strength, lost contrast against
+     a background that close to the same hue). 40% keeps the fill reading as a clear,
+     intentional tag-color tint in both themes while leaving enough separation from the
+     chip text color to stay legible. */
+  background: color-mix(
+    in srgb,
+    var(--tc-tag-color, var(--interactive-accent)) 40%,
+    var(--background-primary)
+  );
 }
 
 .tc-tg-span-edge {

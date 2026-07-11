@@ -327,6 +327,32 @@ describe('is-today styling (Round 3: no column border anywhere, header day-numbe
   });
 });
 
+describe('tag-fill background (Round 3 Task 24: solid, not washed-out/gridline-bleeding)', () => {
+  it('shares one background rule across timed blocks, all-day spans/plain, and Month compact items', () => {
+    const selector =
+      '.tc-tg-block,\n.tc-tg-span,\n.tc-tg-plain,\n.tc-mg-block-dot,\n.tc-mg-span-segment,\n.tc-mg-plain';
+    const declarations = declarationsFor(selector);
+    expect(declarations).toContain('background:');
+  });
+
+  it('mixes the tag color against a solid background (not `transparent`), so the fill is fully opaque and can never let the hour-gridline (or anything else behind it) show through — regardless of the mix percentage', () => {
+    const selector =
+      '.tc-tg-block,\n.tc-tg-span,\n.tc-tg-plain,\n.tc-mg-block-dot,\n.tc-mg-span-segment,\n.tc-mg-plain';
+    const declarations = declarationsFor(selector);
+    const match = new RegExp(
+      'background:\\s*color-mix\\(\\s*in srgb,\\s*var\\(--tc-tag-color, var\\(--interactive-accent\\)\\)\\s*(\\d+)%,\\s*([^,)]+)\\s*\\)',
+      'u',
+    ).exec(declarations);
+    expect(match).not.toBeNull();
+    expect(match?.[2]?.trim()).not.toBe('transparent');
+    // A meaningful lower bound, not a pixel-perfect pin: below this the tag color reads as
+    // pale/washed-out (the original bug report). The upper bound isn't asserted here — that's
+    // a visual/legibility judgment call (see styles.css comment), not a testable invariant.
+    const pct = Number(match?.[1]);
+    expect(pct).toBeGreaterThanOrEqual(30);
+  });
+});
+
 describe('.tc-tg-grid-row layout (regression: today-column outline / click-drop hit-test truncation)', () => {
   it('does not stretch day-columns to the scroll container height', () => {
     // Regression test: .tc-tg-grid-row is a flex row whose children (the hour-gutter and each
