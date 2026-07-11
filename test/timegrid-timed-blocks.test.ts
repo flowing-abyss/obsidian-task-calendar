@@ -753,6 +753,74 @@ describe('renderTimedBlocksForDay', () => {
     });
   });
 
+  describe('Task 39: pick-up visual feedback on a move-mode drag', () => {
+    it('pointerdown on the block body (move mode) immediately adds is-picked-up', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      expect(block.hasClass('is-picked-up')).toBe(false);
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      expect(block.hasClass('is-picked-up')).toBe(true);
+    });
+
+    it('releasing (pointerup) removes is-picked-up', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      expect(block.hasClass('is-picked-up')).toBe(false);
+    });
+
+    it('a pointercancel mid-gesture also removes is-picked-up (does not get stuck on)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      // Dispatched directly on `window` (not via bubbling from `block`): freshContainer()'s
+      // element is never attached to `document`, so a bubbling event dispatched on a
+      // detached descendant never actually reaches `window` in jsdom — same caveat this
+      // file's horizontal-edge-resize suite documents for the identical reason.
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      expect(block.hasClass('is-picked-up')).toBe(false);
+    });
+
+    it('pointerdown on the vertical resize handle (resize mode, not move) does NOT add is-picked-up', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      handle.setPointerCapture = () => {};
+      handle.releasePointerCapture = () => {};
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      expect(block.hasClass('is-picked-up')).toBe(false);
+    });
+
+    it('.tc-tg-block.is-picked-up gets a distinct visual treatment from .is-dragging (not opacity-based)', () => {
+      const rule = declarationsFor('.tc-tg-block.is-picked-up');
+      expect(rule).not.toBe('');
+      expect(rule).not.toMatch(/opacity\s*:/u);
+    });
+  });
+
   describe('horizontal edge-resize to a multi-day timed span (Task 29, right edge only)', () => {
     // jsdom has no elementFromPoint implementation at all (unlike a real browser, where it
     // always resolves to something). Any test in this block that dispatches a real window

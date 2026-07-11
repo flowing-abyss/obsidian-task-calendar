@@ -326,6 +326,11 @@ function attachDrag(
 
   const cleanup = (): void => {
     mode = null;
+    // Task 39: mirrors is-dragging/is-edge-resizing's own cleanup-in-every-exit-path
+    // discipline — removed here (the one place every exit path funnels through) rather than
+    // only in onPointerUp, so a pointercancel mid-gesture (native drag hijacking the pointer
+    // session, see onPointerCancel below) can never leave the "picked up" affordance stuck on.
+    block.removeClass('is-picked-up');
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
@@ -381,6 +386,19 @@ function attachDrag(
     startY = e.clientY;
     startMinutes = initialStart;
     startDuration = initialDuration;
+    // Task 39: immediate "picked up" affordance for a move-mode drag specifically (not
+    // resize) — the user's most common gesture is grabbing the block body to reschedule it,
+    // and it previously gave zero feedback that anything had been armed until the block
+    // visibly moved on the next pointermove. `.is-dragging` (Task 26) is deliberately NOT
+    // reused here: that class fires from `dragstart`/`dragend`, native HTML5 DnD events that
+    // only occur once the browser has taken over the pointer session for the drag-to-all-day
+    // gesture (dozens of ms after this pointerdown, and never at all for an ordinary
+    // vertical move that stays inside the hour grid) — reusing it here would either double
+    // up if a native drag DID start, or never fire for the common in-grid case it's meant to
+    // cover. A distinct class keeps the two mechanisms' visual language independently
+    // tunable, same reasoning Task 37 used to give edge-resize its own `.is-edge-resizing`
+    // instead of overloading `.is-dragging`.
+    if (mode === 'move') block.addClass('is-picked-up');
     e.stopPropagation();
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);

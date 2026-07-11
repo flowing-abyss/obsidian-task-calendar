@@ -1678,6 +1678,21 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   opacity: 0.5;
 }
 
+/* Task 39: "picked up" affordance shown the instant a vertical move-mode drag is armed
+   (renderTimedBlocks.ts's attachDrag, pointerdown, mode === 'move' only — resize and the
+   native drag-to-all-day gesture each already have their own distinct feedback, see
+   .is-edge-resizing below and .is-dragging above). A subtle lift (scale + shadow), not an
+   opacity change like .is-dragging — that reads as "leaving"/"being removed" (matches its
+   real use: fading the source element mid-native-drag), the opposite of the "under your
+   control, about to move" signal this needs to send. z-index bump keeps the lifted block
+   drawn above its still-stationary same-column neighbors instead of tucking underneath one
+   as it's dragged past. */
+.tc-tg-block.is-picked-up {
+  transform: scale(1.02);
+  box-shadow: var(--shadow-l);
+  z-index: 5;
+}
+
 /* Task 37: shown on a span/plain item's own `.tc-tg-body` while its edge-resize handle
    (attachEdgeResize, renderAllDay.ts) is pointer-held. Before this, an edge-resize drag could
    accidentally arm the item's native HTML5 dragstart (see attachEdgeResize's own comment) and
