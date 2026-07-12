@@ -5,7 +5,14 @@ import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import { WeekView } from '../src/views/WeekView';
-import { dispatchDnD, fixedToday, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
+import {
+  dispatchDnD,
+  fixedToday,
+  freshContainer,
+  resolvedConfig,
+  task,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -313,7 +320,10 @@ describe('WeekView', () => {
             // Mirrors CenterPanel/CalendarRenderer's `startPositionFor`/`buildConfig`:
             // shift the (real-weekday-preserving) anchor back by firstDayOfWeek days
             // before formatting to 'YYYY-ww'.
-            const startPosition = window.moment().subtract(firstDayOfWeek, 'days').format('YYYY-ww');
+            const startPosition = window
+              .moment()
+              .subtract(firstDayOfWeek, 'days')
+              .format('YYYY-ww');
             view.render(c, [], resolvedConfig({ startPosition, firstDayOfWeek }));
 
             const dates = cellDates(c);

@@ -19,7 +19,7 @@
  */
 
 /** Parses a `#rgb` or `#rrggbb` hex color into 0-255 RGB channels, or null if unparseable. */
-export function parseHexColor(hex: string): [number, number, number] | null {
+function parseHexColor(hex: string): [number, number, number] | null {
   const trimmed = hex.trim();
   const six = /^#?([0-9a-f]{6})$/i.exec(trimmed);
   if (six) {
@@ -40,7 +40,7 @@ function srgbChannelToLinear(channel: number): number {
 }
 
 /** WCAG relative luminance (0 = black, 1 = white) of an already-parsed 0-255 RGB triple. */
-export function relativeLuminance(rgb: [number, number, number]): number {
+function relativeLuminance(rgb: [number, number, number]): number {
   const [r, g, b] = rgb.map(srgbChannelToLinear);
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
 }
@@ -112,7 +112,7 @@ export function tagFillTextVariant(
  * and dark core themes; an unparseable/empty result (e.g. a test environment with no stylesheet
  * loaded) safely falls through `tagFillTextVariant`'s own `null`-mix handling to `undefined`.
  */
-export function currentBackgroundPrimaryHex(referenceEl: HTMLElement): string {
+function currentBackgroundPrimaryHex(referenceEl: HTMLElement): string {
   const doc = referenceEl.ownerDocument;
   const win = doc.defaultView ?? window;
   return win.getComputedStyle(doc.body).getPropertyValue('--background-primary').trim();
