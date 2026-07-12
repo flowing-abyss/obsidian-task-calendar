@@ -159,6 +159,48 @@ describe('CenterPanel.extendTaskToSpan', () => {
     expect(content).not.toContain('📅 2026-07-10');
   });
 
+  it('extends a scheduled-only task (Bug A regression: used to silently no-op since it required task.due)', async () => {
+    const raw = '- [ ] t ⏳ 2026-07-10';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      scheduled: '2026-07-10',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'extendTaskToSpan', t, '2026-07-12');
+    const content = await readMd(app, 'f.md');
+    // The original scheduled anchor freezes as start; the new date is written as due (a
+    // due-centric span is always anchored by `due` once created — see bucketTasksForDate).
+    expect(content).toContain('🛫 2026-07-10');
+    expect(content).toContain('📅 2026-07-12');
+    expect(content).toContain('⏳ 2026-07-10'); // scheduled itself stays untouched
+  });
+
+  it('freezes `scheduled` (not `due`) as the new start for a "deadline" task with distinct scheduled+due, keeping the resulting span non-reversed', async () => {
+    // Interactive-CLI-verified regression: an earlier version of this fix froze `due` as start
+    // here (`task.due ?? task.scheduled`), which — combined with the keyboard handler's own
+    // scheduled-first date computation (Bug B fix) — produced an invalid reversed span (start
+    // AFTER due) for exactly this task shape. `task.scheduled ?? task.due` (matching
+    // bucketTasksForDate's own anchor priority) keeps the frozen start consistent with whichever
+    // date the caller actually computed the new due from.
+    const raw = '- [ ] t ⏳ 2026-07-12 📅 2026-07-17';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      scheduled: '2026-07-12',
+      due: '2026-07-17',
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'extendTaskToSpan', t, '2026-07-13');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('🛫 2026-07-12');
+    expect(content).toContain('📅 2026-07-13');
+    expect(content).not.toContain('📅 2026-07-17');
+    expect(content).toContain('⏳ 2026-07-12'); // scheduled itself stays untouched
+  });
+
   it('re-extending an already-spanning task does not append a second 🛫 token', async () => {
     const raw = '- [ ] t 🛫 2026-07-08 📅 2026-07-10';
     const t = task({

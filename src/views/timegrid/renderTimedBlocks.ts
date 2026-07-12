@@ -387,11 +387,19 @@ export function renderTimedSpanContinuation(
  * explicitly permits narrowing to native focus alone, so a blur (clicking/tabbing elsewhere)
  * simply stops the block from responding to arrow keys, same as any other focusable control.
  *
- * `e.target !== block` guards against a bubbled keydown from some future focusable descendant
- * (none exist today — the status marker, title links, and resize handles are none of them
- * currently focusable — but this keeps the handler scoped to exactly the element that owns the
- * `tabindex`, not "anything inside it", matching this file's other pointerdown handlers' own
- * `closest()`-based scoping discipline).
+ * `!block.contains(e.target)` guards against a bubbled keydown from OUTSIDE this block entirely
+ * (e.g. a keydown that bubbled up past some ancestor's own listener before reaching here — not a
+ * real case today, but keeps this scoped to "originated somewhere inside this block").
+ *
+ * Bug fix (review): this used to be the stricter `e.target !== block`, which assumed no
+ * descendant of `.tc-tg-block` is ever independently focusable. That assumption is false:
+ * `renderTaskText.ts`'s markdown rendering produces real, focusable `<a href>` elements inside
+ * `.tc-tg-block-title` whenever a task's text contains a link, so Tab could move focus onto that
+ * link (still a descendant of `block`, per the DOM) while leaving `e.target` as the `<a>`, not
+ * `block` — the old, stricter check silently broke arrow-key handling for the remainder of that
+ * focus session. `block.contains(e.target)` still correctly counts "focus moved onto a link
+ * inside this block" as inside, matching `attachSelectedState`'s own `focusin`/`focusout` fix
+ * below for the identical underlying gap.
  *
  * Reuses `callbacks.onTimeChange` — the SAME callback the vertical pointer-drag commits
  * through — so this automatically inherits whatever mutation path that's wired to (in practice,
@@ -409,12 +417,24 @@ export function renderTimedSpanContinuation(
  * The mouse-driven edges resolve "which day" from the pointer's on-release position
  * (`elementFromPoint`) — there is no equivalent pointer position for a keypress, so the day is
  * instead computed by stepping one calendar day from the task's own current, already-committed
- * date field: ArrowRight steps `due` (falling back to `scheduled`/`start` for a task that has
- * neither `due` nor a span yet) forward by one day; ArrowLeft steps `start` (falling back to
- * `due`/`scheduled` the first time a plain task's left edge is ever moved) backward by one day.
- * Preferring the task's OWN in-progress edge (`start` for the left key, `due` for the right key)
- * over the other field means repeated presses keep walking the same edge one more day in the same
- * direction, matching how repeatedly dragging the same mouse handle further does.
+ * date field: ArrowRight steps forward by one day from whichever field is already driving the
+ * block's own in-progress right edge (`due`, once a span exists), else falls back to the SAME
+ * `scheduled ?? due` anchor priority TodayView.ts's `bucketTasksForDate` uses to place a non-span
+ * task's interactive block in the first place (`scheduled` wins over `due` when both are set),
+ * with `start` as a last resort. ArrowLeft mirrors this for the left edge: `start` once a span
+ * exists, else that same `scheduled ?? due` anchor priority, with `due` as a last resort.
+ *
+ * Bug fix (review): this used to prefer `due` over `scheduled` in both fallback chains, diverging
+ * from `bucketTasksForDate`'s own priority for a task with BOTH fields set to DIFFERENT dates (the
+ * "deadline" pattern: the interactive body renders on the `scheduled` day, a separate
+ * non-interactive deadline marker renders on the `due` day) — the block the user is actually
+ * looking at and pressing arrow keys on is anchored on `scheduled`, so the keyboard resize must
+ * compute its new date from `scheduled` too, not the unrelated `due` field.
+ *
+ * Preferring the task's OWN in-progress edge (`start` for the left key, `due` for the right key,
+ * once either is actually part of an existing span) over the anchor-priority fallback means
+ * repeated presses keep walking the same edge one more day in the same direction, matching how
+ * repeatedly dragging the same mouse handle further does.
  */
 function attachKeyboardNudge(
   block: HTMLElement,
@@ -423,7 +443,7 @@ function attachKeyboardNudge(
   task: Task,
 ): void {
   block.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.target !== block) return;
+    if (!block.contains(e.target as Node)) return;
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
       const delta = e.key === 'ArrowUp' ? -SNAP_MINUTES : SNAP_MINUTES;
@@ -431,16 +451,23 @@ function attachKeyboardNudge(
       callbacks.onTimeChange(task, next);
       return;
     }
+    // A task already spanning (both `start` and `due` set — bucketTasksForDate's own span
+    // check, matched here exactly) has its currently-focused block's anchor position fixed to
+    // `due` regardless of any `scheduled` value the task might also carry (bucketTasksForDate
+    // itself never even looks at `scheduled` once `start && due` both hold — see its own early
+    // `continue` for that branch). Only for a NON-span task does bucketTasksForDate's
+    // `scheduled ?? due` anchor priority apply, so that's the fallback used here too.
+    const isSpan = !!(task.start && task.due);
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      const base = task.due ?? task.scheduled ?? task.start;
+      const base = isSpan ? task.due : (task.scheduled ?? task.due ?? task.start);
       if (!base) return;
       callbacks.onExtendToSpan(task, window.moment(base).add(1, 'day').format('YYYY-MM-DD'));
       return;
     }
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      const base = task.start ?? task.due ?? task.scheduled;
+      const base = isSpan ? task.start : (task.start ?? task.scheduled ?? task.due);
       if (!base) return;
       callbacks.onStartChange(task, window.moment(base).subtract(1, 'day').format('YYYY-MM-DD'));
     }
@@ -449,17 +476,33 @@ function attachKeyboardNudge(
 
 /**
  * Task 49: `.is-selected` — a clear "this block is the active/selected one" treatment, applied
- * for the full duration the block has native DOM focus (both mouse-click and Tab-focus, unlike
- * the narrower keyboard-only `:focus-visible` outline Task 39 originally added — see this file's
- * CSS comment on `.tc-tg-block.is-selected` for why that got superseded rather than kept
- * alongside this). A plain `focus`/`blur` pair (not `focusin`/`focusout`) is deliberate: this is
- * attached directly on `block` itself (the only focusable element the tabindex above creates),
- * so there is no bubbling case to catch and no risk of it firing for some future focusable
- * descendant the way a bubbling listener would.
+ * for the full duration the block (or something inside it) has native DOM focus (both
+ * mouse-click and Tab-focus, unlike the narrower keyboard-only `:focus-visible` outline Task 39
+ * originally added — see this file's CSS comment on `.tc-tg-block.is-selected` for why that got
+ * superseded rather than kept alongside this).
+ *
+ * Bug fix (review): `focus`/`blur` (used here originally) do NOT bubble, and were attached on the
+ * unstated assumption that no descendant of `.tc-tg-block` is ever independently focusable — false
+ * as of `renderTaskText.ts`'s markdown rendering, which produces real, focusable `<a href>`
+ * elements inside `.tc-tg-block-title` whenever a task's text contains a link. Tabbing from the
+ * block onto its own embedded link fired `blur` on the block (removing `.is-selected`
+ * prematurely, with no corresponding re-focus to restore it) even though focus never actually left
+ * the block's own visual bounds. `focusin`/`focusout` DO bubble, so a focus event landing on a
+ * descendant (the link) still reaches this listener and is correctly treated as "still within this
+ * task" — matching the identical `block.contains(e.target)` fix applied to the keyboard-nudge
+ * handler above for the same underlying gap.
  */
 function attachSelectedState(block: HTMLElement): void {
-  block.addEventListener('focus', () => block.addClass('is-selected'));
-  block.addEventListener('blur', () => block.removeClass('is-selected'));
+  block.addEventListener('focusin', () => block.addClass('is-selected'));
+  block.addEventListener('focusout', (e: FocusEvent) => {
+    // A focusout where focus is moving to another element still inside `block` (e.g. from the
+    // block itself onto its own embedded link, or back) must not drop `.is-selected` — only a
+    // focusout whose new focus target (`relatedTarget`) is outside `block` entirely (or focus is
+    // leaving the document altogether, `relatedTarget === null`) is a real "deselect".
+    const next = e.relatedTarget as Node | null;
+    if (next && block.contains(next)) return;
+    block.removeClass('is-selected');
+  });
 }
 
 function attachDrag(

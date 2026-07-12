@@ -1036,7 +1036,12 @@ describe('renderTimedBlocksForDay', () => {
       expect(onTimeChange).not.toHaveBeenCalled();
     });
 
-    it('a keydown bubbling up from a descendant (not the block itself) is ignored, scoping the nudge to exactly the focused element', () => {
+    it('a keydown bubbling up from a descendant INSIDE the block (e.g. focus having moved onto its own embedded link) still nudges — the guard is scoped to the block subtree, not the exact focused element', () => {
+      // Bug fix (review): renderTaskText.ts can render real, focusable <a href> elements inside
+      // .tc-tg-block-title. Tabbing onto one of those moves focus off `block` itself, and a real
+      // arrow-key keydown fired while it has focus bubbles up from it, not from `block` — so this
+      // must still be handled (previously used the stricter `e.target !== block`, which silently
+      // broke arrow-key handling for the rest of that focus session).
       const container = freshContainer();
       const onTimeChange = vi.fn();
       const t = task({ time: '09:00', duration: 60 });
@@ -1044,6 +1049,16 @@ describe('renderTimedBlocksForDay', () => {
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
       title.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(onTimeChange).toHaveBeenCalledWith(t, 555);
+    });
+
+    it('a keydown from an element truly outside the block is still ignored', () => {
+      const container = freshContainer();
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const outsider = container.createDiv();
+      outsider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
       expect(onTimeChange).not.toHaveBeenCalled();
     });
 
@@ -1105,6 +1120,54 @@ describe('renderTimedBlocksForDay', () => {
       expect(block.hasClass('is-picked-up')).toBe(true);
       container.remove();
     });
+
+    it('Bug fix (focus/blur robustness): tabbing from the block onto its own embedded link (a real, independently-focusable descendant renderTaskText.ts can produce) does not drop is-selected', () => {
+      const container = freshContainer();
+      document.body.appendChild(container);
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
+      const link = document.createElement('a');
+      link.href = '#';
+      link.tabIndex = 0;
+      title.appendChild(link);
+
+      block.focus();
+      expect(block.hasClass('is-selected')).toBe(true);
+      // Focus moves from the block onto its own embedded link — still inside the block subtree.
+      link.focus();
+      expect(block.hasClass('is-selected')).toBe(true);
+      // Focus moves back onto the block itself.
+      block.focus();
+      expect(block.hasClass('is-selected')).toBe(true);
+      // Only focus actually leaving the block entirely removes is-selected.
+      const outsider = document.createElement('button');
+      document.body.appendChild(outsider);
+      outsider.focus();
+      expect(block.hasClass('is-selected')).toBe(false);
+      container.remove();
+      outsider.remove();
+    });
+
+    it('Bug fix (focus/blur robustness): keyboard-nudge keeps working while focus sits on an embedded link inside the block', () => {
+      const container = freshContainer();
+      document.body.appendChild(container);
+      const onTimeChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
+      const link = document.createElement('a');
+      link.href = '#';
+      link.tabIndex = 0;
+      title.appendChild(link);
+
+      link.focus();
+      link.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(onTimeChange).toHaveBeenCalledWith(t, 555);
+      container.remove();
+    });
   });
 
   describe('Task 49: ArrowLeft/ArrowRight horizontal day-resize while the block has native DOM focus', () => {
@@ -1138,6 +1201,47 @@ describe('renderTimedBlocksForDay', () => {
       expect(onStartChange).toHaveBeenCalledWith(t, '2026-07-07');
     });
 
+    it('Bug B regression: ArrowRight computes from `scheduled`, not `due`, for a non-span task with both set to DIFFERENT dates — matching bucketTasksForDate\'s scheduled-wins anchor priority', () => {
+      const container = freshContainer();
+      const onExtendToSpan = vi.fn();
+      // "Deadline" pattern: interactive body renders on the scheduled day, a separate
+      // non-interactive deadline marker renders on the due day — the block under test here (the
+      // one the user is actually looking at and pressing arrow keys on) is anchored on scheduled.
+      const t = task({ time: '09:00', scheduled: '2026-07-05', due: '2026-07-20' });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-06');
+    });
+
+    it('Bug B regression: ArrowLeft computes from `scheduled`, not `due`, for a non-span task with both set to DIFFERENT dates', () => {
+      const container = freshContainer();
+      const onStartChange = vi.fn();
+      const t = task({ time: '09:00', scheduled: '2026-07-05', due: '2026-07-20' });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onStartChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+      expect(onStartChange).toHaveBeenCalledWith(t, '2026-07-04');
+    });
+
+    it('a task already spanning (start && due both set) keeps stepping from due/start even if it also happens to carry a scheduled value — scheduled is irrelevant once bucketTasksForDate\'s own span check matches', () => {
+      const container = freshContainer();
+      const onExtendToSpan = vi.fn();
+      const onStartChange = vi.fn();
+      const t = task({
+        time: '09:00',
+        start: '2026-07-08',
+        due: '2026-07-10',
+        scheduled: '2026-07-01',
+      });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan, onStartChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+      expect(onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-11');
+      expect(onStartChange).toHaveBeenCalledWith(t, '2026-07-07');
+    });
+
     it('repeated ArrowRight presses each extend by one more day from the render-time due (matching how a re-render after each commit would supply the next base)', () => {
       const container = freshContainer();
       const onExtendToSpan = vi.fn();
@@ -1162,7 +1266,9 @@ describe('renderTimedBlocksForDay', () => {
       expect(cbs.onDurationChange).not.toHaveBeenCalled();
     });
 
-    it('a keydown bubbling up from a descendant (not the block itself) is ignored for ArrowLeft/ArrowRight too', () => {
+    it('a keydown bubbling up from a descendant INSIDE the block (e.g. an embedded link) still resizes for ArrowLeft/ArrowRight too', () => {
+      // Same subtree-scoped guard fix as the vertical-nudge suite above, applied to the
+      // horizontal resize path.
       const container = freshContainer();
       const onExtendToSpan = vi.fn();
       const onStartChange = vi.fn();
@@ -1172,6 +1278,19 @@ describe('renderTimedBlocksForDay', () => {
       const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
       title.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
       title.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      expect(onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-11');
+      expect(onStartChange).toHaveBeenCalledWith(t, '2026-07-09');
+    });
+
+    it('a keydown from an element truly outside the block is still ignored for ArrowLeft/ArrowRight', () => {
+      const container = freshContainer();
+      const onExtendToSpan = vi.fn();
+      const onStartChange = vi.fn();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan, onStartChange });
+      const outsider = container.createDiv();
+      outsider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      outsider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
       expect(onExtendToSpan).not.toHaveBeenCalled();
       expect(onStartChange).not.toHaveBeenCalled();
     });

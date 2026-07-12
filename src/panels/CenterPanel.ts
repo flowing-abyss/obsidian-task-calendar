@@ -2260,17 +2260,38 @@ export class CenterPanel {
   }
 
   // A plain task has no `start` yet, so extending it into a span needs both ends
-  // written in one mutation: the original `due` is frozen as the new `start`, and
-  // `due` moves to the dragged-to date.
+  // written in one mutation: the task's own current anchor is frozen as the new
+  // `start`, and `due` moves to the dragged-to date.
+  //
+  // Bug fix (review): this used to require `task.due` unconditionally, silently no-opping (no
+  // mutation, no feedback) for a scheduled-only task — a completely normal, fully-interactive
+  // timed block per TodayView.ts's `bucketTasksForDate` own anchor rule (`t.scheduled ?? t.due`
+  // for a non-span task), reachable via both the keyboard ArrowRight handler's fallback chain
+  // AND the mouse-driven right-edge drag (same callback). The anchor to freeze as `start` must
+  // follow that SAME `scheduled ?? due` priority (matching bucketTasksForDate exactly — its anchor
+  // computation for a non-span task is unconditional on `scheduled ?? due`, it does not fall back
+  // to `due` first just because `due` happens to be set too). Verified by hand via the Obsidian
+  // CLI: an earlier version of this fix used `due ?? scheduled` (due wins) here, which combined
+  // with the keyboard handler's OWN (correct) `scheduled`-first date computation to produce an
+  // invalid, reversed span for a task with distinct `scheduled`+`due` (e.g. froze `due` 2026-07-17
+  // as `start` while writing 2026-07-13 as the new `due` — a span that ends before it starts).
+  // `scheduled ?? due` here keeps the frozen anchor consistent with whichever date the keyboard/
+  // mouse gesture actually computed the new `due` from. Since a scheduled-only task's line has no
+  // pre-existing 📅 token to `.replace()`, the new due must be *appended* rather than replaced when
+  // `task.due` is absent, mirroring `updateTaskStart`'s/`rescheduleTaskDue`'s own append-vs-replace
+  // convention above. The result (both `start` and `due` set) is exactly the shape
+  // `bucketTasksForDate` classifies as a span, so it renders correctly as one on the next read.
   private async extendTaskToSpan(task: Task, newDue: string): Promise<void> {
-    if (!task.due) return;
-    const originalDue = task.due;
+    const originalAnchor = task.scheduled ?? task.due;
+    if (!originalAnchor) return;
     await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
       // A task that already spans (has a start) is being re-extended, not extended for the
       // first time — only append a fresh 🛫 when one isn't already present, so re-dragging an
       // already-spanning block's anchor never appends a second, extraneous 🛫 token.
-      const withStart = task.start ? line : line.trimEnd() + ` 🛫 ${originalDue}`;
-      const withDue = withStart.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`);
+      const withStart = task.start ? line : line.trimEnd() + ` 🛫 ${originalAnchor}`;
+      const withDue = task.due
+        ? withStart.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`)
+        : withStart.trimEnd() + ` 📅 ${newDue}`;
       return formatTaskLine(withDue);
     });
   }
