@@ -364,14 +364,44 @@ describe('tag-fill background (Round 3 Task 24: solid, not washed-out/gridline-b
 });
 
 describe(".tc-tg-allday-gutter styling (Round 3 Task 25: match the hour-label's muted look)", () => {
-  it('uses the same muted color variable, font-size, and right-alignment as .tc-tg-hour-label', () => {
-    const gutter = declarationsFor('.tc-tg-allday-gutter');
+  it('uses the same muted color variable and font-size as .tc-tg-hour-label, on its nested label (not the gutter box itself)', () => {
+    // Task 47: font-size/color moved off .tc-tg-allday-gutter itself onto a nested
+    // .tc-tg-allday-gutter-label span — see that selector's styles.css doc comment for why:
+    // font-size directly on the gutter box made its own `width: 3.5em` resolve against its own
+    // (smaller) font-size instead of the ambient one .tc-tg-header-gutter/.tc-tg-hour-gutter use,
+    // silently narrowing this one gutter and offsetting the whole all-day band from the hour-grid
+    // below it.
+    const label = declarationsFor('.tc-tg-allday-gutter-label');
     const hourLabel = declarationsFor('.tc-tg-hour-label');
-    expect(gutter).toContain('color: var(--text-faint)');
+    expect(label).toContain('color: var(--text-faint)');
     expect(hourLabel).toContain('color: var(--text-faint)');
-    expect(gutter).toContain('font-size: 0.75em');
+    expect(label).toContain('font-size: 0.75em');
     expect(hourLabel).toContain('font-size: 0.75em');
+    const gutter = declarationsFor('.tc-tg-allday-gutter');
     expect(gutter).toContain('text-align: right');
+  });
+
+  it('.tc-tg-allday-gutter itself sets no font-size override, so its width: 3.5em resolves against the same ambient font-size as .tc-tg-header-gutter/.tc-tg-hour-gutter', () => {
+    const gutter = declarationsFor('.tc-tg-allday-gutter');
+    expect(gutter).not.toMatch(/font-size/u);
+  });
+});
+
+describe('Task 47: all-day band day-cells share the hour-grid day-columns’ exact layout mechanism', () => {
+  it('.tc-tg-allday-cell sets min-width: 0, so a long title cannot force the cell wider than its flex-computed share (which also misaligns it against the day-column below)', () => {
+    const cell = declarationsFor('.tc-tg-allday-cell');
+    expect(cell).toMatch(/min-width:\s*0/u);
+  });
+
+  it('.tc-tg-header-row and .tc-tg-allday-row reserve the identical scrollbar-gutter space that .tc-tg-grid-row (which actually scrolls) reserves, so their flex day-cells divide up the same usable width', () => {
+    const gridRow = declarationsFor('.tc-tg-grid-row');
+    const headerRow = declarationsFor('.tc-tg-header-row');
+    const alldayRow = declarationsFor('.tc-tg-allday-row');
+    expect(gridRow).toContain('scrollbar-gutter: stable');
+    expect(headerRow).toContain('scrollbar-gutter: stable');
+    expect(alldayRow).toContain('scrollbar-gutter: stable');
+    expect(headerRow).toContain('overflow-y: auto');
+    expect(alldayRow).toContain('overflow-y: auto');
   });
 });
 

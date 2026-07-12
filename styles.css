@@ -1164,10 +1164,22 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   overflow: hidden;
 }
 
+/* Task 47: `overflow-y: auto` + `scrollbar-gutter: stable` here mirror .tc-tg-grid-row's own
+   scrolling setup below, even though this row's own content never actually overflows/scrolls.
+   Reason: .tc-tg-grid-row DOES scroll (24 hours of content) and its `scrollbar-gutter: stable`
+   permanently reserves a scrollbar-width strip of space on its right edge, shrinking the *usable*
+   width its flex day-columns divide up. Without the identical reservation here, this row's day
+   cells divide up the FULL row width (no strip withheld) — a few pixels wider each, compounding
+   linearly across columns (day 1 barely off, day 7 visibly off) — which is exactly the "grid
+   doesn't line up with the row below" misalignment reported. Reserving the same never-used strip
+   here keeps every day-column's actual available width identical to .tc-tg-grid-row's, so nothing
+   can drift again regardless of how many columns are rendered (Day's 1 vs Week's 7). */
 .tc-tg-header-row {
   display: flex;
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .tc-tg-header-gutter {
@@ -1208,24 +1220,52 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   font-weight: 700;
 }
 
+/* Task 47: see .tc-tg-header-row's comment just above for why `overflow-y: auto` +
+   `scrollbar-gutter: stable` are applied here despite this row never actually scrolling — this
+   row's day cells must reserve the identical scrollbar-width strip .tc-tg-grid-row's own
+   day-columns reserve, or the two rows' flex-computed column widths diverge. */
 .tc-tg-allday-row {
   display: flex;
   border-bottom: 1px solid var(--background-modifier-border);
   flex-shrink: 0;
   min-height: 2.25em;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .tc-tg-allday-gutter {
   width: 3.5em;
   flex-shrink: 0;
-  font-size: 0.75em;
-  color: var(--text-faint);
   text-align: right;
   padding-right: 4px;
 }
 
+/* Task 47: the "No-time" text's smaller/muted styling lives on this nested label, not on
+   .tc-tg-allday-gutter itself. Putting `font-size` directly on the gutter element used to make
+   its own `width: 3.5em` resolve against ITS OWN (smaller, self-overridden) font-size instead of
+   the row's ambient one — unlike .tc-tg-header-gutter/.tc-tg-hour-gutter, which set no font-size
+   override and so compute that same `3.5em` against the ambient size. That silently made this
+   gutter ~13px narrower than the other two (confirmed live: 39.375px vs 52.5px at a 15px ambient
+   font-size), which is exactly the constant left-edge offset between the all-day band and the
+   hour-grid reported as "grid doesn't line up." Scoping font-size to this inner label instead
+   keeps the gutter's own box (and therefore its width: 3.5em) sized identically to its siblings. */
+.tc-tg-allday-gutter-label {
+  font-size: 0.75em;
+  color: var(--text-faint);
+}
+
 .tc-tg-allday-cell {
   flex: 1;
+  /* Task 47: without this, a flex item's default `min-width: auto` lets its own content's
+     intrinsic minimum size (here, a long `.tc-tg-body-title`'s nowrap text) override its
+     flex-computed share of the row — the cell grows to fit the text instead of the text
+     truncating inside a fixed-width cell. That both broke this cell's alignment with the
+     hour-grid day-column below it (confirmed live: cells grew increasingly wider, up to
+     1000+px, instead of each being an equal ~1/7th share) AND was the actual cause of the
+     "span title overflows its own segment" symptom — the box itself was overflowing, so the
+     .tc-tg-body-title ellipsis/overflow:hidden rules (already shared with plain items, Task 44)
+     never got a chance to engage. */
+  min-width: 0;
   position: relative;
   border-left: 1px solid var(--background-modifier-border);
   padding: 2px 4px;

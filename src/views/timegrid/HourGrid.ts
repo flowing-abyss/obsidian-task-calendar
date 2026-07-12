@@ -69,7 +69,10 @@ export function renderHourGrid(
   // All-day band: one cell per date
   const alldayRow = root.createDiv({ cls: 'tc-tg-allday-row' });
   const alldayGutter = alldayRow.createDiv({ cls: 'tc-tg-allday-gutter' });
-  alldayGutter.textContent = 'No-time';
+  // Task 47: nested label (not textContent directly on the gutter) so its smaller font-size
+  // doesn't also warp the gutter's own `width: 3.5em` — see .tc-tg-allday-gutter-label's CSS
+  // doc comment (styles.css) for the alignment bug this fixes.
+  alldayGutter.createSpan({ cls: 'tc-tg-allday-gutter-label', text: 'No-time' });
   const alldayCells: HTMLElement[] = dates.map(() =>
     alldayRow.createDiv({ cls: 'tc-tg-allday-cell' }),
   );
