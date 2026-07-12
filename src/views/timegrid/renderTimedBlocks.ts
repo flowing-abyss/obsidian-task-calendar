@@ -200,10 +200,14 @@ export function renderTimedBlocksForDay(
     // Task 26: native HTML5 DnD so a timed block can be dragged out of the hour-grid onto the
     // all-day/"No-time" row (renderAllDay.ts's existing drop target), using the SAME
     // filePath:::line payload convention as renderAllDay.ts's renderDraggableBody. The resize
-    // handle stays draggable="false" — the identical defensive pattern renderAllDay.ts's
-    // attachEdgeResize already established (Round 2 Task 9) for a non-draggable island inside a
-    // draggable ancestor, so a resize gesture starting on the handle never races the block's own
-    // native dragstart.
+    // handle itself stays draggable="false" too, but per the HTML Drag and Drop spec that alone
+    // does NOT stop a gesture starting on it from arming the ancestor's native dragstart — the
+    // browser walks up to the nearest draggable="true" element regardless of the child's own
+    // draggable value (confirmed live and fixed the same way in renderAllDay.ts's
+    // attachEdgeResize). attachDrag below closes that gap for real by flipping `block`'s own
+    // draggable off for the duration of a resize gesture (armed on the handle's pointerdown,
+    // restored on pointerup/pointercancel) — see attachDrag's own comment for why this is scoped
+    // to resize mode only, not move mode.
     block.setAttribute('draggable', 'true');
     handle.setAttribute('draggable', 'false');
     block.addEventListener('dragstart', (e) => {
@@ -384,6 +388,11 @@ function attachDrag(
   };
 
   const cleanup = (): void => {
+    // Restore the block's own native-drag eligibility (Task 26: dragging the BODY out to the
+    // all-day row) unconditionally — harmless no-op if this gesture was 'move' (where it was
+    // never toggled off, see onPointerDown below), and the fix for 'resize' (see that same
+    // comment for why resize needs this at all).
+    block.setAttribute('draggable', 'true');
     mode = null;
     // Task 39: mirrors is-dragging/is-edge-resizing's own cleanup-in-every-exit-path
     // discipline — removed here (the one place every exit path funnels through) rather than
@@ -445,6 +454,17 @@ function attachDrag(
     startY = e.clientY;
     startMinutes = initialStart;
     startDuration = initialDuration;
+    // The vertical resize handle is a non-draggable (draggable="false") island inside `block`,
+    // which is itself draggable="true" (Task 26, for dragging the BODY out to the all-day row).
+    // Per the HTML Drag and Drop spec, a gesture starting on a non-draggable child does NOT stop
+    // the browser from walking up to the nearest draggable="true" ancestor and arming a native
+    // drag from THERE instead — draggable="false" on the handle alone is not enough (this is the
+    // exact mechanism renderAllDay.ts's attachEdgeResize found and fixed the same way). Flipping
+    // `block`'s own draggable off for the duration of a resize gesture actually blocks the
+    // fallback, restored in `cleanup()` on pointerup/pointercancel. Scoped to 'resize' only:
+    // 'move' (grabbing the block body itself) is the deliberate drag-out-to-all-day gesture, so
+    // `block` must stay draggable="true" for that case.
+    if (mode === 'resize') block.setAttribute('draggable', 'false');
     // Task 39: immediate "picked up" affordance for a move-mode drag specifically (not
     // resize) — the user's most common gesture is grabbing the block body to reschedule it,
     // and it previously gave zero feedback that anything had been armed until the block
@@ -495,10 +515,18 @@ function attachHorizontalResize(
   task: Task,
   onResolve: (task: Task, newDate: string) => void,
 ): void {
-  // Same reasoning as the vertical resize handle's draggable="false" (Task 26): this handle is a
-  // non-draggable island inside the block's draggable="true" ancestor, so a gesture starting here
-  // never races the block's own native dragstart.
+  // This handle is a non-draggable (draggable="false") island inside the block's draggable="true"
+  // ancestor (Task 26). draggable="false" here is NOT enough on its own to stop a gesture
+  // starting on the handle from arming the ancestor's native dragstart: per the HTML Drag and
+  // Drop spec, a mousedown on a non-draggable descendant of a draggable element still starts a
+  // drag FROM THE ANCESTOR (the browser walks up to the nearest draggable="true" element and uses
+  // that as the drag source) — draggable="false" only stops the handle itself from being
+  // independently draggable, it does not block the ancestor fallback. Same mechanism renderAllDay
+  // .ts's attachEdgeResize found and fixed (see its own comment); fixed here the same way, by
+  // flipping the ancestor `.tc-tg-block`'s own draggable off for the duration of the gesture
+  // (armed on this handle's pointerdown, restored on pointerup/pointercancel below).
   handle.setAttribute('draggable', 'false');
+  const block = handle.closest<HTMLElement>('.tc-tg-block');
 
   const resolve = (date: string): void => {
     onResolve(task, date);
@@ -550,6 +578,7 @@ function attachHorizontalResize(
   };
 
   const cleanup = (): void => {
+    block?.setAttribute('draggable', 'true');
     clearHoveredDay();
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
@@ -565,10 +594,10 @@ function attachHorizontalResize(
     cleanup();
   };
 
-  // Same rationale as attachDrag's onPointerCancel above: the block this handle sits inside is
-  // draggable="true" (Task 26), so a native drag hijacking the pointer session mid-gesture fires
-  // pointercancel instead of pointerup — without this, the window pointermove/pointerup listeners
-  // registered below would leak.
+  // Defensive belt-and-suspenders (mirrors renderAllDay.ts's attachEdgeResize): if a native drag
+  // were ever armed despite the draggable="false" flip below, the pointer session would end in
+  // `pointercancel` rather than `pointerup`, and without this the window
+  // pointermove/pointerup/pointercancel listeners would leak instead of being torn down.
   const onPointerCancel = (): void => {
     cleanup();
   };
@@ -576,6 +605,7 @@ function attachHorizontalResize(
   handle.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    block?.setAttribute('draggable', 'false');
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);

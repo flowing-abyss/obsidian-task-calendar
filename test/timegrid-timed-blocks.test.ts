@@ -751,6 +751,59 @@ describe('renderTimedBlocksForDay', () => {
       window.dispatchEvent(new PointerEvent('pointerup', { clientY: 248, pointerId: 2 }));
       expect(onTimeChange).toHaveBeenCalledTimes(1);
     });
+
+    describe('ancestor-draggable-toggle fix: draggable="false" on the handle alone does not stop the ancestor fallback (mirrors renderAllDay.ts attachEdgeResize)', () => {
+      it("pointerdown on the vertical resize handle flips the block's own draggable to false (resize mode), restored on pointerup", () => {
+        const container = freshContainer();
+        const t = task({ time: '09:00', duration: 60 });
+        renderTimedBlocksForDay(container, [t], callbacks());
+        const block = container.querySelector('.tc-tg-block') as HTMLElement;
+        const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+        handle.setPointerCapture = () => {};
+        handle.releasePointerCapture = () => {};
+
+        expect(block.getAttribute('draggable')).toBe('true');
+        handle.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+        );
+        expect(block.getAttribute('draggable')).toBe('false');
+        window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+        expect(block.getAttribute('draggable')).toBe('true');
+      });
+
+      it("a pointercancel mid-resize (native drag hijacking the session) also restores the block's draggable to true", () => {
+        const container = freshContainer();
+        const t = task({ time: '09:00', duration: 60 });
+        renderTimedBlocksForDay(container, [t], callbacks());
+        const block = container.querySelector('.tc-tg-block') as HTMLElement;
+        const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+        handle.setPointerCapture = () => {};
+        handle.releasePointerCapture = () => {};
+
+        handle.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+        );
+        expect(block.getAttribute('draggable')).toBe('false');
+        window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+        expect(block.getAttribute('draggable')).toBe('true');
+      });
+
+      it('grabbing the block BODY (move mode, the legitimate drag-out-to-all-day gesture) does NOT flip draggable to false — only the resize handle does', () => {
+        const container = freshContainer();
+        const t = task({ time: '09:00', duration: 60 });
+        renderTimedBlocksForDay(container, [t], callbacks());
+        const block = container.querySelector('.tc-tg-block') as HTMLElement;
+        block.setPointerCapture = () => {};
+        block.releasePointerCapture = () => {};
+
+        block.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+        );
+        expect(block.getAttribute('draggable')).toBe('true');
+        window.dispatchEvent(new PointerEvent('pointerup', { clientY: 100, pointerId: 1 }));
+        expect(block.getAttribute('draggable')).toBe('true');
+      });
+    });
   });
 
   describe('Task 39: pick-up visual feedback on a move-mode drag', () => {
@@ -1150,6 +1203,33 @@ describe('renderTimedBlocksForDay', () => {
       expect(cbs.onDurationChange).toHaveBeenCalledWith(t, 120);
       expect(cbs.onExtendToSpan).not.toHaveBeenCalled();
     });
+
+    it("pointerdown on the right-edge handle flips the block's own draggable to false (blocking the native-drag-ancestor-fallback), restored on pointerup", () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+
+      expect(block.getAttribute('draggable')).toBe('true');
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      expect(block.getAttribute('draggable')).toBe('false');
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+      expect(block.getAttribute('draggable')).toBe('true');
+    });
+
+    it('a pointercancel mid-drag on the right-edge handle also restores draggable to true', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      expect(block.getAttribute('draggable')).toBe('false');
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      expect(block.getAttribute('draggable')).toBe('true');
+    });
   });
 
   describe('horizontal edge-resize to a multi-day timed span (Task 34: left edge, adding/moving `start`)', () => {
@@ -1307,6 +1387,33 @@ describe('renderTimedBlocksForDay', () => {
       expect(cbs.onExtendToSpan).toHaveBeenCalledTimes(1);
       expect(cbs.onTimeChange).toHaveBeenCalledTimes(1);
       expect(cbs.onDurationChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("pointerdown on the left-edge handle flips the block's own draggable to false (blocking the native-drag-ancestor-fallback), restored on pointerup", () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+
+      expect(block.getAttribute('draggable')).toBe('true');
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      expect(block.getAttribute('draggable')).toBe('false');
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 }));
+      expect(block.getAttribute('draggable')).toBe('true');
+    });
+
+    it('a pointercancel mid-drag on the left-edge handle also restores draggable to true', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      expect(block.getAttribute('draggable')).toBe('false');
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      expect(block.getAttribute('draggable')).toBe('true');
     });
   });
 
