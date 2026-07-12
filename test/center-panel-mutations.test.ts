@@ -285,6 +285,47 @@ describe('CenterPanel.updateTaskStart — Task 34 left-edge drag on a timed bloc
     expect(content).toBe(`${raw}\n`);
     expect(content).not.toContain('not-a-date');
   });
+
+  it("Task 51 regression: dragging the left edge past the block's own due date is rejected, leaving the file byte-for-byte unchanged (mirrors the Task 49 right-edge fix)", async () => {
+    // Interactive-CLI-confirmed repro: a 3-day span (🛫 2026-07-13 📅 2026-07-15 ⏰13:00
+    // ⏱️1h), dragging the LEFT span-edge handle right by one day-column resolved (via
+    // elementFromPoint's absolute "day under the cursor" logic, not a delta from the
+    // original start) to 2026-07-16 — AFTER the task's own due (2026-07-15) — producing an
+    // inverted span that silently vanished from every calendar view once written.
+    const raw = '- [ ] Drag test alpha 🛫 2026-07-13 📅 2026-07-15 ⏰13:00 ⏱️1h';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      start: '2026-07-13',
+      due: '2026-07-15',
+      time: '13:00',
+      duration: 60,
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'updateTaskStart', t, '2026-07-16');
+    const content = await readMd(app, 'f.md');
+    expect(content).toBe(`${raw}\n`);
+    expect(content).not.toContain('🛫 2026-07-16');
+  });
+
+  it('Task 51: same-day start === due is still accepted (not treated as inverted)', async () => {
+    const raw = '- [ ] t 🛫 2026-07-13 📅 2026-07-15 ⏰13:00 ⏱️1h';
+    const t = task({
+      filePath: 'f.md',
+      line: 0,
+      rawText: raw,
+      start: '2026-07-13',
+      due: '2026-07-15',
+      time: '13:00',
+      duration: 60,
+    });
+    const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
+    await callPrivate(panel, 'updateTaskStart', t, '2026-07-15');
+    const content = await readMd(app, 'f.md');
+    expect(content).toContain('🛫 2026-07-15');
+    expect(content).toContain('📅 2026-07-15');
+  });
 });
 
 describe('CenterPanel.setTaskTimeFromDrop', () => {

@@ -40,6 +40,8 @@ function isRealCalendarDate(date: string): boolean {
  *   still-impossible time such as "25:00")
  * - a parsed duration is not a finite, positive number
  * - a parsed date field is not a real calendar date (e.g. day 32, month 13)
+ * - both `start` and `due` are present and `start` is strictly AFTER `due` (Task 51: an
+ *   inverted span) — see this file's own cross-field check below for the full story
  */
 export function validateMutatedTaskLine(line: string, ctx: ParseContext): boolean {
   const task = parseTask(line, ctx);
@@ -63,6 +65,26 @@ export function validateMutatedTaskLine(line: string, ctx: ParseContext): boolea
   for (const [glyph, value] of dateFields) {
     if (line.includes(glyph) && (!value || !isRealCalendarDate(value))) return false;
   }
+
+  // Task 51 data-safety net: `start`/`due` are two independent date fields, each individually
+  // well-formed per the per-field checks above, but a mutation can still combine them into a
+  // semantically-inverted span (`start` after `due`) that no single field's own validity check
+  // catches. Root cause this guards against: the timed-grid left-edge resize handle
+  // (renderTimedBlocks.ts's attachHorizontalResize) resolves the day the pointer released over
+  // via `elementFromPoint` — an ABSOLUTE "whichever day column is under the cursor now"
+  // computation, not a delta from the original start — so dragging far enough right of a span's
+  // own `due` day produces a `start` after `due` (e.g. `🛫 2026-07-16 📅 2026-07-15`). Both
+  // fields round-trip through `parseTask` just fine (each is a real calendar date on its own),
+  // so without this check the malformed-but-individually-valid line sailed straight through:
+  // `updateTaskStart` (CenterPanel.ts) had no check against `task.due` at all. The result: an
+  // inverted span fails every calendar view's span rendering (the same "looks fine as a string,
+  // vanishes from every view" class of bug Task 33 first closed for out-of-range time/duration),
+  // with the malformed line still silently written to disk. Comparing the raw `YYYY-MM-DD`
+  // strings lexicographically is sufficient (no `Date` parsing needed) because both fields are
+  // already confirmed real, zero-padded calendar dates by the loop above — lexicographic and
+  // chronological order agree exactly for that shape. `start === due` (a legitimate same-day
+  // task) is explicitly NOT rejected — only strict `start > due` is.
+  if (task.start && task.due && task.start > task.due) return false;
 
   return true;
 }

@@ -241,14 +241,37 @@ export function renderTimedBlocksForDay(
     // own doc comment on the due-centric anchor rule), so both edges of a timed span necessarily
     // coexist on the same element here.
     const hEdgeLeft = block.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--left' });
-    attachHorizontalResize(hEdgeLeft, hourColumnEl, p.task, callbacks.onStartChange);
+    // Task 51: clamp the left edge so it can never be dragged past the block's own `due` day —
+    // `due` is always set here (this block is always the `due`-anchored one, per the
+    // due-centric anchor rule above), and `updateTaskStart`'s mutation never touches `due`
+    // itself, so `due` is a stable bound for the whole gesture.
+    attachHorizontalResize(
+      hEdgeLeft,
+      hourColumnEl,
+      p.task,
+      callbacks.onStartChange,
+      p.task.due ? { date: p.task.due, kind: 'max' } : undefined,
+    );
     // Task 29: right-edge horizontal resize, extending the block into a multi-day timed span.
     // Reuses `.tc-tg-span-edge`/`.tc-tg-span-edge--right` — the same classes/CSS renderAllDay.ts's
     // span/plain right-edge handles already use — so it looks and behaves consistently with the
     // existing all-day span-extension affordance (Round 2 Task 9) instead of inventing new visual
     // language for the same gesture.
     const hEdge = block.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--right' });
-    attachHorizontalResize(hEdge, hourColumnEl, p.task, callbacks.onExtendToSpan);
+    // Task 51 (mirror of the left edge's clamp above): the right edge can never be dragged
+    // before whichever anchor `extendTaskToSpan` would freeze as the new `start` — the task's
+    // own `start` if it's already a span, else the `scheduled ?? due` anchor `extendTaskToSpan`
+    // itself uses (see that method's own doc comment for why `scheduled` must win over `due`
+    // there). Matching that exact priority here keeps the clamp bound consistent with what the
+    // commit would actually freeze.
+    const rightEdgeAnchor = p.task.start ?? p.task.scheduled ?? p.task.due;
+    attachHorizontalResize(
+      hEdge,
+      hourColumnEl,
+      p.task,
+      callbacks.onExtendToSpan,
+      rightEdgeAnchor ? { date: rightEdgeAnchor, kind: 'min' } : undefined,
+    );
 
     const handle = block.createDiv({ cls: 'tc-tg-resize-handle' });
     // Task 26: native HTML5 DnD so a timed block can be dragged out of the hour-grid onto the
@@ -699,6 +722,18 @@ function attachHorizontalResize(
   hourColumnEl: HTMLElement,
   task: Task,
   onResolve: (task: Task, newDate: string) => void,
+  // Task 51: live-clamp bound (UX nice-to-have layered on top of the mandatory
+  // `validateMutatedTaskLine` start<=due safety net — see that file's own doc comment for the
+  // data-safety root cause). Without this, `elementFromPoint`'s absolute "day under the cursor"
+  // resolution let the left edge get dragged arbitrarily far past the block's own `due` day (or
+  // the right edge past the anchor that would freeze as `start`), producing an inverted span
+  // that the validator now rejects wholesale — correct, but the user only discovers the failed
+  // drag AFTER release, with no live feedback that they'd crossed a limit. Clamping the resolved
+  // date here, on every pointermove AND at commit, means the drag visually stops at the boundary
+  // day column instead of continuing to track the cursor past it, and the committed value is
+  // never invalid in the first place (the validator remains the safety net for every OTHER path
+  // that can touch these fields, this is purely presentational/UX for this one gesture).
+  bound?: { date: string; kind: 'max' | 'min' },
 ): void {
   // This handle is a non-draggable (draggable="false") island inside the block's draggable="true"
   // ancestor (Task 26). draggable="false" here is NOT enough on its own to stop a gesture
@@ -713,8 +748,19 @@ function attachHorizontalResize(
   handle.setAttribute('draggable', 'false');
   const block = handle.closest<HTMLElement>('.tc-tg-block');
 
+  // Dates are always well-formed, zero-padded `YYYY-MM-DD` strings by the time they reach here
+  // (either `task.due`/`task.start`/`task.scheduled`, already-parsed fields, or a `data-tg-date`
+  // attribute HourGrid.ts stamps from the same shape) — plain string comparison agrees with
+  // chronological order exactly for that shape, no `Date` parsing needed.
+  const clampDate = (date: string): string => {
+    if (!bound) return date;
+    if (bound.kind === 'max' && date > bound.date) return bound.date;
+    if (bound.kind === 'min' && date < bound.date) return bound.date;
+    return date;
+  };
+
   const resolve = (date: string): void => {
-    onResolve(task, date);
+    onResolve(task, clampDate(date));
   };
 
   const withHook = hourColumnEl as HTMLElement & {
@@ -741,7 +787,18 @@ function attachHorizontalResize(
   const onPointerMove = (e: PointerEvent): void => {
     e.preventDefault();
     const target = activeDocument.elementFromPoint(e.clientX, e.clientY);
-    const dayEl = target?.closest('[data-tg-date]') ?? null;
+    const rawDayEl = target?.closest('[data-tg-date]') ?? null;
+    const rawDate = rawDayEl?.getAttribute('data-tg-date');
+    // Task 51: once the cursor has crossed the clamp bound, keep highlighting the BOUND day
+    // column (not whichever real column is under the cursor) so the live preview visibly stops
+    // at the limit rather than continuing to follow the pointer past it.
+    let dayEl = rawDayEl;
+    if (bound && rawDate) {
+      const clamped = clampDate(rawDate);
+      if (clamped !== rawDate) {
+        dayEl = activeDocument.querySelector(`[data-tg-date="${clamped}"]`);
+      }
+    }
     if (dayEl === hoveredDayEl) return;
     hoveredDayEl?.classList.remove('is-drag-over');
     dayEl?.classList.add('is-drag-over');

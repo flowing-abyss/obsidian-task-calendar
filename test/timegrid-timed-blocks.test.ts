@@ -1610,6 +1610,48 @@ describe('renderTimedBlocksForDay', () => {
       expect(cbs.onStartChange).not.toHaveBeenCalled();
     });
 
+    it("Task 51: dragging the left edge past the block's own due date clamps to due (start=due), never firing onStartChange with a date after due", () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      // The exact repro: a 3-day span, left edge dragged right past its own due day.
+      const t = task({ time: '13:00', duration: 60, start: '2026-07-13', due: '2026-07-15' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      (container as unknown as { __tgTestEndDrag: (date: string) => void }).__tgTestEndDrag(
+        '2026-07-16',
+      );
+      expect(cbs.onStartChange).toHaveBeenCalledWith(t, '2026-07-15');
+      expect(cbs.onStartChange).not.toHaveBeenCalledWith(t, '2026-07-16');
+    });
+
+    it('Task 51: dragging the left edge to a date still before/at due is unaffected by the clamp', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '13:00', duration: 60, start: '2026-07-13', due: '2026-07-15' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      (container as unknown as { __tgTestEndDrag: (date: string) => void }).__tgTestEndDrag(
+        '2026-07-14',
+      );
+      expect(cbs.onStartChange).toHaveBeenCalledWith(t, '2026-07-14');
+    });
+
+    it('Task 51 (mirror): dragging the right edge before the anchor that would freeze as start clamps to that anchor, never firing onExtendToSpan with a due before it', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '13:00', duration: 60, due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
+      (container as unknown as { __tgTestEndDrag: (date: string) => void }).__tgTestEndDrag(
+        '2026-07-08',
+      );
+      expect(cbs.onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-10');
+      expect(cbs.onExtendToSpan).not.toHaveBeenCalledWith(t, '2026-07-08');
+    });
+
     it('coexistence: all five interaction modes now living on one .tc-tg-block (left edge, right edge, vertical move, vertical resize, native whole-block drag) each fire only their own callback', () => {
       const container = freshContainer();
       const cbs = callbacks();

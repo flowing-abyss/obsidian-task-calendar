@@ -56,4 +56,19 @@ describe('validateMutatedTaskLine', () => {
   it('rejects an invalid start (🛫) date', () => {
     expect(validateMutatedTaskLine('- [ ] t 🛫 2026-02-30 📅 2026-07-05', ctx)).toBe(false);
   });
+
+  it('Task 51: rejects an inverted span where start is strictly after due', () => {
+    // The exact repro: dragging a 3-day span's left edge past its own due date produced this
+    // literal line — both fields individually well-formed, but start (2026-07-16) is after
+    // due (2026-07-15).
+    expect(validateMutatedTaskLine('- [ ] t 🛫 2026-07-16 📅 2026-07-15', ctx)).toBe(false);
+  });
+
+  it('Task 51: accepts a same-day start/due span (start === due is a legitimate boundary)', () => {
+    expect(validateMutatedTaskLine('- [ ] t 🛫 2026-07-15 📅 2026-07-15', ctx)).toBe(true);
+  });
+
+  it('Task 51: still accepts an ordinary non-inverted span (start before due)', () => {
+    expect(validateMutatedTaskLine('- [ ] t 🛫 2026-07-13 📅 2026-07-15', ctx)).toBe(true);
+  });
 });
