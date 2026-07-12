@@ -1201,7 +1201,7 @@ describe('renderTimedBlocksForDay', () => {
       expect(onStartChange).toHaveBeenCalledWith(t, '2026-07-07');
     });
 
-    it('Bug B regression: ArrowRight computes from `scheduled`, not `due`, for a non-span task with both set to DIFFERENT dates — matching bucketTasksForDate\'s scheduled-wins anchor priority', () => {
+    it("Bug B regression: ArrowRight computes from `scheduled`, not `due`, for a non-span task with both set to DIFFERENT dates — matching bucketTasksForDate's scheduled-wins anchor priority", () => {
       const container = freshContainer();
       const onExtendToSpan = vi.fn();
       // "Deadline" pattern: interactive body renders on the scheduled day, a separate
@@ -1224,7 +1224,7 @@ describe('renderTimedBlocksForDay', () => {
       expect(onStartChange).toHaveBeenCalledWith(t, '2026-07-04');
     });
 
-    it('a task already spanning (start && due both set) keeps stepping from due/start even if it also happens to carry a scheduled value — scheduled is irrelevant once bucketTasksForDate\'s own span check matches', () => {
+    it("a task already spanning (start && due both set) keeps stepping from due/start even if it also happens to carry a scheduled value — scheduled is irrelevant once bucketTasksForDate's own span check matches", () => {
       const container = freshContainer();
       const onExtendToSpan = vi.fn();
       const onStartChange = vi.fn();
