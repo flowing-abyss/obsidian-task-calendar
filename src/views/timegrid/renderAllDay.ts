@@ -35,6 +35,34 @@ export interface AllDayCallbacks {
  * handle it renders, registers that handle's resolved callback here so tests can
  * trigger the resize deterministically without real screen coordinates.
  */
+// Mirrors renderTimedBlocks.ts's identical helpers (see that file's comment above
+// MAX_DURATION_MINUTES for the full "abandoned gesture" rationale): attachEdgeResize's own
+// cleanup — which restores the body's draggable="true" and removes .is-edge-resizing — is only
+// reachable via pointerup/pointercancel, so if neither is ever delivered for a resize gesture
+// (e.g. the pointer released outside the browser window), that state gets stuck. Pointer Capture
+// guarantees the browser keeps delivering pointermove/pointerup to the capturing element for the
+// rest of that gesture regardless of where the pointer physically ends up, closing the gap.
+// jsdom implements neither method at all, so both feature-detect before calling.
+function tryCapturePointer(el: HTMLElement, pointerId: number): void {
+  if (typeof el.setPointerCapture !== 'function') return;
+  try {
+    el.setPointerCapture(pointerId);
+  } catch {
+    // Never let a rejected capture request abort the gesture — the existing window-level
+    // listeners remain the fallback path either way.
+  }
+}
+
+function tryReleasePointer(el: HTMLElement, pointerId: number): void {
+  if (typeof el.releasePointerCapture !== 'function') return;
+  try {
+    el.releasePointerCapture(pointerId);
+  } catch {
+    // Harmless if capture was already released (e.g. implicitly, by a native-drag hijack) or
+    // never actually granted.
+  }
+}
+
 function endDragTestHook(cellEl: HTMLElement, targetDate: string): void {
   const pending = (cellEl as unknown as { __tgPendingEdgeResizes?: Array<(d: string) => void> })
     .__tgPendingEdgeResizes;
@@ -185,6 +213,8 @@ function attachEdgeResize(
   // class on the dragged item's own element (see .tc-tg-body.is-edge-resizing in styles.css), no
   // DOM creation/measurement and no sibling elements touched, so it can't itself cause the sibling
   // layout thrash the "grid becomes uneven" report described.
+  let capturedPointerId: number | null = null;
+
   const endResize = (): void => {
     body?.setAttribute('draggable', 'true');
     body?.removeClass('is-edge-resizing');
@@ -192,6 +222,8 @@ function attachEdgeResize(
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
+    if (capturedPointerId !== null) tryReleasePointer(handle, capturedPointerId);
+    capturedPointerId = null;
   };
 
   const onPointerUp = (upEvent: PointerEvent): void => {
@@ -215,6 +247,8 @@ function attachEdgeResize(
     e.stopPropagation();
     body?.setAttribute('draggable', 'false');
     body?.addClass('is-edge-resizing');
+    capturedPointerId = e.pointerId;
+    tryCapturePointer(handle, capturedPointerId);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);

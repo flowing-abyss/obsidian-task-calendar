@@ -780,6 +780,54 @@ describe('renderAllDayCell', () => {
     });
   });
 
+  describe('pointer capture: closes the same "abandoned gesture" gap renderTimedBlocks.ts fixes (draggable="false"/is-edge-resizing stuck forever if pointerup/pointercancel never fires)', () => {
+    // Mirrors renderTimedBlocks.ts's own pointer-capture suite: jsdom can't reproduce the actual
+    // guarantee (a real browser will always eventually deliver pointerup/pointercancel to a
+    // captured pointer, even if it's released outside the window) — these assert the mechanism
+    // that provides it, so a future refactor that drops the capture call regresses visibly.
+    it('pointerdown on an edge-resize handle arms pointer capture on that handle with the gesture\'s pointerId', () => {
+      const container = freshContainer();
+      const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+      renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks());
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      handle.setPointerCapture = vi.fn();
+      handle.releasePointerCapture = vi.fn();
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 4 }));
+      expect(handle.setPointerCapture).toHaveBeenCalledWith(4);
+    });
+
+    it('releasePointerCapture is called on pointercancel cleanup with the same pointerId that was captured', () => {
+      const container = freshContainer();
+      const t = task({ due: '2026-07-10', text: 'Plain' });
+      renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
+      const handle = container.querySelector('.tc-tg-plain .tc-tg-span-edge--right') as HTMLElement;
+      handle.setPointerCapture = vi.fn();
+      handle.releasePointerCapture = vi.fn();
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 8 }));
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 8 }));
+      expect(handle.releasePointerCapture).toHaveBeenCalledWith(8);
+    });
+
+    it('a host lacking setPointerCapture/releasePointerCapture entirely (e.g. jsdom) is tolerated: no throw, and the pre-existing pointercancel cleanup still runs', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ due: '2026-07-10', text: 'Plain' });
+      renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
+      const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-plain .tc-tg-span-edge--right') as HTMLElement;
+      // Deliberately NOT stubbing setPointerCapture/releasePointerCapture — jsdom's HTMLElement
+      // has neither method at all, reproducing any real host lacking Pointer Events capture
+      // support.
+      expect(() =>
+        handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 })),
+      ).not.toThrow();
+      expect(chip.getAttribute('draggable')).toBe('false');
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      expect(chip.getAttribute('draggable')).toBe('true');
+      expect(cbs.onExtendToSpan).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Task 38 follow-up: is-done/is-cancelled strikethrough parity with timed blocks', () => {
     it('marks a done plain item title is-done', () => {
       const container = freshContainer();

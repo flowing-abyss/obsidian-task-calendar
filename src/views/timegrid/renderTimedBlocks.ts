@@ -63,6 +63,60 @@ const SNAP_MINUTES = 15;
 const MAX_START_MINUTES = 24 * 60 - SNAP_MINUTES; // 23:45 — the last valid quarter-hour slot.
 const MAX_DURATION_MINUTES = 24 * 60; // A full day is already a generous, unambiguous cap.
 
+// Code review gap (fix): every pointer-drag gesture below (`attachDrag`'s move/resize, and
+// `attachHorizontalResize`'s left/right edges) tears down its state — including, for resize,
+// restoring `block`'s `draggable="true"` — from a `cleanup()` reachable only via `pointerup`/
+// `pointercancel`. If NEITHER is ever delivered for a given gesture (e.g. the pointer is
+// released while positioned outside the browser window entirely, or some other browser/OS quirk
+// swallows the up-event), cleanup never runs and, for a resize gesture, `draggable` stays
+// "false" forever — silently disabling the legitimate whole-block native-drag-to-all-day feature
+// until the block's next from-scratch re-render.
+//
+// Pointer Capture (`setPointerCapture`/`releasePointerCapture`) is the standard, spec-correct fix
+// for exactly this class of problem: per the Pointer Events spec, once an element captures a
+// pointerId, that element keeps receiving `pointermove`/`pointerup` for that pointer even if it
+// moves outside the element — or outside the browser window/document — for the remainder of the
+// gesture. That is a guarantee from the browser itself, not something this codebase's own logic
+// can fail to uphold, so it closes the gap for real rather than adding another window/document
+// listener that could itself be skipped by the same class of quirk.
+//
+// Verified this does NOT fight the existing native-HTML5-DnD-hijack-produces-pointercancel
+// behavior these same handlers already rely on (see attachDrag's onPointerCancel/cleanup and
+// attachHorizontalResize's mirror of it): Pointer Capture and HTML5 Drag-and-Drop are two
+// independent browser subsystems, but the spec is explicit that starting a native drag operation
+// implicitly releases any active pointer capture and then fires `pointercancel` at the (now
+// former) capturing element — i.e. capture does not suppress or delay the hijack's pointercancel,
+// it just additionally guarantees delivery for the ordinary (non-hijacked) release path this
+// gap is about. `releasePointerCapture` in `cleanup()` below is therefore redundant-but-cheap
+// hygiene for the two paths that already end in a real pointerup/pointercancel; the guarantee
+// that actually closes the gap is the implicit one the browser provides for a captured pointer
+// that never gets hijacked into DnD.
+//
+// jsdom implements neither method at all (confirmed: `typeof el.setPointerCapture === 'undefined'`
+// — calling it throws, it does not silently no-op), so both helpers below feature-detect before
+// calling, keeping every existing pointerdown-driven test in this file (most of which stub these
+// two methods onto the element under test) working unchanged, and tolerating any other host that
+// similarly lacks Pointer Events capture support.
+function tryCapturePointer(el: HTMLElement, pointerId: number): void {
+  if (typeof el.setPointerCapture !== 'function') return;
+  try {
+    el.setPointerCapture(pointerId);
+  } catch {
+    // A real browser can still reject capture (e.g. the pointer is no longer active) — never
+    // let that abort the gesture; the existing window-level listeners remain the fallback path.
+  }
+}
+
+function tryReleasePointer(el: HTMLElement, pointerId: number): void {
+  if (typeof el.releasePointerCapture !== 'function') return;
+  try {
+    el.releasePointerCapture(pointerId);
+  } catch {
+    // Harmless if capture was already released (e.g. implicitly, by a native-drag hijack — see
+    // this constant block's own comment above) or never actually granted.
+  }
+}
+
 /**
  * Task 37: shared `Task[]` -> `TimedBlockInput[]` conversion, factored out of
  * `renderTimedBlocksForDay` so callers (WeekTimeGridView.ts/TodayView.ts) can build the same
@@ -370,6 +424,12 @@ function attachDrag(
   let startY = 0;
   let startMinutes = initialStart;
   let startDuration = initialDuration;
+  // The element that actually received this gesture's pointerdown (`block` for move, `handle`
+  // for resize — see onPointerDown's `e.currentTarget` below) and the pointerId captured on it,
+  // so `cleanup()` can release the exact same (element, pointerId) pair it captured. See this
+  // file's pointer-capture comment (above MAX_DURATION_MINUTES) for why this exists at all.
+  let capturedEl: HTMLElement | null = null;
+  let capturedPointerId: number | null = null;
 
   const onPointerMove = (e: PointerEvent): void => {
     if (!mode) return;
@@ -402,6 +462,9 @@ function attachDrag(
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
+    if (capturedEl && capturedPointerId !== null) tryReleasePointer(capturedEl, capturedPointerId);
+    capturedEl = null;
+    capturedPointerId = null;
   };
 
   const onPointerUp = (e: PointerEvent): void => {
@@ -500,6 +563,13 @@ function attachDrag(
     // tunable, same reasoning Task 37 used to give edge-resize its own `.is-edge-resizing`
     // instead of overloading `.is-dragging`.
     if (mode === 'move') block.addClass('is-picked-up');
+    // Pointer capture on whichever element actually received this pointerdown (`e.currentTarget`
+    // — `handle` if this fired from the handle's own listener, `block` if from the block's own
+    // listener; see the two `addEventListener` calls below). See this file's pointer-capture
+    // comment (above MAX_DURATION_MINUTES) for what this closes.
+    capturedEl = e.currentTarget as HTMLElement;
+    capturedPointerId = e.pointerId;
+    tryCapturePointer(capturedEl, capturedPointerId);
     e.stopPropagation();
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
@@ -599,6 +669,10 @@ function attachHorizontalResize(
     if (idx !== -1) pending.splice(idx, 1);
   };
 
+  // See attachDrag's mirror of this same (element, pointerId) pattern, and this file's
+  // pointer-capture comment above MAX_DURATION_MINUTES for why it exists.
+  let capturedPointerId: number | null = null;
+
   const cleanup = (): void => {
     block?.setAttribute('draggable', 'true');
     clearHoveredDay();
@@ -606,6 +680,8 @@ function attachHorizontalResize(
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
     unregisterPending();
+    if (capturedPointerId !== null) tryReleasePointer(handle, capturedPointerId);
+    capturedPointerId = null;
   };
 
   const onPointerUp = (upEvent: PointerEvent): void => {
@@ -628,6 +704,8 @@ function attachHorizontalResize(
     if (e.button !== 0) return;
     e.stopPropagation();
     block?.setAttribute('draggable', 'false');
+    capturedPointerId = e.pointerId;
+    tryCapturePointer(handle, capturedPointerId);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);

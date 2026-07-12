@@ -1458,6 +1458,131 @@ describe('renderTimedBlocksForDay', () => {
     });
   });
 
+  describe('pointer capture: closes the "abandoned gesture" gap (draggable="false" stuck forever if pointerup/pointercancel never fires)', () => {
+    // The horizontal-edge-resize handles' own pointerup resolves the day under the pointer via
+    // `activeDocument.elementFromPoint`, unimplemented in jsdom — same stub this file's other
+    // horizontal-edge-resize suites use.
+    let originalElementFromPoint: typeof activeDocument.elementFromPoint;
+    beforeEach(() => {
+      originalElementFromPoint = activeDocument.elementFromPoint;
+      activeDocument.elementFromPoint = () => null;
+    });
+    afterEach(() => {
+      activeDocument.elementFromPoint = originalElementFromPoint;
+    });
+
+    // Code review gap: cleanup() — which restores block's draggable="true" — only runs from
+    // onPointerUp/onPointerCancel. If NEITHER is ever delivered after a resize pointerdown (e.g.
+    // the pointer is released outside the browser window entirely, or some other browser/OS
+    // quirk swallows the up-event), draggable stays "false" forever, silently disabling the
+    // legitimate whole-block native-drag-to-all-day feature until the block's next from-scratch
+    // re-render. The spec-correct fix is Pointer Capture: `setPointerCapture` on pointerdown
+    // guarantees the capturing element keeps receiving pointermove/pointerup for that pointerId
+    // even once the pointer leaves the element/window — so the browser itself can no longer
+    // produce the "neither pointerup nor pointercancel ever arrives" scenario for a captured
+    // pointer. That guarantee is a browser/OS contract jsdom can't reproduce (there is no way to
+    // dispatch a pointerdown and then truthfully withhold the up/cancel event a real capturing
+    // browser would still deliver) — so these tests assert the mechanism that provides the
+    // guarantee (capture is armed with the correct pointerId on pointerdown, and released once
+    // the gesture ends), which is exactly what a future regression (e.g. someone removing the
+    // capture call while refactoring) would break.
+    it('pointerdown on the vertical resize handle arms pointer capture on the handle with the gesture\'s pointerId', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      handle.setPointerCapture = vi.fn();
+      handle.releasePointerCapture = vi.fn();
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 7 }),
+      );
+      expect(handle.setPointerCapture).toHaveBeenCalledWith(7);
+    });
+
+    it('pointerdown on the block body (move mode) arms pointer capture on the block too (same abandoned-gesture risk exists for the plain move gesture)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = vi.fn();
+      block.releasePointerCapture = vi.fn();
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 3 }),
+      );
+      expect(block.setPointerCapture).toHaveBeenCalledWith(3);
+    });
+
+    it('pointerdown on the left-edge horizontal handle arms pointer capture on that handle', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      handle.setPointerCapture = vi.fn();
+      handle.releasePointerCapture = vi.fn();
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 5 }));
+      expect(handle.setPointerCapture).toHaveBeenCalledWith(5);
+    });
+
+    it('pointerdown on the right-edge horizontal handle arms pointer capture on that handle', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
+      handle.setPointerCapture = vi.fn();
+      handle.releasePointerCapture = vi.fn();
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 6 }));
+      expect(handle.setPointerCapture).toHaveBeenCalledWith(6);
+    });
+
+    it('a source lacking setPointerCapture (e.g. jsdom, or any host without Pointer Events capture support) is tolerated: no throw, and the pre-existing pointerup cleanup still runs', () => {
+      const container = freshContainer();
+      const onDurationChange = vi.fn();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onDurationChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      // Deliberately NOT stubbing setPointerCapture/releasePointerCapture here — jsdom's
+      // HTMLElement has neither method at all (both are `undefined`), reproducing any real host
+      // that lacks Pointer Events capture support.
+      expect(() =>
+        handle.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+        ),
+      ).not.toThrow();
+      expect(block.getAttribute('draggable')).toBe('false');
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 1 }));
+      expect(onDurationChange).toHaveBeenCalledWith(t, 120);
+      expect(block.getAttribute('draggable')).toBe('true');
+    });
+
+    it('releasePointerCapture is called on pointerup cleanup (vertical resize) with the same pointerId that was captured', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      handle.setPointerCapture = vi.fn();
+      handle.releasePointerCapture = vi.fn();
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 9 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointerup', { clientY: 148, pointerId: 9 }));
+      expect(handle.releasePointerCapture).toHaveBeenCalledWith(9);
+    });
+
+    it('releasePointerCapture is called on pointercancel cleanup (left-edge horizontal resize) with the same pointerId that was captured', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
+      handle.setPointerCapture = vi.fn();
+      handle.releasePointerCapture = vi.fn();
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 11 }));
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 11 }));
+      expect(handle.releasePointerCapture).toHaveBeenCalledWith(11);
+    });
+  });
+
   describe('renderTimedSpanContinuation (Task 29: non-anchor days of a multi-day timed span)', () => {
     it('renders a continuation segment positioned at the same time-of-day row as a full block would be', () => {
       const container = freshContainer();
