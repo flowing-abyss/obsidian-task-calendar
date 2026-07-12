@@ -735,7 +735,10 @@ export class RightPanel {
 
     const menu = anchor.createDiv({ cls: 'tc-context-menu tc-add-date-menu' });
     for (const opt of options) {
-      const item = menu.createDiv({ cls: 'tc-context-item tc-add-date-menu-item', text: opt.label });
+      const item = menu.createDiv({
+        cls: 'tc-context-item tc-add-date-menu-item',
+        text: opt.label,
+      });
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         menu.remove();
