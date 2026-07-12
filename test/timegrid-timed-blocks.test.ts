@@ -9,7 +9,9 @@ import {
   renderTimedSpanContinuation,
   toTimedBlockInputs,
 } from '../src/views/timegrid/renderTimedBlocks';
-import { dispatchDnD, freshContainer, task } from './helpers';
+import { dispatchDnD, freshContainer, task, useRealMoment } from './helpers';
+
+useRealMoment();
 
 const css = readFileSync(resolve(import.meta.dirname, '..', 'styles.css'), 'utf8');
 
@@ -1048,6 +1050,130 @@ describe('renderTimedBlocksForDay', () => {
     it('.tc-tg-block:focus-visible gets a distinct outline so a keyboard user can see which block arrow keys will nudge', () => {
       const rule = declarationsFor('.tc-tg-block:focus-visible');
       expect(rule).toMatch(/outline\s*:/u);
+    });
+  });
+
+  describe('Task 49: .is-selected reflects native DOM focus (click-to-select or Tab)', () => {
+    it('focusing the block adds is-selected', () => {
+      const container = freshContainer();
+      document.body.appendChild(container);
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      expect(block.hasClass('is-selected')).toBe(false);
+      block.focus();
+      expect(block.hasClass('is-selected')).toBe(true);
+      container.remove();
+    });
+
+    it('blurring the block removes is-selected', () => {
+      const container = freshContainer();
+      document.body.appendChild(container);
+      const t = task({ time: '09:00' });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.focus();
+      expect(block.hasClass('is-selected')).toBe(true);
+      block.blur();
+      expect(block.hasClass('is-selected')).toBe(false);
+      container.remove();
+    });
+
+    it('.tc-tg-block.is-selected is a distinct, styled rule from .is-picked-up/.is-dragging/.is-edge-resizing (no shared selector) and can coexist with is-picked-up without dropping either class', () => {
+      const rule = declarationsFor('.tc-tg-block.is-selected');
+      expect(rule).not.toBe('');
+      // Distinct rule bodies: is-selected must not just be an alias reusing is-picked-up's
+      // scale/shadow transform (that's the transient drag-feedback language, not "selected").
+      const pickedUpRule = declarationsFor('.tc-tg-block.is-picked-up');
+      expect(rule).not.toBe(pickedUpRule);
+
+      const container = freshContainer();
+      document.body.appendChild(container);
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      block.focus();
+      expect(block.hasClass('is-selected')).toBe(true);
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      // Both classes coexist mid-drag of an already-selected block — neither toggle clobbers
+      // the other's class.
+      expect(block.hasClass('is-selected')).toBe(true);
+      expect(block.hasClass('is-picked-up')).toBe(true);
+      container.remove();
+    });
+  });
+
+  describe('Task 49: ArrowLeft/ArrowRight horizontal day-resize while the block has native DOM focus', () => {
+    it('ArrowRight extends due one day forward via onExtendToSpan (same mutation as the mouse-driven right-edge drag)', () => {
+      const container = freshContainer();
+      const onExtendToSpan = vi.fn();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(onExtendToSpan).toHaveBeenCalledWith(t, '2026-07-11');
+    });
+
+    it('ArrowLeft moves start one day earlier via onStartChange (same mutation as the mouse-driven left-edge drag), anchored on due when the task has no start yet', () => {
+      const container = freshContainer();
+      const onStartChange = vi.fn();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onStartChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+      expect(onStartChange).toHaveBeenCalledWith(t, '2026-07-09');
+    });
+
+    it('ArrowLeft on a task that already spans (has its own start) moves that start one day further back, not due-1', () => {
+      const container = freshContainer();
+      const onStartChange = vi.fn();
+      const t = task({ time: '09:00', due: '2026-07-10', start: '2026-07-08' });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onStartChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+      expect(onStartChange).toHaveBeenCalledWith(t, '2026-07-07');
+    });
+
+    it('repeated ArrowRight presses each extend by one more day from the render-time due (matching how a re-render after each commit would supply the next base)', () => {
+      const container = freshContainer();
+      const onExtendToSpan = vi.fn();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      expect(onExtendToSpan).toHaveBeenNthCalledWith(1, t, '2026-07-11');
+      expect(onExtendToSpan).toHaveBeenNthCalledWith(2, t, '2026-07-11');
+    });
+
+    it('ArrowRight/ArrowLeft never call onTimeChange/onDurationChange (stay on the horizontal mutation path only)', () => {
+      const container = freshContainer();
+      const cbs = callbacks();
+      const t = task({ time: '09:00', due: '2026-07-10', start: '2026-07-08' });
+      renderTimedBlocksForDay(container, [t], cbs);
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+      block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+      expect(cbs.onTimeChange).not.toHaveBeenCalled();
+      expect(cbs.onDurationChange).not.toHaveBeenCalled();
+    });
+
+    it('a keydown bubbling up from a descendant (not the block itself) is ignored for ArrowLeft/ArrowRight too', () => {
+      const container = freshContainer();
+      const onExtendToSpan = vi.fn();
+      const onStartChange = vi.fn();
+      const t = task({ time: '09:00', due: '2026-07-10' });
+      renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan, onStartChange });
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      title.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      expect(onExtendToSpan).not.toHaveBeenCalled();
+      expect(onStartChange).not.toHaveBeenCalled();
     });
   });
 

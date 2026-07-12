@@ -287,7 +287,10 @@ export function renderTimedBlocksForDay(
     // commits through (Task 33's `applyValidatedLineMutation` safety net lives one layer up, in
     // whatever wires `onTimeChange` — see CenterPanel.ts's `handleTimeChange` — so this
     // inherits it automatically rather than needing its own mutation path).
+    // Task 49: ArrowLeft/ArrowRight extended onto the same handler — see
+    // attachKeyboardNudge's own doc comment for the day-resolution/mutation-routing details.
     attachKeyboardNudge(block, p.startMinutes, callbacks, p.task);
+    attachSelectedState(block);
   }
 }
 
@@ -395,6 +398,23 @@ export function renderTimedSpanContinuation(
  * CenterPanel.ts's `handleTimeChange` -> `updateTaskTime` -> `TaskMutationService`'s
  * `applyValidatedLineMutation`, Task 33's validate-before-write safety net) without needing its
  * own mutation call here.
+ *
+ * Task 49: ArrowLeft/ArrowRight extend the same handler onto the horizontal (day-crossing)
+ * resize the mouse-driven edge handles below already perform — reusing `callbacks.onStartChange`/
+ * `callbacks.onExtendToSpan` (the EXACT same callback references `attachHorizontalResize` commits
+ * through) rather than adding a parallel mutation path, so this inherits the identical
+ * `applyValidatedLineMutation` safety net one layer up (CenterPanel.ts's `handleStartChange`/
+ * `handleExtendToSpan` -> `updateTaskStart`/`extendTaskToSpan`).
+ *
+ * The mouse-driven edges resolve "which day" from the pointer's on-release position
+ * (`elementFromPoint`) — there is no equivalent pointer position for a keypress, so the day is
+ * instead computed by stepping one calendar day from the task's own current, already-committed
+ * date field: ArrowRight steps `due` (falling back to `scheduled`/`start` for a task that has
+ * neither `due` nor a span yet) forward by one day; ArrowLeft steps `start` (falling back to
+ * `due`/`scheduled` the first time a plain task's left edge is ever moved) backward by one day.
+ * Preferring the task's OWN in-progress edge (`start` for the left key, `due` for the right key)
+ * over the other field means repeated presses keep walking the same edge one more day in the same
+ * direction, matching how repeatedly dragging the same mouse handle further does.
  */
 function attachKeyboardNudge(
   block: HTMLElement,
@@ -404,12 +424,42 @@ function attachKeyboardNudge(
 ): void {
   block.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.target !== block) return;
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-    e.preventDefault();
-    const delta = e.key === 'ArrowUp' ? -SNAP_MINUTES : SNAP_MINUTES;
-    const next = Math.min(MAX_START_MINUTES, Math.max(0, currentStartMinutes + delta));
-    callbacks.onTimeChange(task, next);
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const delta = e.key === 'ArrowUp' ? -SNAP_MINUTES : SNAP_MINUTES;
+      const next = Math.min(MAX_START_MINUTES, Math.max(0, currentStartMinutes + delta));
+      callbacks.onTimeChange(task, next);
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const base = task.due ?? task.scheduled ?? task.start;
+      if (!base) return;
+      callbacks.onExtendToSpan(task, window.moment(base).add(1, 'day').format('YYYY-MM-DD'));
+      return;
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const base = task.start ?? task.due ?? task.scheduled;
+      if (!base) return;
+      callbacks.onStartChange(task, window.moment(base).subtract(1, 'day').format('YYYY-MM-DD'));
+    }
   });
+}
+
+/**
+ * Task 49: `.is-selected` — a clear "this block is the active/selected one" treatment, applied
+ * for the full duration the block has native DOM focus (both mouse-click and Tab-focus, unlike
+ * the narrower keyboard-only `:focus-visible` outline Task 39 originally added — see this file's
+ * CSS comment on `.tc-tg-block.is-selected` for why that got superseded rather than kept
+ * alongside this). A plain `focus`/`blur` pair (not `focusin`/`focusout`) is deliberate: this is
+ * attached directly on `block` itself (the only focusable element the tabindex above creates),
+ * so there is no bubbling case to catch and no risk of it firing for some future focusable
+ * descendant the way a bubbling listener would.
+ */
+function attachSelectedState(block: HTMLElement): void {
+  block.addEventListener('focus', () => block.addClass('is-selected'));
+  block.addEventListener('blur', () => block.removeClass('is-selected'));
 }
 
 function attachDrag(

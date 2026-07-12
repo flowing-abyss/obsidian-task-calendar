@@ -1809,16 +1809,42 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   z-index: 5;
 }
 
-/* Task 39: the ONLY visual indicator of which block keyboard arrow-key nudging currently
-   targets — this codebase has no broader "selected task" concept (see attachKeyboardNudge's own
-   comment), so without this a keyboard user would have no way to tell which block is about to
-   move. Reuses the dashed-in-tag-color language `.is-edge-resizing` already established rather
-   than inventing a third convention; `:focus-visible` (not bare `:focus`) so a mouse click that
-   focuses the block doesn't show it too, matching how sighted mouse users already get
-   `.is-picked-up`/`.is-edge-resizing` for their own in-progress gestures. */
+/* Task 39 (superseded by Task 49, see .is-selected below): originally the ONLY visual indicator
+   of which block keyboard arrow-key nudging targets, scoped to `:focus-visible` so a mouse click
+   that focuses the block didn't show it. Task 49's ask reverses that scoping decision on
+   purpose — a deliberate mouse CLICK is now also meant to read as "this task is now selected",
+   not just Tab-focus — so the outline itself moved to the unconditional `.is-selected` class
+   below; this bare `:focus-visible` rule is kept only as a belt-and-suspenders fallback for the
+   (currently theoretical) case where some future host fails to fire `focus`/`blur` the way this
+   file's `attachSelectedState` expects, and is intentionally IDENTICAL in strength to the old
+   rule (not the strengthened `.is-selected` treatment) so it never doubles up with it. */
 .tc-tg-block:focus-visible {
   outline: 2px dashed var(--tc-tag-color, var(--interactive-accent));
   outline-offset: 1px;
+}
+
+/* Task 49: the deliberate "this task is now active/selected" treatment — applied via JS
+   (renderTimedBlocks.ts's attachSelectedState) for the full duration the block has native DOM
+   focus, from EITHER a click or Tab, unlike the narrower `:focus-visible`-only outline above.
+   Reads as clearly distinct from the other transient, gesture-scoped states on this same
+   element: `.is-picked-up` (Task 39, a brief lift+shadow shown only while a move-drag is
+   pointer-held) and `.is-dragging` (Task 26, opacity fade during the native drag-to-all-day
+   hijack) — both can coexist with `.is-selected` (e.g. starting a drag on an already-focused
+   block) without either fighting the other, since none of the three share a CSS property this
+   rule sets. A solid 2px outline (not dashed, unlike `:focus-visible`/`.is-edge-resizing`'s
+   "in-progress gesture" dashed language — this is a persisted state, not a gesture) plus a
+   faint tag-colored background wash (falling back to the neutral accent, same fallback the
+   outline and the tag-fill background already use) reads as "selected" the way a solid
+   selection highlight conventionally does, at rest, for as long as focus is held — not just for
+   the split-second of an active pointer gesture the other two classes cover. */
+.tc-tg-block.is-selected {
+  outline: 2px solid var(--tc-tag-color, var(--interactive-accent));
+  outline-offset: 1px;
+  background-color: color-mix(
+    in srgb,
+    var(--tc-tag-color, var(--interactive-accent)) 10%,
+    transparent
+  );
 }
 
 /* Task 37: shown on a span/plain item's own `.tc-tg-body` while its edge-resize handle
