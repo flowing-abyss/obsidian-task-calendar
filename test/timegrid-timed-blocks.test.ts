@@ -1486,7 +1486,7 @@ describe('renderTimedBlocksForDay', () => {
     // guarantee (capture is armed with the correct pointerId on pointerdown, and released once
     // the gesture ends), which is exactly what a future regression (e.g. someone removing the
     // capture call while refactoring) would break.
-    it('pointerdown on the vertical resize handle arms pointer capture on the handle with the gesture\'s pointerId', () => {
+    it("pointerdown on the vertical resize handle arms pointer capture on the handle with the gesture's pointerId", () => {
       const container = freshContainer();
       const t = task({ time: '09:00', duration: 60 });
       renderTimedBlocksForDay(container, [t], callbacks());

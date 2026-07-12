@@ -785,7 +785,7 @@ describe('renderAllDayCell', () => {
     // guarantee (a real browser will always eventually deliver pointerup/pointercancel to a
     // captured pointer, even if it's released outside the window) — these assert the mechanism
     // that provides it, so a future refactor that drops the capture call regresses visibly.
-    it('pointerdown on an edge-resize handle arms pointer capture on that handle with the gesture\'s pointerId', () => {
+    it("pointerdown on an edge-resize handle arms pointer capture on that handle with the gesture's pointerId", () => {
       const container = freshContainer();
       const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
       renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks());
