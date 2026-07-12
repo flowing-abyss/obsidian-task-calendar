@@ -430,8 +430,30 @@ function attachDrag(
   // gesture would never be torn down — leaking listeners that would double-fire on the next
   // real gesture — and no mutation must fire here (the drop is handled by the native DnD
   // dragend/drop path instead, not this pointer session).
+  //
+  // Investigated as a possible root cause of "drag-to-reschedule lands at the wrong time":
+  // `onPointerMove` above already repositions `block.style.top`/`height` live, on every
+  // pointermove, as a preview of the not-yet-committed move/resize. A native-drag hijack can
+  // fire at any point during an ordinary vertical move gesture too — per the HTML Drag and Drop
+  // spec, arming only needs the pointer to move past a small threshold while the button is held
+  // on a draggable="true" element, in ANY direction, not specifically toward the all-day row.
+  // Without the reset below, a hijacked gesture left the block's DOM position/size sitting at
+  // whatever the last live-preview pointermove had set it to, even though NO mutation had
+  // committed (onTimeChange/onDurationChange only fire from onPointerUp, never from here) — a
+  // real, visible divergence between what the block showed and the task's actual, unchanged
+  // data, persisting until some unrelated re-render happened to overwrite it. Reverting to the
+  // pre-gesture position/size here, unconditionally, keeps the DOM never ahead of committed data
+  // regardless of what (if anything) the hijacked native drag itself goes on to do — including
+  // the legitimate case where it lands on the all-day row and converts the task via a completely
+  // separate mutation path (renderAllDay.ts's onDrop/rescheduleTask), which is free to run
+  // without this preview's stale position fighting it.
   const onPointerCancel = (): void => {
     if (!mode) return;
+    if (mode === 'move') {
+      block.style.top = `${minutesToPixels(startMinutes)}px`;
+    } else {
+      block.style.height = `${minutesToPixels(startDuration)}px`;
+    }
     cleanup();
   };
 

@@ -752,6 +752,47 @@ describe('renderTimedBlocksForDay', () => {
       expect(onTimeChange).toHaveBeenCalledTimes(1);
     });
 
+    it('a pointercancel mid-MOVE reverts the live-preview top back to the pre-gesture position, since no mutation committed (regression: previously left the block visually parked at the abandoned preview position with no underlying data change)', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      block.setPointerCapture = () => {};
+      block.releasePointerCapture = () => {};
+      const originalTop = block.style.top;
+      block.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      // Live preview moved the block — confirm the preview actually changed something before
+      // asserting it gets reverted.
+      expect(block.style.top).not.toBe(originalTop);
+      // Dispatched directly on `window` (not via bubbling from `block`): freshContainer()'s
+      // element is never attached to `document`, so a bubbling event dispatched on a detached
+      // descendant never actually reaches `window` in jsdom — same caveat this file's other
+      // pointercancel tests document (e.g. the is-picked-up suite above).
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      expect(block.style.top).toBe(originalTop);
+    });
+
+    it('a pointercancel mid-RESIZE reverts the live-preview height back to the pre-gesture duration', () => {
+      const container = freshContainer();
+      const t = task({ time: '09:00', duration: 60 });
+      renderTimedBlocksForDay(container, [t], callbacks());
+      const block = container.querySelector('.tc-tg-block') as HTMLElement;
+      const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
+      handle.setPointerCapture = () => {};
+      handle.releasePointerCapture = () => {};
+      const originalHeight = block.style.height;
+      handle.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, clientY: 100, pointerId: 1 }),
+      );
+      window.dispatchEvent(new PointerEvent('pointermove', { clientY: 148, pointerId: 1 }));
+      expect(block.style.height).not.toBe(originalHeight);
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+      expect(block.style.height).toBe(originalHeight);
+    });
+
     describe('ancestor-draggable-toggle fix: draggable="false" on the handle alone does not stop the ancestor fallback (mirrors renderAllDay.ts attachEdgeResize)', () => {
       it("pointerdown on the vertical resize handle flips the block's own draggable to false (resize mode), restored on pointerup", () => {
         const container = freshContainer();
