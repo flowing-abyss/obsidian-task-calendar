@@ -1558,9 +1558,16 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
 .tc-tg-body-title {
   flex: 1;
   min-width: 0;
+  /* Task 44: matches .tc-tg-block-title's overflow/text-overflow/white-space treatment exactly
+     (asserted in test/timegrid-allday.test.ts) so a long all-day title truncates/ellipsizes
+     identically to a timed block's, instead of the two rows following visually different rules. */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Task 44: bold weight to match .tc-tg-block-title — previously unset here (inheriting
+     normal weight from .tc-tg-body), so an all-day item's title read visibly lighter/thinner
+     than a timed block's title directly below it in the same day column. */
+  font-weight: 600;
   /* Task 40 (Round 4): all-day span/plain items share the same tag-colored fill (renderAllDay.ts's
      renderDraggableBody), so their title needs the same contrast-driven override — previously
      this had no explicit color at all and simply inherited Obsidian's own body text color, which

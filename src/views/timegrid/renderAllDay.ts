@@ -8,7 +8,7 @@ import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';
 import { statusTitleClass } from '../../ui/statusTitleClass';
-import { hasMeta, renderCountBadges, renderTagChips } from './renderTaskMeta';
+import { hasCountBadges, renderCountBadges } from './renderTaskMeta';
 
 export interface AllDayCallbacks {
   app: App;
@@ -79,14 +79,17 @@ function renderDraggableBody(
     sourcePath: task.filePath,
     component: callbacks.component,
   });
-  // Tag chips + count badges (subtasks/comments/links), matching TaskCard/CenterPanel's
-  // visual language. Skipped when the task has neither. Non-interactive — see
+  // Count badges (subtasks/comments/links) only — Task 44: tag chips were removed here too,
+  // mirroring Task 35's identical removal for timed blocks (renderTimedBlocks.ts): the item's
+  // own tag-colored fill (set below) already conveys the tag, so a chip repeating it was
+  // redundant and was the last place in the calendar still showing one. Gated on
+  // hasCountBadges (not hasMeta, which also checks for tags) so a tag-only task with no
+  // counts doesn't gain an empty, now-chip-less meta container. Non-interactive — see
   // renderTaskMeta.ts for why (avoids needing a pointerdown exclusion-guard here, next to
   // the whole-body drag and edge-resize handles this element carries).
-  if (hasMeta(task)) {
+  if (hasCountBadges(task)) {
     const meta = el.createSpan({ cls: 'tc-tg-body-meta' });
     renderCountBadges(meta, task);
-    renderTagChips(meta, task, tagGroups, 2);
   }
   // Tag-colored fill only — the priority-colored border was removed (Task 12): the
   // status marker above already conveys priority via its own border, so a second

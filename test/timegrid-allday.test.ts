@@ -521,7 +521,7 @@ describe('renderAllDayCell', () => {
     expect(cbs.onDueChange).not.toHaveBeenCalled();
   });
 
-  it('renders tag chips and count badges in a .tc-tg-body-meta span on a plain chip', () => {
+  it('renders count badges (no tag chips) in a .tc-tg-body-meta span on a plain chip', () => {
     const container = freshContainer();
     const t = task({
       due: '2026-07-10',
@@ -536,7 +536,56 @@ describe('renderAllDayCell', () => {
     const meta = chip.querySelector('.tc-tg-body-meta') as HTMLElement;
     expect(meta).not.toBeNull();
     expect(meta.querySelector('.tc-task-count-badge')).not.toBeNull();
-    expect(meta.querySelector('.tc-task-tag')?.textContent).toBe('#work');
+    expect(meta.querySelector('.tc-task-tag')).toBeNull();
+  });
+
+  describe('Task 44: no tag chips on all-day/plain/span items (mirrors Task 35\'s timed-block removal)', () => {
+    it('never renders a .tc-task-tag on a plain chip, even for a tagged task', () => {
+      const container = freshContainer();
+      const t = task({ due: '2026-07-10', text: 'Plain', rawText: '- [ ] Plain #work' });
+      renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks(), [
+        { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+      ]);
+      const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+      expect(chip.querySelector('.tc-task-tag')).toBeNull();
+    });
+
+    it('never renders a .tc-task-tag on a span body, even for a tagged task', () => {
+      const container = freshContainer();
+      const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip', rawText: '- [ ] Trip #work' });
+      renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks(), [
+        { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+      ]);
+      const bar = container.querySelector('.tc-tg-span') as HTMLElement;
+      expect(bar.querySelector('.tc-task-tag')).toBeNull();
+    });
+
+    it('a tagged plain chip with no subtasks/comments/links now omits .tc-tg-body-meta entirely (no chip left to show)', () => {
+      const container = freshContainer();
+      const t = task({ due: '2026-07-10', text: 'Plain', rawText: '- [ ] Plain #work' });
+      renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks(), [
+        { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
+      ]);
+      const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
+      expect(chip.querySelector('.tc-tg-body-meta')).toBeNull();
+    });
+
+    it("the all-day title's (.tc-tg-body-title) truncation CSS matches the timed-block title's (.tc-tg-block-title) exactly", () => {
+      const bodyDecls = declarationsFor('.tc-tg-body-title');
+      const blockDecls = declarationsFor('.tc-tg-block-title');
+      for (const prop of ['overflow', 'text-overflow', 'white-space']) {
+        const bodyValue = new RegExp(`${prop}\\s*:\\s*([^;]+);`, 'u').exec(bodyDecls)?.[1]?.trim();
+        const blockValue = new RegExp(`${prop}\\s*:\\s*([^;]+);`, 'u').exec(blockDecls)?.[1]?.trim();
+        expect(bodyValue).toBeTruthy();
+        expect(bodyValue).toBe(blockValue);
+      }
+      // Also verify font-weight parity — Task 44 follow-up: an all-day title previously read
+      // visibly lighter/thinner than a timed block's title directly below it in the same day
+      // column, since only the block title set font-weight: 600.
+      const bodyWeight = /font-weight\s*:\s*([^;]+);/u.exec(bodyDecls)?.[1]?.trim();
+      const blockWeight = /font-weight\s*:\s*([^;]+);/u.exec(blockDecls)?.[1]?.trim();
+      expect(bodyWeight).toBe(blockWeight);
+    });
   });
 
   it('renders count badges (no tag chips) on a deadline marker, per the no-tag-fill convention', () => {
