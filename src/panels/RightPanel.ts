@@ -276,16 +276,17 @@ export class RightPanel {
       // Priority chip
       this.renderPriorityChip(chips, task);
 
-      // Scheduled ("Plan") and Start chips — always rendered, same round-pill style as the
-      // date/time/priority chips above. Unset renders as a dashed placeholder (tc-chip-empty,
-      // matching the unset Date chip's own convention); clicking either — set or unset —
-      // opens the same small date-picker popover used for the due-date chip (showDatePopover,
-      // generalized with a `field` param below) rather than a separate disclosure. This
-      // replaces the old "promoted chip only once set + reopen the Planning disclosure"
-      // scheme, which kept the *unset* affordance stuck inside a raw <input type=date> in a
-      // separate "Planning" section — visually inconsistent with every other metadata chip.
-      this.renderScheduledChip(chips, task);
-      this.renderStartChip(chips, task);
+      // Scheduled ("Plan") and Start chips — once SET, rendered as a normal round-pill,
+      // same style as the date/time/priority chips above; clicking it opens the same small
+      // date-picker popover used for the due-date chip (showDatePopover, generalized with a
+      // `field` param below). While UNSET, no placeholder pill clutters the main row —
+      // instead a compact "+" control (mirroring the "+ tag" button's pattern) offers to
+      // add whichever of Start/Plan are currently unset; picking one opens the exact same
+      // popover. This intentionally reverses the "always-visible placeholder pill" unset
+      // treatment from the previous round after live testing showed it cluttered the row.
+      if (task.scheduled) this.renderScheduledChip(chips, task);
+      if (task.start) this.renderStartChip(chips, task);
+      this.renderAddDateMenu(chips, task);
 
       // Tag chips
       const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
@@ -693,6 +694,56 @@ export class RightPanel {
       e.stopPropagation();
       this.showDatePopover(chip, task, 'start');
     });
+  }
+
+  /**
+   * Compact "+"-style control offering to add whichever of Start/Plan are currently unset —
+   * mirrors the "+ tag" button's pattern (small affordance that reveals a chooser) rather than
+   * an always-visible placeholder pill. Renders nothing once both are already set (nothing left
+   * to offer), and remains extensible for future addable properties (e.g. recurrence).
+   */
+  private renderAddDateMenu(container: HTMLElement, task: TaskLike): void {
+    const options: Array<{ field: 'start' | 'scheduled'; label: string }> = [];
+    if (!task.start) options.push({ field: 'start', label: '🛫 Start' });
+    if (!task.scheduled) options.push({ field: 'scheduled', label: '⏳ Plan' });
+    if (options.length === 0) return;
+
+    const addBtn = container.createEl('button', {
+      cls: 'tc-chip tc-chip-add tc-chip-add-date',
+      text: '+ date',
+      attr: { title: 'Add start or plan date', 'aria-label': 'Add start or plan date' },
+    });
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.showAddDateMenu(addBtn, task, options);
+    });
+  }
+
+  /** Small menu anchored to the "+ date" button — clicking an option opens showDatePopover. */
+  private showAddDateMenu(
+    anchor: HTMLElement,
+    task: TaskLike,
+    options: Array<{ field: 'start' | 'scheduled'; label: string }>,
+  ): void {
+    const existing = anchor.querySelector('.tc-add-date-menu');
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    this.el.querySelectorAll('.tc-add-date-menu').forEach((el) => el.remove());
+    this.el.querySelectorAll('.tc-context-menu').forEach((el) => el.remove());
+
+    const menu = anchor.createDiv({ cls: 'tc-context-menu tc-add-date-menu' });
+    for (const opt of options) {
+      const item = menu.createDiv({ cls: 'tc-context-item tc-add-date-menu-item', text: opt.label });
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.remove();
+        this.showDatePopover(anchor, task, opt.field);
+      });
+    }
+
+    this.dismissMenuOnOutsideClick(menu, anchor);
   }
 
   private renderPriorityChip(container: HTMLElement, task: TaskLike): void {
@@ -1257,6 +1308,11 @@ export class RightPanel {
       void openInFile(this.app, task);
     });
 
+    this.dismissMenuOnOutsideClick(menu, anchor);
+  }
+
+  /** Shared outside-click dismissal for small anchored menus (context menu, add-date menu). */
+  private dismissMenuOnOutsideClick(menu: HTMLElement, anchor: HTMLElement): void {
     window.setTimeout(() => {
       const dismiss = (e: MouseEvent): void => {
         if (!menu.contains(e.target as Node) && e.target !== anchor) {

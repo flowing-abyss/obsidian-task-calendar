@@ -425,17 +425,17 @@ describe('RightPanel popovers', () => {
 });
 
 describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priority)', () => {
-  it('unset Start and Plan render as placeholder badges in the top chip row, not a separate disclosure', async () => {
+  it('unset Start and Plan render NO placeholder badges in the top chip row; a "+" control is offered instead', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
-    const startChip = el.querySelector('.tc-chip-start');
-    const schedChip = el.querySelector('.tc-chip-scheduled');
-    expect(startChip?.textContent).toContain('Start');
-    expect(startChip?.classList.contains('tc-chip-empty')).toBe(true);
-    expect(schedChip?.textContent).toContain('Plan');
-    expect(schedChip?.classList.contains('tc-chip-empty')).toBe(true);
+    // No placeholder pills for unset Start/Plan clutter the main row any more.
+    expect(el.querySelector('.tc-chip-start')).toBeNull();
+    expect(el.querySelector('.tc-chip-scheduled')).toBeNull();
     // No separate "Planning" disclosure exists any more — fully unified into the top row.
     expect(el.querySelector('.tc-planning-section')).toBeNull();
+    // Compact "+"-style control, mirroring the "+ tag" button's pattern.
+    const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date');
+    expect(addBtn).not.toBeNull();
   });
 
   it('a task with scheduled set shows a value-bearing (non-empty) scheduled badge in the top row', async () => {
@@ -458,27 +458,69 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
     expect(chip?.classList.contains('tc-chip-empty')).toBe(false);
   });
 
-  it('clicking an unset Start badge opens the same date popover style used for the due-date chip', async () => {
+  it('the "+" control\'s menu offers both Start and Plan when neither is set', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
-    const chip = el.querySelector<HTMLElement>('.tc-chip-start')!;
-    click(chip);
+    const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
+    click(addBtn);
+    const menu = el.querySelector('.tc-add-date-menu');
+    expect(menu).not.toBeNull();
+    expect(menu?.textContent).toContain('Start');
+    expect(menu?.textContent).toContain('Plan');
+  });
+
+  it('the "+" control\'s menu offers only the currently-unset field when the other is already set', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [
+      task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined }),
+    ]);
+    // Plan is set, so it renders as a normal pill and is no longer offered in the menu.
+    expect(el.querySelector('.tc-chip-scheduled')).not.toBeNull();
+    const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
+    click(addBtn);
+    const menu = el.querySelector('.tc-add-date-menu');
+    expect(menu).not.toBeNull();
+    expect(menu?.textContent).toContain('Start');
+    expect(menu?.textContent).not.toContain('Plan');
+  });
+
+  it('the "+" control does not render once both Start and Plan are set', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [
+      task({ text: 'Both', start: '2026-07-01', scheduled: '2026-07-05', duration: undefined }),
+    ]);
+    expect(el.querySelector('.tc-chip-add-date')).toBeNull();
+  });
+
+  it('clicking "Start" in the "+" menu opens the same date popover style used for the due-date chip', async () => {
+    const { state, el } = await makePanel();
+    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
+    const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
+    click(addBtn);
+    const startOption = Array.from(el.querySelectorAll<HTMLElement>('.tc-add-date-menu-item')).find(
+      (o) => o.textContent?.includes('Start'),
+    )!;
+    click(startOption);
     const popover = el.querySelector('.tc-date-popover');
     expect(popover).not.toBeNull();
     expect(popover?.querySelector('input[type="date"]')).not.toBeNull();
   });
 
-  it('clicking an unset Plan badge opens the same date popover style used for the due-date chip', async () => {
+  it('clicking "Plan" in the "+" menu opens the same date popover style used for the due-date chip', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
-    const chip = el.querySelector<HTMLElement>('.tc-chip-scheduled')!;
-    click(chip);
+    const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
+    click(addBtn);
+    const planOption = Array.from(el.querySelectorAll<HTMLElement>('.tc-add-date-menu-item')).find(
+      (o) => o.textContent?.includes('Plan'),
+    )!;
+    click(planOption);
     const popover = el.querySelector('.tc-date-popover');
     expect(popover).not.toBeNull();
     expect(popover?.querySelector('input[type="date"]')).not.toBeNull();
   });
 
-  it('setting a Start date via the popover writes 🛫 to the file and updates the badge in place', async () => {
+  it('setting a Start date via the "+" menu\'s popover writes 🛫 to the file and shows a normal top-row pill', async () => {
     const { state, app, el } = await makePanel({ 'f.md': '- [ ] Dated 📅 2026-06-25\n' });
     state.set('taskStack', [
       task({
@@ -490,8 +532,12 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
         rawText: '- [ ] Dated 📅 2026-06-25',
       }),
     ]);
-    const chip = el.querySelector<HTMLElement>('.tc-chip-start')!;
-    click(chip);
+    const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
+    click(addBtn);
+    const startOption = Array.from(el.querySelectorAll<HTMLElement>('.tc-add-date-menu-item')).find(
+      (o) => o.textContent?.includes('Start'),
+    )!;
+    click(startOption);
     const input = el.querySelector<HTMLInputElement>('.tc-date-popover .tc-date-input')!;
     input.value = '2026-07-01';
     input.dispatchEvent(new Event('change'));
@@ -500,7 +546,7 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
     expect(content).toContain('🛫 2026-07-01');
   });
 
-  it('a SubTask (no duration field) still renders Start/Plan badges — they are no longer gated on the removed Planning disclosure', async () => {
+  it('a SubTask (no duration field) offers the "+" control for its own unset Start/Plan — not gated on the removed Planning disclosure', async () => {
     const { state, el } = await makePanel();
     const sub: SubTask = {
       filePath: 'f.md',
@@ -516,8 +562,9 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
     // Drill into the sub-task directly, the same way clicking its label would.
     state.set('taskStack', [task({ text: 'Parent', subtasks: [sub] }), sub]);
     expect(el.querySelector('.tc-planning-section')).toBeNull();
-    expect(el.querySelector('.tc-chip-start')).not.toBeNull();
-    expect(el.querySelector('.tc-chip-scheduled')).not.toBeNull();
+    expect(el.querySelector('.tc-chip-start')).toBeNull();
+    expect(el.querySelector('.tc-chip-scheduled')).toBeNull();
+    expect(el.querySelector('.tc-chip-add-date')).not.toBeNull();
   });
 
   it('combined time+duration chip shows "time · duration" when both set, just time otherwise', async () => {

@@ -3316,6 +3316,9 @@ body.is-mobile .tasksCalendar .statisticPopup li {
   border-style: dashed;
   color: var(--text-muted);
 }
+.tc-chip-add-date {
+  position: relative;
+}
 .tc-chip-remove {
   display: inline-flex;
   align-items: center;
