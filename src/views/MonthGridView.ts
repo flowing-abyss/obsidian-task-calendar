@@ -8,6 +8,7 @@ import { tagFillTextColorVar } from '../tags/tagFillContrast';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { showStatusMenuAt } from '../ui/statusMenu';
+import { statusTitleClass } from '../ui/statusTitleClass';
 import { BaseView } from './BaseView';
 import { bucketTasksForDate } from './TodayView';
 
@@ -231,9 +232,15 @@ export class MonthGridView extends BaseView {
    * row (`.tc-mg-item-meta`) that Round 3 Task 13 added here — Month cells are small
    * enough that it made them feel cluttered; that meta row is kept on Day/Week's timed
    * blocks (renderTaskMeta.ts) and all-day items, just not on Month's compact items.
+   *
+   * Task 38 follow-up: also applies the same is-done/is-cancelled strikethrough convention
+   * timed blocks/continuation segments and all-day items already use (statusTitleClass) — this
+   * is the single title-rendering path shared by every compact item type (timed, span,
+   * timedSpan, plain, AND deadline markers, see renderCompactCell above), so one change here
+   * covers all of them.
    */
   private renderTitle(container: HTMLElement, t: Task): void {
-    const titleEl = container.createSpan({ cls: 'tc-mg-item-title' });
+    const titleEl = container.createSpan({ cls: `tc-mg-item-title${statusTitleClass(t.status)}` });
     renderTaskText(titleEl, t.markdownText, {
       app: this.callbacks.app,
       sourcePath: t.filePath,

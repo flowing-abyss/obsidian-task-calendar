@@ -7,6 +7,7 @@ import { tagFillTextColorVar } from '../../tags/tagFillContrast';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';
+import { statusTitleClass } from '../../ui/statusTitleClass';
 import { hasMeta, renderCountBadges, renderTagChips } from './renderTaskMeta';
 
 export interface AllDayCallbacks {
@@ -68,7 +69,11 @@ function renderDraggableBody(
   // Task 21: `.tc-tg-body-title` (not a bare span) so it can be a flex child that
   // truncates independently — `.tc-tg-body` itself is now a flex row (marker + title +
   // meta) instead of block-stacking, matching renderTimedBlocks.ts's `.tc-tg-block-head`.
-  const titleEl = el.createSpan({ cls: 'tc-tg-body-title' });
+  // Task 38 follow-up: same is-done/is-cancelled strikethrough convention as timed
+  // blocks (renderTimedBlocks.ts) — previously missing here, so a completed all-day
+  // span/plain item read as plain/untouched while the same task's timed block elsewhere
+  // showed struck-through.
+  const titleEl = el.createSpan({ cls: `tc-tg-body-title${statusTitleClass(task.status)}` });
   renderTaskText(titleEl, task.markdownText, {
     app: callbacks.app,
     sourcePath: task.filePath,
@@ -274,7 +279,9 @@ export function renderAllDayCell(
       },
     });
     marker.createSpan({ text: '📅 ' });
-    const titleEl = marker.createSpan();
+    // Task 38 follow-up: same is-done/is-cancelled strikethrough convention as timed blocks
+    // and all-day span/plain items above — previously this title had no status class at all.
+    const titleEl = marker.createSpan({ cls: `tc-tg-deadline-title${statusTitleClass(t.status)}` });
     renderTaskText(titleEl, t.markdownText, {
       app: callbacks.app,
       sourcePath: t.filePath,

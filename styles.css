@@ -1416,6 +1416,25 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   color: var(--text-faint);
 }
 
+/* Task 38 follow-up (Round 4 review): the SAME strikethrough convention as
+   .tc-tg-block-title.is-done/.is-cancelled above, extended to the calendar item types that
+   were missed when Task 38 first added it — all-day span/plain items (.tc-tg-body-title),
+   deadline markers (.tc-tg-deadline-title), and Month-grid compact items (.tc-mg-item-title,
+   shared by timed/span/timedSpan/plain/deadline items there). Without these, a completed task
+   showed strikethrough in Week/Day's timed view but a plain, untouched title everywhere else. */
+.tc-tg-body-title.is-done,
+.tc-tg-deadline-title.is-done,
+.tc-mg-item-title.is-done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.tc-tg-body-title.is-cancelled,
+.tc-tg-deadline-title.is-cancelled,
+.tc-mg-item-title.is-cancelled {
+  text-decoration: line-through;
+  color: var(--text-faint);
+}
+
 /* Task 21: was 0.85em, which nests inside .tc-tg-block's own 0.8em — an em value
    compounds against its *parent's computed* size, not the root, so 0.85em here
    actually rendered at 0.85 * 0.8 = 0.68em of the real interface font-size (visibly
@@ -1487,6 +1506,18 @@ body:not(.is-mobile) .tasksCalendar .task:hover {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+/* Task 40 follow-up (Round 4 review): `.tc-task-count-badge` (shared with the main task list,
+   TaskCard.ts's `.tc-task-title-row`) was hard-coded to `var(--text-muted)`, so it never
+   participated in Task 40's luminance-based contrast switching — a badge inside a bright/dark
+   tag-filled timed block or continuation segment could wash out against that fill exactly like
+   the title/subtitle used to. Scoped to `.tc-tg-block-badges` (only ever rendered inside a timed
+   block/continuation segment, see renderTimedBlocks.ts) so the main task list's badges — a
+   different container with `--tc-tag-text-color` never set in scope — are completely unaffected;
+   `var(x, var(--text-muted))` falls back to the exact same untagged color either way. */
+.tc-tg-block-badges .tc-task-count-badge {
+  color: var(--tc-tag-text-color, var(--text-muted));
 }
 
 /* Task 33: was `bottom: -3px` — .tc-tg-block clips its content (overflow: hidden, for the

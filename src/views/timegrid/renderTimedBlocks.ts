@@ -8,6 +8,7 @@ import { tagFillTextColorVar } from '../../tags/tagFillContrast';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';
+import { statusTitleClass } from '../../ui/statusTitleClass';
 import {
   capContinuationMinHeightsPx,
   capMinHeightsPx,
@@ -61,17 +62,6 @@ const SNAP_MINUTES = 15;
 // etc.), not the first one.
 const MAX_START_MINUTES = 24 * 60 - SNAP_MINUTES; // 23:45 — the last valid quarter-hour slot.
 const MAX_DURATION_MINUTES = 24 * 60; // A full day is already a generous, unambiguous cap.
-
-/**
- * Task 38: `is-done`/`is-cancelled` suffix mirroring ListView.ts's renderListTask statusClass
- * convention — shared by the anchor block's title and the continuation segment's title so a
- * completed/cancelled task reads the same (struck-through) wherever it renders.
- */
-function statusTitleClass(status: Task['status']): string {
-  if (status === 'done') return ' is-done';
-  if (status === 'cancelled') return ' is-cancelled';
-  return '';
-}
 
 /**
  * Task 37: shared `Task[]` -> `TimedBlockInput[]` conversion, factored out of

@@ -768,4 +768,69 @@ describe('MonthGridView', () => {
       expect(bar.getAttribute('draggable')).toBe('true');
     });
   });
+
+  describe('Task 38 follow-up: is-done/is-cancelled strikethrough parity with timed blocks', () => {
+    it('marks a done plain item title is-done', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({ due: '2026-07-15', status: 'done', statusSymbol: 'x', text: 'Plain' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const title = container.querySelector(
+        '[data-mg-date="2026-07-15"] .tc-mg-item-title',
+      ) as HTMLElement;
+      expect(title.classList.contains('is-done')).toBe(true);
+    });
+
+    it('marks a cancelled timed item title is-cancelled', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({
+        due: '2026-07-15',
+        time: '09:00',
+        status: 'cancelled',
+        statusSymbol: '-',
+        text: 'Timed',
+      });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const title = container.querySelector(
+        '[data-mg-date="2026-07-15"] .tc-mg-item-title',
+      ) as HTMLElement;
+      expect(title.classList.contains('is-cancelled')).toBe(true);
+    });
+
+    it('an open item gets neither is-done nor is-cancelled on its title', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({ due: '2026-07-15', text: 'Plain' });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const title = container.querySelector(
+        '[data-mg-date="2026-07-15"] .tc-mg-item-title',
+      ) as HTMLElement;
+      expect(title.classList.contains('is-done')).toBe(false);
+      expect(title.classList.contains('is-cancelled')).toBe(false);
+    });
+
+    it('marks a done deadline marker title is-done', () => {
+      const container = freshContainer();
+      const view = new MonthGridView(callbacks());
+      const t = task({
+        due: '2026-07-15',
+        scheduled: '2026-07-10',
+        status: 'done',
+        statusSymbol: 'x',
+        text: 'Deadline',
+      });
+      view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
+      const title = container.querySelector(
+        '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker .tc-mg-item-title',
+      ) as HTMLElement;
+      expect(title).not.toBeNull();
+      expect(title.classList.contains('is-done')).toBe(true);
+    });
+
+    it('.tc-mg-item-title.is-done gets the same strikethrough convention as .tc-tg-block-title.is-done', () => {
+      const rule = /\.tc-mg-item-title\.is-done[^{]*\{[^}]*\}/u.exec(css)?.[0] ?? '';
+      expect(rule).toMatch(/text-decoration\s*:\s*line-through/u);
+    });
+  });
 });

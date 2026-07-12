@@ -723,4 +723,90 @@ describe('renderAllDayCell', () => {
       expect(snapshot(container)).toEqual(before.container);
     });
   });
+
+  describe('Task 38 follow-up: is-done/is-cancelled strikethrough parity with timed blocks', () => {
+    it('marks a done plain item title is-done', () => {
+      const container = freshContainer();
+      const t = task({ due: '2026-07-10', status: 'done', statusSymbol: 'x' });
+      renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
+      const title = container.querySelector('.tc-tg-body-title') as HTMLElement;
+      expect(title.classList.contains('is-done')).toBe(true);
+    });
+
+    it('marks a cancelled span item title is-cancelled', () => {
+      const container = freshContainer();
+      const t = task({
+        start: '2026-07-08',
+        due: '2026-07-12',
+        status: 'cancelled',
+        statusSymbol: '-',
+      });
+      renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks());
+      const title = container.querySelector('.tc-tg-body-title') as HTMLElement;
+      expect(title.classList.contains('is-cancelled')).toBe(true);
+    });
+
+    it('an open plain/span item gets neither is-done nor is-cancelled on its title', () => {
+      const container = freshContainer();
+      const t = task({ due: '2026-07-10' });
+      renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
+      const title = container.querySelector('.tc-tg-body-title') as HTMLElement;
+      expect(title.classList.contains('is-done')).toBe(false);
+      expect(title.classList.contains('is-cancelled')).toBe(false);
+    });
+
+    it('marks a done deadline marker title is-done', () => {
+      const container = freshContainer();
+      const t = task({
+        due: '2026-07-10',
+        scheduled: '2026-07-05',
+        status: 'done',
+        statusSymbol: 'x',
+      });
+      renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks());
+      const title = container.querySelector('.tc-tg-deadline-title') as HTMLElement;
+      expect(title).not.toBeNull();
+      expect(title.classList.contains('is-done')).toBe(true);
+    });
+
+    it('marks a cancelled deadline marker title is-cancelled', () => {
+      const container = freshContainer();
+      const t = task({
+        due: '2026-07-10',
+        scheduled: '2026-07-05',
+        status: 'cancelled',
+        statusSymbol: '-',
+      });
+      renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks());
+      const title = container.querySelector('.tc-tg-deadline-title') as HTMLElement;
+      expect(title.classList.contains('is-cancelled')).toBe(true);
+    });
+
+    it('.tc-tg-body-title.is-done and .tc-tg-deadline-title.is-done get the same strikethrough convention as .tc-tg-block-title.is-done', () => {
+      const bodyRule = /\.tc-tg-body-title\.is-done[^{]*\{[^}]*\}/u.exec(css)?.[0] ?? '';
+      const deadlineRule = /\.tc-tg-deadline-title\.is-done[^{]*\{[^}]*\}/u.exec(css)?.[0] ?? '';
+      expect(bodyRule).toMatch(/text-decoration\s*:\s*line-through/u);
+      expect(deadlineRule).toMatch(/text-decoration\s*:\s*line-through/u);
+    });
+  });
+
+  describe('Task 40 follow-up: count badges inside a tag-filled context participate in contrast switching', () => {
+    it('scopes .tc-task-count-badge color override to .tc-tg-block-badges, leaving the bare rule at var(--text-muted) for the main task list', () => {
+      // Anchored to the start of the line (not just anywhere the selector text appears) so this
+      // matches only the bare, unqualified `.tc-task-count-badge { ... }` rule (TaskCard.ts's
+      // main-list badges) — not the `.tc-tg-block-badges .tc-task-count-badge { ... }` descendant
+      // rule below, whose own selector text also contains this substring.
+      const bareMatch = new RegExp(
+        String.raw`^\.tc-task-count-badge\s*\{(?<body>[^}]*)\}`,
+        'mu',
+      ).exec(css);
+      const bareRule = bareMatch?.groups?.['body'] ?? '';
+      expect(bareRule).toMatch(/color:\s*var\(--text-muted\)/u);
+      expect(bareRule).not.toMatch(/--tc-tag-text-color/u);
+
+      const scopedRule = declarationsFor('.tc-tg-block-badges .tc-task-count-badge');
+      expect(scopedRule).toMatch(/--tc-tag-text-color/u);
+      expect(scopedRule).toMatch(/var\(--text-muted\)/u);
+    });
+  });
 });
