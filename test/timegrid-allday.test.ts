@@ -539,7 +539,7 @@ describe('renderAllDayCell', () => {
     expect(meta.querySelector('.tc-task-tag')).toBeNull();
   });
 
-  describe('Task 44: no tag chips on all-day/plain/span items (mirrors Task 35\'s timed-block removal)', () => {
+  describe("Task 44: no tag chips on all-day/plain/span items (mirrors Task 35's timed-block removal)", () => {
     it('never renders a .tc-task-tag on a plain chip, even for a tagged task', () => {
       const container = freshContainer();
       const t = task({ due: '2026-07-10', text: 'Plain', rawText: '- [ ] Plain #work' });
@@ -552,7 +552,12 @@ describe('renderAllDayCell', () => {
 
     it('never renders a .tc-task-tag on a span body, even for a tagged task', () => {
       const container = freshContainer();
-      const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip', rawText: '- [ ] Trip #work' });
+      const t = task({
+        start: '2026-07-08',
+        due: '2026-07-12',
+        text: 'Trip',
+        rawText: '- [ ] Trip #work',
+      });
       renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks(), [
         { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
       ]);
@@ -575,7 +580,9 @@ describe('renderAllDayCell', () => {
       const blockDecls = declarationsFor('.tc-tg-block-title');
       for (const prop of ['overflow', 'text-overflow', 'white-space']) {
         const bodyValue = new RegExp(`${prop}\\s*:\\s*([^;]+);`, 'u').exec(bodyDecls)?.[1]?.trim();
-        const blockValue = new RegExp(`${prop}\\s*:\\s*([^;]+);`, 'u').exec(blockDecls)?.[1]?.trim();
+        const blockValue = new RegExp(`${prop}\\s*:\\s*([^;]+);`, 'u')
+          .exec(blockDecls)?.[1]
+          ?.trim();
         expect(bodyValue).toBeTruthy();
         expect(bodyValue).toBe(blockValue);
       }
