@@ -1,5 +1,6 @@
 import type { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import { parseTask } from './TaskParser';
+import { extractMetadata } from './extractMetadata';
+import { collapseLinks } from './links';
 import type { SubTask, TaskComment } from './types';
 
 export interface SubItemResult {
@@ -41,26 +42,27 @@ function parseSubtask(
   i: number,
   filePath: string,
   subtaskMatch: RegExpExecArray,
-  statusCatalog?: StatusCatalog,
+  statusCatalog: StatusCatalog,
 ): { subtask: SubTask; nextIdx: number; rangeTo: number } {
   const rawText = lines[i] ?? '';
-  const parsed = parseTask(rawText, { filePath, line: i, statusCatalog });
   const statusChar = subtaskMatch[2] ?? ' ';
+  const rawContent = (subtaskMatch[3] ?? '').trim();
+  const meta = extractMetadata(rawContent);
   const childResult = parseSubItems(lines, i, filePath, statusCatalog);
   const subtask: SubTask = {
     filePath,
     line: i,
     rawText,
-    text: parsed?.text ?? '',
-    markdownText: parsed?.markdownText ?? '',
-    status: parsed?.status ?? 'open',
+    text: collapseLinks(meta.cleanText),
+    markdownText: meta.cleanText,
+    status: statusCatalog.statusForSymbol(statusChar),
     statusSymbol: statusChar,
-    priority: parsed?.priority ?? 'D',
-    ...(parsed?.due !== undefined && { due: parsed.due }),
-    ...(parsed?.scheduled !== undefined && { scheduled: parsed.scheduled }),
-    ...(parsed?.start !== undefined && { start: parsed.start }),
-    ...(parsed?.time !== undefined && { time: parsed.time }),
-    ...(parsed?.recurrence !== undefined && { recurrence: parsed.recurrence }),
+    priority: meta.priority,
+    ...(meta.due !== undefined && { due: meta.due }),
+    ...(meta.scheduled !== undefined && { scheduled: meta.scheduled }),
+    ...(meta.start !== undefined && { start: meta.start }),
+    ...(meta.time !== undefined && { time: meta.time }),
+    ...(meta.recurrence !== undefined && { recurrence: meta.recurrence }),
   };
   if (childResult.subtasks.length) subtask.subtasks = childResult.subtasks;
   if (childResult.comments.length) subtask.comments = childResult.comments;
@@ -79,7 +81,7 @@ export function parseSubItems(
   lines: string[],
   taskLineIdx: number,
   filePath: string,
-  statusCatalog?: StatusCatalog,
+  statusCatalog: StatusCatalog,
 ): SubItemResult {
   const taskLine = lines[taskLineIdx] ?? '';
   const taskIndent = getIndent(taskLine);

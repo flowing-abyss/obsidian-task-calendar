@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatTaskLine, parseTask } from '../src/parser/TaskParser';
+import { formatTaskLine, parseTask as parseTaskWithCatalog } from '../src/parser/TaskParser';
+import type { ParseContext } from '../src/parser/types';
+import { canonicalStatusCatalog } from './helpers';
+
+const statusCatalog = canonicalStatusCatalog();
+const parseTask = (rawText: string, ctx: Omit<ParseContext, 'statusCatalog'>) =>
+  parseTaskWithCatalog(rawText, { ...ctx, statusCatalog });
 
 describe('parseTask', () => {
   it('returns null for non-task lines', () => {
@@ -250,6 +256,12 @@ describe('parseTask', () => {
     expect(t?.recurrence).toBe('every week');
     expect(t?.due).toBe('2026-01-01');
     expect(t?.text).not.toContain('🔁');
+  });
+
+  it('removes every marker captured by the legacy duplicate-recurrence value', () => {
+    const t = parseTask('- [ ] Task 🔁 every day 🔁 every week', { filePath: 'f.md', line: 0 });
+    expect(t?.recurrence).toBe('every day 🔁 every week');
+    expect(t?.markdownText).toBe('Task');
   });
 
   it('strips literal non-link brackets from title (CURRENT BEHAVIOR)', () => {

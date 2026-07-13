@@ -67,5 +67,5 @@ export interface ParseContext {
   line: number;
   dailyNoteDate?: string; // pre-computed by store; parser stores it verbatim if provided
   globalTaskFilter?: string; // tag to strip, e.g. '#task'
-  statusCatalog?: import('../tasks/domain/StatusCatalog').StatusCatalog;
+  statusCatalog: import('../tasks/domain/StatusCatalog').StatusCatalog;
 }

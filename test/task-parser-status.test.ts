@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseTask } from '../src/parser/TaskParser';
+import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import { canonicalStatusCatalog } from './helpers';
 
 const statusCatalog = canonicalStatusCatalog();
@@ -21,6 +22,27 @@ describe('parseTask status', () => {
     const t = parseTask('- [@] weird', ctx());
     expect(t?.status).toBe('open');
     expect(t?.statusSymbol).toBe('@');
+  });
+
+  it('uses configured status semantics instead of a built-in symbol mapping', () => {
+    const configuredCatalog = new StatusCatalog([
+      { id: 'custom-done', symbol: '!', type: 'done', defaultForType: true },
+      { id: 'custom-todo', symbol: 'x', type: 'todo', defaultForType: true },
+    ]);
+    expect(
+      parseTask('- [!] configured done', {
+        filePath: 'n.md',
+        line: 0,
+        statusCatalog: configuredCatalog,
+      })?.status,
+    ).toBe('done');
+    expect(
+      parseTask('- [x] configured todo', {
+        filePath: 'n.md',
+        line: 1,
+        statusCatalog: configuredCatalog,
+      })?.status,
+    ).toBe('open');
   });
 
   it('parses statuses in blockquote/callout-nested tasks', () => {

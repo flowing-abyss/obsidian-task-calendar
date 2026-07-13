@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { formatTaskLine, insertIntoTitleBody, parseTask } from '../src/parser/TaskParser';
+import {
+  formatTaskLine,
+  insertIntoTitleBody,
+  parseTask as parseTaskWithCatalog,
+} from '../src/parser/TaskParser';
+import type { ParseContext } from '../src/parser/types';
+import { canonicalStatusCatalog } from './helpers';
+
+const statusCatalog = canonicalStatusCatalog();
+const parseTask = (rawText: string, ctx: Omit<ParseContext, 'statusCatalog'>) =>
+  parseTaskWithCatalog(rawText, { ...ctx, statusCatalog });
 
 describe('insertIntoTitleBody', () => {
   const LINK = '[[att.png|image]]';

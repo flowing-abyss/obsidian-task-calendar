@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { parseSubItems } from '../src/parser/SubItemParser';
+import { parseSubItems as parseSubItemsWithCatalog } from '../src/parser/SubItemParser';
+import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
+import { canonicalStatusCatalog } from './helpers';
 
 const FILE = 'test.md';
+const statusCatalog = canonicalStatusCatalog();
+const parseSubItems = (lines: string[], taskLineIdx: number, filePath: string) =>
+  parseSubItemsWithCatalog(lines, taskLineIdx, filePath, statusCatalog);
 
 describe('parseSubItems', () => {
   it('returns empty result for task with no children', () => {
@@ -242,10 +247,35 @@ describe('parseSubItems', () => {
     expect(r.comments).toHaveLength(0);
   });
 
+  it('uses the supplied catalog for configured child checkbox semantics', () => {
+    const configuredCatalog = new StatusCatalog([
+      { id: 'custom-done', symbol: '!', type: 'done', defaultForType: true },
+    ]);
+    const r = parseSubItemsWithCatalog(
+      ['- [ ] Parent', '  - [!] Configured child'],
+      0,
+      FILE,
+      configuredCatalog,
+    );
+    expect(r.subtasks[0]?.status).toBe('done');
+  });
+
   it('strips metadata emojis from subtask text and exposes them as fields', () => {
     const r = parseSubItems(['- [ ] Parent', '  - [ ] Child 📅 2026-01-01'], 0, FILE);
     expect(r.subtasks[0]?.text).toBe('Child');
     expect(r.subtasks[0]?.due).toBe('2026-01-01');
+  });
+
+  it('keeps duration metadata visible because SubTask has no duration field', () => {
+    const r = parseSubItems(['- [ ] Parent', '  - [ ] Child ⏱️ 1h'], 0, FILE);
+    expect(r.subtasks[0]?.markdownText).toBe('Child ⏱️ 1h');
+    expect(r.subtasks[0]?.text).toBe('Child ⏱️ 1h');
+  });
+
+  it('derives child status from its checkbox instead of a cancelled-date marker', () => {
+    const r = parseSubItems(['- [ ] Parent', '  - [ ] Child ❌ 2026-07-13'], 0, FILE);
+    expect(r.subtasks[0]?.status).toBe('open');
+    expect(r.subtasks[0]?.text).toBe('Child');
   });
 
   it('handles mixed tab and space indentation across parent and child', () => {

@@ -1,13 +1,24 @@
 import { type CachedMetadata } from 'obsidian';
 import { describe, expect, it } from 'vitest';
-import { parseSubItems } from '../src/parser/SubItemParser';
-import { formatTaskLine, parseTask } from '../src/parser/TaskParser';
+import { parseSubItems as parseSubItemsWithCatalog } from '../src/parser/SubItemParser';
+import { formatTaskLine, parseTask as parseTaskWithCatalog } from '../src/parser/TaskParser';
+import type { ParseContext } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TaskStore } from '../src/store/TaskStore';
-import { createAppWithFiles, seedTaskCache, useRealMoment } from './helpers';
+import {
+  canonicalStatusCatalog,
+  createAppWithFiles,
+  seedTaskCache,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
+const statusCatalog = canonicalStatusCatalog();
+const parseTask = (rawText: string, ctx: Omit<ParseContext, 'statusCatalog'>) =>
+  parseTaskWithCatalog(rawText, { ...ctx, statusCatalog });
+const parseSubItems = (lines: string[], taskLineIdx: number, filePath: string) =>
+  parseSubItemsWithCatalog(lines, taskLineIdx, filePath, statusCatalog);
 const CTX = { filePath: 'f.md', line: 0 };
 
 /**

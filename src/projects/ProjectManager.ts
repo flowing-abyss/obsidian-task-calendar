@@ -2,7 +2,9 @@ import { normalizePath, TFile, type App } from 'obsidian';
 import { locatorOf, TaskMutationService } from '../mutation';
 import type { Task } from '../parser/types';
 import type { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
+import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings, ProjectStatus } from '../settings/types';
+import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 
 function toStringArray(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw.map((t) => String(t));
@@ -24,7 +26,11 @@ export class ProjectManager {
     private settings: CalendarSettings,
     private resolver: DailyNoteResolver,
   ) {
-    this.mutations = new TaskMutationService(app);
+    this.mutations = new TaskMutationService(
+      app,
+      undefined,
+      () => new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
+    );
   }
 
   /**

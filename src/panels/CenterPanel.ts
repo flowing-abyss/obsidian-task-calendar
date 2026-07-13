@@ -19,6 +19,7 @@ import { PRIORITY_LEVELS } from '../priority';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
+import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type {
   CalendarSettings,
   ListViewState,
@@ -28,6 +29,7 @@ import type {
 import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/statusConstants';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
+import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderStatusMarker } from '../ui/StatusMarker';
@@ -125,7 +127,11 @@ export class CenterPanel {
     private projectManager: ProjectManager | null = null,
   ) {
     this.onSaveSettings = onSaveSettings;
-    this.mutations = new TaskMutationService(app);
+    this.mutations = new TaskMutationService(
+      app,
+      undefined,
+      () => new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
+    );
   }
 
   mount(container: HTMLElement): void {

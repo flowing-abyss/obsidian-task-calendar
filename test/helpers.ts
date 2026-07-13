@@ -209,7 +209,9 @@ export function freshContainer(): HTMLElement {
  */
 export function makeStubStore(tasks: Task[], app?: ObsidianApp): unknown {
   const registry = new StatusRegistry(buildDefaultTaskStatuses());
-  const mutations = app ? new TaskMutationService(app, () => registry) : undefined;
+  const mutations = app
+    ? new TaskMutationService(app, () => registry, canonicalStatusCatalog)
+    : undefined;
   return {
     statusRegistry: registry,
     getTasks: (filter?: { tag?: string; status?: string[] }): Task[] => {

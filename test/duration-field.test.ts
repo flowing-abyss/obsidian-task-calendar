@@ -4,8 +4,14 @@ import {
   formatTaskLine,
   insertIntoTitleBody,
   parseDurationToMinutes,
-  parseTask,
+  parseTask as parseTaskWithCatalog,
 } from '../src/parser/TaskParser';
+import type { ParseContext } from '../src/parser/types';
+import { canonicalStatusCatalog } from './helpers';
+
+const statusCatalog = canonicalStatusCatalog();
+const parseTask = (rawText: string, ctx: Omit<ParseContext, 'statusCatalog'>) =>
+  parseTaskWithCatalog(rawText, { ...ctx, statusCatalog });
 
 describe('duration parsing', () => {
   it('parses hours+minutes combined', () => {

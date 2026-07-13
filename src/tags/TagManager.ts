@@ -3,7 +3,9 @@ import type { App } from 'obsidian';
 import { Notice } from 'obsidian';
 import { locatorOf, TaskMutationService } from '../mutation';
 import type { Task } from '../parser/types';
+import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
+import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 
 export class TagManager {
   private mutations: TaskMutationService;
@@ -13,7 +15,11 @@ export class TagManager {
     private settings: CalendarSettings,
     private saveSettings: () => Promise<void>,
   ) {
-    this.mutations = new TaskMutationService(app);
+    this.mutations = new TaskMutationService(
+      app,
+      undefined,
+      () => new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
+    );
   }
 
   /**

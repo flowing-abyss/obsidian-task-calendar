@@ -12,9 +12,11 @@ import {
 } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
+import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
 import { colorForTag } from '../tags/tagColor';
+import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import {
   enableAttachmentDrop,
   enableAttachmentPaste,
@@ -46,7 +48,12 @@ export class RightPanel {
     this.statusRegistry = new StatusRegistry(
       this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
     );
-    this.mutations = new TaskMutationService(app, () => this.statusRegistry);
+    this.mutations = new TaskMutationService(
+      app,
+      () => this.statusRegistry,
+      () =>
+        new StatusCatalog(toStatusRules(this.settings?.taskStatuses ?? buildDefaultTaskStatuses())),
+    );
   }
 
   mount(container: HTMLElement): void {

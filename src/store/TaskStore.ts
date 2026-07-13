@@ -67,7 +67,11 @@ export class TaskStore {
     this.resolver = new DailyNoteResolver(app, settings);
     this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
     this.statusCatalog = new StatusCatalog(toStatusRules(this.settings.taskStatuses));
-    this.mutations = new TaskMutationService(app, () => this.statusRegistry);
+    this.mutations = new TaskMutationService(
+      app,
+      () => this.statusRegistry,
+      () => this.statusCatalog,
+    );
   }
 
   /** Rebuild the status registry from current settings. Call after settings edits. */

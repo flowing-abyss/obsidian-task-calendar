@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { validateMutatedTaskLine } from '../src/mutation/validateMutatedLine';
+import { canonicalStatusCatalog } from './helpers';
 
-const ctx = { filePath: 'f.md', line: 0 };
+const ctx = { filePath: 'f.md', line: 0, statusCatalog: canonicalStatusCatalog() };
 
 describe('validateMutatedTaskLine', () => {
   it('accepts an ordinary, well-formed task line', () => {

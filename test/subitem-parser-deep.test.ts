@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseSubItems } from '../src/parser/SubItemParser';
+import { parseSubItems as parseSubItemsWithCatalog } from '../src/parser/SubItemParser';
+import { canonicalStatusCatalog } from './helpers';
 
 const FILE = 'test.md';
+const statusCatalog = canonicalStatusCatalog();
+const parseSubItems = (lines: string[], taskLineIdx: number, filePath: string) =>
+  parseSubItemsWithCatalog(lines, taskLineIdx, filePath, statusCatalog);
 
 describe('parseSubItems deep edges', () => {
   describe('optional chaining fallbacks', () => {

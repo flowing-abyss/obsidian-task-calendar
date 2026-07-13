@@ -39,7 +39,9 @@ const LEGACY_REMOVED_BEFORE_RECURRENCE = new Set<TaskSpanKind>([
 ]);
 
 /** Reproduce the old extractor's recurrence value from the codec's lossless spans. */
-export function legacyRecurrenceFromParsed(parsed: ParsedTaskLine): string | undefined {
+function legacyRecurrenceProjection(
+  parsed: ParsedTaskLine,
+): { value: string | undefined; consumedTo: number } | undefined {
   const recurrence = parsed.occurrences.get('recurrence')?.[0];
   if (!recurrence) return undefined;
 
@@ -49,16 +51,39 @@ export function legacyRecurrenceFromParsed(parsed: ParsedTaskLine): string | und
   }
 
   let value = parsed.original.slice(recurrence.from + '🔁'.length, recurrence.to);
+  let consumedTo = recurrence.to;
   for (const span of parsed.spans) {
     if (span.from < recurrence.to) continue;
     if (span.kind === 'priority') break;
     if (LEGACY_REMOVED_BEFORE_RECURRENCE.has(span.kind)) {
-      if (firstByKind.get(span.kind) === span) continue;
+      if (firstByKind.get(span.kind) === span) {
+        consumedTo = span.to;
+        continue;
+      }
       break;
     }
     value += parsed.original.slice(span.from, span.to);
+    consumedTo = span.to;
   }
-  return value.trim() || undefined;
+  return { value: value.trim() || undefined, consumedTo };
+}
+
+/** Reproduce the old extractor's recurrence value from the codec's lossless spans. */
+export function legacyRecurrenceFromParsed(parsed: ParsedTaskLine): string | undefined {
+  return legacyRecurrenceProjection(parsed)?.value;
+}
+
+/** Whether the old greedy recurrence match removed this lossless recurrence occurrence. */
+export function isLegacyRecurrenceSpanConsumed(parsed: ParsedTaskLine, span: SourceSpan): boolean {
+  const first = parsed.occurrences.get('recurrence')?.[0];
+  const projection = legacyRecurrenceProjection(parsed);
+  return (
+    span.kind === 'recurrence' &&
+    first !== undefined &&
+    projection !== undefined &&
+    span.from >= first.from &&
+    span.from < projection.consumedTo
+  );
 }
 
 function legacyCleanText(parsed: ParsedTaskLine): string {
@@ -70,8 +95,13 @@ function legacyCleanText(parsed: ParsedTaskLine): string {
   return parsed.spans
     .map((span) => {
       if (span.kind === 'prefix' || span.kind === 'tag') return '';
-      if (LEGACY_REMOVED_BEFORE_RECURRENCE.has(span.kind) || span.kind === 'recurrence') {
+      if (LEGACY_REMOVED_BEFORE_RECURRENCE.has(span.kind)) {
         return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
+      }
+      if (span.kind === 'recurrence') {
+        return isLegacyRecurrenceSpanConsumed(parsed, span)
+          ? ''
+          : parsed.original.slice(span.from, span.to);
       }
       if (span.kind === 'priority') {
         const marker = parsed.original.slice(span.from, span.to);

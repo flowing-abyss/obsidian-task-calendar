@@ -10,7 +10,7 @@ import type { TaskLocator } from '../src/mutation/TaskLocator';
 import { TaskMutationService } from '../src/mutation/TaskMutationService';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
-import { createAppWithFiles } from './helpers';
+import { canonicalStatusCatalog, createAppWithFiles } from './helpers';
 
 beforeEach(() => {
   (window as unknown as { moment: unknown }).moment = moment;
@@ -28,7 +28,7 @@ async function readFile(app: ObsidianApp, path: string): Promise<string> {
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
 
 function svc(app: ObsidianApp): TaskMutationService {
-  return new TaskMutationService(app, () => registry);
+  return new TaskMutationService(app, () => registry, canonicalStatusCatalog);
 }
 
 describe('setStatusChar', () => {
@@ -141,7 +141,7 @@ describe('toggleCompletion (registry-driven)', () => {
   it('falls back to plain x/space toggling when no registry getter is supplied', async () => {
     const app = await createAppWithFiles({ 'f.md': '- [ ] task' });
     const locator: TaskLocator = { filePath: 'f.md', rawText: '- [ ] task', line: 0 };
-    const plain = new TaskMutationService(app);
+    const plain = new TaskMutationService(app, undefined, canonicalStatusCatalog);
     await plain.toggleCompletion(locator, '2026-07-04');
     const content = await readFile(app, 'f.md');
     expect(content).toBe('- [x] task ✅ 2026-07-04');

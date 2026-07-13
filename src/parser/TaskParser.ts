@@ -1,16 +1,14 @@
-import { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import type { TaskPriority, TaskStatus } from '../tasks/domain/types';
+import type { TaskPriority } from '../tasks/domain/types';
 import {
   TaskMarkdownCodec,
   type ParsedTaskLine,
   type SourceSpan,
   type TaskSpanKind,
 } from '../tasks/infrastructure/markdown/TaskMarkdownCodec';
-import { legacyRecurrenceFromParsed } from './extractMetadata';
+import { isLegacyRecurrenceSpanConsumed, legacyRecurrenceFromParsed } from './extractMetadata';
 import { collapseLinks } from './links';
 import type { ParseContext, Task } from './types';
 
-const EMPTY_STATUS_CATALOG = new StatusCatalog([]);
 const DURATION_RE = /⏱️\s*(?:(\d+)h)?(?:(\d+)m)?/u;
 
 const TAGS_RE = /#[\w/-]+/gu;
@@ -59,15 +57,13 @@ function matchDuration(text: string): { raw: string; minutes: number | undefined
 }
 
 export function parseTask(rawText: string, ctx: ParseContext): Task | null {
-  const codec = new TaskMarkdownCodec(ctx.statusCatalog ?? EMPTY_STATUS_CATALOG);
+  const codec = new TaskMarkdownCodec(ctx.statusCatalog);
   const parsed = codec.parseLine(rawText, { filePath: ctx.filePath, line: ctx.line });
   if (!parsed) return null;
 
   const markdownText = compatibilityMarkdownTitle(parsed, ctx.globalTaskFilter);
   const text = collapseLinks(markdownText);
-  let status = ctx.statusCatalog
-    ? codec.statusForSymbol(parsed.statusSymbol)
-    : compatibilityStatusForSymbol(parsed.statusSymbol);
+  let status = codec.statusForSymbol(parsed.statusSymbol);
   if (parsed.planning.cancelled !== undefined) status = 'cancelled';
 
   return {
@@ -99,15 +95,7 @@ const FIRST_ONLY_KINDS = new Set<TaskSpanKind>([
   'cancelled',
   'time',
   'duration',
-  'recurrence',
 ]);
-
-function compatibilityStatusForSymbol(symbol: string): TaskStatus {
-  if (symbol === 'x' || symbol === 'X') return 'done';
-  if (symbol === '-') return 'cancelled';
-  if (symbol === '/') return 'in-progress';
-  return 'open';
-}
 
 function compatibilityMarkdownTitle(
   parsed: ParsedTaskLine,
@@ -122,6 +110,11 @@ function compatibilityMarkdownTitle(
     .map((span) => {
       if (span.kind === 'prefix') return '';
       if (span.kind === 'tag') return parsed.original.slice(span.from, span.to);
+      if (span.kind === 'recurrence') {
+        return isLegacyRecurrenceSpanConsumed(parsed, span)
+          ? ''
+          : parsed.original.slice(span.from, span.to);
+      }
       if (FIRST_ONLY_KINDS.has(span.kind)) {
         return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
       }

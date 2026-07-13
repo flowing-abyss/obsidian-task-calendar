@@ -160,5 +160,11 @@ describe('extractMetadata', () => {
       const r = extractMetadata('Task ⏱️ 1h 🆔 task-1 ⛔ prep-1 ^task-block');
       expect(r.cleanText).toBe('Task ⏱️ 1h 🆔 task-1 ⛔ prep-1 ^task-block');
     });
+
+    it('removes every marker captured by the legacy duplicate-recurrence value', () => {
+      const r = extractMetadata('Task 🔁 every day 🔁 every week');
+      expect(r.recurrence).toBe('every day 🔁 every week');
+      expect(r.cleanText).toBe('Task');
+    });
   });
 });

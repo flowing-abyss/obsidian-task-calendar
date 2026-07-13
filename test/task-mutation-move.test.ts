@@ -2,7 +2,7 @@ import { App as ObsidianApp, TFile } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import type { TaskLocator } from '../src/mutation/TaskLocator';
 import { TaskMutationService } from '../src/mutation/TaskMutationService';
-import { createAppWithFiles } from './helpers';
+import { canonicalStatusCatalog, createAppWithFiles } from './helpers';
 
 async function readFile(app: ObsidianApp, path: string): Promise<string> {
   const f = app.vault.getAbstractFileByPath(path);
@@ -11,7 +11,7 @@ async function readFile(app: ObsidianApp, path: string): Promise<string> {
 }
 
 function svc(app: ObsidianApp): TaskMutationService {
-  return new TaskMutationService(app);
+  return new TaskMutationService(app, undefined, canonicalStatusCatalog);
 }
 
 describe('TaskMutationService.moveTaskToFile', () => {

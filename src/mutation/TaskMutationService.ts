@@ -2,6 +2,7 @@ import { Notice, TFile, type App } from 'obsidian';
 import type { ParseContext } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type { TaskPriority } from '../tasks/domain/types';
 import { insertTaskBlockIntoContent } from './insertTaskBlock';
 import { findTaskLine, type FindResult, type TaskLocator } from './TaskLocator';
@@ -57,7 +58,8 @@ export type MutationResult =
 export class TaskMutationService {
   constructor(
     private app: App,
-    private getRegistry?: () => StatusRegistry,
+    private getRegistry: (() => StatusRegistry) | undefined,
+    private getStatusCatalog: () => StatusCatalog,
   ) {}
 
   private static stripStamp(line: string, emoji: string): string {
@@ -147,7 +149,11 @@ export class TaskMutationService {
       const current = lines[taskLine];
       if (current === undefined) return;
       const candidate = build(current);
-      const ctx: ParseContext = { filePath: locator.filePath, line: taskLine };
+      const ctx: ParseContext = {
+        filePath: locator.filePath,
+        line: taskLine,
+        statusCatalog: this.getStatusCatalog(),
+      };
       if (!validateMutatedTaskLine(candidate, ctx)) {
         rejected = true;
         return; // leave `lines[taskLine]` (and hence the on-disk file) completely untouched

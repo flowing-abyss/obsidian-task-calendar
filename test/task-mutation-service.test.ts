@@ -15,7 +15,7 @@ import { App as ObsidianApp, TFile } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { TaskLocator } from '../src/mutation/TaskLocator';
 import { TaskMutationService } from '../src/mutation/TaskMutationService';
-import { createAppWithFiles } from './helpers';
+import { canonicalStatusCatalog, createAppWithFiles } from './helpers';
 
 // Install real moment so ✅ date logic works
 beforeEach(() => {
@@ -32,7 +32,7 @@ async function readFile(app: ObsidianApp, path: string): Promise<string> {
 }
 
 function svc(app: ObsidianApp): TaskMutationService {
-  return new TaskMutationService(app);
+  return new TaskMutationService(app, undefined, canonicalStatusCatalog);
 }
 
 // ── 1. Lines inserted above the task ──────────────────────────────────────────
