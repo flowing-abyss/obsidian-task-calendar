@@ -14,7 +14,7 @@ import {
 } from '../mutation';
 import { formatDurationFromMinutes, formatTaskLine } from '../parser/TaskParser';
 import type { LinkToken } from '../parser/links';
-import type { Task, TaskPriority } from '../parser/types';
+import type { Task } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
@@ -24,11 +24,11 @@ import type {
   ListViewState,
   PropertyFilter,
   ResolvedConfig,
-  TaskStatusType,
 } from '../settings/types';
 import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/statusConstants';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
+import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { TagPickerModal } from '../ui/TagPickerModal';

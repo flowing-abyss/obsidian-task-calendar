@@ -1,4 +1,4 @@
-import type { TaskPriority } from './parser/types';
+import type { TaskPriority } from './tasks/domain/types';
 
 /** Single source of truth for priority level metadata (label, emoji, order). */
 export interface PriorityLevel {

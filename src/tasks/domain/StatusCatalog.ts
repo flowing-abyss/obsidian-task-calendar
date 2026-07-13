@@ -1,0 +1,46 @@
+import type { TaskStatus, TaskStatusRule, TaskStatusType } from './types';
+
+const TYPE_TO_STATUS: Record<TaskStatusType, TaskStatus> = {
+  todo: 'open',
+  'in-progress': 'in-progress',
+  done: 'done',
+  cancelled: 'cancelled',
+};
+
+function normalizeSymbol(symbol: string): string {
+  return symbol === 'X' ? 'x' : symbol;
+}
+
+export class StatusCatalog {
+  private readonly rules: TaskStatusRule[];
+  private readonly bySymbolMap: Map<string, TaskStatusRule>;
+
+  constructor(rules: readonly TaskStatusRule[]) {
+    this.rules = rules.map((rule) => ({ ...rule }));
+    this.bySymbolMap = new Map();
+    for (const rule of this.rules) {
+      if (!this.bySymbolMap.has(rule.symbol)) this.bySymbolMap.set(rule.symbol, rule);
+    }
+  }
+
+  statusForSymbol(symbol: string): TaskStatus {
+    const rule = this.ruleForSymbol(symbol);
+    return rule ? TYPE_TO_STATUS[rule.type] : 'open';
+  }
+
+  ruleForSymbol(symbol: string): TaskStatusRule | undefined {
+    const rule = this.bySymbolMap.get(normalizeSymbol(symbol));
+    return rule ? { ...rule } : undefined;
+  }
+
+  defaultForType(type: TaskStatusType): TaskStatusRule | undefined {
+    const rule = this.rules.find(
+      (candidate) => candidate.type === type && candidate.defaultForType,
+    );
+    return rule ? { ...rule } : undefined;
+  }
+
+  all(): TaskStatusRule[] {
+    return this.rules.map((rule) => ({ ...rule }));
+  }
+}

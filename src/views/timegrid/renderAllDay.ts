@@ -1,9 +1,10 @@
 import { Component, type App } from 'obsidian';
-import type { Task, TaskPriority } from '../../parser/types';
+import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { tagFillTextColorVar } from '../../tags/tagFillContrast';
+import type { TaskPriority } from '../../tasks/domain/types';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';

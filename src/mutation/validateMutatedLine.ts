@@ -1,22 +1,32 @@
 import { parseTask } from '../parser/TaskParser';
 import type { ParseContext } from '../parser/types';
-
-/** A syntactically *and* semantically valid 24-hour HH:MM clock time (00:00–23:59). */
-const VALID_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/u;
-/** `YYYY-MM-DD` shape — real calendar-day validity is checked separately below. */
-const DATE_SHAPE_RE = /^\d{4}-\d{2}-\d{2}$/u;
+import { durationMinutes, localDate, localTime } from '../tasks/domain/validation';
 
 function isRealCalendarDate(date: string): boolean {
-  if (!DATE_SHAPE_RE.test(date)) return false;
-  const [y, m, d] = date.split('-').map(Number);
-  if (y === undefined || m === undefined || d === undefined) return false;
-  const parsed = new Date(Date.UTC(y, m - 1, d));
-  // `Date` silently rolls invalid components over into the next month/year (e.g. day 32 of
-  // January becomes February 1st) instead of throwing — round-tripping the parsed value back
-  // through its own getters is the standard way to detect that rollover happened.
-  return (
-    parsed.getUTCFullYear() === y && parsed.getUTCMonth() === m - 1 && parsed.getUTCDate() === d
-  );
+  try {
+    localDate(date);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidTime(time: string): boolean {
+  try {
+    localTime(time);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidDuration(duration: number): boolean {
+  try {
+    durationMinutes(duration);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -47,11 +57,8 @@ export function validateMutatedTaskLine(line: string, ctx: ParseContext): boolea
   const task = parseTask(line, ctx);
   if (!task) return false;
 
-  if (line.includes('⏰') && (!task.time || !VALID_TIME_RE.test(task.time))) return false;
-  if (
-    line.includes('⏱️') &&
-    (task.duration === undefined || !Number.isFinite(task.duration) || task.duration <= 0)
-  ) {
+  if (line.includes('⏰') && (!task.time || !isValidTime(task.time))) return false;
+  if (line.includes('⏱️') && (task.duration === undefined || !isValidDuration(task.duration))) {
     return false;
   }
 

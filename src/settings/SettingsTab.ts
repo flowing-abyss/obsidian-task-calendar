@@ -3,8 +3,9 @@ import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import { StatusRegistry } from '../status/StatusRegistry';
 import { TYPE_LABELS, TYPE_ORDER } from '../status/statusConstants';
 import type { TagManager } from '../tags/TagManager';
+import type { TaskStatusType } from '../tasks/domain/types';
 import { renderStatusMarker } from '../ui/StatusMarker';
-import type { CalendarSettings, TaskStatusDef, TaskStatusType } from './types';
+import type { CalendarSettings, TaskStatusDef } from './types';
 
 interface StoreLike {
   rebuildStatusRegistry(): void;

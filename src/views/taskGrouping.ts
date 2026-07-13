@@ -1,6 +1,6 @@
 import type { Task } from '../parser/types';
-import type { TaskStatusType } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskStatusType } from '../tasks/domain/types';
 
 export interface TaskGroup {
   due: Task[];

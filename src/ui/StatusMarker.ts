@@ -1,6 +1,6 @@
 import { setIcon } from 'obsidian';
-import type { TaskPriority } from '../parser/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskPriority } from '../tasks/domain/types';
 
 interface Opts {
   // Structural type: only statusSymbol/priority are read, so Task/SubTask

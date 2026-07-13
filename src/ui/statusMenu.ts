@@ -1,7 +1,8 @@
 import { setIcon, type Menu } from 'obsidian';
-import type { Task, TaskPriority } from '../parser/types';
+import type { Task } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskPriority } from '../tasks/domain/types';
 import { renderStatusMarker } from './StatusMarker';
 
 export interface StatusMenuOpts {

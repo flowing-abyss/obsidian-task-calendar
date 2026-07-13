@@ -1,10 +1,11 @@
 import { Component, type App } from 'obsidian';
 import { weekStartOffset } from '../domain/weekGridOffset';
-import type { Task, TaskPriority } from '../parser/types';
+import type { Task } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { tagColorFor } from '../tags/tagColor';
 import { tagFillTextColorVar } from '../tags/tagFillContrast';
+import type { TaskPriority } from '../tasks/domain/types';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { showStatusMenuAt } from '../ui/statusMenu';

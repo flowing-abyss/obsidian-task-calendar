@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 
 const reg = () => new StatusRegistry(buildDefaultTaskStatuses());
@@ -54,5 +55,59 @@ describe('StatusRegistry', () => {
     const r = reg();
     expect(r.orderIndex('X')).toBe(r.orderIndex('x'));
     expect(r.orderIndex('X')).toBeLessThan(r.orderIndex('@'));
+  });
+});
+
+describe('toStatusRules', () => {
+  it('prefers the first core status for a type over an earlier custom status', () => {
+    const rules = toStatusRules([
+      {
+        id: 'custom-todo',
+        symbol: '?',
+        name: 'Custom todo',
+        type: 'todo',
+        icon: 'circle',
+        core: false,
+      },
+      {
+        id: 'core-todo',
+        symbol: ' ',
+        name: 'Core todo',
+        type: 'todo',
+        icon: '',
+        core: true,
+      },
+    ]);
+
+    expect(rules).toEqual([
+      { id: 'custom-todo', symbol: '?', type: 'todo', defaultForType: false },
+      { id: 'core-todo', symbol: ' ', type: 'todo', defaultForType: true },
+    ]);
+  });
+
+  it('falls back to the first configured status when a type has no core status', () => {
+    const rules = toStatusRules([
+      {
+        id: 'first-progress',
+        symbol: '/',
+        name: 'First progress',
+        type: 'in-progress',
+        icon: '',
+        core: false,
+      },
+      {
+        id: 'later-progress',
+        symbol: '>',
+        name: 'Later progress',
+        type: 'in-progress',
+        icon: 'loader',
+        core: false,
+      },
+    ]);
+
+    expect(rules.map(({ id, defaultForType }) => ({ id, defaultForType }))).toEqual([
+      { id: 'first-progress', defaultForType: true },
+      { id: 'later-progress', defaultForType: false },
+    ]);
   });
 });

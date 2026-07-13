@@ -1,6 +1,7 @@
 import { getListViewDefaults } from '../settings/defaults';
-import type { ListViewState, TaskStatusType } from '../settings/types';
+import type { ListViewState } from '../settings/types';
 import { ALL_STATUS_GROUPS } from '../status/statusConstants';
+import type { TaskStatusType } from '../tasks/domain/types';
 import type { ListSelection } from './AppState';
 
 /** Stable persistence key for a left-panel selection (matches CenterPanel's `listViewStates` keys). */

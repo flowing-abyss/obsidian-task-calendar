@@ -4,10 +4,11 @@ import { App as ObsidianApp, Platform, TFile, type CachedMetadata } from 'obsidi
 import { afterEach, beforeEach, vi } from 'vitest';
 import { locatorOf } from '../src/mutation/TaskLocator';
 import { TaskMutationService } from '../src/mutation/TaskMutationService';
-import type { Task, TaskPriority } from '../src/parser/types';
+import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses, DEFAULT_VIEW_CONFIG } from '../src/settings/defaults';
 import type { ResolvedConfig } from '../src/settings/types';
 import { StatusRegistry } from '../src/status/StatusRegistry';
+import type { TaskPriority } from '../src/tasks/domain/types';
 
 /** Install real moment as window.moment for date-aware tests. Idempotent; restores in afterEach. */
 export function useRealMoment(): void {

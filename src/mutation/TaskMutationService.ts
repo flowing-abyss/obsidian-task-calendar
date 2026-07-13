@@ -1,7 +1,8 @@
 import { Notice, TFile, type App } from 'obsidian';
-import type { ParseContext, TaskPriority } from '../parser/types';
+import type { ParseContext } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskPriority } from '../tasks/domain/types';
 import { insertTaskBlockIntoContent } from './insertTaskBlock';
 import { findTaskLine, type FindResult, type TaskLocator } from './TaskLocator';
 import { validateMutatedTaskLine } from './validateMutatedLine';

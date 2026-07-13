@@ -1,4 +1,4 @@
-import type { TaskPriority } from './types';
+import type { TaskPriority } from '../tasks/domain/types';
 
 const DUE_RE = /📅\s*(\d{4}-\d{2}-\d{2})/u;
 const SCHEDULED_RE = /⏳\s*(\d{4}-\d{2}-\d{2})/u;

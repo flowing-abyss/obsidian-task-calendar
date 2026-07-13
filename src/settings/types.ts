@@ -1,6 +1,4 @@
-import type { TaskPriority } from '../parser/types';
-
-export type TaskStatusType = 'todo' | 'in-progress' | 'done' | 'cancelled';
+import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
 
 export interface TaskStatusDef {
   id: string;

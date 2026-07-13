@@ -1,0 +1,65 @@
+import { describe, expect, it } from 'vitest';
+import { StatusCatalog } from '../../src/tasks/domain/StatusCatalog';
+import { durationMinutes, localDate, localTime } from '../../src/tasks/domain/validation';
+
+describe('task domain values', () => {
+  it('accepts real dates and rejects rollover dates', () => {
+    expect(localDate('2026-07-13')).toBe('2026-07-13');
+    expect(() => localDate('2026-02-30')).toThrow('invalid-date');
+  });
+
+  it('accepts 24-hour time and positive integer minutes only', () => {
+    expect(localTime('23:59')).toBe('23:59');
+    expect(durationMinutes(90)).toBe(90);
+    expect(() => localTime('24:00')).toThrow('invalid-time');
+    expect(() => durationMinutes(1.5)).toThrow('invalid-duration');
+  });
+});
+
+describe('StatusCatalog', () => {
+  const catalog = new StatusCatalog([
+    { id: 'todo', symbol: ' ', type: 'todo', defaultForType: true },
+    { id: 'done', symbol: 'x', type: 'done', defaultForType: true },
+  ]);
+
+  it('normalizes uppercase X while retaining an unknown status as open', () => {
+    expect(catalog.statusForSymbol('X')).toBe('done');
+    expect(catalog.statusForSymbol('?')).toBe('open');
+  });
+
+  it('uses first-rule precedence for duplicate symbols', () => {
+    const duplicateCatalog = new StatusCatalog([
+      { id: 'first', symbol: '!', type: 'in-progress', defaultForType: false },
+      { id: 'second', symbol: '!', type: 'cancelled', defaultForType: false },
+    ]);
+
+    expect(duplicateCatalog.statusForSymbol('!')).toBe('in-progress');
+  });
+
+  it('selects marked defaults and returns detached rule copies', () => {
+    expect(catalog.defaultForType('done')).toEqual({
+      id: 'done',
+      symbol: 'x',
+      type: 'done',
+      defaultForType: true,
+    });
+    expect(catalog.defaultForType('cancelled')).toBeUndefined();
+
+    const returned = catalog.all();
+    returned.splice(0, returned.length);
+    expect(catalog.all()).toHaveLength(2);
+
+    const mutableRule = catalog.all()[0] as { symbol: string };
+    mutableRule.symbol = '!';
+    expect(catalog.all()[0]?.symbol).toBe(' ');
+  });
+
+  it('detaches its rules from mutable constructor input', () => {
+    const input = [{ id: 'todo', symbol: ' ', type: 'todo' as const, defaultForType: true }];
+    const detachedCatalog = new StatusCatalog(input);
+
+    input[0]!.symbol = '!';
+
+    expect(detachedCatalog.all()[0]?.symbol).toBe(' ');
+  });
+});

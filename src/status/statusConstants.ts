@@ -1,4 +1,4 @@
-import type { TaskStatusType } from '../settings/types';
+import type { TaskStatusType } from '../tasks/domain/types';
 
 /** Canonical display/grouping order for the four status types. */
 export const TYPE_ORDER: TaskStatusType[] = ['todo', 'in-progress', 'done', 'cancelled'];

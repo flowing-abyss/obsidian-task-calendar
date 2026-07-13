@@ -10,10 +10,11 @@ import { locatorOf, TaskMutationService } from '../mutation';
 import { countLinksIn } from '../parser/links';
 import { parseSubItems } from '../parser/SubItemParser';
 import { parseTask } from '../parser/TaskParser';
-import type { Task, TaskFilter, TaskPriority } from '../parser/types';
+import type { Task, TaskFilter } from '../parser/types';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskPriority } from '../tasks/domain/types';
 import { TaskDateIndex } from './TaskDateIndex';
 
 interface StoreUpdateEvent {

@@ -1,6 +1,5 @@
-export type TaskStatus = 'open' | 'done' | 'cancelled' | 'in-progress';
-// A=🔺 Highest, B=⏫ High, C=🔼 Medium, D=normal (no emoji), E=🔽 Low, F=⏬ Lowest
-export type TaskPriority = 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+export type { TaskPriority, TaskStatus } from '../tasks/domain/types';
+import type { TaskPriority, TaskStatus } from '../tasks/domain/types';
 
 export interface Task {
   filePath: string;

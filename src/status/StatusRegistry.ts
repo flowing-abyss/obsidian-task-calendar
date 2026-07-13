@@ -1,44 +1,33 @@
-import type { TaskStatus } from '../parser/types';
-import type { TaskStatusDef, TaskStatusType } from '../settings/types';
+import { toStatusRules } from '../settings/statusCatalogAdapter';
+import type { TaskStatusDef } from '../settings/types';
+import { StatusCatalog } from '../tasks/domain/StatusCatalog';
+import type { TaskStatus, TaskStatusType } from '../tasks/domain/types';
 import { TYPE_ORDER } from './statusConstants';
 
 export class StatusRegistry {
-  static readonly TYPE_TO_STATUS: Record<TaskStatusType, TaskStatus> = {
-    todo: 'open',
-    'in-progress': 'in-progress',
-    done: 'done',
-    cancelled: 'cancelled',
-  };
-
   private readonly defs: TaskStatusDef[];
-  private readonly bySymbolMap: Map<string, TaskStatusDef>;
-  private readonly orderMap: Map<string, number>;
+  private readonly catalog: StatusCatalog;
+  private readonly byIdMap: Map<string, TaskStatusDef>;
+  private readonly orderByIdMap: Map<string, number>;
 
   constructor(defs: TaskStatusDef[]) {
     this.defs = defs;
-    this.bySymbolMap = new Map();
-    this.orderMap = new Map();
+    this.catalog = new StatusCatalog(toStatusRules(defs));
+    this.byIdMap = new Map();
+    this.orderByIdMap = new Map();
     defs.forEach((d, i) => {
-      // first occurrence of a symbol wins (defensive against dupes)
-      if (!this.bySymbolMap.has(d.symbol)) this.bySymbolMap.set(d.symbol, d);
-      if (!this.orderMap.has(d.symbol)) this.orderMap.set(d.symbol, i);
+      if (!this.byIdMap.has(d.id)) this.byIdMap.set(d.id, d);
+      if (!this.orderByIdMap.has(d.id)) this.orderByIdMap.set(d.id, i);
     });
   }
 
   bySymbol(char: string): TaskStatusDef | undefined {
-    return this.bySymbolMap.get(StatusRegistry.normalizeSymbol(char));
+    const rule = this.catalog.ruleForSymbol(char);
+    return rule ? this.byIdMap.get(rule.id) : undefined;
   }
 
   typeForSymbol(char: string): TaskStatus {
-    const def = this.bySymbolMap.get(StatusRegistry.normalizeSymbol(char));
-    return def ? StatusRegistry.TYPE_TO_STATUS[def.type] : 'open';
-  }
-
-  // 'X' (uppercase) is a common alternate "done" glyph in the Tasks-plugin
-  // ecosystem; the registry only knows the canonical lowercase 'x', so fold
-  // case for lookups. Callers keep the raw glyph in statusSymbol.
-  private static normalizeSymbol(char: string): string {
-    return char === 'X' ? 'x' : char;
+    return this.catalog.statusForSymbol(char);
   }
 
   byType(type: TaskStatusType): TaskStatusDef[] {
@@ -52,15 +41,23 @@ export class StatusRegistry {
   }
 
   defaultTodo(): TaskStatusDef {
-    return (this.byType('todo').find((d) => d.core) ?? this.byType('todo')[0] ?? this.defs[0])!;
+    return (this.defaultForType('todo') ?? this.defs[0])!;
   }
 
   defaultDone(): TaskStatusDef {
-    return (this.byType('done').find((d) => d.core) ?? this.byType('done')[0] ?? this.defs[0])!;
+    return (this.defaultForType('done') ?? this.defs[0])!;
+  }
+
+  defaultForType(type: TaskStatusType): TaskStatusDef | undefined {
+    const rule = this.catalog.defaultForType(type);
+    return rule ? this.byIdMap.get(rule.id) : undefined;
   }
 
   orderIndex(char: string): number {
-    return this.orderMap.get(StatusRegistry.normalizeSymbol(char)) ?? Number.MAX_SAFE_INTEGER;
+    const rule = this.catalog.ruleForSymbol(char);
+    return rule
+      ? (this.orderByIdMap.get(rule.id) ?? Number.MAX_SAFE_INTEGER)
+      : Number.MAX_SAFE_INTEGER;
   }
 
   all(): TaskStatusDef[] {
