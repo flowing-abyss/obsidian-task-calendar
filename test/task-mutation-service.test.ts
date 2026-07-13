@@ -32,7 +32,7 @@ async function readFile(app: ObsidianApp, path: string): Promise<string> {
 }
 
 function svc(app: ObsidianApp): TaskMutationService {
-  return new TaskMutationService(app, undefined, canonicalStatusCatalog);
+  return new TaskMutationService(app, canonicalStatusCatalog);
 }
 
 // ── 1. Lines inserted above the task ──────────────────────────────────────────
@@ -296,53 +296,6 @@ describe('TaskMutationService – file not found', () => {
   });
 });
 
-// ── toggleCompletion helper ────────────────────────────────────────────────────
-
-describe('TaskMutationService.toggleCompletion', () => {
-  it('marks open task as done and appends completion date', async () => {
-    const app = await createAppWithFiles({ 'f.md': '- [ ] task' });
-    const locator: TaskLocator = { filePath: 'f.md', rawText: '- [ ] task', line: 0 };
-    await svc(app).toggleCompletion(locator, '2026-06-26');
-    const after = await readFile(app, 'f.md');
-    expect(after).toBe('- [x] task ✅ 2026-06-26');
-  });
-
-  it('marks done task as open and removes completion date', async () => {
-    const raw = '- [x] task ✅ 2026-06-25';
-    const app = await createAppWithFiles({ 'f.md': raw });
-    const locator: TaskLocator = { filePath: 'f.md', rawText: raw, line: 0 };
-    await svc(app).toggleCompletion(locator, '2026-06-26');
-    const after = await readFile(app, 'f.md');
-    expect(after).toBe('- [ ] task');
-  });
-});
-
-// ── CRLF toggleCompletion regression ──────────────────────────────────────────
-
-describe('Regression – CRLF file toggleCompletion preserves \\r', () => {
-  it('toggled line in CRLF file retains trailing \\r so rawText fingerprint stays valid', async () => {
-    const crlf = '- [ ] Buy milk\r\n- [ ] other\r\n';
-    const app = await createAppWithFiles({ 'f.md': crlf });
-    // rawText as produced by split('\n') on a CRLF file
-    const locator: TaskLocator = { filePath: 'f.md', rawText: '- [ ] Buy milk\r', line: 0 };
-    const result = await svc(app).toggleCompletion(locator, '2026-06-26');
-    expect(result.type).toBe('ok');
-    const after = await readFile(app, 'f.md');
-    // The toggled line must still end with \r so the file stays CRLF-consistent
-    const lines = after.split('\n');
-    expect(lines[0]).toMatch(/\r$/);
-    expect(lines[0]).toContain('✅ 2026-06-26');
-    // Second toggle: rawText is now the completed line with \r
-    const completedRaw = lines[0]!;
-    const locator2: TaskLocator = { filePath: 'f.md', rawText: completedRaw, line: 0 };
-    const result2 = await svc(app).toggleCompletion(locator2, '2026-06-26');
-    // Must succeed — rawText fingerprint was preserved
-    expect(result2.type).toBe('ok');
-    const after2 = await readFile(app, 'f.md');
-    expect(after2.split('\n')[0]).toBe('- [ ] Buy milk\r');
-  });
-});
-
 // ── deleteTaskBlock clamped to file length ─────────────────────────────────────
 
 describe('Regression – deleteTaskBlock with stale rangeEndHint beyond file', () => {
@@ -379,19 +332,7 @@ describe('Regression – deleteTaskBlock with stale rangeEndHint beyond file', (
 
 // ── blockquote / callout write-path integrity ─────────────────────────────────
 
-describe('Blockquote tasks – toggle & delete preserve formatting', () => {
-  it('toggling a blockquote parent leaves its sub-items untouched', async () => {
-    const content = '> - [ ] parent\n> \t- [ ] child\n> - [ ] sibling';
-    const app = await createAppWithFiles({ 'f.md': content });
-    const locator: TaskLocator = { filePath: 'f.md', rawText: '> - [ ] parent', line: 0 };
-    await svc(app).toggleCompletion(locator, '2026-07-01');
-    const after = await readFile(app, 'f.md');
-    const parts = after.split('\n');
-    expect(parts[0]).toBe('> - [x] parent ✅ 2026-07-01');
-    expect(parts[1]).toBe('> \t- [ ] child');
-    expect(parts[2]).toBe('> - [ ] sibling');
-  });
-
+describe('Blockquote tasks – delete preserves formatting', () => {
   it('deleting a blockquote parent removes its blockquote sub-items too', async () => {
     const content = '> - [ ] parent\n> \t- [ ] child\n> \t- [ ] child2\n> - [ ] sibling';
     const app = await createAppWithFiles({ 'f.md': content });

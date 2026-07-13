@@ -5,6 +5,7 @@ import type {
   TaskRepository,
   TaskRepositoryResult,
 } from '../../src/tasks/application/TaskRepository';
+import { StatusCatalog } from '../../src/tasks/domain/StatusCatalog';
 import type { TaskRef, TaskSnapshot } from '../../src/tasks/domain/types';
 import { durationMinutes, localDate, localTime } from '../../src/tasks/domain/validation';
 
@@ -36,6 +37,21 @@ function queries(): TaskQueryApi {
   };
 }
 
+const statuses = new StatusCatalog([
+  { id: 'todo', symbol: ' ', type: 'todo', defaultForType: true },
+  { id: 'doing', symbol: '/', type: 'in-progress', defaultForType: true },
+  { id: 'done', symbol: 'x', type: 'done', defaultForType: true },
+  { id: 'done-alt', symbol: 'd', type: 'done', defaultForType: false },
+  { id: 'cancelled', symbol: '-', type: 'cancelled', defaultForType: true },
+  { id: 'cancelled-alt', symbol: 'k', type: 'cancelled', defaultForType: false },
+]);
+
+const clock = { today: vi.fn(() => localDate('2026-07-14')) };
+
+function service(repository: TaskRepository, taskQueries: TaskQueryApi = queries()) {
+  return new TaskApplicationService(taskQueries, repository, statuses, clock);
+}
+
 describe('TaskApplicationService planning commands', () => {
   it('delegates a typed planning patch and maps a committed result', async () => {
     const committed: TaskRepositoryResult = {
@@ -44,7 +60,7 @@ describe('TaskApplicationService planning commands', () => {
       changed: true,
     };
     const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
-    const service = new TaskApplicationService(queries(), { edit });
+    const service = new TaskApplicationService(queries(), { edit }, statuses, clock);
     const command = {
       type: 'patch' as const,
       target: { type: 'task' as const, ref },
@@ -72,7 +88,7 @@ describe('TaskApplicationService planning commands', () => {
     },
   ])('preserves the structured repository result $type', async (result) => {
     const repository: TaskRepository = { edit: vi.fn().mockResolvedValue(result) };
-    const service = new TaskApplicationService(queries(), repository);
+    const service = new TaskApplicationService(queries(), repository, statuses, clock);
 
     await expect(
       service.execute({ type: 'reschedule', ref, date: localDate('2026-07-21') }),
@@ -83,7 +99,7 @@ describe('TaskApplicationService planning commands', () => {
     const repository: TaskRepository = {
       edit: vi.fn().mockRejectedValue(new Error('- [ ] secret task')),
     };
-    const service = new TaskApplicationService(queries(), repository);
+    const service = new TaskApplicationService(queries(), repository, statuses, clock);
 
     await expect(
       service.execute({ type: 'reschedule', ref, date: localDate('2026-07-21') }),
@@ -117,7 +133,7 @@ describe('TaskApplicationService planning commands', () => {
       changed: true,
     };
     const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
-    const service = new TaskApplicationService(queries(), { edit });
+    const service = new TaskApplicationService(queries(), { edit }, statuses, clock);
 
     await expect(service.execute(command)).resolves.toEqual({
       type: 'ok',
@@ -126,5 +142,477 @@ describe('TaskApplicationService planning commands', () => {
     });
     expect(edit).toHaveBeenCalledOnce();
     expect(edit).toHaveBeenCalledWith(command);
+  });
+
+  it('normalizes uppercase X and stamps a genuine transition with the injected local day', async () => {
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    });
+    const exactQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'exact', task: snapshot() }),
+    };
+    clock.today.mockClear();
+
+    await service({ edit }, exactQueries).execute({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'X',
+    });
+
+    expect(clock.today).toHaveBeenCalledOnce();
+    expect(edit).toHaveBeenCalledWith({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'x',
+      stamp: localDate('2026-07-14'),
+    });
+  });
+
+  it('rejects unknown status symbols before touching the repository or Clock', async () => {
+    const edit = vi.fn<TaskRepository['edit']>();
+    clock.today.mockClear();
+
+    await expect(
+      service({ edit }).execute({
+        type: 'set-status',
+        target: { type: 'task', ref },
+        symbol: '?',
+      }),
+    ).resolves.toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-status', field: 'status' }],
+    });
+    expect(edit).not.toHaveBeenCalled();
+    expect(clock.today).not.toHaveBeenCalled();
+  });
+
+  it('toggles done to the configured todo without reading Clock', async () => {
+    const done = { ...snapshot(), status: 'done' as const, statusSymbol: 'x' };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    });
+    const exactQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'exact', task: done }),
+    };
+    clock.today.mockClear();
+
+    await service({ edit }, exactQueries).execute({
+      type: 'toggle-completion',
+      target: { type: 'task', ref },
+    });
+
+    expect(clock.today).not.toHaveBeenCalled();
+    expect(edit).toHaveBeenCalledWith({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: ' ',
+    });
+  });
+
+  it('treats an existing uppercase X as the normalized done status without restamping', async () => {
+    const uppercaseDone = { ...snapshot(), status: 'done' as const, statusSymbol: 'X' };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: uppercaseDone },
+      changed: false,
+    });
+    const exactQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'exact', task: uppercaseDone }),
+    };
+    clock.today.mockClear();
+
+    await service({ edit }, exactQueries).execute({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'X',
+    });
+
+    expect(clock.today).not.toHaveBeenCalled();
+    expect(edit).toHaveBeenCalledWith({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'X',
+    });
+  });
+
+  it('changes between configured done symbols without reading Clock or restamping', async () => {
+    const done = {
+      ...snapshot(),
+      status: 'done' as const,
+      statusSymbol: 'x',
+      planning: { ...snapshot().planning, completion: localDate('2026-07-01') },
+    };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: done },
+      changed: true,
+    });
+    const exactQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'exact', task: done }),
+    };
+    clock.today.mockClear();
+
+    await service({ edit }, exactQueries).execute({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'd',
+    });
+
+    expect(clock.today).not.toHaveBeenCalled();
+    expect(edit).toHaveBeenCalledWith({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'd',
+    });
+  });
+
+  it('changes between configured cancelled symbols without reading Clock or restamping', async () => {
+    const cancelled = {
+      ...snapshot(),
+      status: 'cancelled' as const,
+      statusSymbol: '-',
+      planning: { ...snapshot().planning, cancelled: localDate('2026-07-01') },
+    };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: cancelled },
+      changed: true,
+    });
+    const exactQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'exact', task: cancelled }),
+    };
+    clock.today.mockClear();
+
+    await service({ edit }, exactQueries).execute({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'k',
+    });
+
+    expect(clock.today).not.toHaveBeenCalled();
+    expect(edit).toHaveBeenCalledWith({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'k',
+    });
+  });
+
+  it('accepts an immediately returned fresh ref before the query index catches up', async () => {
+    const fresh = { ...snapshot(), ref: { ...ref, revision: 'fresh' } };
+    const afterToggle = {
+      ...fresh,
+      ref: { ...ref, revision: 'after-toggle' },
+      status: 'done' as const,
+      statusSymbol: 'x',
+    };
+    const edit = vi
+      .fn<TaskRepository['edit']>()
+      .mockResolvedValueOnce({
+        type: 'committed',
+        outcome: { type: 'task', task: fresh },
+        changed: true,
+      })
+      .mockResolvedValueOnce({
+        type: 'committed',
+        outcome: { type: 'task', task: afterToggle },
+        changed: true,
+      });
+    const laggingQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: (target) =>
+        target.revision === ref.revision
+          ? { type: 'exact', task: snapshot() }
+          : { type: 'conflict', current: snapshot() },
+    };
+    const application = service({ edit }, laggingQueries);
+    const first = await application.execute({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: { priority: { type: 'set', value: 'A' } },
+    });
+    if (first.type !== 'ok' || first.outcome.type !== 'task') throw new Error('missing outcome');
+    const mutableOutcome = first.outcome.task as { status: 'done'; statusSymbol: string };
+    mutableOutcome.status = 'done';
+    mutableOutcome.statusSymbol = 'x';
+
+    await expect(
+      application.execute({
+        type: 'toggle-completion',
+        target: { type: 'task', ref: first.outcome.task.ref },
+      }),
+    ).resolves.toMatchObject({ type: 'ok', outcome: { task: { ref: afterToggle.ref } } });
+    expect(edit).toHaveBeenLastCalledWith({
+      type: 'set-status',
+      target: { type: 'task', ref: fresh.ref },
+      symbol: 'x',
+      stamp: localDate('2026-07-14'),
+    });
+  });
+
+  it('accepts an immediately returned fresh nested ref before the query index catches up', async () => {
+    const initialRoot = snapshot();
+    const initialNode = { type: 'task' as const, ref: initialRoot.ref };
+    const initialChild = {
+      ref: {
+        parent: initialNode,
+        relativeLine: 1,
+        originalBlock: '  - [ ] child',
+      },
+      title: 'child',
+      markdownTitle: 'child',
+      status: 'open' as const,
+      statusSymbol: ' ',
+      priority: 'D' as const,
+      planning: {},
+      tags: [],
+      subtasks: [],
+      comments: [],
+    };
+    const rootWithChild = { ...initialRoot, subtasks: [initialChild] };
+    const freshRef = { ...ref, revision: 'fresh-nested' };
+    const freshNode = { type: 'task' as const, ref: freshRef };
+    const freshChild = {
+      ...initialChild,
+      ref: {
+        ...initialChild.ref,
+        parent: freshNode,
+        originalBlock: '  - [ ] child ⏫',
+      },
+      priority: 'A' as const,
+    };
+    const freshRoot = { ...rootWithChild, ref: freshRef, subtasks: [freshChild] };
+    const doneRef = { ...ref, revision: 'done-nested' };
+    const doneRoot = {
+      ...freshRoot,
+      ref: doneRef,
+      subtasks: [
+        {
+          ...freshChild,
+          ref: {
+            ...freshChild.ref,
+            parent: { type: 'task' as const, ref: doneRef },
+            originalBlock: '  - [x] child ⏫ ✅ 2026-07-14',
+          },
+          status: 'done' as const,
+          statusSymbol: 'x',
+        },
+      ],
+    };
+    const edit = vi
+      .fn<TaskRepository['edit']>()
+      .mockResolvedValueOnce({
+        type: 'committed',
+        outcome: { type: 'task', task: freshRoot },
+        changed: true,
+      })
+      .mockResolvedValueOnce({
+        type: 'committed',
+        outcome: { type: 'task', task: doneRoot },
+        changed: true,
+      });
+    const laggingQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: (target) =>
+        target.revision === ref.revision
+          ? { type: 'exact', task: rootWithChild }
+          : { type: 'conflict', current: rootWithChild },
+    };
+    const application = service({ edit }, laggingQueries);
+    const first = await application.execute({
+      type: 'patch',
+      target: { type: 'subtask', ref: initialChild.ref },
+      patch: { priority: { type: 'set', value: 'A' } },
+    });
+    if (first.type !== 'ok' || first.outcome.type !== 'task') throw new Error('missing outcome');
+    const returnedChild = first.outcome.task.subtasks[0]!;
+    const mutableChild = returnedChild as { status: 'done'; statusSymbol: string };
+    mutableChild.status = 'done';
+    mutableChild.statusSymbol = 'x';
+
+    await expect(
+      application.execute({
+        type: 'toggle-completion',
+        target: { type: 'subtask', ref: returnedChild.ref },
+      }),
+    ).resolves.toMatchObject({ type: 'ok', outcome: { task: { ref: doneRef } } });
+    expect(edit).toHaveBeenLastCalledWith({
+      type: 'set-status',
+      target: { type: 'subtask', ref: freshChild.ref },
+      symbol: 'x',
+      stamp: localDate('2026-07-14'),
+    });
+  });
+
+  it('lets the repository reject an externally stale ref even when its prior outcome is cached', async () => {
+    const fresh = { ...snapshot(), ref: { ...ref, revision: 'fresh-before-external-edit' } };
+    const external = { ...snapshot(), ref: { ...ref, revision: 'external-edit' } };
+    const edit = vi
+      .fn<TaskRepository['edit']>()
+      .mockResolvedValueOnce({
+        type: 'committed',
+        outcome: { type: 'task', task: fresh },
+        changed: true,
+      })
+      .mockResolvedValueOnce({ type: 'conflict', current: external });
+    const exactQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'exact', task: snapshot() }),
+    };
+    const application = service({ edit }, exactQueries);
+    const first = await application.execute({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: { priority: { type: 'set', value: 'A' } },
+    });
+    if (first.type !== 'ok' || first.outcome.type !== 'task') throw new Error('missing outcome');
+
+    await expect(
+      application.execute({
+        type: 'toggle-completion',
+        target: { type: 'task', ref: first.outcome.task.ref },
+      }),
+    ).resolves.toEqual({ type: 'conflict', current: external });
+    expect(edit).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds recent outcome refs and falls back to query resolution after eviction', async () => {
+    let revision = 0;
+    const edit = vi.fn<TaskRepository['edit']>().mockImplementation(async () => ({
+      type: 'committed' as const,
+      outcome: {
+        type: 'task' as const,
+        task: { ...snapshot(), ref: { ...ref, revision: `outcome-${revision++}` } },
+      },
+      changed: true,
+    }));
+    const current = { ...snapshot(), ref: { ...ref, revision: 'current-index-revision' } };
+    const laggingQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'conflict', current }),
+    };
+    const application = service({ edit }, laggingQueries);
+    let firstReturned: TaskSnapshot | undefined;
+    for (let index = 0; index < 65; index++) {
+      const result = await application.execute({
+        type: 'patch',
+        target: { type: 'task', ref: { ...ref, revision: `input-${index}` } },
+        patch: { priority: { type: 'set', value: 'A' } },
+      });
+      if (result.type !== 'ok' || result.outcome.type !== 'task')
+        throw new Error('missing outcome');
+      firstReturned ??= result.outcome.task;
+    }
+    if (!firstReturned) throw new Error('missing first outcome');
+
+    await expect(
+      application.execute({
+        type: 'toggle-completion',
+        target: { type: 'task', ref: firstReturned.ref },
+      }),
+    ).resolves.toEqual({ type: 'conflict', current });
+    expect(edit).toHaveBeenCalledTimes(65);
+  });
+
+  it('returns a stale conflict before toggling and does not read Clock', async () => {
+    const current = { ...snapshot(), ref: { ...ref, revision: 'new' } };
+    const edit = vi.fn<TaskRepository['edit']>();
+    const staleQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'conflict', current }),
+    };
+    clock.today.mockClear();
+
+    await expect(
+      service({ edit }, staleQueries).execute({
+        type: 'toggle-completion',
+        target: { type: 'task', ref },
+      }),
+    ).resolves.toEqual({ type: 'conflict', current });
+    expect(edit).not.toHaveBeenCalled();
+    expect(clock.today).not.toHaveBeenCalled();
+  });
+
+  it('toggles an unknown checkbox through the configured custom done default', async () => {
+    const custom = new StatusCatalog([
+      { id: 'todo', symbol: 'o', type: 'todo', defaultForType: true },
+      { id: 'done', symbol: 'd', type: 'done', defaultForType: true },
+    ]);
+    const unknown = { ...snapshot(), status: 'open' as const, statusSymbol: '?' };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: unknown },
+      changed: true,
+    });
+    const exactQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({ type: 'exact', task: unknown }),
+    };
+    clock.today.mockClear();
+    const application = new TaskApplicationService(exactQueries, { edit }, custom, clock);
+
+    await application.execute({
+      type: 'toggle-completion',
+      target: { type: 'task', ref },
+    });
+
+    expect(edit).toHaveBeenCalledWith({
+      type: 'set-status',
+      target: { type: 'task', ref },
+      symbol: 'd',
+      stamp: localDate('2026-07-14'),
+    });
+  });
+
+  it('rebases an ambiguous nested target onto every current candidate root', async () => {
+    const childRef = {
+      parent: { type: 'task' as const, ref },
+      relativeLine: 1,
+      originalBlock: '  - [ ] child',
+    };
+    const candidate = {
+      ...snapshot(),
+      ref: { ...ref, line: 4, revision: 'candidate' },
+      source: { ...snapshot().source, line: 4 },
+    };
+    const ambiguousQueries: TaskQueryApi = {
+      ...queries(),
+      resolve: () => ({
+        type: 'ambiguous',
+        candidates: [{ root: candidate, target: { type: 'task', ref: candidate.ref } }],
+      }),
+    };
+    const edit = vi.fn<TaskRepository['edit']>();
+
+    await expect(
+      service({ edit }, ambiguousQueries).execute({
+        type: 'set-status',
+        target: { type: 'subtask', ref: childRef },
+        symbol: '/',
+      }),
+    ).resolves.toEqual({
+      type: 'ambiguous',
+      candidates: [
+        {
+          root: candidate,
+          target: {
+            type: 'subtask',
+            ref: {
+              ...childRef,
+              parent: { type: 'task', ref: candidate.ref },
+            },
+          },
+        },
+      ],
+    });
+    expect(edit).not.toHaveBeenCalled();
   });
 });

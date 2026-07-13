@@ -4,9 +4,9 @@ import { parseSubItems as parseSubItemsWithCatalog } from '../src/parser/SubItem
 import { formatTaskLine, parseTask as parseTaskWithCatalog } from '../src/parser/TaskParser';
 import type { ParseContext } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
-import { TaskStore } from '../src/store/TaskStore';
 import {
   canonicalStatusCatalog,
+  configuredTaskStore,
   createAppWithFiles,
   readStoreTasks,
   seedTaskCache,
@@ -212,7 +212,7 @@ describe('blockquote tasks — TaskStore integration', () => {
       { task: ' ', parent: -1, line: 1 },
       { task: 'x', parent: -1, line: 2 },
     ]);
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const tasks = readStoreTasks(store);
     expect(tasks).toHaveLength(3);
@@ -226,7 +226,7 @@ describe('blockquote tasks — TaskStore integration', () => {
       { task: 'x', parent: -1, line: 0 },
       { task: 'x', parent: 0, line: 1 }, // child of line 0 → skipped in main loop
     ]);
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const tasks = readStoreTasks(store);
     expect(tasks).toHaveLength(1);
@@ -242,7 +242,7 @@ describe('blockquote tasks — TaskStore integration', () => {
       { task: ' ', parent: -1, line: 0 },
       { task: ' ', parent: -2, line: 1 },
     ]);
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const tasks = readStoreTasks(store);
     expect(tasks).toHaveLength(2);
@@ -256,7 +256,7 @@ describe('blockquote tasks — TaskStore integration', () => {
       't.md': '> ```md\n> - [ ] example in code block\n> ```',
     });
     setCache(app, 't.md', { listItems: [] });
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     expect(readStoreTasks(store)).toEqual([]);
   });
@@ -269,7 +269,7 @@ describe('blockquote tasks — TaskStore integration', () => {
       { task: ' ', parent: -1, line: 0 },
       { task: ' ', parent: 0, line: 2 },
     ]);
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const tasks = readStoreTasks(store);
     expect(tasks).toHaveLength(1);
@@ -284,7 +284,7 @@ describe('blockquote tasks — TaskStore integration', () => {
       { task: ' ', parent: -1, line: 0 },
       { task: ' ', parent: -1, line: 1 },
     ]);
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const tasks = readStoreTasks(store);
     expect(tasks).toHaveLength(2);
@@ -307,7 +307,7 @@ describe('blockquote tasks — TaskStore integration', () => {
         ],
       }),
     );
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const tasks = readStoreTasks(store);
     // No task ancestor exists (both parents are plain bullets) → emitted top-level.
@@ -321,7 +321,7 @@ describe('blockquote tasks — toggle write-path', () => {
     const today = window.moment().format('YYYY-MM-DD');
     const app = await createAppWithFiles({ 't.md': '> - [ ] quoted' });
     seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     await store.toggleTask(readStoreTasks(store)[0]!);
     const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);
@@ -331,7 +331,7 @@ describe('blockquote tasks — toggle write-path', () => {
   it('unchecks a "> - [x]" task, strips ✅, and preserves the prefix', async () => {
     const app = await createAppWithFiles({ 't.md': '>> - [x] quoted ✅ 2026-06-22' });
     seedTaskCache(app, 't.md', [{ task: 'x', parent: -1, line: 0 }]);
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     await store.toggleTask(readStoreTasks(store)[0]!);
     const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);
@@ -345,7 +345,7 @@ describe('blockquote tasks — toggle write-path', () => {
       { task: ' ', parent: -1, line: 0 },
       { task: ' ', parent: -1, line: 1 },
     ]);
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
+    const store = configuredTaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     await store.toggleTask(readStoreTasks(store)[0]!);
     const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);

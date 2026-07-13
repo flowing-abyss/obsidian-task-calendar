@@ -1,7 +1,7 @@
 import type { App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
-import type { TaskIndexEvent } from '../src/tasks';
+import type { TaskApplicationApi, TaskIndexEvent } from '../src/tasks';
 import { freshContainer, queryApiForTasks, resolvedConfig, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -56,6 +56,10 @@ class StubStore {
     this.tasks = t;
   }
   toggleTask = vi.fn();
+  execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+    type: 'invalid',
+    issues: [{ code: 'invalid-target' }],
+  });
   addTask = vi.fn<(date: string, text: string) => Promise<void>>().mockResolvedValue(undefined);
 }
 
@@ -69,7 +73,10 @@ function makeRenderer(
   config: ReturnType<typeof resolvedConfig>,
   app: App,
 ): CalendarRenderer {
-  return new CalendarRenderer(root, store as unknown as TaskStore, config, app, store.taskQueries);
+  return new CalendarRenderer(root, store as unknown as TaskStore, config, app, store.taskQueries, {
+    queries: store.taskQueries,
+    execute: store.execute,
+  });
 }
 
 describe('CalendarRenderer TaskInputModal submit', () => {

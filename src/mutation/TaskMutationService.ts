@@ -1,9 +1,7 @@
 import { Notice, TFile, type App } from 'obsidian';
 import type { ParseContext } from '../parser/types';
-import { PRIORITY_LEVELS } from '../priority';
-import type { StatusRegistry } from '../status/StatusRegistry';
 import type { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import type { TaskPriority, TaskRef } from '../tasks/domain/types';
+import type { TaskRef } from '../tasks/domain/types';
 import { insertTaskBlockIntoContent } from './insertTaskBlock';
 import { findTaskLine, type FindResult, type TaskLocator } from './TaskLocator';
 import { validateMutatedTaskLine } from './validateMutatedLine';
@@ -58,20 +56,10 @@ export type MutationResult =
 export class TaskMutationService {
   constructor(
     private app: App,
-    private getRegistry: (() => StatusRegistry) | undefined,
     private getStatusCatalog: () => StatusCatalog,
     private onSuccessfulMutation?: (ref?: TaskRef) => void,
     private captureMutationRef?: () => TaskRef | undefined,
   ) {}
-
-  private static stripStamp(line: string, emoji: string): string {
-    return line.replace(new RegExp(`\\s*${emoji}\\s*\\d{4}-\\d{2}-\\d{2}`, 'u'), '');
-  }
-
-  private static addStamp(line: string, emoji: string, date: string, cr: string): string {
-    const body = (cr ? line.slice(0, -cr.length) : line).trimEnd();
-    return `${body} ${emoji} ${date}${cr}`;
-  }
 
   /**
    * Locate the task in the current file content and call `transform(lines, taskLine)`.
@@ -174,81 +162,6 @@ export class TaskMutationService {
       );
     }
     return result;
-  }
-
-  /**
-   * Toggle task completion. Registry-driven: any non-done status becomes the
-   * registry's default "done" symbol (✅ stamped), and done becomes the default
-   * "to-do" symbol (✅ stripped). Falls back to plain x/space when no registry
-   * getter was supplied (mirrors legacy open ↔ done behavior).
-   */
-  async toggleCompletion(locator: TaskLocator, today: string): Promise<MutationResult> {
-    return this.applyToLines(locator, (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const registry = this.getRegistry?.();
-      const cur = /^[\s>]*- \[(.)\]/u.exec(line)?.[1] ?? ' ';
-      const isDone = registry ? registry.typeForSymbol(cur) === 'done' : cur === 'x' || cur === 'X';
-      const target = isDone
-        ? (registry?.defaultTodo().symbol ?? ' ')
-        : (registry?.defaultDone().symbol ?? 'x');
-      // Preserve trailing \r for CRLF files so the rawText fingerprint stays consistent.
-      const cr = line.endsWith('\r') ? '\r' : '';
-      // `[\s>]*` preserves any leading blockquote/callout markers on write-back.
-      let next = line.replace(/^([\s>]*)- \[.\]/u, `$1- [${target}]`);
-      next = TaskMutationService.stripStamp(next, '✅');
-      next = TaskMutationService.stripStamp(next, '❌');
-      let targetType: 'open' | 'done';
-      if (registry) targetType = registry.typeForSymbol(target) === 'done' ? 'done' : 'open';
-      else targetType = target === 'x' ? 'done' : 'open';
-      if (!isDone && targetType === 'done') {
-        next = TaskMutationService.addStamp(next, '✅', today, cr);
-      } else {
-        next = next.trimEnd() + cr;
-      }
-      lines[taskLine] = next;
-    });
-  }
-
-  /** Rewrite the marker char inside `[ ]` and manage ✅/❌ stamps for the target type. */
-  async setStatusChar(locator: TaskLocator, char: string, today: string): Promise<MutationResult> {
-    return this.applyToLines(locator, (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const cur = /^[\s>]*- \[(.)\]/u.exec(line)?.[1];
-      if (cur === char) return; // no-op: status unchanged, preserve existing ✅/❌ stamp
-      const registry = this.getRegistry?.();
-      const targetType = registry ? registry.typeForSymbol(char) : 'open';
-      const cr = line.endsWith('\r') ? '\r' : '';
-      let next = line.replace(/^([\s>]*)- \[.\]/u, `$1- [${char}]`);
-      next = TaskMutationService.stripStamp(next, '✅');
-      next = TaskMutationService.stripStamp(next, '❌');
-      if (targetType === 'done') {
-        next = TaskMutationService.addStamp(next, '✅', today, cr);
-      } else if (targetType === 'cancelled') {
-        next = TaskMutationService.addStamp(next, '❌', today, cr);
-      } else {
-        next = next.trimEnd() + cr;
-      }
-      lines[taskLine] = next;
-    });
-  }
-
-  /** Rewrite the priority emoji on the task line (replaces any existing one). */
-  async setPriority(locator: TaskLocator, priority: TaskPriority): Promise<MutationResult> {
-    const PRIORITY_EMOJIS = PRIORITY_LEVELS.map((l) => l.emoji).filter(Boolean);
-    const PRIORITY_MAP: Record<string, string> = Object.fromEntries(
-      PRIORITY_LEVELS.filter((l) => l.emoji).map((l) => [l.value, l.emoji]),
-    );
-    return this.applyToLines(locator, (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      let updated = line;
-      for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
-      if (priority !== 'D' && PRIORITY_MAP[priority])
-        updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
-      lines[taskLine] = updated.replace(/\s{2,}/gu, ' ').trimEnd();
-    });
   }
 
   /** Insert a new line immediately after the task (or after its subtask range).

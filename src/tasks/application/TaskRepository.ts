@@ -1,8 +1,20 @@
-import type { TaskCommand, TaskCommandOutcome, TaskResolutionCandidate } from '../domain/commands';
-import type { TaskMutationTarget, TaskSnapshot } from '../domain/types';
+import type {
+  TaskCommand,
+  TaskCommandOutcome,
+  TaskResolutionCandidate,
+  TaskStatusTarget,
+} from '../domain/commands';
+import type { LocalDate, TaskMutationTarget, TaskSnapshot } from '../domain/types';
 import type { TaskIssue } from '../domain/validation';
 
-export type TaskEditCommand = TaskCommand;
+export type TaskEditCommand =
+  | Exclude<TaskCommand, { readonly type: 'set-status' | 'toggle-completion' }>
+  | {
+      readonly type: 'set-status';
+      readonly target: TaskStatusTarget;
+      readonly symbol: string;
+      readonly stamp?: LocalDate;
+    };
 
 export type TaskRepositoryResult =
   | { readonly type: 'committed'; readonly outcome: TaskCommandOutcome; readonly changed: boolean }

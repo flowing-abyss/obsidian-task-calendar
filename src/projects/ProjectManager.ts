@@ -28,7 +28,6 @@ export class ProjectManager {
   ) {
     this.mutations = new TaskMutationService(
       app,
-      undefined,
       () => new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
     );
   }

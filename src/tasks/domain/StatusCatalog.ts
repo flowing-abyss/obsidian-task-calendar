@@ -12,10 +12,14 @@ function normalizeSymbol(symbol: string): string {
 }
 
 export class StatusCatalog {
-  private readonly rules: TaskStatusRule[];
-  private readonly bySymbolMap: Map<string, TaskStatusRule>;
+  private rules: TaskStatusRule[] = [];
+  private bySymbolMap = new Map<string, TaskStatusRule>();
 
   constructor(rules: readonly TaskStatusRule[]) {
+    this.replace(rules);
+  }
+
+  replace(rules: readonly TaskStatusRule[]): void {
     this.rules = rules.map((rule) => ({ ...rule }));
     this.bySymbolMap = new Map();
     for (const rule of this.rules) {

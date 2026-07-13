@@ -4,7 +4,7 @@ import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskStore } from '../src/store/TaskStore';
-import type { TaskIndexEvent } from '../src/tasks';
+import type { TaskApplicationApi, TaskIndexEvent } from '../src/tasks';
 import { CalendarRenderer } from '../src/ui/CalendarRenderer';
 import {
   fixedToday,
@@ -39,6 +39,10 @@ class StubStore {
   toggleTask = vi.fn();
   setTaskStatus = vi.fn();
   setPriority = vi.fn();
+  execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+    type: 'invalid',
+    issues: [{ code: 'invalid-target' }],
+  });
   addTask = vi.fn<(date: string, text: string) => Promise<void>>().mockResolvedValue(undefined);
 }
 
@@ -52,7 +56,10 @@ function makeRenderer(
   config: ReturnType<typeof resolvedConfig>,
   app: App,
 ): CalendarRenderer {
-  return new CalendarRenderer(root, store as unknown as TaskStore, config, app, store.taskQueries);
+  return new CalendarRenderer(root, store as unknown as TaskStore, config, app, store.taskQueries, {
+    queries: store.taskQueries,
+    execute: store.execute,
+  });
 }
 
 describe('CalendarRenderer', () => {
@@ -381,7 +388,7 @@ describe('CalendarRenderer', () => {
       r.destroy();
     });
 
-    it('onToggle(task) → store.toggleTask called', () => {
+    it('onToggle(task) sends toggle intent through TaskApplicationApi', () => {
       const store = new StubStore();
       const root = freshContainer();
       const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
@@ -393,9 +400,13 @@ describe('CalendarRenderer', () => {
       // click the status marker inside the task card
       const marker = root.querySelector('.task .tc-status-marker') as HTMLElement;
       marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      expect(store.toggleTask).toHaveBeenCalledWith(
-        expect.objectContaining({ filePath: t.filePath, line: t.line, text: t.text }),
-      );
+      expect(store.execute).toHaveBeenCalledWith({
+        type: 'toggle-completion',
+        target: {
+          type: 'task',
+          ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+        },
+      });
       r.destroy();
     });
   });

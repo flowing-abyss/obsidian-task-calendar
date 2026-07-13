@@ -27,7 +27,6 @@ import {
   readStoreTasks,
   seedTaskCache,
   task,
-  taskQueriesOf,
   useRealMoment,
 } from './helpers';
 
@@ -66,8 +65,6 @@ async function makePanel(
 ): Promise<{ panel: CenterPanel; state: AppState; store: TaskStore; app: App }> {
   const app = await createAppWithFiles(files);
   for (const s of seeds) seedTaskCache(app, s.path, s.items);
-  const store = new TaskStore(app, settings);
-  await store.initialize();
   const state = new AppState();
   const statusCatalog = new StatusCatalog(toStatusRules(settings.taskStatuses));
   const index = new TaskIndex(app, {
@@ -75,14 +72,18 @@ async function makePanel(
     dailyNoteFormat: settings.desktop.dailyNoteFormat,
   });
   const tasks = new TaskApplicationService(
-    taskQueriesOf(store),
+    index,
     new ObsidianTaskRepository(app, {
       codec: new TaskMarkdownCodec(statusCatalog),
       editor: new TaskBlockEditor(),
       locator: new TaskLocator(),
       snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
     }),
+    statusCatalog,
+    { today: () => '2026-07-14' as never },
   );
+  const store = new TaskStore(app, settings, index, tasks, statusCatalog);
+  await store.initialize();
   const panel = makeCenterPanelForTest(
     state,
     store,

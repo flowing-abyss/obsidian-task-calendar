@@ -139,7 +139,6 @@ export class CenterPanel {
     this.onSaveSettings = onSaveSettings;
     this.mutations = new TaskMutationService(
       app,
-      undefined,
       () => new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
     );
   }
@@ -586,13 +585,13 @@ export class CenterPanel {
           onDueChange: handleDueChange,
           onExtendToSpan: handleExtendToSpan,
           onToggle: (t) => {
-            void this.store.toggleTask(t);
+            void this.toggleTask(t);
           },
           onSetStatus: (t, status) => {
-            void this.store.setTaskStatus(t, status);
+            void this.setTaskStatus(t, status);
           },
           onSetPriority: (t, priority) => {
-            void this.store.setPriority(t, priority);
+            void this.setPriority(t, priority);
           },
           statusRegistry: this.store.statusRegistry,
           tagGroups: this.settings.tagGroups,
@@ -616,13 +615,13 @@ export class CenterPanel {
           onDueChange: handleDueChange,
           onExtendToSpan: handleExtendToSpan,
           onToggle: (t) => {
-            void this.store.toggleTask(t);
+            void this.toggleTask(t);
           },
           onSetStatus: (t, status) => {
-            void this.store.setTaskStatus(t, status);
+            void this.setTaskStatus(t, status);
           },
           onSetPriority: (t, priority) => {
-            void this.store.setPriority(t, priority);
+            void this.setPriority(t, priority);
           },
           statusRegistry: this.store.statusRegistry,
           tagGroups: this.settings.tagGroups,
@@ -639,13 +638,13 @@ export class CenterPanel {
           onTaskClick: handleTaskClick,
           onDrop: handleDrop,
           onToggle: (t) => {
-            void this.store.toggleTask(t);
+            void this.toggleTask(t);
           },
           onSetStatus: (t, status) => {
-            void this.store.setTaskStatus(t, status);
+            void this.setTaskStatus(t, status);
           },
           onSetPriority: (t, priority) => {
-            void this.store.setPriority(t, priority);
+            void this.setPriority(t, priority);
           },
           onWeekClick: (wk, yr) => {
             this.calViewType = 'week';
@@ -889,14 +888,14 @@ export class CenterPanel {
     renderStatusMarker(card, {
       task,
       registry: this.store.statusRegistry,
-      onLeftClick: () => void this.store.toggleTask(task),
+      onLeftClick: () => void this.toggleTask(task),
       onContextMenu: (ev) => {
         ev.stopPropagation();
         showStatusMenuAt(ev, {
           task,
           registry: this.store.statusRegistry,
-          onPickStatus: (c) => void this.store.setTaskStatus(task, c),
-          onPickPriority: (p) => void this.store.setPriority(task, p),
+          onPickStatus: (c) => void this.setTaskStatus(task, c),
+          onPickPriority: (p) => void this.setPriority(task, p),
         });
       },
     });
@@ -1193,7 +1192,7 @@ export class CenterPanel {
           sub,
           task,
           this.store.statusRegistry,
-          (c) => void this.store.setTaskStatus(task, c),
+          (c) => void this.setTaskStatus(task, c),
         );
       });
 
@@ -1401,7 +1400,7 @@ export class CenterPanel {
       item.setTitle('Status').setIcon('check-square').setSection('priority');
       const sub = getSubmenu(item);
       buildStatusSubmenu(sub, selectedTasks[0]!, this.store.statusRegistry, (c) => {
-        void Promise.all(selectedTasks.map((t) => this.store.setTaskStatus(t, c)));
+        void Promise.all(selectedTasks.map((t) => this.setTaskStatus(t, c)));
       });
     });
 
@@ -2282,6 +2281,37 @@ export class CenterPanel {
     task: Task,
     priority: 'A' | 'B' | 'C' | 'D' | 'E' | 'F',
   ): Promise<void> {
-    await this.store.setPriority(task, priority);
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    presentTaskCommandResult(
+      await this.tasks.execute({
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { priority: { type: 'set', value: priority } },
+      }),
+    );
+  }
+
+  private async toggleTask(task: Task): Promise<void> {
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    presentTaskCommandResult(
+      await this.tasks.execute({
+        type: 'toggle-completion',
+        target: { type: 'task', ref },
+      }),
+    );
+  }
+
+  private async setTaskStatus(task: Task, symbol: string): Promise<void> {
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    presentTaskCommandResult(
+      await this.tasks.execute({
+        type: 'set-status',
+        target: { type: 'task', ref },
+        symbol,
+      }),
+    );
   }
 }

@@ -4,11 +4,20 @@ import { TFile, type App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
-import type { SubTask, TaskComment } from '../src/parser/types';
+import type { SubTask, Task, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
 import type { TaskApplicationApi, TaskCommandResult, TaskSnapshot } from '../src/tasks';
+import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
+import { legacyTaskViews } from '../src/tasks/compat/legacyTaskView';
+import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskRef } from '../src/tasks/domain/types';
+import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
+import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
+import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
+import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 import { openInFile } from '../src/ui/taskNavigation';
 import { createAppWithFiles, freshContainer, seedTaskCache, task, useRealMoment } from './helpers';
 
@@ -26,6 +35,31 @@ async function readMd(app: App, path: string): Promise<string> {
 
 /** Bracket-access helper to call private methods (preserves `this` binding). */
 function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
+  const candidate = args[0];
+  if (
+    (method === 'toggleSubTask' || method === 'updatePriority' || method === 'setStatus') &&
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    !('ref' in candidate)
+  ) {
+    const legacy = legacyTaskViews(
+      (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list(),
+    );
+    const queue: Array<Task | SubTask> = [...legacy];
+    let found: Task | SubTask | undefined;
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (
+        current.filePath === (candidate as SubTask).filePath &&
+        current.line === (candidate as SubTask).line
+      ) {
+        found = current;
+        break;
+      }
+      queue.push(...(current.subtasks ?? []));
+    }
+    if (found && 'ref' in found) Object.assign(candidate, { ref: found.ref });
+  }
   const fn = (panel as unknown as Record<string, (...a: unknown[]) => T>)[method]!;
   return fn.call(panel, ...args);
 }
@@ -43,7 +77,24 @@ async function makePanel(
   const app = await createAppWithFiles(files);
   for (const s of seeds) seedTaskCache(app, s.path, s.items);
   const state = new AppState();
-  const panel = new RightPanel(state, app, settings, onSuccessfulMutation);
+  const statusCatalog = new StatusCatalog(toStatusRules(settings.taskStatuses));
+  const index = new TaskIndex(app, {
+    statusCatalog,
+    dailyNoteFormat: settings.desktop.dailyNoteFormat,
+  });
+  const tasks = new TaskApplicationService(
+    index,
+    new ObsidianTaskRepository(app, {
+      codec: new TaskMarkdownCodec(statusCatalog),
+      editor: new TaskBlockEditor(),
+      locator: new TaskLocator(),
+      snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
+    }),
+    statusCatalog,
+    { today: () => '2026-07-14' as never },
+  );
+  await index.initialize();
+  const panel = new RightPanel(state, app, settings, onSuccessfulMutation, tasks);
   return { panel, state, app };
 }
 

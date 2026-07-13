@@ -1,4 +1,5 @@
-import type { FieldUpdate, TaskCommand, TaskPatch } from '../../domain/commands';
+import type { TaskEditCommand } from '../../application/TaskRepository';
+import type { FieldUpdate, TaskPatch } from '../../domain/commands';
 import {
   TaskMarkdownCodec,
   type LineEdit,
@@ -18,6 +19,12 @@ function fieldEdit(field: SchedulingDateField, update: FieldUpdate<string>): Lin
 
 function orderedPatchEdits(parsed: ParsedTaskLine, patch: TaskPatch): readonly LineEdit[] {
   const edits: LineEdit[] = [];
+  if (patch.priority) {
+    edits.push({
+      type: 'set-priority',
+      priority: patch.priority.type === 'set' ? patch.priority.value : 'D',
+    });
+  }
   if (patch.scheduled) edits.push(fieldEdit('scheduled', patch.scheduled));
 
   if (patch.start?.type === 'clear') edits.push(fieldEdit('start', patch.start));
@@ -60,10 +67,10 @@ function semanticSchedulingFields(
 }
 
 /** Applies one planning command to a task line without exposing transient intermediate states. */
-export function applyPlanningCommand(
+export function applyTaskCommand(
   codec: TaskMarkdownCodec,
   sourceLine: string,
-  command: TaskCommand,
+  command: TaskEditCommand,
 ): LineEditResult {
   const parsed = codec.parseLine(sourceLine, { filePath: '', line: 0 });
   if (!parsed) return { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
@@ -83,6 +90,15 @@ export function applyPlanningCommand(
       edits = orderedPatchEdits(parsed, command.patch);
       break;
     }
+    case 'set-status':
+      edits = [
+        {
+          type: 'set-status',
+          symbol: command.symbol,
+          ...(command.stamp !== undefined && { today: command.stamp }),
+        },
+      ];
+      break;
     case 'reschedule': {
       const field = anchorDateField(parsed);
       requestedFields = semanticSchedulingFields(parsed, field);

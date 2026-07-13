@@ -11,7 +11,7 @@ async function readFile(app: ObsidianApp, path: string): Promise<string> {
 }
 
 function svc(app: ObsidianApp): TaskMutationService {
-  return new TaskMutationService(app, undefined, canonicalStatusCatalog);
+  return new TaskMutationService(app, canonicalStatusCatalog);
 }
 
 describe('TaskMutationService.moveTaskToFile', () => {

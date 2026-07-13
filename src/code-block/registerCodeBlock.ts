@@ -2,7 +2,7 @@ import { MarkdownRenderChild, Platform, type Plugin } from 'obsidian';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { CalendarSettings, CodeBlockParams, ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
-import type { TaskQueryApi } from '../tasks';
+import type { TaskApplicationApi, TaskQueryApi } from '../tasks';
 import { CalendarRenderer } from '../ui/CalendarRenderer';
 
 // Note: if 'yaml' is not available as a dependency, use a simple key:value line parser
@@ -52,6 +52,7 @@ export function registerCodeBlock(
   store: TaskStore,
   settings: CalendarSettings,
   queries: TaskQueryApi,
+  tasks: TaskApplicationApi,
 ): void {
   plugin.registerMarkdownCodeBlockProcessor('task-calendar', (source, el, ctx) => {
     let params: CodeBlockParams;
@@ -74,7 +75,7 @@ export function registerCodeBlock(
       },
     });
 
-    const renderer = new CalendarRenderer(rootEl, store, config, plugin.app, queries);
+    const renderer = new CalendarRenderer(rootEl, store, config, plugin.app, queries, tasks);
 
     // MarkdownRenderChild ensures cleanup when the block leaves the DOM
     const child = new MarkdownRenderChild(el);

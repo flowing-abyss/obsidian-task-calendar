@@ -7,7 +7,7 @@ import { toStatusRules } from './settings/statusCatalogAdapter';
 import type { CalendarSettings, CodeBlockParams } from './settings/types';
 import { TaskStore } from './store/TaskStore';
 import { TagManager } from './tags/TagManager';
-import type { TaskApplicationApi, TaskQueryApi } from './tasks';
+import { localDate, type TaskApplicationApi, type TaskQueryApi } from './tasks';
 import { TaskApplicationService } from './tasks/application/TaskApplicationService';
 import { StatusCatalog } from './tasks/domain/StatusCatalog';
 import { TaskBlockEditor } from './tasks/infrastructure/markdown/TaskBlockEditor';
@@ -42,8 +42,10 @@ export default class TaskCalendarPlugin extends Plugin {
       locator: new TaskLocator(),
       snapshotsFromContent: (path, content) => taskIndex.snapshotsFromContent(path, content),
     });
-    this.tasks = new TaskApplicationService(taskIndex, repository);
-    this.store = new TaskStore(this.app, this.settings, taskIndex);
+    this.tasks = new TaskApplicationService(taskIndex, repository, statusCatalog, {
+      today: () => localDate(window.moment().format('YYYY-MM-DD')),
+    });
+    this.store = new TaskStore(this.app, this.settings, taskIndex, this.tasks, statusCatalog);
     this.queries = this.tasks.queries;
     this.tagManager = new TagManager(this.app, this.settings, () => this.saveSettings());
 
@@ -61,7 +63,7 @@ export default class TaskCalendarPlugin extends Plugin {
         ),
     );
 
-    registerCodeBlock(this, this.store, this.settings, this.queries);
+    registerCodeBlock(this, this.store, this.settings, this.queries, this.tasks);
 
     this.addCommand({
       id: 'open-panel',
@@ -93,6 +95,7 @@ export default class TaskCalendarPlugin extends Plugin {
         resolveConfig(this.settings, params),
         this.app,
         this.queries,
+        this.tasks,
       );
       renderer.mount();
     };

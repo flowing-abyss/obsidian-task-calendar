@@ -11,7 +11,7 @@ import type {
   TaskRef,
   TaskSnapshot,
 } from '../../src/tasks/domain/types';
-import { applyPlanningCommand } from '../../src/tasks/infrastructure/markdown/applyPlanningCommand';
+import { applyTaskCommand } from '../../src/tasks/infrastructure/markdown/applyTaskCommand';
 import { TaskBlockEditor } from '../../src/tasks/infrastructure/markdown/TaskBlockEditor';
 import { TaskLocator } from '../../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
@@ -55,7 +55,9 @@ function confirmedLine(target: PlanningTarget, block: string): number | undefine
 }
 
 function targetOf(command: TaskEditCommand): TaskMutationTarget {
-  return command.type === 'patch' ? command.target : { type: 'task', ref: command.ref };
+  return command.type === 'patch' || command.type === 'set-status'
+    ? command.target
+    : { type: 'task', ref: command.ref };
 }
 
 export class InMemoryTaskRepository implements TaskRepository {
@@ -75,7 +77,9 @@ export class InMemoryTaskRepository implements TaskRepository {
 
   async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
     const target =
-      command.type === 'patch' ? command.target : ({ type: 'task', ref: command.ref } as const);
+      command.type === 'patch' || command.type === 'set-status'
+        ? command.target
+        : ({ type: 'task', ref: command.ref } as const);
     const ref = rootRef(target);
     const content = this.files.get(ref.filePath);
     if (content === undefined) return { type: 'not-found', target: targetOf(command) };
@@ -107,7 +111,7 @@ export class InMemoryTaskRepository implements TaskRepository {
     const lines = content.split(/\r?\n/u);
     const sourceLine = lines[located.block.line + relativeLine];
     if (sourceLine === undefined) return { type: 'not-found', target: targetOf(command) };
-    const result = applyPlanningCommand(this.options.codec, sourceLine, command);
+    const result = applyTaskCommand(this.options.codec, sourceLine, command);
     if (result.type === 'invalid') return result;
     const nextLine = result.content;
     const changed = result.type === 'changed';

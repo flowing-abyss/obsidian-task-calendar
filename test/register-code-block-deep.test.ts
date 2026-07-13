@@ -3,7 +3,8 @@ import { registerCodeBlock, resolveConfig } from '../src/code-block/registerCode
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, CodeBlockParams } from '../src/settings/types';
 import { TaskStore } from '../src/store/TaskStore';
-import { queryApiForTasks, useRealMoment } from './helpers';
+import type { TaskApplicationApi } from '../src/tasks';
+import { queryApiForTasks, task, useRealMoment } from './helpers';
 
 useRealMoment();
 
@@ -23,11 +24,17 @@ function setupCodeBlock(settings: CalendarSettings = DEFAULT_SETTINGS): {
     },
   };
   const store = new TaskStore(fakePlugin.app as never, settings);
+  const queries = queryApiForTasks(() => []);
+  const tasks: TaskApplicationApi = {
+    queries,
+    execute: vi.fn().mockResolvedValue({ type: 'invalid', issues: [{ code: 'invalid-target' }] }),
+  };
   registerCodeBlock(
     fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0],
     store,
     settings,
-    queryApiForTasks(() => []),
+    queries,
+    tasks,
   );
   if (!captured) throw new Error('processor not registered');
   return { processor: captured, store };
@@ -109,6 +116,43 @@ describe('parseCodeBlockYaml (indirect via registerCodeBlock)', () => {
 });
 
 describe('registerCodeBlock processor', () => {
+  it('injects the shared task API into calendar status interactions', () => {
+    let processor: CapturedProcessor | undefined;
+    const fakePlugin = {
+      app: {} as unknown,
+      registerMarkdownCodeBlockProcessor: (_id: string, cb: CapturedProcessor) => {
+        processor = cb;
+      },
+    };
+    const store = new TaskStore(fakePlugin.app as never, DEFAULT_SETTINGS);
+    const today = window.moment().format('YYYY-MM-DD');
+    const queries = queryApiForTasks(() => [task({ due: today })]);
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'invalid',
+      issues: [{ code: 'invalid-target' }],
+    });
+    registerCodeBlock(
+      fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0],
+      store,
+      DEFAULT_SETTINGS,
+      queries,
+      { queries, execute },
+    );
+    if (!processor) throw new Error('processor not registered');
+
+    const { el } = invokeProcessor(processor, 'view: month');
+    const marker = el.querySelector<HTMLElement>('.task .tc-status-marker');
+    expect(marker).not.toBeNull();
+    marker!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(execute).toHaveBeenCalledWith({
+      type: 'toggle-completion',
+      target: {
+        type: 'task',
+        ref: expect.objectContaining({ filePath: 'f.md', line: 0 }),
+      },
+    });
+  });
+
   it('registers task-calendar processor', () => {
     let registered = false;
     const fakePlugin = {
@@ -118,11 +162,18 @@ describe('registerCodeBlock processor', () => {
       },
     };
     const store = new TaskStore(fakePlugin.app as never, DEFAULT_SETTINGS);
+    const queries = queryApiForTasks(() => []);
     registerCodeBlock(
       fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0],
       store,
       DEFAULT_SETTINGS,
-      queryApiForTasks(() => []),
+      queries,
+      {
+        queries,
+        execute: vi
+          .fn()
+          .mockResolvedValue({ type: 'invalid', issues: [{ code: 'invalid-target' }] }),
+      },
     );
     expect(registered).toBe(true);
   });

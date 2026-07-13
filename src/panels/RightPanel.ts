@@ -28,7 +28,7 @@ import {
 } from '../tasks';
 import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import type { SubtaskRef, TaskNodeRef, TaskRef } from '../tasks/domain/types';
+import type { SubtaskRef, TaskNodeRef, TaskPriority, TaskRef } from '../tasks/domain/types';
 import {
   enableAttachmentDrop,
   enableAttachmentPaste,
@@ -107,7 +107,6 @@ export class RightPanel {
     );
     this.mutations = new TaskMutationService(
       app,
-      () => this.statusRegistry,
       () =>
         new StatusCatalog(toStatusRules(this.settings?.taskStatuses ?? buildDefaultTaskStatuses())),
       onSuccessfulMutation,
@@ -608,11 +607,10 @@ export class RightPanel {
       onLeftClick: () => void this.toggleSubTask(sub),
       onContextMenu: (ev) => {
         ev.stopPropagation();
-        const today = window.moment().format('YYYY-MM-DD');
         showStatusMenuAt(ev, {
           task: sub,
           registry: this.statusRegistry,
-          onPickStatus: (c) => void this.mutations.setStatusChar(locatorOf(sub), c, today),
+          onPickStatus: (c) => void this.setStatus(sub, c),
           onPickPriority: (p) => void this.updatePriority(sub, p),
         });
       },
@@ -1088,12 +1086,10 @@ export class RightPanel {
   }
 
   private async toggleSubTask(sub: SubTask): Promise<void> {
-    const isDone = this.statusRegistry.typeForSymbol(sub.statusSymbol) === 'done';
-    const targetSymbol = isDone
-      ? this.statusRegistry.defaultTodo().symbol
-      : this.statusRegistry.defaultDone().symbol;
-    const today = window.moment().format('YYYY-MM-DD');
-    await this.mutations.setStatusChar(locatorOf(sub), targetSymbol, today);
+    const target = this.planningTarget(sub);
+    if (!target || !this.tasks) return;
+    const result = await this.tasks.execute({ type: 'toggle-completion', target });
+    this.applyPlanningResult(result, target);
   }
 
   private async addComment(
@@ -1182,12 +1178,12 @@ export class RightPanel {
   }
 
   private planningTarget(task: TaskLike): PlanningTarget | undefined {
-    if (!('ref' in task)) return undefined;
-    const ref = task.ref;
-    if (typeof ref !== 'object' || ref === null) return undefined;
-    if ('revision' in ref) return { type: 'task', ref: ref as TaskRef };
-    if ('relativeLine' in ref) {
-      return { type: 'subtask', ref: ref as SubtaskRef };
+    if ('ref' in task) {
+      const ref = task.ref;
+      if (typeof ref === 'object' && ref !== null) {
+        if ('revision' in ref) return { type: 'task', ref: ref as TaskRef };
+        if ('relativeLine' in ref) return { type: 'subtask', ref: ref as SubtaskRef };
+      }
     }
     return undefined;
   }
@@ -1242,18 +1238,21 @@ export class RightPanel {
     await this.executePlanningPatch(task, { duration: { type: 'clear' } });
   }
 
+  private async setStatus(task: TaskLike, symbol: string): Promise<void> {
+    const target = this.planningTarget(task);
+    if (!target || !this.tasks) return;
+    const result = await this.tasks.execute({ type: 'set-status', target, symbol });
+    this.applyPlanningResult(result, target);
+  }
+
   private async updatePriority(task: TaskLike, priority: string): Promise<void> {
-    const PRIORITY_EMOJIS = ['🔺', '⏫', '🔼', '🔽', '⏬'];
-    const PRIORITY_MAP: Record<string, string> = { A: '🔺', B: '⏫', C: '🔼', E: '🔽', F: '⏬' };
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      let updated = line;
-      for (const emoji of PRIORITY_EMOJIS) updated = updated.replace(emoji, '');
-      if (priority !== 'D' && PRIORITY_MAP[priority])
-        updated = updated.trimEnd() + ` ${PRIORITY_MAP[priority]}`;
-      lines[taskLine] = formatTaskLine(updated);
-    });
+    if (!['A', 'B', 'C', 'D', 'E', 'F'].includes(priority)) return;
+    const target = this.planningTarget(task);
+    if (!target || !this.tasks) return;
+    const patch: TaskPatch = {
+      priority: { type: 'set', value: priority as TaskPriority },
+    };
+    await this.executePlanningPatch(task, patch);
   }
 
   private async removeTag(task: TaskLike, tag: string): Promise<void> {

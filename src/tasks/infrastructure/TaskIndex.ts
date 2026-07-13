@@ -16,6 +16,7 @@ import type {
   TaskQueryApi,
   TaskResolution,
 } from '../application/TaskApplicationApi';
+import { cloneTaskSnapshot } from '../domain/cloneTaskSnapshot';
 import type { TaskResolutionCandidate } from '../domain/commands';
 import type { StatusCatalog } from '../domain/StatusCatalog';
 import type {
@@ -150,57 +151,11 @@ function tagsIn(markdown: string): readonly string[] {
   return [...markdown.matchAll(TAG_RE)].map((match) => match[0]);
 }
 
-function cloneTaskRef(ref: TaskRef): TaskRef {
-  return { ...ref };
-}
-
-function cloneNodeRef(ref: TaskNodeRef): TaskNodeRef {
-  if (ref.type === 'task') return { type: 'task', ref: cloneTaskRef(ref.ref) };
-  return {
-    type: 'subtask',
-    ref: {
-      ...ref.ref,
-      parent: cloneNodeRef(ref.ref.parent),
-    },
-  };
-}
-
-function cloneComment(comment: TaskCommentSnapshot): TaskCommentSnapshot {
-  return {
-    ...comment,
-    ref: { ...comment.ref, parent: cloneNodeRef(comment.ref.parent) },
-  };
-}
-
-function cloneSubtask(task: SubtaskSnapshot): SubtaskSnapshot {
-  return {
-    ...task,
-    ref: { ...task.ref, parent: cloneNodeRef(task.ref.parent) },
-    planning: { ...task.planning },
-    tags: [...task.tags],
-    subtasks: task.subtasks.map(cloneSubtask),
-    comments: task.comments.map(cloneComment),
-  };
-}
-
-function cloneSnapshot(task: TaskSnapshot): TaskSnapshot {
-  return {
-    ...task,
-    ref: cloneTaskRef(task.ref),
-    planning: { ...task.planning },
-    tags: [...task.tags],
-    subtasks: task.subtasks.map(cloneSubtask),
-    comments: task.comments.map(cloneComment),
-    source: { ...task.source },
-    presentation: { ...task.presentation },
-  };
-}
-
 function cloneCandidate(task: TaskSnapshot): TaskResolutionCandidate {
-  const root = cloneSnapshot(task);
+  const root = cloneTaskSnapshot(task);
   return {
     root,
-    target: { type: 'task', ref: cloneTaskRef(root.ref) },
+    target: { type: 'task', ref: { ...root.ref } },
   };
 }
 
@@ -607,7 +562,7 @@ export class TaskIndex implements TaskQueryApi {
         return date !== undefined && date >= from && date <= to;
       });
     }
-    return [...filtered].sort(stableTaskOrder).map(cloneSnapshot);
+    return [...filtered].sort(stableTaskOrder).map(cloneTaskSnapshot);
   }
 
   forCalendarDates(dates: readonly LocalDate[]): readonly TaskSnapshot[] {
@@ -615,7 +570,7 @@ export class TaskIndex implements TaskQueryApi {
     for (const date of dates) {
       for (const task of this.dateIndex.get(date)) seen.add(task);
     }
-    return [...seen].sort(stableTaskOrder).map(cloneSnapshot);
+    return [...seen].sort(stableTaskOrder).map(cloneTaskSnapshot);
   }
 
   resolve(ref: TaskRef): TaskResolution {
@@ -626,11 +581,11 @@ export class TaskIndex implements TaskQueryApi {
       return { type: 'ambiguous', candidates: matches.map(cloneCandidate) };
     }
     if (current?.ref.revision === ref.revision) {
-      return { type: 'exact', task: cloneSnapshot(current) };
+      return { type: 'exact', task: cloneTaskSnapshot(current) };
     }
-    if (matches.length === 1) return { type: 'exact', task: cloneSnapshot(matches[0]!) };
-    if (current) return { type: 'conflict', current: cloneSnapshot(current) };
-    return { type: 'not-found', ref: cloneTaskRef(ref) };
+    if (matches.length === 1) return { type: 'exact', task: cloneTaskSnapshot(matches[0]!) };
+    if (current) return { type: 'conflict', current: cloneTaskSnapshot(current) };
+    return { type: 'not-found', ref: { ...ref } };
   }
 
   subscribe(listener: Listener): () => void {

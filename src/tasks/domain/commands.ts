@@ -4,6 +4,8 @@ import type {
   LocalTime,
   SubtaskRef,
   TaskMutationTarget,
+  TaskNodeRef,
+  TaskPriority,
   TaskRef,
   TaskSnapshot,
 } from './types';
@@ -14,6 +16,7 @@ export type FieldUpdate<T> =
   | { readonly type: 'clear' };
 
 export interface TaskPatch {
+  readonly priority?: FieldUpdate<TaskPriority>;
   readonly due?: FieldUpdate<LocalDate>;
   readonly scheduled?: FieldUpdate<LocalDate>;
   readonly start?: FieldUpdate<LocalDate>;
@@ -27,6 +30,12 @@ export type PlanningTarget =
   | { readonly type: 'task'; readonly ref: TaskRef }
   | { readonly type: 'subtask'; readonly ref: SubtaskRef };
 
+export type TaskStatusTarget = TaskNodeRef;
+
+export interface Clock {
+  today(): LocalDate;
+}
+
 export type TaskCommand =
   | {
       readonly type: 'patch';
@@ -38,6 +47,8 @@ export type TaskCommand =
       readonly target: { readonly type: 'subtask'; readonly ref: SubtaskRef };
       readonly patch: SubtaskPatch;
     }
+  | { readonly type: 'set-status'; readonly target: TaskStatusTarget; readonly symbol: string }
+  | { readonly type: 'toggle-completion'; readonly target: TaskStatusTarget }
   | { readonly type: 'reschedule'; readonly ref: TaskRef; readonly date: LocalDate }
   | {
       readonly type: 'set-time-slot';

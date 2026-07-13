@@ -2,10 +2,19 @@ import { TFile, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
-import type { SubTask, TaskComment } from '../src/parser/types';
+import type { SubTask, Task, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { TaskApplicationApi, TaskSnapshot } from '../src/tasks';
+import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
+import { legacyTaskViews } from '../src/tasks/compat/legacyTaskView';
+import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskRef } from '../src/tasks/domain/types';
+import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
+import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
+import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
+import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 import {
   createAppWithFiles,
   flushMicrotasks,
@@ -44,6 +53,21 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
   return fn.call(panel, ...args);
 }
 
+function attachCurrentRef(panel: RightPanel, taskLike: SubTask): void {
+  const roots = legacyTaskViews(
+    (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list(),
+  );
+  const queue: Array<Task | SubTask> = [...roots];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.filePath === taskLike.filePath && current.line === taskLike.line) {
+      if ('ref' in current) Object.assign(taskLike, { ref: current.ref });
+      return;
+    }
+    queue.push(...(current.subtasks ?? []));
+  }
+}
+
 /**
  * Wire up a real RightPanel + AppState with a vault file. `fileContent` is
  * seeded at `f.md` so vault-write tests can assert on the resulting content.
@@ -54,7 +78,24 @@ async function makePanel(
 ): Promise<{ panel: RightPanel; state: AppState; app: App; el: HTMLElement }> {
   const app = await createAppWithFiles(files);
   const state = new AppState();
-  const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+  const statusCatalog = new StatusCatalog(toStatusRules(DEFAULT_SETTINGS.taskStatuses));
+  const index = new TaskIndex(app, {
+    statusCatalog,
+    dailyNoteFormat: DEFAULT_SETTINGS.desktop.dailyNoteFormat,
+  });
+  const defaultTasks = new TaskApplicationService(
+    index,
+    new ObsidianTaskRepository(app, {
+      codec: new TaskMarkdownCodec(statusCatalog),
+      editor: new TaskBlockEditor(),
+      locator: new TaskLocator(),
+      snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
+    }),
+    statusCatalog,
+    { today: () => '2026-07-14' as never },
+  );
+  await index.initialize();
+  const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks ?? defaultTasks);
   const el = freshContainer();
   panel.mount(el);
   return { panel, state, app, el };
@@ -204,7 +245,7 @@ describe('RightPanel.renderSubTask', () => {
   });
 
   it('clicking the status marker → toggleSubTask writes [x] to file', async () => {
-    const { state, el, app } = await makePanel({
+    const { panel, state, el, app } = await makePanel({
       'f.md': '- [ ] parent\n  - [ ] sub one',
     });
     const sub: SubTask = {
@@ -217,6 +258,7 @@ describe('RightPanel.renderSubTask', () => {
       statusSymbol: ' ',
       priority: 'D',
     };
+    attachCurrentRef(panel, sub);
     state.set('taskStack', [task({ filePath: 'f.md', line: 0, text: 'parent', subtasks: [sub] })]);
     const marker = el.querySelector<HTMLElement>('.tc-status-marker')!;
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));

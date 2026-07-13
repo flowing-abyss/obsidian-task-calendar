@@ -67,6 +67,99 @@ function rootRef(harness: ContractHarness, source: string): TaskRef {
 
 for (const adapter of ['in-memory', 'obsidian'] as const) {
   describe(`${adapter} TaskRepository shared contract`, () => {
+    it('applies status stamps and reopening losslessly', async () => {
+      const source = '- [ ] task 🆔 keep-id ⛔ dep ^block\r\n';
+      const h = await makeHarness(adapter, source);
+      await expect(
+        h.repository.edit({
+          type: 'set-status',
+          target: { type: 'task', ref: rootRef(h, source) },
+          symbol: 'x',
+          stamp: localDate('2026-07-14'),
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toBe('- [x] task 🆔 keep-id ⛔ dep ✅ 2026-07-14 ^block\r\n');
+
+      const changed = await h.read();
+      await h.repository.edit({
+        type: 'set-status',
+        target: { type: 'task', ref: rootRef(h, changed) },
+        symbol: ' ',
+      });
+      expect(await h.read()).toBe(source);
+    });
+
+    it.each([
+      ['A', '🔺'],
+      ['B', '⏫'],
+      ['C', '🔼'],
+      ['D', ''],
+      ['E', '🔽'],
+      ['F', '⏬'],
+    ] as const)(
+      'applies priority %s without touching unrelated spans',
+      async (priority, marker) => {
+        const source = '- [ ] task #tag 🆔 keep-id ⛔ dep ^block\n';
+        const h = await makeHarness(adapter, source);
+        await expect(
+          h.repository.edit({
+            type: 'patch',
+            target: { type: 'task', ref: rootRef(h, source) },
+            patch: { priority: { type: 'set', value: priority } },
+          }),
+        ).resolves.toMatchObject({
+          type: 'committed',
+          changed: priority !== 'D',
+        });
+        const content = await h.read();
+        expect(content).toContain('#tag');
+        expect(content).toContain('🆔 keep-id ⛔ dep');
+        expect(content).toContain('^block');
+        if (marker) expect(content).toContain(marker);
+      },
+    );
+
+    it('applies status and priority to an exactly referenced nested task', async () => {
+      const source = '- [ ] root\n  - [ ] child\n    - [ ] nested\n';
+      const h = await makeHarness(adapter, source);
+      const nested = h.snapshots(source)[0]!.subtasks[0]!.subtasks[0]!;
+      await h.repository.edit({
+        type: 'set-status',
+        target: { type: 'subtask', ref: nested.ref },
+        symbol: 'x',
+        stamp: localDate('2026-07-14'),
+      });
+      const changed = await h.read();
+      const changedNested = h.snapshots(changed)[0]!.subtasks[0]!.subtasks[0]!;
+      await h.repository.edit({
+        type: 'patch',
+        target: { type: 'subtask', ref: changedNested.ref },
+        patch: { priority: { type: 'set', value: 'F' } },
+      });
+      expect(await h.read()).toContain('    - [x] nested ⏬ ✅ 2026-07-14');
+
+      const prioritized = await h.read();
+      const prioritizedNested = h.snapshots(prioritized)[0]!.subtasks[0]!.subtasks[0]!;
+      await h.repository.edit({
+        type: 'set-status',
+        target: { type: 'subtask', ref: prioritizedNested.ref },
+        symbol: '-',
+        stamp: localDate('2026-07-15'),
+      });
+      expect(await h.read()).toContain('    - [-] nested ⏬ ❌ 2026-07-15');
+      expect(await h.read()).not.toContain('✅ 2026-07-14');
+
+      const cancelled = await h.read();
+      const cancelledNested = h.snapshots(cancelled)[0]!.subtasks[0]!.subtasks[0]!;
+      await h.repository.edit({
+        type: 'set-status',
+        target: { type: 'subtask', ref: cancelledNested.ref },
+        symbol: ' ',
+      });
+      expect(await h.read()).toContain('    - [ ] nested ⏬');
+      expect(await h.read()).not.toMatch(/[✅❌]/u);
+    });
+
     it('returns a detached no-op success', async () => {
       const source = '- [ ] task 📅 2026-07-20\n';
       const h = await makeHarness(adapter, source);

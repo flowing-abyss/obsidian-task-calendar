@@ -1,6 +1,10 @@
 import { TFile, type App } from 'obsidian';
-import type { TaskRepository, TaskRepositoryResult } from '../../application/TaskRepository';
-import type { PlanningTarget, TaskCommand, TaskResolutionCandidate } from '../../domain/commands';
+import type {
+  TaskEditCommand,
+  TaskRepository,
+  TaskRepositoryResult,
+} from '../../application/TaskRepository';
+import type { PlanningTarget, TaskResolutionCandidate } from '../../domain/commands';
 import type {
   SubtaskRef,
   SubtaskSnapshot,
@@ -9,7 +13,7 @@ import type {
   TaskRef,
   TaskSnapshot,
 } from '../../domain/types';
-import { applyPlanningCommand } from '../markdown/applyPlanningCommand';
+import { applyTaskCommand } from '../markdown/applyTaskCommand';
 import type { TaskRootBlock } from '../markdown/TaskBlockEditor';
 import { TaskBlockEditor } from '../markdown/TaskBlockEditor';
 import { TaskLocator } from '../markdown/TaskLocator';
@@ -103,8 +107,10 @@ function rebaseSnapshot(task: TaskSnapshot, root: TaskRef): TaskSnapshot {
   };
 }
 
-function mutationTarget(command: TaskCommand): TaskMutationTarget {
-  return command.type === 'patch' ? command.target : { type: 'task', ref: command.ref };
+function mutationTarget(command: TaskEditCommand): TaskMutationTarget {
+  return command.type === 'patch' || command.type === 'set-status'
+    ? command.target
+    : { type: 'task', ref: command.ref };
 }
 
 export class ObsidianTaskRepository implements TaskRepository {
@@ -113,8 +119,11 @@ export class ObsidianTaskRepository implements TaskRepository {
     private readonly options: RepositoryOptions,
   ) {}
 
-  async edit(command: TaskCommand): Promise<TaskRepositoryResult> {
-    const rootRef = command.type === 'patch' ? rootRefOf(command.target) : command.ref;
+  async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
+    const rootRef =
+      command.type === 'patch' || command.type === 'set-status'
+        ? rootRefOf(command.target)
+        : command.ref;
     const file = this.app.vault.getAbstractFileByPath(rootRef.filePath);
     if (!(file instanceof TFile)) {
       return { type: 'not-found', target: mutationTarget(command) };
@@ -131,7 +140,9 @@ export class ObsidianTaskRepository implements TaskRepository {
         }
 
         const relativeLine =
-          command.type === 'patch' ? confirmedTargetRelativeLine(command.target, located.block) : 0;
+          command.type === 'patch' || command.type === 'set-status'
+            ? confirmedTargetRelativeLine(command.target, located.block)
+            : 0;
         if (relativeLine === undefined) {
           const current = this.snapshotFor(rootRef.filePath, content, located.block);
           result = current
@@ -149,7 +160,7 @@ export class ObsidianTaskRepository implements TaskRepository {
           return content;
         }
 
-        const editResult = applyPlanningCommand(this.options.codec, sourceLine, command);
+        const editResult = applyTaskCommand(this.options.codec, sourceLine, command);
         if (editResult.type === 'invalid') {
           result = editResult;
           return content;
@@ -213,7 +224,7 @@ export class ObsidianTaskRepository implements TaskRepository {
 
   private candidateFor(
     block: TaskRootBlock,
-    command: TaskCommand,
+    command: TaskEditCommand,
     path: string,
     content: string,
   ): TaskResolutionCandidate | undefined {
@@ -226,7 +237,7 @@ export class ObsidianTaskRepository implements TaskRepository {
 
   private resolutionResult(
     located: Exclude<ReturnType<TaskLocator['locate']>, { readonly type: 'exact' }>,
-    command: TaskCommand,
+    command: TaskEditCommand,
     path: string,
     content: string,
   ): TaskRepositoryResult {

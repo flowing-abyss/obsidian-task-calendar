@@ -3,8 +3,6 @@ import moment from 'moment';
 import { App as ObsidianApp, Platform, TFile, type CachedMetadata } from 'obsidian';
 import { afterEach, beforeEach, vi } from 'vitest';
 import type { AppState } from '../src/app/AppState';
-import { locatorOf } from '../src/mutation/TaskLocator';
-import { TaskMutationService } from '../src/mutation/TaskMutationService';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import { LeftPanel } from '../src/panels/LeftPanel';
 import type { Task } from '../src/parser/types';
@@ -15,6 +13,7 @@ import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings, ResolvedConfig } from '../src/settings/types';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskStore } from '../src/store/TaskStore';
+import { TaskStore as ConcreteTaskStore } from '../src/store/TaskStore';
 import type { TagManager } from '../src/tags/TagManager';
 import type {
   LocalDate,
@@ -24,9 +23,15 @@ import type {
   TaskSnapshot,
 } from '../src/tasks';
 import type { TaskQuery } from '../src/tasks/application/TaskApplicationApi';
+import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
 import { legacyTaskViews } from '../src/tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
-import type { TaskPriority } from '../src/tasks/domain/types';
+import { localDate } from '../src/tasks/domain/validation';
+import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
+import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
+import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
+import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 
 export function taskSnapshotOf(value: Task): TaskSnapshot {
   const tags = [...value.rawText.matchAll(/#[\w/-]+/gu)].map((match) => match[0]);
@@ -384,43 +389,47 @@ export function freshContainer(): HTMLElement {
 /**
  * Minimal command-only TaskStore stub paired with a detached TaskQueryApi.
  *
- * When `app` is supplied, `setPriority`/`setTaskStatus` delegate to a real
- * `TaskMutationService` so write-path tests (e.g. CenterPanel.setPriority) can
- * assert on actual file content, mirroring TaskStore's real behavior.
+ * Command methods are inert spies; mutation integrations inject TaskApplicationApi separately.
  */
 export function makeStubStore(
   tasks: Task[],
-  app?: ObsidianApp,
+  _app?: ObsidianApp,
 ): TaskStore & { taskQueries: TaskQueryApi } {
   const registry = new StatusRegistry(buildDefaultTaskStatuses());
-  const mutations = app
-    ? new TaskMutationService(app, () => registry, canonicalStatusCatalog)
-    : undefined;
   const store = {
     statusRegistry: registry,
-    toggleTask: async (t: Task): Promise<void> => {
-      if (!mutations) return;
-      const today = moment().format('YYYY-MM-DD');
-      await mutations.setStatusChar(
-        locatorOf(t),
-        t.status === 'done' ? registry.defaultTodo().symbol : registry.defaultDone().symbol,
-        today,
-      );
-    },
-    setPriority: async (t: Task, priority: TaskPriority): Promise<void> => {
-      if (!mutations) return;
-      await mutations.setPriority(locatorOf(t), priority);
-    },
-    setTaskStatus: async (t: Task, char: string): Promise<void> => {
-      if (!mutations) return;
-      const today = moment().format('YYYY-MM-DD');
-      await mutations.setStatusChar(locatorOf(t), char, today);
-    },
+    toggleTask: vi.fn().mockResolvedValue(undefined),
+    setPriority: vi.fn().mockResolvedValue(undefined),
+    setTaskStatus: vi.fn().mockResolvedValue(undefined),
   };
   return {
     ...store,
     taskQueries: queryApiForTasks(() => tasks),
   } as unknown as TaskStore & { taskQueries: TaskQueryApi };
+}
+
+export function configuredTaskStore(
+  app: ObsidianApp,
+  settings: CalendarSettings,
+): ConcreteTaskStore {
+  const statusCatalog = new StatusCatalog(toStatusRules(settings.taskStatuses));
+  const index = new TaskIndex(app, {
+    statusCatalog,
+    dailyNoteFormat: settings.desktop.dailyNoteFormat,
+    ...(settings.desktop.globalTaskFilter && {
+      globalTaskFilter: settings.desktop.globalTaskFilter,
+    }),
+  });
+  const repository = new ObsidianTaskRepository(app, {
+    codec: new TaskMarkdownCodec(statusCatalog),
+    editor: new TaskBlockEditor(),
+    locator: new TaskLocator(),
+    snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
+  });
+  const tasks = new TaskApplicationService(index, repository, statusCatalog, {
+    today: () => localDate(moment().format('YYYY-MM-DD')),
+  });
+  return new ConcreteTaskStore(app, settings, index, tasks, statusCatalog);
 }
 
 /**

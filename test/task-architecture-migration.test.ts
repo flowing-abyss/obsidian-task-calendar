@@ -31,17 +31,12 @@ const SRC_ROOT = resolve(import.meta.dirname, '..', 'src');
 // ObsidianTaskRepository boundary; every later vertical operation-family task must shrink this
 // list in the same commit. Do not add sites or blanket-ignore source paths.
 const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
-  'src/store/TaskStore.ts#TaskStore.constructor#new TaskMutationService#1': {
-    families: ['status/priority'],
-    reason: 'TaskStore owns the legacy calendar/list status and priority command facade.',
-  },
   'src/panels/CenterPanel.ts#CenterPanel.constructor#new TaskMutationService#1': {
     families: ['creation/deletion/movement'],
     reason: 'CenterPanel still performs task deletion directly.',
   },
   'src/panels/RightPanel.ts#RightPanel.constructor#new TaskMutationService#1': {
     families: [
-      'status/priority',
       'per-task tags',
       'title/links',
       'description/comments/subtasks',
@@ -59,7 +54,6 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
     families: [
-      'status/priority',
       'per-task tags',
       'title/links',
       'description/comments/subtasks',
@@ -266,12 +260,12 @@ describe('task architecture migration writer guardrail', () => {
     expect(writerSites()).toEqual(allowlisted);
   });
 
-  it('keeps exactly the five known TaskMutationService construction sites', () => {
+  it('keeps exactly the four remaining TaskMutationService construction sites', () => {
     const constructionSites = Object.keys(LEGACY_TASK_WRITERS).filter((site) =>
       site.includes('#new TaskMutationService#'),
     );
 
-    expect(constructionSites).toHaveLength(5);
+    expect(constructionSites).toHaveLength(4);
   });
 
   it('keeps exactly one canonical single-task transaction boundary', () => {

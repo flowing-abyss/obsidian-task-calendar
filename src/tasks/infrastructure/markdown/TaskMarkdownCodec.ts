@@ -14,7 +14,7 @@ import {
 export type LineEdit =
   | { readonly type: 'set-title'; readonly markdownTitle: string }
   | { readonly type: 'append-title'; readonly markdown: string }
-  | { readonly type: 'set-status'; readonly symbol: string; readonly today: string }
+  | { readonly type: 'set-status'; readonly symbol: string; readonly today?: string }
   | { readonly type: 'set-priority'; readonly priority: TaskPriority }
   | {
       readonly type: 'set-date';
@@ -621,6 +621,7 @@ export class TaskMarkdownCodec {
     }
     const rule = this.statusCatalog.ruleForSymbol(edit.symbol);
     if (edit.symbol.length !== 1 || !rule) return invalid('invalid-status', 'status');
+    const currentRule = this.statusCatalog.ruleForSymbol(parsed.statusSymbol);
 
     const issues: TaskIssue[] = [];
     for (const field of ['completion', 'cancelled'] as const) {
@@ -631,15 +632,22 @@ export class TaskMarkdownCodec {
 
     const statusAt = (parsed.occurrences.get('prefix')?.[0]?.to ?? 0) - 2;
     let content = spliceSource(parsed.original, statusAt, statusAt + 1, edit.symbol);
+    let stampedKind: 'completion' | 'cancelled' | undefined;
+    if (rule.type === 'done') stampedKind = 'completion';
+    if (rule.type === 'cancelled') stampedKind = 'cancelled';
+    const preservesStamp = stampedKind !== undefined && currentRule?.type === rule.type;
+    if (stampedKind !== undefined && !preservesStamp && edit.today === undefined) {
+      return invalid('invalid-status', 'status');
+    }
     for (const kind of ['completion', 'cancelled'] as const) {
+      if (preservesStamp && kind === stampedKind) continue;
       const current = this.parseLine(content, { filePath: '', line: 0 })!;
       content = this.replaceOrInsertToken(current, kind, null);
     }
-    if (rule.type === 'done' || rule.type === 'cancelled') {
-      const kind = rule.type === 'done' ? 'completion' : 'cancelled';
-      const marker = kind === 'completion' ? '✅' : '❌';
+    if (stampedKind !== undefined && edit.today !== undefined) {
+      const marker = stampedKind === 'completion' ? '✅' : '❌';
       const current = this.parseLine(content, { filePath: '', line: 0 })!;
-      content = this.replaceOrInsertToken(current, kind, `${marker} ${edit.today}`);
+      content = this.replaceOrInsertToken(current, stampedKind, `${marker} ${edit.today}`);
     }
     return { type: 'prepared', content, fields: ['status', 'completion', 'cancelled'] };
   }

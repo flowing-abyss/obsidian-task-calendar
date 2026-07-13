@@ -76,7 +76,9 @@ async function makePanel(
     locator: new TaskLocator(),
     snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
   });
-  const tasks = new TaskApplicationService(queries, repository);
+  const tasks = new TaskApplicationService(queries, repository, statusCatalog, {
+    today: () => '2026-07-14' as never,
+  });
   const panel = new CenterPanel(
     state,
     store,
@@ -271,8 +273,8 @@ describe('CenterPanel planning API delegation', () => {
 
 describe('CenterPanel.setPriority', () => {
   it('adds priority emoji when task has none', async () => {
-    const { panel, app } = await makePanel({ 'n.md': '- [ ] Task\n' });
     const t = task({ filePath: 'n.md', line: 0, rawText: '- [ ] Task', priority: 'D' });
+    const { panel, app } = await makePanel({ 'n.md': '- [ ] Task\n' }, [t]);
     await callPrivate(panel, 'setPriority', t, 'A');
     const content = await readMd(app, 'n.md');
     expect(content).toContain('🔺');
@@ -280,8 +282,8 @@ describe('CenterPanel.setPriority', () => {
 
   it('removes all priority emojis when D (normal) is selected', async () => {
     const raw = '- [ ] Task 🔺';
-    const { panel, app } = await makePanel({ 'n.md': `${raw}\n` });
     const t = task({ filePath: 'n.md', line: 0, rawText: raw, priority: 'A' });
+    const { panel, app } = await makePanel({ 'n.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'setPriority', t, 'D');
     const content = await readMd(app, 'n.md');
     expect(content).not.toMatch(/[🔺⏫🔼🔽⏬]/u);
@@ -289,8 +291,8 @@ describe('CenterPanel.setPriority', () => {
 
   it('replaces existing priority with new one', async () => {
     const raw = '- [ ] Task ⏫';
-    const { panel, app } = await makePanel({ 'n.md': `${raw}\n` });
     const t = task({ filePath: 'n.md', line: 0, rawText: raw, priority: 'B' });
+    const { panel, app } = await makePanel({ 'n.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'setPriority', t, 'C');
     const content = await readMd(app, 'n.md');
     expect(content).toContain('🔼');

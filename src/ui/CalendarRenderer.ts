@@ -2,13 +2,14 @@ import { Modal, type App } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
-import type { TaskQueryApi } from '../tasks';
-import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
+import type { TaskApplicationApi, TaskQueryApi } from '../tasks';
+import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
 import { BaseView } from '../views/BaseView';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
 import { showStatusMenuAt } from './statusMenu';
+import { presentTaskCommandResult } from './taskCommandResult';
 import { openInFile } from './taskNavigation';
 import { Toolbar, type ViewEntry } from './Toolbar';
 
@@ -37,6 +38,7 @@ export class CalendarRenderer {
     private config: ResolvedConfig,
     private app: App,
     private queries: TaskQueryApi,
+    private tasks: TaskApplicationApi,
   ) {
     this.activeViewType = config.defaultView;
     this.selectedDate = window.moment().date(1);
@@ -135,7 +137,12 @@ export class CalendarRenderer {
   private buildCallbacks() {
     return {
       onToggle: (task: Task) => {
-        void this.store.toggleTask(task);
+        const ref = taskRefOf(task);
+        if (ref) {
+          void this.tasks
+            .execute({ type: 'toggle-completion', target: { type: 'task', ref } })
+            .then(presentTaskCommandResult);
+        }
       },
       onCellClick: (date: string) => this.openAddTaskModal(date),
       onWeekClick: (weekNr: string, year: string) => {
@@ -151,8 +158,26 @@ export class CalendarRenderer {
         showStatusMenuAt(ev, {
           task,
           registry: this.store.statusRegistry,
-          onPickStatus: (c) => void this.store.setTaskStatus(task, c),
-          onPickPriority: (p) => void this.store.setPriority(task, p),
+          onPickStatus: (symbol) => {
+            const ref = taskRefOf(task);
+            if (ref) {
+              void this.tasks
+                .execute({ type: 'set-status', target: { type: 'task', ref }, symbol })
+                .then(presentTaskCommandResult);
+            }
+          },
+          onPickPriority: (priority) => {
+            const ref = taskRefOf(task);
+            if (ref) {
+              void this.tasks
+                .execute({
+                  type: 'patch',
+                  target: { type: 'task', ref },
+                  patch: { priority: { type: 'set', value: priority } },
+                })
+                .then(presentTaskCommandResult);
+            }
+          },
         });
       },
     };
