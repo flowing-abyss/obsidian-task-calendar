@@ -4,26 +4,42 @@ import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskStore } from '../src/store/TaskStore';
+import type { TaskIndexEvent } from '../src/tasks';
 import { CalendarRenderer } from '../src/ui/CalendarRenderer';
-import { fixedToday, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
+import {
+  fixedToday,
+  freshContainer,
+  queryApiForTasks,
+  resolvedConfig,
+  task,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
 class StubStore {
   private tasks: Task[] = [];
-  private listeners = new Set<(p: { changedFile?: string }) => void>();
+  private listeners = new Set<(event: TaskIndexEvent) => void>();
   statusRegistry = new StatusRegistry(buildDefaultTaskStatuses());
+  taskQueries = queryApiForTasks(
+    () => this.tasks,
+    (listener) => {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    },
+  );
   getTasks(): Task[] {
     return this.tasks;
   }
   onUpdate(cb: (p: { changedFile?: string }) => void): () => void {
-    this.listeners.add(cb);
-    return () => {
-      this.listeners.delete(cb);
-    };
+    const listener = (): void => cb({});
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
   emit(changedFile?: string): void {
-    for (const l of this.listeners) l({ changedFile });
+    for (const listener of this.listeners) {
+      listener({ type: 'changed', files: changedFile ? [changedFile] : [] });
+    }
   }
   setTasks(t: Task[]): void {
     this.tasks = t;
@@ -486,7 +502,9 @@ describe('CalendarRenderer', () => {
       // click the status marker inside the task card
       const marker = root.querySelector('.task .tc-status-marker') as HTMLElement;
       marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      expect(store.toggleTask).toHaveBeenCalledWith(t);
+      expect(store.toggleTask).toHaveBeenCalledWith(
+        expect.objectContaining({ filePath: t.filePath, line: t.line, text: t.text }),
+      );
       r.destroy();
     });
   });

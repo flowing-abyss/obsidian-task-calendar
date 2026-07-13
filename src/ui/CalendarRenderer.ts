@@ -2,6 +2,8 @@ import { Modal, type App } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
+import type { TaskQueryApi } from '../tasks';
+import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
 import { BaseView } from '../views/BaseView';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
@@ -34,6 +36,7 @@ export class CalendarRenderer {
     private store: TaskStore,
     private config: ResolvedConfig,
     private app: App,
+    private queries: TaskQueryApi = store.taskQueries,
   ) {
     this.activeViewType = config.defaultView;
     this.selectedDate = window.moment().date(1);
@@ -88,8 +91,12 @@ export class CalendarRenderer {
     this.viewContainer = span.createDiv();
     this.renderView();
 
-    this.unsubscribe = this.store.onUpdate(() => {
-      this.activeView?.patch(this.viewContainer!, this.store.getTasks(), this.buildConfig());
+    this.unsubscribe = this.queries.subscribe(() => {
+      this.activeView?.patch(
+        this.viewContainer!,
+        legacyTaskViews(this.queries.list()),
+        this.buildConfig(),
+      );
       this.updateToolbar();
     });
   }
@@ -173,7 +180,7 @@ export class CalendarRenderer {
 
   private renderView(): void {
     if (!this.viewContainer) return;
-    const tasks = this.store.getTasks();
+    const tasks = legacyTaskViews(this.queries.list());
     const config = this.buildConfig();
     const cb = this.buildCallbacks();
 
@@ -227,7 +234,7 @@ export class CalendarRenderer {
 
   private updateToolbar(): void {
     if (!this.toolbar) return;
-    const tasks = this.store.getTasks();
+    const tasks = legacyTaskViews(this.queries.list());
     const today = window.moment().format('YYYY-MM-DD');
     this.toolbar.update({
       currentView: this.activeViewType,

@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
 import { computeStats, ProjectStore } from '../src/projects/ProjectStore';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import type { TaskIndexEvent } from '../src/tasks';
+import { queryApiForTasks } from './helpers';
 
 /** A minimal object that passes `instanceof TFile` (TFile isn't standalone-constructable). */
 function tfile(path: string): { path: string; extension: string } {
@@ -93,7 +95,7 @@ function makeApp(files: FakeFile[]): MockApp {
 }
 
 function storeWith(tasks: Task[]): never {
-  return { getTasks: () => tasks } as never;
+  return queryApiForTasks(() => tasks) as never;
 }
 
 describe('ProjectStore enumeration', () => {
@@ -164,7 +166,14 @@ describe('ProjectStore incremental update', () => {
       { path: 'Notes/C.md', tags: [], fm: {} },
     ]);
     let tasks: Task[] = [t({ filePath: 'Projects/A.md', status: 'open' })];
-    const store = { getTasks: () => tasks } as never;
+    let indexListener: ((event: TaskIndexEvent) => void) | undefined;
+    const store = queryApiForTasks(
+      () => tasks,
+      (listener) => {
+        indexListener = listener;
+        return () => {};
+      },
+    ) as never;
     const ps = new ProjectStore(mock.app, store, { ...DEFAULT_SETTINGS });
     ps.initialize();
     expect(ps.get('Projects/A.md')!.stats.done).toBe(0);
@@ -174,6 +183,7 @@ describe('ProjectStore incremental update', () => {
     // A task in A is completed.
     tasks = [t({ filePath: 'Projects/A.md', status: 'done' })];
     mock.fireChanged('Projects/A.md');
+    indexListener?.({ type: 'changed', files: ['Projects/A.md'] });
     // Debounced: not applied yet.
     expect(ps.get('Projects/A.md')!.stats.done).toBe(0);
     vi.advanceTimersByTime(150);
@@ -187,7 +197,14 @@ describe('ProjectStore incremental update', () => {
   it('a metadata change that newly matches the query adds the note incrementally', () => {
     vi.useFakeTimers();
     const mock = makeApp([{ path: 'Notes/C.md', tags: [], fm: {} }]);
-    const store = { getTasks: () => [] as Task[] } as never;
+    let indexListener: ((event: TaskIndexEvent) => void) | undefined;
+    const store = queryApiForTasks(
+      () => [] as Task[],
+      (listener) => {
+        indexListener = listener;
+        return () => {};
+      },
+    ) as never;
     const settings = {
       ...DEFAULT_SETTINGS,
       projects: { ...DEFAULT_SETTINGS.projects, membershipQuery: '#project' },
@@ -198,6 +215,7 @@ describe('ProjectStore incremental update', () => {
 
     mock.setCache('Notes/C.md', { path: 'Notes/C.md', tags: ['#project'], fm: {} });
     mock.fireChanged('Notes/C.md');
+    indexListener?.({ type: 'changed', files: ['Notes/C.md'] });
     vi.advanceTimersByTime(150);
     expect(ps.list().map((p) => p.path)).toEqual(['Notes/C.md']);
 

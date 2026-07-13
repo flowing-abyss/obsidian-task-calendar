@@ -402,7 +402,9 @@ describe('CenterPanel.renderSearch', () => {
     card.click();
     expect(state.get('mode')).toBe('tasks');
     expect(state.get('selectedList')).toBe('today');
-    expect(state.get('taskStack')).toEqual([t]);
+    expect(state.get('taskStack')).toEqual([
+      expect.objectContaining({ filePath: t.filePath, line: t.line, text: t.text }),
+    ]);
     panel.destroy();
   });
 });

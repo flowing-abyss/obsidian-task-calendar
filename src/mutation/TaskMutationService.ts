@@ -3,7 +3,7 @@ import type { ParseContext } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import type { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import type { TaskPriority } from '../tasks/domain/types';
+import type { TaskPriority, TaskRef } from '../tasks/domain/types';
 import { insertTaskBlockIntoContent } from './insertTaskBlock';
 import { findTaskLine, type FindResult, type TaskLocator } from './TaskLocator';
 import { validateMutatedTaskLine } from './validateMutatedLine';
@@ -60,6 +60,8 @@ export class TaskMutationService {
     private app: App,
     private getRegistry: (() => StatusRegistry) | undefined,
     private getStatusCatalog: () => StatusCatalog,
+    private onSuccessfulMutation?: (ref?: TaskRef) => void,
+    private captureMutationRef?: () => TaskRef | undefined,
   ) {}
 
   private static stripStamp(line: string, emoji: string): string {
@@ -82,6 +84,7 @@ export class TaskMutationService {
     locator: TaskLocator,
     transform: (lines: string[], taskLine: number) => void,
   ): Promise<MutationResult> {
+    const mutationRef = this.captureMutationRef?.();
     const file = this.app.vault.getAbstractFileByPath(locator.filePath);
     if (!(file instanceof TFile)) {
       new Notice('Task file not found: ' + locator.filePath);
@@ -90,6 +93,7 @@ export class TaskMutationService {
 
     // Use a box so TypeScript doesn't narrow the closure assignment away.
     const box: { result: MutationResult } = { result: { type: 'ok' } };
+    let sourceChanged = false;
 
     await this.app.vault.process(file, (data) => {
       const lines = data.split('\n');
@@ -105,7 +109,9 @@ export class TaskMutationService {
       }
 
       transform(lines, found.line);
-      return lines.join('\n');
+      const next = lines.join('\n');
+      sourceChanged = next !== data;
+      return next;
     });
 
     if (box.result.type === 'not-found') {
@@ -113,6 +119,8 @@ export class TaskMutationService {
     } else if (box.result.type === 'ambiguous') {
       new Notice('Could not update task: multiple identical tasks found in the file.');
     }
+
+    if (box.result.type === 'ok' && sourceChanged) this.onSuccessfulMutation?.(mutationRef);
 
     return box.result;
   }

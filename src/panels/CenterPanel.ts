@@ -29,6 +29,9 @@ import type {
 import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/statusConstants';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
+import { searchTaskList, selectTaskList } from '../task-lists/TaskListSelector';
+import type { LocalDate, TaskQueryApi } from '../tasks';
+import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
 import { LinkEditModal } from '../ui/LinkEditModal';
@@ -43,12 +46,10 @@ import { MonthGridView } from '../views/MonthGridView';
 import { TodayView } from '../views/TodayView';
 import { WeekTimeGridView } from '../views/WeekTimeGridView';
 import {
-  filterTasksByStatusGroups,
   groupTasksByDate,
   groupTasksByPriority,
   groupTasksByStatus,
   groupTasksByTag,
-  sortTasksByField,
 } from '../views/taskGrouping';
 import {
   minutesToPixels,
@@ -125,6 +126,7 @@ export class CenterPanel {
     onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
     private projectManager: ProjectManager | null = null,
+    private queries: TaskQueryApi = store.taskQueries,
   ) {
     this.onSaveSettings = onSaveSettings;
     this.mutations = new TaskMutationService(
@@ -136,7 +138,7 @@ export class CenterPanel {
 
   mount(container: HTMLElement): void {
     this.el = container;
-    this.taskModal = new TaskModal(this.app, this.settings, this.store);
+    this.taskModal = new TaskModal(this.app, this.settings, this.store, this.queries);
 
     // Initialize per-list state before first render
     const initialKey = listSelectionToKey(this.state.get('selectedList'));
@@ -236,7 +238,7 @@ export class CenterPanel {
 
   /** Renders a project's tasks (reusing the card component) plus an add bar that writes into the note. */
   private renderProjectTasks(host: HTMLElement, path: string): void {
-    const tasks = this.store.getTasks().filter((t) => t.filePath === path);
+    const tasks = legacyTaskViews(this.queries.list({ filePath: path }));
     const scroll = host.createDiv({ cls: 'tc-center-scroll tc-project-tasks-scroll' });
     if (tasks.length === 0) {
       scroll.createDiv({ cls: 'tc-center-empty', text: 'No tasks yet' });
@@ -548,7 +550,9 @@ export class CenterPanel {
       // Scope the render to only the tasks anchored on a visible date, via the
       // O(1)-per-date TaskDateIndex, instead of scanning every task in the vault.
       const visibleDates = visibleCalendarDates(this.calViewType, this.calDate, cfg.firstDayOfWeek);
-      const tasks = this.store.getTasksForDateRange(visibleDates);
+      const tasks = legacyTaskViews(
+        this.queries.forCalendarDates(visibleDates as unknown as readonly LocalDate[]),
+      );
 
       // Only scroll-to-now when this (viewType, date) pair is new since the last time we
       // scrolled — a reactive re-render of the same view/date (e.g. a store update from a task
@@ -757,7 +761,7 @@ export class CenterPanel {
     // this still calls the full mountView() (destroy + rebuild the visible grid) on every
     // coalesced notify, rather than diffing which specific cells/blocks changed and patching
     // only those. Two of the three perf levers from the spec ARE implemented in full: (1)
-    // `tasks` above is scoped to the visible date range via TaskStore.getTasksForDateRange,
+    // `tasks` above is scoped to the visible date range via TaskQueryApi.forCalendarDates,
     // which is a union of O(1) TaskDateIndex lookups (Task 4) — mountView() no longer scans
     // every task in the vault on every render, only the ones anchored on a currently-visible
     // date; (2) notify() is coalesced (Task 5), so a burst of file edits triggers exactly one
@@ -770,7 +774,7 @@ export class CenterPanel {
     // one on each notify, and only re-render cells/blocks whose task set changed, leaving
     // `BaseView.patch()` (still the default no-op-over-render from `BaseView.ts`) as the
     // extension point each of the three new view classes would override.
-    this.calUnsubscribe = this.store.onUpdate(() => mountView());
+    this.calUnsubscribe = this.queries.subscribe(() => mountView());
   }
 
   private renderSearch(): void {
@@ -791,11 +795,7 @@ export class CenterPanel {
       return;
     }
 
-    const results = this.store
-      .getTasks()
-      .filter(
-        (t) => t.text.toLowerCase().includes(query) || t.rawText.toLowerCase().includes(query),
-      );
+    const results = legacyTaskViews(searchTaskList(this.queries.list(), query));
     const scroll = this.el.createDiv({ cls: 'tc-center-scroll' });
     if (results.length === 0) {
       scroll.createDiv({ cls: 'tc-center-empty', text: 'No results' });
@@ -1345,7 +1345,7 @@ export class CenterPanel {
 
   private showBulkContextMenu(e: MouseEvent, _card: HTMLElement): void {
     const selectedKeys = Array.from(this.selectedTaskKeys);
-    const allTasks = this.store.getTasks();
+    const allTasks = legacyTaskViews(this.queries.list());
     const selectedTasks = selectedKeys
       .map((k) => {
         const lastColon = k.lastIndexOf(':');
@@ -1353,7 +1353,7 @@ export class CenterPanel {
         const lineNum = parseInt(k.slice(lastColon + 1), 10);
         return allTasks.find((t) => t.filePath === fp && t.line === lineNum);
       })
-      .filter((t): t is Task => t !== undefined);
+      .filter((t) => t !== undefined);
 
     const menu = new Menu();
     const today = window.moment().format('YYYY-MM-DD');
@@ -2018,100 +2018,16 @@ export class CenterPanel {
   }
 
   private getFilteredTasks(): Task[] {
-    const sel = this.state.get('selectedList');
-    const vs = this.state.get('centerListViewState');
-    const filter = this.state.get('centerFilter').toLowerCase();
-    const today = window.moment().format('YYYY-MM-DD');
-
-    // 1. List selection filter
-    let tasks: Task[];
-    if (typeof sel === 'string') {
-      switch (sel) {
-        case 'inbox':
-          tasks = this.getInboxTasks();
-          break;
-        case 'today': {
-          const todayStr = window.moment().format('YYYY-MM-DD');
-          tasks = this.store.getTasks().filter((t) => {
-            if (t.due === todayStr || t.scheduled === todayStr || t.dailyNoteDate === todayStr)
-              return true;
-            if (t.due && t.due < todayStr) return true;
-            return false;
-          });
-          break;
-        }
-        case 'upcoming': {
-          tasks = this.store.getTasks().filter((t) => {
-            const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
-            return d !== undefined && d > today;
-          });
-          break;
-        }
-        default:
-          tasks = this.store.getTasks();
-      }
-    } else if (sel.type === 'tag') {
-      tasks = this.store.getTasks({ tag: sel.tag });
-    } else if (sel.type === 'project') {
-      tasks = this.store.getTasks().filter((t) => t.filePath === sel.path);
-    } else {
-      const group = this.settings.tagGroups.find((g) => g.id === sel.groupId);
-      tasks = this.store.getTasks().filter((t) => {
-        if (!group) return false;
-        if (group.mode === 'prefix' && group.prefix) return t.rawText.includes(`#${group.prefix}`);
-        return (group.tags ?? []).some((tag) => t.rawText.includes(tag));
-      });
-    }
-
-    // 2. Show status filter (undefined/all-4 statusGroups → no filter)
-    tasks = filterTasksByStatusGroups(tasks, vs.statusGroups, this.store.statusRegistry);
-
-    // 3. Property filters (AND)
-    for (const f of vs.filters) {
-      if (f.type === 'tag') {
-        const escaped = f.value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-        const re = new RegExp(`${escaped}(?![\\w/-])`, 'u');
-        tasks = tasks.filter((t) => re.test(t.rawText));
-      } else if (f.type === 'file') {
-        tasks = tasks.filter((t) => t.filePath === f.filePath);
-      } else if (f.type === 'time') {
-        tasks = tasks.filter((t) => t.time === f.value);
-      } else if (f.type === 'priority') {
-        tasks = tasks.filter((t) => t.priority === f.value);
-      } else if (f.type === 'status') {
-        tasks = tasks.filter((t) => t.statusSymbol === f.value);
-      } else if (f.type === 'date') {
-        tasks = tasks.filter((t) => (t.due ?? t.scheduled ?? t.dailyNoteDate) === f.value);
-      }
-    }
-
-    // 4. Text filter
-    if (filter) {
-      tasks = tasks.filter(
-        (t) => t.text.toLowerCase().includes(filter) || t.rawText.toLowerCase().includes(filter),
-      );
-    }
-
-    // 5. Sort
-    return sortTasksByField(tasks, vs.sortBy.field, vs.sortBy.dir, this.store.statusRegistry);
-  }
-
-  private getInboxTasks(): Task[] {
-    const { inbox } = this.settings;
-    const all = this.store.getTasks();
-    const withTag =
-      inbox.mode !== 'untagged' ? all.filter((t) => t.rawText.includes(inbox.tag)) : [];
-    const includeUntagged = inbox.mode !== 'tag';
-    const untagged = includeUntagged ? all.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
-    if (withTag.length === 0) return untagged;
-    if (untagged.length === 0) return withTag;
-    const seen = new Set<string>();
-    return [...withTag, ...untagged].filter((t) => {
-      const key = `${t.filePath}:${t.line}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return legacyTaskViews(
+      selectTaskList({
+        tasks: this.queries.list(),
+        selection: this.state.get('selectedList'),
+        viewState: this.state.get('centerListViewState'),
+        settings: this.settings,
+        today: window.moment().format('YYYY-MM-DD') as LocalDate,
+        textQuery: this.state.get('centerFilter'),
+      }),
+    );
   }
 
   private getTitle(): string {
@@ -2173,7 +2089,7 @@ export class CenterPanel {
     const line = parseInt(lineStr ?? '0', 10);
     if (!filePath || isNaN(line)) return;
 
-    const task = this.store.getTasks().find((t) => t.filePath === filePath && t.line === line);
+    const task = legacyTaskViews(this.queries.list({ filePath })).find((t) => t.line === line);
     if (!task) return;
 
     await this.mutations.applyValidatedLineMutation(locatorOf(task), (tl) => {
@@ -2208,7 +2124,7 @@ export class CenterPanel {
     const line = parseInt(lineStr ?? '0', 10);
     if (!filePath || isNaN(line)) return;
 
-    const task = this.store.getTasks().find((t) => t.filePath === filePath && t.line === line);
+    const task = legacyTaskViews(this.queries.list({ filePath })).find((t) => t.line === line);
     if (!task) return;
 
     await this.mutations.applyValidatedLineMutation(locatorOf(task), (tl) => {

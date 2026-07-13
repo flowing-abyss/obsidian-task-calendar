@@ -1,98 +1,20 @@
 import { Notice, TFile, type App } from 'obsidian';
 import { locatorOf, TaskMutationService } from '../mutation';
-import type { SubTask, Task, TaskComment, TaskFilter } from '../parser/types';
+import type { Task, TaskFilter } from '../parser/types';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
-import type {
-  LocalDate,
-  SubtaskSnapshot,
-  TaskCommentSnapshot,
-  TaskIndexEvent,
-  TaskPriority,
-  TaskQuery,
-  TaskQueryApi,
-  TaskSnapshot,
-} from '../tasks';
+import type { LocalDate, TaskIndexEvent, TaskPriority, TaskQuery, TaskQueryApi } from '../tasks';
+import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import { legacyBlockRangeOf, TaskIndex } from '../tasks/infrastructure/TaskIndex';
+import { TaskIndex } from '../tasks/infrastructure/TaskIndex';
 
 interface StoreUpdateEvent {
   changedFiles: string[];
 }
 
 type UpdateCallback = (event: StoreUpdateEvent) => void;
-
-function legacyComment(comment: TaskCommentSnapshot, parentLine: number): TaskComment {
-  return {
-    line: parentLine + comment.ref.relativeLine,
-    date: comment.date,
-    text: comment.text,
-  };
-}
-
-function legacySubtask(task: SubtaskSnapshot, parentLine: number, filePath: string): SubTask {
-  const line = parentLine + task.ref.relativeLine;
-  const lineCount = task.ref.originalBlock.split('\n').length;
-  const subtaskRange = lineCount > 1 ? { from: line + 1, to: line + lineCount - 1 } : undefined;
-  const subtasks = task.subtasks.map((child) => legacySubtask(child, line, filePath));
-  const comments = task.comments.map((comment) => legacyComment(comment, line));
-  return {
-    filePath,
-    line,
-    rawText: task.ref.originalBlock.split('\n')[0] ?? '',
-    text: task.title,
-    markdownText: task.markdownTitle,
-    status: task.status,
-    statusSymbol: task.statusSymbol,
-    due: task.planning.due,
-    scheduled: task.planning.scheduled,
-    start: task.planning.start,
-    time: task.planning.time,
-    priority: task.priority,
-    recurrence: task.recurrence,
-    ...(subtasks.length > 0 && { subtasks }),
-    ...(comments.length > 0 && { comments }),
-    ...(task.description && { description: task.description }),
-    ...(subtaskRange && { subtaskRange }),
-  };
-}
-
-function legacyTask(task: TaskSnapshot): Task {
-  const subtasks = task.subtasks.map((subtask) =>
-    legacySubtask(subtask, task.source.line, task.source.filePath),
-  );
-  const comments = task.comments.map((comment) => legacyComment(comment, task.source.line));
-  const subtaskRange = legacyBlockRangeOf(task);
-  return {
-    filePath: task.source.filePath,
-    line: task.source.line,
-    rawText: task.source.originalMarkdown,
-    text: task.title,
-    markdownText: task.markdownTitle,
-    status: task.status,
-    statusSymbol: task.statusSymbol,
-    due: task.planning.due,
-    scheduled: task.planning.scheduled,
-    start: task.planning.start,
-    completion: task.planning.completion,
-    cancelledDate: task.planning.cancelled,
-    time: task.planning.time,
-    duration: task.planning.duration,
-    recurrence: task.recurrence,
-    priority: task.priority,
-    ...(subtasks.length > 0 && { subtasks }),
-    ...(comments.length > 0 && { comments }),
-    ...(task.description && { description: task.description }),
-    ...(subtaskRange && { subtaskRange }),
-    linkCount: task.presentation.linkCount,
-    dailyNoteDate: task.presentation.dailyNoteDate,
-    noteColor: task.presentation.noteColor,
-    noteTextColor: task.presentation.noteTextColor,
-    noteIcon: task.presentation.noteIcon,
-  };
-}
 
 export class TaskStore {
   private listeners: UpdateCallback[] = [];
@@ -145,6 +67,10 @@ export class TaskStore {
     this.taskIndex.setStatusCatalog(this.statusCatalog);
   }
 
+  get taskQueries(): TaskQueryApi {
+    return this.queries;
+  }
+
   async initialize(): Promise<void> {
     await this.taskIndex.initialize();
   }
@@ -164,15 +90,15 @@ export class TaskStore {
           }),
         }
       : undefined;
-    return this.queries.list(query).map(legacyTask);
+    return legacyTaskViews(this.queries.list(query));
   }
 
   getTasksForDate(date: string): Task[] {
-    return this.queries.forCalendarDates([date as LocalDate]).map(legacyTask);
+    return legacyTaskViews(this.queries.forCalendarDates([date as LocalDate]));
   }
 
   getTasksForDateRange(dates: string[]): Task[] {
-    return this.queries.forCalendarDates(dates as LocalDate[]).map(legacyTask);
+    return legacyTaskViews(this.queries.forCalendarDates(dates as LocalDate[]));
   }
 
   async toggleTask(task: Task): Promise<void> {

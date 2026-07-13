@@ -27,7 +27,7 @@ export interface TaskRef {
   readonly revision: string;
 }
 
-interface SubtaskRef {
+export interface SubtaskRef {
   readonly parent: TaskNodeRef;
   readonly relativeLine: number;
   readonly originalBlock: string;

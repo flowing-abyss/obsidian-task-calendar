@@ -7,6 +7,7 @@ import { toStatusRules } from './settings/statusCatalogAdapter';
 import type { CalendarSettings, CodeBlockParams } from './settings/types';
 import { TaskStore } from './store/TaskStore';
 import { TagManager } from './tags/TagManager';
+import type { TaskQueryApi } from './tasks';
 import { StatusCatalog } from './tasks/domain/StatusCatalog';
 import { TaskIndex } from './tasks/infrastructure/TaskIndex';
 import { CalendarRenderer } from './ui/CalendarRenderer';
@@ -16,6 +17,7 @@ export default class TaskCalendarPlugin extends Plugin {
   store!: TaskStore;
   settings!: CalendarSettings;
   tagManager!: TagManager;
+  queries!: TaskQueryApi;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -27,15 +29,23 @@ export default class TaskCalendarPlugin extends Plugin {
       }),
     });
     this.store = new TaskStore(this.app, this.settings, taskIndex);
+    this.queries = taskIndex;
     this.tagManager = new TagManager(this.app, this.settings, () => this.saveSettings());
 
     this.registerView(
       PANEL_VIEW_TYPE,
       (leaf) =>
-        new PanelView(leaf, this.store, this.settings, this.tagManager, () => this.saveSettings()),
+        new PanelView(
+          leaf,
+          this.store,
+          this.settings,
+          this.tagManager,
+          () => this.saveSettings(),
+          this.queries,
+        ),
     );
 
-    registerCodeBlock(this, this.store, this.settings);
+    registerCodeBlock(this, this.store, this.settings, this.queries);
 
     this.addCommand({
       id: 'open-panel',
@@ -66,6 +76,7 @@ export default class TaskCalendarPlugin extends Plugin {
         this.store,
         resolveConfig(this.settings, params),
         this.app,
+        this.queries,
       );
       renderer.mount();
     };

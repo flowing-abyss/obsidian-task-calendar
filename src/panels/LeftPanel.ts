@@ -8,6 +8,8 @@ import type { CalendarSettings, TagGroup } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import { RenameTagModal } from '../tags/RenameTagModal';
 import type { TagManager } from '../tags/TagManager';
+import type { TaskQueryApi } from '../tasks';
+import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
 
 const PROJECTS_CAP = 10;
 
@@ -36,6 +38,7 @@ export class LeftPanel {
     private onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
     private projectManager: ProjectManager | null = null,
+    private queries: TaskQueryApi = store.taskQueries,
   ) {}
 
   mount(container: HTMLElement): void {
@@ -78,7 +81,7 @@ export class LeftPanel {
     // The projects mode is a self-contained deep view; search hides the left panel too.
     if (mode === 'search' || mode === 'projects') return;
 
-    const allTasks = this.store.getTasks();
+    const allTasks = legacyTaskViews(this.queries.list());
     const today = window.moment().format('YYYY-MM-DD');
 
     this.el.createDiv({ cls: 'tc-left-section' }, (section) => {

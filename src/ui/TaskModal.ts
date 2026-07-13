@@ -1,22 +1,28 @@
 import type { App } from 'obsidian';
 import { AppState } from '../app/AppState';
 import { RightPanel } from '../panels/RightPanel';
-import type { Task } from '../parser/types';
+import type { SubTask, Task } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
-import type { TaskStore } from '../store/TaskStore';
+import type { TaskIndexEvent, TaskQueryApi, TaskResolution } from '../tasks';
+import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
+import type { TaskRef } from '../tasks/domain/types';
 
 export class TaskModal {
   private backdropEl: HTMLElement | null = null;
+  private modalEl: HTMLElement | null = null;
   private innerState: AppState | null = null;
   private innerPanel: RightPanel | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private ownerDoc: Document | null = null;
   private storeUnsub: (() => void) | null = null;
+  private selectionUnsub: (() => void) | null = null;
+  private ownedWriteRef: TaskRef | undefined = undefined;
 
   constructor(
     private app: App,
     private settings?: CalendarSettings,
-    private store?: TaskStore,
+    _store?: unknown,
+    private queries?: TaskQueryApi,
   ) {}
 
   open(task: Task): void {
@@ -25,39 +31,19 @@ export class TaskModal {
     this.ownerDoc = activeDocument;
     this.innerState = new AppState();
     this.innerState.set('taskStack', [task]);
+    this.selectionUnsub = this.innerState.on('taskStack', (stack) => {
+      if (!this.ownedWriteRef) return;
+      const ref = stack[0] ? taskRefOf(stack[0]) : undefined;
+      if (!ref || !this.sameRef(ref, this.ownedWriteRef)) this.ownedWriteRef = undefined;
+    });
 
     // Mirror PanelView's store-refresh wiring: without it, the modal's own AppState is
     // isolated from the TaskStore, so mutating Start/Plan (or any field) via RightPanel's
     // Planning disclosure updates the file/store but leaves this modal showing the stale
     // task object — RightPanel's Start/Plan chips (task.start / task.scheduled) then never
     // appear until the modal is closed and reopened.
-    if (this.store) {
-      this.storeUnsub = this.store.onUpdate(({ changedFiles }) => {
-        const stack = this.innerState?.get('taskStack');
-        if (!stack || stack.length === 0) return;
-        const root = stack[0];
-        if (!root || !changedFiles.includes(root.filePath)) return;
-        const freshTasks = this.store!.getTasks();
-        const freshRoot = freshTasks.find(
-          (t) => t.filePath === root.filePath && t.line === root.line,
-        );
-        if (!freshRoot) return;
-        if (stack.length === 1) {
-          this.innerState?.set('taskStack', [freshRoot]);
-          return;
-        }
-        // Rebuild deeper stack levels (subtask navigation), same approach as PanelView.
-        const freshStack: typeof stack = [freshRoot];
-        for (let i = 1; i < stack.length; i++) {
-          const prev = freshStack[i - 1];
-          const stale = stack[i];
-          if (!prev || !stale) break;
-          const freshSub = prev.subtasks?.find((s) => s.line === stale.line);
-          if (!freshSub) break;
-          freshStack.push(freshSub);
-        }
-        this.innerState?.set('taskStack', freshStack);
-      });
+    if (this.queries && taskRefOf(task)) {
+      this.storeUnsub = this.queries.subscribe((event) => this.onIndexEvent(event));
     }
 
     const backdrop = this.ownerDoc.body.createDiv({ cls: 'tc-modal-backdrop' });
@@ -66,9 +52,12 @@ export class TaskModal {
     this.ownerDoc.body.addClass('tc-modal-open');
 
     const modal = backdrop.createDiv({ cls: 'tc-modal' });
+    this.modalEl = modal;
 
     const panelEl = modal.createDiv({ cls: 'tc-right tc-modal-body' });
-    this.innerPanel = new RightPanel(this.innerState, this.app, this.settings);
+    this.innerPanel = new RightPanel(this.innerState, this.app, this.settings, (root) =>
+      this.acknowledgeOwnWrite(root),
+    );
     this.innerPanel.mount(panelEl);
 
     // Insert close button into the panel's header actions row (flex row, not absolutely positioned)
@@ -102,12 +91,127 @@ export class TaskModal {
     }
     this.storeUnsub?.();
     this.storeUnsub = null;
+    this.selectionUnsub?.();
+    this.selectionUnsub = null;
     this.ownerDoc?.body.removeClass('tc-modal-open');
     this.ownerDoc = null;
     this.innerPanel?.destroy();
     this.innerPanel = null;
     this.innerState = null;
+    this.ownedWriteRef = undefined;
+    this.modalEl = null;
     this.backdropEl?.remove();
     this.backdropEl = null;
+  }
+
+  private onIndexEvent(event: TaskIndexEvent): void {
+    const stack = this.innerState?.get('taskStack');
+    const root = stack?.[0];
+    if (!stack || !root) return;
+    const ref = taskRefOf(root);
+    if (!ref || !this.queries || !this.affects(event, ref.filePath)) return;
+    this.applyResolution(this.queries.resolve(ref), stack);
+  }
+
+  private affects(event: TaskIndexEvent, path: string): boolean {
+    if (event.type === 'initialized') return true;
+    if (event.type === 'changed') return event.files.includes(path);
+    if (event.type === 'renamed') return event.oldPath === path || event.newPath === path;
+    return event.path === path;
+  }
+
+  private applyResolution(resolution: TaskResolution, stack: Array<Task | SubTask>): void {
+    this.clearResolutionMessage();
+    const rootRef = stack[0] ? taskRefOf(stack[0]) : undefined;
+    const ownWrite = Boolean(
+      rootRef && this.ownedWriteRef && this.sameRef(rootRef, this.ownedWriteRef),
+    );
+    this.ownedWriteRef = undefined;
+    if (resolution.type === 'exact') {
+      this.innerState?.set(
+        'taskStack',
+        rebuildLegacyTaskStack(legacyTaskView(resolution.task), stack),
+      );
+      return;
+    }
+    if (ownWrite && resolution.type === 'conflict') {
+      this.innerState?.set(
+        'taskStack',
+        rebuildLegacyTaskStack(legacyTaskView(resolution.current), stack),
+      );
+      return;
+    }
+    if (resolution.type === 'not-found') {
+      this.close();
+      return;
+    }
+    if (resolution.type === 'conflict') {
+      const banner = this.createResolutionMessage(
+        'tc-task-selection-stale',
+        'This task changed outside the calendar.',
+      );
+      this.addAction(banner, 'Reload', 'tc-task-selection-reload', () => {
+        const stale = this.innerState?.get('taskStack') ?? [];
+        this.innerState?.set(
+          'taskStack',
+          rebuildLegacyTaskStack(legacyTaskView(resolution.current), stale),
+        );
+        this.clearResolutionMessage();
+      });
+      this.addAction(banner, 'Close', 'tc-task-selection-close', () => this.close());
+      return;
+    }
+    const banner = this.createResolutionMessage(
+      'tc-task-selection-ambiguous',
+      'Choose the task to keep open:',
+    );
+    for (const candidate of resolution.candidates) {
+      const label = `${candidate.root.title} — ${candidate.root.source.filePath}:${candidate.root.source.line + 1}`;
+      this.addAction(banner, label, 'tc-task-selection-candidate', () => {
+        const stale = this.innerState?.get('taskStack') ?? [];
+        this.innerState?.set(
+          'taskStack',
+          rebuildLegacyTaskStack(legacyTaskView(candidate.root), stale),
+        );
+        this.clearResolutionMessage();
+      });
+    }
+  }
+
+  private acknowledgeOwnWrite(taskOrRef?: Task | SubTask | TaskRef): void {
+    const root = taskOrRef ?? this.innerState?.get('taskStack')[0];
+    let ref: TaskRef | undefined;
+    if (root) ref = 'revision' in root ? root : taskRefOf(root);
+    this.ownedWriteRef = ref ? { ...ref } : undefined;
+  }
+
+  private sameRef(left: TaskRef, right: TaskRef): boolean {
+    return (
+      left.filePath === right.filePath &&
+      left.line === right.line &&
+      left.revision === right.revision
+    );
+  }
+
+  private createResolutionMessage(className: string, text: string): HTMLElement {
+    const banner = activeDocument.createElement('div');
+    banner.className = `tc-task-selection-message ${className}`;
+    banner.createSpan({ text });
+    this.modalEl?.prepend(banner);
+    return banner;
+  }
+
+  private addAction(
+    parent: HTMLElement,
+    label: string,
+    className: string,
+    action: () => void,
+  ): void {
+    const button = parent.createEl('button', { cls: className, text: label });
+    button.addEventListener('click', action);
+  }
+
+  private clearResolutionMessage(): void {
+    this.modalEl?.querySelector('.tc-task-selection-message')?.remove();
   }
 }

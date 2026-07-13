@@ -146,23 +146,6 @@ function revisionOf(block: string): string {
   return `block:${JSON.stringify(block)}`;
 }
 
-/** Temporary legacy-presentation adapter support; revision remains opaque to public consumers. */
-export function legacyBlockRangeOf(
-  task: Pick<TaskSnapshot, 'ref' | 'source'>,
-): { from: number; to: number } | undefined {
-  if (!task.ref.revision.startsWith('block:')) return undefined;
-  try {
-    const block = JSON.parse(task.ref.revision.slice('block:'.length)) as unknown;
-    if (typeof block !== 'string') return undefined;
-    const lineCount = block.split('\n').length;
-    return lineCount > 1
-      ? { from: task.source.line + 1, to: task.source.line + lineCount - 1 }
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function cloneTaskRef(ref: TaskRef): TaskRef {
   return { ...ref };
 }

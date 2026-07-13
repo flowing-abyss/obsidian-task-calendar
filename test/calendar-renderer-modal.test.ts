@@ -1,7 +1,8 @@
 import type { App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
-import { freshContainer, resolvedConfig, useRealMoment } from './helpers';
+import type { TaskIndexEvent } from '../src/tasks';
+import { freshContainer, queryApiForTasks, resolvedConfig, useRealMoment } from './helpers';
 
 useRealMoment();
 vi.useFakeTimers();
@@ -38,18 +39,26 @@ import { CalendarRenderer } from '../src/ui/CalendarRenderer';
 
 class StubStore {
   private tasks: Task[] = [];
-  private listeners = new Set<(p: { changedFile?: string }) => void>();
+  private listeners = new Set<(event: TaskIndexEvent) => void>();
+  taskQueries = queryApiForTasks(
+    () => this.tasks,
+    (listener) => {
+      this.listeners.add(listener);
+      return () => this.listeners.delete(listener);
+    },
+  );
   getTasks(): Task[] {
     return this.tasks;
   }
   onUpdate(cb: (p: { changedFile?: string }) => void): () => void {
-    this.listeners.add(cb);
-    return () => {
-      this.listeners.delete(cb);
-    };
+    const listener = (): void => cb({});
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
   emit(changedFile?: string): void {
-    for (const l of this.listeners) l({ changedFile });
+    for (const listener of this.listeners) {
+      listener({ type: 'changed', files: changedFile ? [changedFile] : [] });
+    }
   }
   setTasks(t: Task[]): void {
     this.tasks = t;

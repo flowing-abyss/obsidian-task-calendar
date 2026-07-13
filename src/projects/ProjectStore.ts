@@ -1,8 +1,9 @@
-import { getAllTags, TFile, type App, type CachedMetadata, type EventRef } from 'obsidian';
+import { getAllTags, TFile, type App, type CachedMetadata, type TAbstractFile } from 'obsidian';
 import type { Task } from '../parser/types';
 import { evaluateQuery } from '../query/evaluateQuery';
 import type { CalendarSettings } from '../settings/types';
-import type { TaskStore } from '../store/TaskStore';
+import type { TaskIndexEvent, TaskQueryApi } from '../tasks';
+import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
 import { resolveStatus } from './status';
 import type { Project, ProjectStats } from './types';
 
@@ -23,10 +24,20 @@ function basename(path: string): string {
   return file.replace(/\.md$/, '');
 }
 
+function isMarkdownFile(file: TAbstractFile): file is TFile {
+  return file instanceof TFile && file.extension === 'md';
+}
+
+function wasMarkdown(path: string): boolean {
+  const name = path.replace(/^.*\//u, '');
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 && name.slice(dot + 1) === 'md';
+}
+
 /**
  * Enumerates and caches project notes (markdown files matching the membership
  * query), computing per-note task stats. Registers its own vault/metadata
- * listeners — it must NOT piggyback on TaskStore.onUpdate, because a project
+ * listeners — it must NOT depend only on task-index events, because a project
  * note with no tasks is never in the task map and its create/delete/rename
  * would be missed.
  */
@@ -34,14 +45,15 @@ export class ProjectStore {
   private cache: Project[] = [];
   private byPath = new Map<string, Project>();
   private listeners: Array<() => void> = [];
-  private refs: EventRef[] = [];
+  private eventUnsubs: Array<() => void> = [];
+  private queryUnsub?: () => void;
   private debounce = 0;
   private pendingPaths = new Set<string>();
   private pendingFull = false;
 
   constructor(
     private app: App,
-    private store: TaskStore,
+    private queries: TaskQueryApi,
     private settings: CalendarSettings,
   ) {}
 
@@ -49,21 +61,57 @@ export class ProjectStore {
     this.recomputeAll();
     // A single note edit re-evaluates only that note (O(1) note + its tasks).
     // Create/delete/rename change the membership set → full rescan (rare events).
-    this.refs.push(this.app.metadataCache.on('changed', (file) => this.scheduleUpdate(file.path)));
-    const full = (): void => this.scheduleFull();
-    this.refs.push(this.app.vault.on('create', full));
-    this.refs.push(this.app.vault.on('delete', full));
-    this.refs.push(this.app.vault.on('rename', full));
+    const metadataRef = this.app.metadataCache.on('changed', (file) => {
+      if (file.extension === 'md' && this.app.vault.getAbstractFileByPath(file.path) === file) {
+        this.enqueueUpdate(file.path);
+      }
+    });
+    this.eventUnsubs.push(() => this.app.metadataCache.offref(metadataRef));
+    const createRef = this.app.vault.on('create', (file) => {
+      if (isMarkdownFile(file)) this.enqueueFull();
+    });
+    const deleteRef = this.app.vault.on('delete', (file) => {
+      if (isMarkdownFile(file)) this.enqueueFull();
+    });
+    const renameRef = this.app.vault.on('rename', (file, oldPath) => {
+      if (file instanceof TFile && (file.extension === 'md' || wasMarkdown(oldPath))) {
+        this.enqueueFull();
+      }
+    });
+    this.eventUnsubs.push(
+      () => this.app.vault.offref(createRef),
+      () => this.app.vault.offref(deleteRef),
+      () => this.app.vault.offref(renameRef),
+    );
+    this.queryUnsub = this.queries.subscribe((event) => this.onTaskIndexEvent(event));
+  }
+
+  private onTaskIndexEvent(event: TaskIndexEvent): void {
+    if (event.type === 'changed') {
+      for (const path of event.files) this.scheduleUpdate(path);
+    } else if (event.type === 'initialized') {
+      this.scheduleFull();
+    } else {
+      this.scheduleFull();
+    }
   }
 
   private scheduleUpdate(path: string): void {
-    this.pendingPaths.add(path);
+    this.enqueueUpdate(path);
     this.scheduleFlush();
   }
 
   private scheduleFull(): void {
-    this.pendingFull = true;
+    this.enqueueFull();
     this.scheduleFlush();
+  }
+
+  private enqueueUpdate(path: string): void {
+    this.pendingPaths.add(path);
+  }
+
+  private enqueueFull(): void {
+    this.pendingFull = true;
   }
 
   private scheduleFlush(): void {
@@ -104,7 +152,7 @@ export class ProjectStore {
       return;
     }
     const cache = this.app.metadataCache.getFileCache(file);
-    const tasks = this.store.getTasks().filter((t) => t.filePath === path);
+    const tasks = legacyTaskViews(this.queries.list({ filePath: path }));
     const entry = this.makeEntry(path, cache, tasks);
     if (entry) this.byPath.set(path, entry);
     else this.byPath.delete(path);
@@ -128,7 +176,7 @@ export class ProjectStore {
 
   private groupTasksByPath(): Map<string, Task[]> {
     const map = new Map<string, Task[]>();
-    for (const t of this.store.getTasks()) {
+    for (const t of legacyTaskViews(this.queries.list())) {
       const arr = map.get(t.filePath) ?? [];
       arr.push(t);
       map.set(t.filePath, arr);
@@ -171,11 +219,10 @@ export class ProjectStore {
 
   destroy(): void {
     if (this.debounce) window.clearTimeout(this.debounce);
-    for (const ref of this.refs) {
-      this.app.metadataCache.offref(ref);
-      this.app.vault.offref(ref);
-    }
-    this.refs = [];
+    this.queryUnsub?.();
+    this.queryUnsub = undefined;
+    for (const unsubscribe of this.eventUnsubs) unsubscribe();
+    this.eventUnsubs = [];
     this.listeners = [];
   }
 }

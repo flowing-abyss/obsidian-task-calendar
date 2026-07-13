@@ -7,6 +7,7 @@ import { RightPanel } from '../src/panels/RightPanel';
 import type { SubTask, Task, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
+import type { TaskRef } from '../src/tasks/domain/types';
 import { openInFile } from '../src/ui/taskNavigation';
 import { createAppWithFiles, freshContainer, seedTaskCache, task, useRealMoment } from './helpers';
 
@@ -36,11 +37,12 @@ async function makePanel(
   files: Record<string, string>,
   settings: CalendarSettings = DEFAULT_SETTINGS,
   seeds: Array<{ path: string; items: Array<{ task: string; parent: number; line: number }> }> = [],
+  onSuccessfulMutation?: (ref?: TaskRef) => void,
 ): Promise<{ panel: RightPanel; state: AppState; app: App }> {
   const app = await createAppWithFiles(files);
   for (const s of seeds) seedTaskCache(app, s.path, s.items);
   const state = new AppState();
-  const panel = new RightPanel(state, app, settings);
+  const panel = new RightPanel(state, app, settings, onSuccessfulMutation);
   return { panel, state, app };
 }
 
@@ -141,6 +143,71 @@ describe('RightPanel.formatDate', () => {
 });
 
 describe('RightPanel.updateTaskTitle', () => {
+  it('acknowledges the initiating root when selection changes during an async write', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const acknowledge = vi.fn<(ref?: TaskRef) => void>();
+    const { panel, state, app } = await makePanel(
+      { 't.md': '- [ ] old title' },
+      DEFAULT_SETTINGS,
+      [],
+      acknowledge,
+    );
+    const originalProcess = app.vault.process.bind(app.vault);
+    vi.spyOn(app.vault, 'process').mockImplementation(async (file, transform) => {
+      await gate;
+      return originalProcess(file, transform);
+    });
+    const first = Object.assign(task({ filePath: 't.md', line: 0, rawText: '- [ ] old title' }), {
+      ref: { filePath: 't.md', line: 0, revision: 'first' },
+    });
+    const second = Object.assign(task({ filePath: 'other.md', line: 0 }), {
+      ref: { filePath: 'other.md', line: 0, revision: 'second' },
+    });
+    state.set('taskStack', [first]);
+    const pending = call<Promise<void>>(panel, 'updateTaskTitle', first, 'new title');
+    state.set('taskStack', [second]);
+    release();
+    await pending;
+    expect(acknowledge).toHaveBeenCalledWith(first.ref);
+  });
+
+  it('acknowledges a successful local write for revision reanchoring', async () => {
+    const acknowledge = vi.fn();
+    const { panel } = await makePanel(
+      { 't.md': '- [ ] old title' },
+      DEFAULT_SETTINGS,
+      [],
+      acknowledge,
+    );
+    await call<Promise<void>>(
+      panel,
+      'updateTaskTitle',
+      task({ filePath: 't.md', line: 0, rawText: '- [ ] old title' }),
+      'new title',
+    );
+    expect(acknowledge).toHaveBeenCalledOnce();
+  });
+
+  it('does not acknowledge a successful no-op with unchanged source', async () => {
+    const acknowledge = vi.fn();
+    const { panel } = await makePanel(
+      { 't.md': '- [ ] same title' },
+      DEFAULT_SETTINGS,
+      [],
+      acknowledge,
+    );
+    await call<Promise<void>>(
+      panel,
+      'updateTaskTitle',
+      task({ filePath: 't.md', line: 0, rawText: '- [ ] same title' }),
+      'same title',
+    );
+    expect(acknowledge).not.toHaveBeenCalled();
+  });
+
   it('replaces title preserving prefix and metadata suffix', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] old title 📅 2026-06-20' });
     const t = task({

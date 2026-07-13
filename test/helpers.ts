@@ -9,8 +9,82 @@ import { buildDefaultTaskStatuses, DEFAULT_VIEW_CONFIG } from '../src/settings/d
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { ResolvedConfig } from '../src/settings/types';
 import { StatusRegistry } from '../src/status/StatusRegistry';
+import type { LocalDate, TaskIndexEvent, TaskQueryApi, TaskSnapshot } from '../src/tasks';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskPriority } from '../src/tasks/domain/types';
+
+export function taskSnapshotOf(value: Task): TaskSnapshot {
+  const tags = [...value.rawText.matchAll(/#[\w/-]+/gu)].map((match) => match[0]);
+  return {
+    ref: {
+      filePath: value.filePath,
+      line: value.line,
+      revision: `test:${value.filePath}:${value.line}:${value.rawText}`,
+    },
+    title: value.text,
+    markdownTitle: value.markdownText,
+    status: value.status,
+    statusSymbol: value.statusSymbol,
+    priority: value.priority,
+    planning: {
+      ...(value.due && { due: value.due as LocalDate }),
+      ...(value.scheduled && { scheduled: value.scheduled as LocalDate }),
+      ...(value.start && { start: value.start as LocalDate }),
+      ...(value.completion && { completion: value.completion as LocalDate }),
+      ...(value.cancelledDate && { cancelled: value.cancelledDate as LocalDate }),
+      ...(value.time && { time: value.time as TaskSnapshot['planning']['time'] }),
+      ...(value.duration && { duration: value.duration as TaskSnapshot['planning']['duration'] }),
+    },
+    tags,
+    recurrence: value.recurrence,
+    subtasks: [],
+    comments: [],
+    description: value.description,
+    source: {
+      filePath: value.filePath,
+      line: value.line,
+      originalMarkdown: value.rawText,
+    },
+    presentation: {
+      linkCount: value.linkCount ?? 0,
+      ...(value.dailyNoteDate && { dailyNoteDate: value.dailyNoteDate as LocalDate }),
+      ...(value.noteColor && { noteColor: value.noteColor }),
+      ...(value.noteTextColor && { noteTextColor: value.noteTextColor }),
+      ...(value.noteIcon && { noteIcon: value.noteIcon }),
+    },
+  };
+}
+
+export function queryApiForTasks(
+  getTasks: () => readonly Task[],
+  onSubscribe?: (listener: (event: TaskIndexEvent) => void) => () => void,
+): TaskQueryApi {
+  return {
+    list: (query) =>
+      getTasks()
+        .filter((task) => query?.filePath === undefined || task.filePath === query.filePath)
+        .filter((task) => query?.tag === undefined || task.rawText.includes(query.tag))
+        .filter((task) => query?.statuses === undefined || query.statuses.includes(task.status))
+        .map(taskSnapshotOf),
+    forCalendarDates: (dates) => {
+      const wanted = new Set<string>(dates);
+      return getTasks()
+        .filter((task) =>
+          [task.due, task.scheduled, task.start, task.dailyNoteDate].some(
+            (date) => date !== undefined && wanted.has(date),
+          ),
+        )
+        .map(taskSnapshotOf);
+    },
+    resolve: (ref) => {
+      const found = getTasks().find(
+        (task) => task.filePath === ref.filePath && task.line === ref.line,
+      );
+      return found ? { type: 'exact', task: taskSnapshotOf(found) } : { type: 'not-found', ref };
+    },
+    subscribe: onSubscribe ?? (() => () => {}),
+  };
+}
 
 /** Canonical semantic status catalog for parser/codec compatibility tests. */
 export function canonicalStatusCatalog(): StatusCatalog {
@@ -212,7 +286,7 @@ export function makeStubStore(tasks: Task[], app?: ObsidianApp): unknown {
   const mutations = app
     ? new TaskMutationService(app, () => registry, canonicalStatusCatalog)
     : undefined;
-  return {
+  const store = {
     statusRegistry: registry,
     getTasks: (filter?: { tag?: string; status?: string[] }): Task[] => {
       let all = tasks;
@@ -239,6 +313,7 @@ export function makeStubStore(tasks: Task[], app?: ObsidianApp): unknown {
       await mutations.setStatusChar(locatorOf(t), char, today);
     },
   };
+  return { ...store, taskQueries: queryApiForTasks(() => store.getTasks()) };
 }
 
 /**

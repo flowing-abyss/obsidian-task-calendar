@@ -16,7 +16,9 @@ import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
 import { colorForTag } from '../tags/tagColor';
+import { taskRefOf } from '../tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
+import type { TaskRef } from '../tasks/domain/types';
 import {
   enableAttachmentDrop,
   enableAttachmentPaste,
@@ -44,6 +46,7 @@ export class RightPanel {
     private state: AppState,
     private app: App,
     private settings?: CalendarSettings,
+    onSuccessfulMutation?: (ref?: TaskRef) => void,
   ) {
     this.statusRegistry = new StatusRegistry(
       this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
@@ -53,6 +56,12 @@ export class RightPanel {
       () => this.statusRegistry,
       () =>
         new StatusCatalog(toStatusRules(this.settings?.taskStatuses ?? buildDefaultTaskStatuses())),
+      onSuccessfulMutation,
+      () => {
+        const root = this.state.get('taskStack')[0];
+        const ref = root ? taskRefOf(root) : undefined;
+        return ref ? { ...ref } : undefined;
+      },
     );
   }
 

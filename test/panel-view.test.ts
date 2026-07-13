@@ -169,6 +169,39 @@ describe('PanelView', () => {
       expect(state.get('taskStack')).toHaveLength(0);
     });
 
+    it('clears owned-write acknowledgement when deletion/switch changes the selected root', () => {
+      const state = (view as unknown as { state: AppState }).state;
+      const root = store.getTasks()[0]! as ReturnType<TaskStore['getTasks']>[number] & {
+        ref: { filePath: string; line: number; revision: string };
+      };
+      state.set('taskStack', [root]);
+      (view as unknown as { acknowledgeOwnWrite(task: typeof root): void }).acknowledgeOwnWrite(
+        root,
+      );
+      state.set('taskStack', []);
+      const otherRoot = {
+        ...root,
+        filePath: 'other.md',
+        ref: { filePath: 'other.md', line: 0, revision: 'other-old' },
+      };
+      state.set('taskStack', [otherRoot]);
+      const source = store.taskQueries.list()[0]!;
+      const external = {
+        ...source,
+        ref: { filePath: 'other.md', line: 0, revision: 'other-new' },
+        title: 'External',
+        markdownTitle: 'External',
+        source: { ...source.source, filePath: 'other.md', line: 0 },
+      };
+      (
+        view as unknown as {
+          applyResolution(result: { type: 'conflict'; current: typeof external }): void;
+        }
+      ).applyResolution({ type: 'conflict', current: external });
+      expect(state.get('taskStack')[0]).toBe(otherRoot);
+      expect(view.contentEl.querySelector('.tc-task-selection-stale')).not.toBeNull();
+    });
+
     it('refresh updates left panel count badges after store change (DOM assertion)', async () => {
       // Initial: one open task due today → Today count badge = "1"
       const left = view.contentEl.querySelector('.tc-left') as HTMLElement;
@@ -226,10 +259,12 @@ describe('PanelView', () => {
       expect(sub).toBeDefined();
       // Set a 2-level stack: [root, subtask]
       state.set('taskStack', [root, sub!]);
-      // Emit onUpdate with matching changedFile → triggers deep-stack rebuild
+      const snapshot = store.taskQueries.list({ filePath: root.filePath })[0]!;
       (
-        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
-      ).listeners.forEach((l) => l({ changedFiles: [root.filePath] }));
+        view as unknown as {
+          applyResolution(result: { type: 'exact'; task: typeof snapshot }): void;
+        }
+      ).applyResolution({ type: 'exact', task: snapshot });
       const stack = state.get('taskStack');
       // Stack should still have 2 elements (root + fresh subtask found by line match)
       expect(stack).toHaveLength(2);
@@ -242,11 +277,23 @@ describe('PanelView', () => {
       const tasks = store.getTasks();
       const root = tasks[0]!;
       // Create a fake subtask with a line number that doesn't exist in fresh data
-      const fakeSub = { ...root.subtasks?.[0]!, line: 999 };
+      const original = root.subtasks?.[0] as NonNullable<typeof root.subtasks>[number] & {
+        ref?: { originalBlock: string };
+      };
+      const fakeSub = {
+        ...original,
+        line: 999,
+        ...(original.ref && {
+          ref: { ...original.ref, originalBlock: '  - [ ] different child' },
+        }),
+      };
       state.set('taskStack', [root, fakeSub]);
+      const snapshot = store.taskQueries.list({ filePath: root.filePath })[0]!;
       (
-        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
-      ).listeners.forEach((l) => l({ changedFiles: [root.filePath] }));
+        view as unknown as {
+          applyResolution(result: { type: 'exact'; task: typeof snapshot }): void;
+        }
+      ).applyResolution({ type: 'exact', task: snapshot });
       const stack = state.get('taskStack');
       // Fresh subtask not found at line 999 → break → stack truncated to [freshRoot]
       expect(stack).toHaveLength(1);
