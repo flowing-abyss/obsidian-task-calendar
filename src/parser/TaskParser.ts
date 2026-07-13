@@ -1,29 +1,9 @@
-import type { TaskPriority } from '../tasks/domain/types';
 import { durationMinutes, formatDurationMinutes } from '../tasks/domain/validation';
-import {
-  TaskMarkdownCodec,
-  type ParsedTaskLine,
-  type SourceSpan,
-  type TaskSpanKind,
-} from '../tasks/infrastructure/markdown/TaskMarkdownCodec';
-import {
-  isLegacyTaskRecurrenceSpanConsumed,
-  legacyTaskRecurrenceFromParsed,
-} from './extractMetadata';
-import { collapseLinks } from './links';
+import { TaskMarkdownCodec } from '../tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { legacyTaskFromParsed } from './legacyTaskProjection';
 import type { ParseContext, Task } from './types';
 
 const DURATION_RE = /⏱️\s*(?:(\d+)h)?(?:(\d+)m)?/u;
-
-const TAGS_RE = /#[\w/-]+/gu;
-const PRIORITY_MARKER: Readonly<Record<TaskPriority, string>> = {
-  A: '🔺',
-  B: '⏫',
-  C: '🔼',
-  D: '',
-  E: '🔽',
-  F: '⏬',
-};
 
 /** Parse a duration token body (e.g. "1h30m", "2h", "45m") into total minutes. */
 export function parseDurationToMinutes(raw: string): number | undefined {
@@ -60,73 +40,7 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
   const codec = new TaskMarkdownCodec(ctx.statusCatalog);
   const parsed = codec.parseLine(rawText, { filePath: ctx.filePath, line: ctx.line });
   if (!parsed) return null;
-
-  const markdownText = compatibilityMarkdownTitle(parsed, ctx.globalTaskFilter);
-  const text = collapseLinks(markdownText);
-  let status = codec.statusForSymbol(parsed.statusSymbol);
-  if (parsed.planning.cancelled !== undefined) status = 'cancelled';
-
-  return {
-    filePath: ctx.filePath,
-    line: ctx.line,
-    rawText,
-    text,
-    markdownText,
-    status,
-    statusSymbol: parsed.statusSymbol,
-    due: parsed.planning.due,
-    scheduled: parsed.planning.scheduled,
-    start: parsed.planning.start,
-    completion: parsed.planning.completion,
-    cancelledDate: parsed.planning.cancelled,
-    time: parsed.planning.time,
-    duration: parsed.planning.duration,
-    recurrence: legacyTaskRecurrenceFromParsed(parsed),
-    priority: parsed.priority,
-    dailyNoteDate: ctx.dailyNoteDate,
-  };
-}
-
-const FIRST_ONLY_KINDS = new Set<TaskSpanKind>([
-  'due',
-  'scheduled',
-  'start',
-  'completion',
-  'cancelled',
-  'time',
-  'duration',
-]);
-
-function compatibilityMarkdownTitle(
-  parsed: ParsedTaskLine,
-  globalTaskFilter: string | undefined,
-): string {
-  const firstByKind = new Map<TaskSpanKind, SourceSpan>();
-  for (const span of parsed.spans) {
-    if (!firstByKind.has(span.kind)) firstByKind.set(span.kind, span);
-  }
-
-  let markdown = parsed.spans
-    .map((span) => {
-      if (span.kind === 'prefix') return '';
-      if (span.kind === 'tag') return parsed.original.slice(span.from, span.to);
-      if (isLegacyTaskRecurrenceSpanConsumed(parsed, span)) return '';
-      if (FIRST_ONLY_KINDS.has(span.kind)) {
-        return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
-      }
-      if (span.kind === 'priority') {
-        const marker = parsed.original.slice(span.from, span.to);
-        return marker === PRIORITY_MARKER[parsed.priority] ? '' : marker;
-      }
-      return parsed.original.slice(span.from, span.to);
-    })
-    .join('');
-
-  if (globalTaskFilter) markdown = markdown.split(globalTaskFilter).join('');
-  return markdown
-    .replace(TAGS_RE, '')
-    .replace(/\s{2,}/gu, ' ')
-    .trim();
+  return legacyTaskFromParsed(parsed, ctx, (symbol) => codec.statusForSymbol(symbol));
 }
 
 // Checkbox prefix including trailing space and any blockquote/callout markers:

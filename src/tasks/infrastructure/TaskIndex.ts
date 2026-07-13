@@ -1,7 +1,7 @@
 import { TFile, type App, type CachedMetadata, type EventRef, type TAbstractFile } from 'obsidian';
+import { legacyTaskFromParsed } from '../../parser/legacyTaskProjection';
 import { countLinksIn } from '../../parser/links';
 import { parseSubItems } from '../../parser/SubItemParser';
-import { parseTask } from '../../parser/TaskParser';
 import type { SubTask, TaskComment } from '../../parser/types';
 import type {
   TaskIndexEvent,
@@ -25,6 +25,7 @@ import type {
   TaskSnapshot,
 } from '../domain/types';
 import { durationMinutes, localDate, localTime } from '../domain/validation';
+import { TaskMarkdownCodec } from './markdown/TaskMarkdownCodec';
 import { calendarDatesForPlanning, TaskDateIndex } from './TaskDateIndex';
 
 export interface TaskIndexOptions {
@@ -34,6 +35,17 @@ export interface TaskIndexOptions {
 }
 
 type Listener = (event: TaskIndexEvent) => void;
+
+interface FileLifecycle {
+  path: string | undefined;
+  generation: number;
+}
+
+interface FileObservation {
+  readonly file: TFile;
+  readonly path: string;
+  readonly generation: number;
+}
 
 const TAG_RE = /#[\w/-]+/gu;
 
@@ -223,10 +235,13 @@ function blockFor(lines: readonly string[], line: number, rangeTo: number | unde
   return lines.slice(line, (rangeTo ?? line) + 1).join('\n');
 }
 
-function cacheWithContentFallback(data: string, cache: CachedMetadata): CachedMetadata {
+function cacheWithContentFallback(
+  data: string,
+  cache: CachedMetadata | null | undefined,
+): CachedMetadata {
   const sourceHasTask = data.split('\n').some((line) => /^[\s>]*- \[(.)\]/u.test(line));
   if (
-    cache.listItems !== undefined &&
+    cache?.listItems !== undefined &&
     (cache.listItems.some((item) => item.task !== undefined) || !sourceHasTask)
   ) {
     return cache;
@@ -245,7 +260,20 @@ function cacheWithContentFallback(data: string, cache: CachedMetadata): CachedMe
       },
     ];
   });
-  return { ...cache, listItems };
+  return { ...(cache ?? {}), listItems };
+}
+
+function extensionOf(path: string): string {
+  const name = path.replace(/^.*\//u, '');
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 ? name.slice(dot + 1) : '';
+}
+
+function dailyNoteDateForPath(filePath: string, format: string): LocalDate | undefined {
+  const filename = filePath.replace(/^.*\//u, '').replace(/\.[^.]*$/u, '');
+  return momentToRegex(format).test(filename)
+    ? asLocalDate(window.moment(filename, format).format('YYYY-MM-DD'))
+    : undefined;
 }
 
 function commentSnapshot(
@@ -307,9 +335,14 @@ function relocateSubtask(task: SubtaskSnapshot, parent: TaskNodeRef): SubtaskSna
   };
 }
 
-function relocateSnapshot(task: TaskSnapshot, filePath: string): TaskSnapshot {
+function relocateSnapshot(
+  task: TaskSnapshot,
+  filePath: string,
+  dailyNoteDate: LocalDate | undefined,
+): TaskSnapshot {
   const ref = { ...task.ref, filePath };
   const node: TaskNodeRef = { type: 'task', ref };
+  const { linkCount, noteColor, noteTextColor, noteIcon } = task.presentation;
   return {
     ...task,
     ref,
@@ -319,6 +352,13 @@ function relocateSnapshot(task: TaskSnapshot, filePath: string): TaskSnapshot {
       ...comment,
       ref: { ...comment.ref, parent: node },
     })),
+    presentation: {
+      linkCount,
+      ...(dailyNoteDate && { dailyNoteDate }),
+      ...(noteColor && { noteColor }),
+      ...(noteTextColor && { noteTextColor }),
+      ...(noteIcon && { noteIcon }),
+    },
   };
 }
 
@@ -329,10 +369,12 @@ export class TaskIndex implements TaskQueryApi {
   );
   private listeners: Listener[] = [];
   private readonly pendingFiles = new Set<string>();
-  private readonly changeVersions = new Map<string, number>();
+  private readonly fileLifecycles = new Map<TFile, FileLifecycle>();
+  private readonly pendingReads = new Set<Promise<void>>();
   private flushScheduled = false;
   private metadataCacheRefs: EventRef[] = [];
   private vaultRefs: EventRef[] = [];
+  private initialization: Promise<void> | undefined;
   private initialized = false;
   private destroyed = false;
   private statusCatalog: StatusCatalog;
@@ -350,19 +392,29 @@ export class TaskIndex implements TaskQueryApi {
 
   async initialize(): Promise<void> {
     if (this.initialized || this.destroyed) return;
-    const files = [...this.app.vault.getMarkdownFiles()].sort((left, right) =>
-      left.path.localeCompare(right.path),
-    );
+    this.initialization ??= this.performInitialization();
+    await this.initialization;
+  }
+
+  private async performInitialization(): Promise<void> {
+    this.registerEvents();
+    const files = [...this.app.vault.getMarkdownFiles()]
+      .map((file) => ({ file, path: file.path }))
+      .sort((left, right) => left.path.localeCompare(right.path));
     const chunkSize = 50;
     for (let index = 0; index < files.length; index += chunkSize) {
-      await Promise.all(files.slice(index, index + chunkSize).map((file) => this.loadFile(file)));
+      await Promise.all(
+        files
+          .slice(index, index + chunkSize)
+          .map(({ file, path }) => this.loadFile(file, path, false)),
+      );
       if (index + chunkSize < files.length) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
       }
     }
+    await this.drainPendingReads();
     if (this.destroyed) return;
     this.initialized = true;
-    this.registerEvents();
     this.publish({ type: 'initialized' });
   }
 
@@ -442,25 +494,41 @@ export class TaskIndex implements TaskQueryApi {
     this.vaultRefs = [];
     this.listeners = [];
     this.pendingFiles.clear();
-    this.changeVersions.clear();
+    this.fileLifecycles.clear();
+    this.pendingReads.clear();
     this.taskMap.clear();
     this.dateIndex.clear();
   }
 
-  private async loadFile(file: TFile): Promise<void> {
+  private async loadFile(
+    file: TFile,
+    path: string,
+    forceContentFallback: boolean,
+  ): Promise<boolean> {
+    const observation = this.observe(file, path);
+    if (!observation) return false;
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!forceContentFallback && !cache?.listItems?.some((item) => item.task !== undefined)) {
+      if (!this.isCurrent(observation)) return false;
+      this.replaceFile(path, []);
+      return true;
+    }
     try {
-      const cache = this.app.metadataCache.getFileCache(file);
-      if (!cache?.listItems?.some((item) => item.task !== undefined)) {
-        if (this.destroyed) return;
-        this.replaceFile(file.path, []);
-        return;
-      }
       const content = await this.app.vault.cachedRead(file);
-      if (this.destroyed) return;
-      this.replaceFile(file.path, this.parseFile(file.path, content, cache));
+      if (!this.isCurrent(observation)) return false;
+      this.replaceFile(
+        path,
+        this.parseFile(
+          path,
+          content,
+          forceContentFallback ? cacheWithContentFallback(content, cache) : cache!,
+        ),
+      );
+      return true;
     } catch {
-      if (this.destroyed) return;
-      this.replaceFile(file.path, []);
+      if (!this.isCurrent(observation)) return false;
+      this.replaceFile(path, []);
+      return true;
     }
   }
 
@@ -471,10 +539,8 @@ export class TaskIndex implements TaskQueryApi {
   ): readonly TaskSnapshot[] {
     if (!cache.listItems) return [];
     const lines = content.split('\n');
-    const filename = filePath.replace(/^.*\//u, '').replace(/\.[^.]*$/u, '');
-    const dailyNoteDate = momentToRegex(this.options.dailyNoteFormat).test(filename)
-      ? asLocalDate(window.moment(filename, this.options.dailyNoteFormat).format('YYYY-MM-DD'))
-      : undefined;
+    const dailyNoteDate = dailyNoteDateForPath(filePath, this.options.dailyNoteFormat);
+    const codec = new TaskMarkdownCodec(this.statusCatalog);
     const frontmatter = cache.frontmatter;
     const noteColor = typeof frontmatter?.['color'] === 'string' ? frontmatter['color'] : undefined;
     const noteTextColor =
@@ -501,14 +567,18 @@ export class TaskIndex implements TaskQueryApi {
       if (item.task === undefined || hasTaskAncestor(item)) continue;
       const line = item.position.start.line;
       const originalMarkdown = lines[line] ?? '';
-      const task = parseTask(originalMarkdown, {
+      const parsed = codec.parseLine(originalMarkdown, { filePath, line });
+      if (!parsed) continue;
+      const parseContext = {
         filePath,
         line,
         ...(dailyNoteDate && { dailyNoteDate }),
         ...(this.options.globalTaskFilter && { globalTaskFilter: this.options.globalTaskFilter }),
         statusCatalog: this.statusCatalog,
-      });
-      if (!task) continue;
+      };
+      const task = legacyTaskFromParsed(parsed, parseContext, (symbol) =>
+        codec.statusForSymbol(symbol),
+      );
       const subitems = parseSubItems(lines, line, filePath, this.statusCatalog);
       const exactBlock = blockFor(lines, line, subitems.subtaskRange?.to);
       const ref: TaskRef = { filePath, line, revision: revisionOf(exactBlock) };
@@ -553,61 +623,142 @@ export class TaskIndex implements TaskQueryApi {
   private registerEvents(): void {
     this.metadataCacheRefs.push(
       this.app.metadataCache.on('changed', (file: TFile, data: string, cache: CachedMetadata) => {
-        if (file.extension !== 'md' || this.destroyed) return;
-        this.changeVersions.set(file.path, (this.changeVersions.get(file.path) ?? 0) + 1);
-        if (!this.app.vault.getAbstractFileByPath(file.path)) {
-          this.replaceFile(file.path, []);
-        } else {
-          this.replaceFile(
-            file.path,
-            this.parseFile(file.path, data, cacheWithContentFallback(data, cache)),
-          );
+        const path = file.path;
+        if (
+          file.extension !== 'md' ||
+          this.destroyed ||
+          this.app.vault.getAbstractFileByPath(path) !== file
+        ) {
+          return;
         }
-        this.queueChanged(file.path);
+        this.advance(file, path);
+        this.replaceFile(path, this.parseFile(path, data, cacheWithContentFallback(data, cache)));
+        this.queueChanged(path);
       }),
     );
     this.vaultRefs.push(
       this.app.vault.on('create', (file: TAbstractFile) => {
         if (!(file instanceof TFile) || file.extension !== 'md' || this.destroyed) return;
-        const cache = this.app.metadataCache.getFileCache(file);
-        // Obsidian normally follows create with a metadata `changed` event. Avoid an
-        // empty-cache create read racing and overwriting that newer parsed snapshot.
-        if (!cache?.listItems?.some((item) => item.task !== undefined)) return;
-        const observedVersion = this.changeVersions.get(file.path) ?? 0;
-        void this.app.vault
-          .cachedRead(file)
-          .then((content) => {
-            if (this.destroyed || (this.changeVersions.get(file.path) ?? 0) !== observedVersion) {
-              return;
-            }
-            this.replaceFile(file.path, this.parseFile(file.path, content, cache));
-            this.queueChanged(file.path);
-          })
-          .catch(() => undefined);
+        const path = file.path;
+        if (this.app.vault.getAbstractFileByPath(path) !== file) return;
+        this.advance(file, path);
+        const read = this.loadFile(file, path, true).then((committed) => {
+          if (committed) this.queueChanged(path);
+        });
+        this.trackRead(read);
       }),
       this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-        if (!(file instanceof TFile) || file.extension !== 'md' || this.destroyed) return;
+        if (!(file instanceof TFile) || this.destroyed) return;
+        const newPath = file.path;
+        const wasMarkdown = extensionOf(oldPath) === 'md';
+        const isMarkdown = file.extension === 'md';
+        if (
+          (!wasMarkdown && !isMarkdown) ||
+          this.app.vault.getAbstractFileByPath(newPath) !== file
+        ) {
+          return;
+        }
         const tasks = this.taskMap.get(oldPath) ?? [];
+        this.advance(file, isMarkdown ? newPath : undefined);
         this.replaceFile(oldPath, []);
-        this.replaceFile(
-          file.path,
-          tasks.map((task) => relocateSnapshot(task, file.path)),
-        );
+        if (newPath !== oldPath) this.replaceFile(newPath, []);
         this.pendingFiles.delete(oldPath);
-        this.publish({ type: 'renamed', oldPath, newPath: file.path });
+        this.pendingFiles.delete(newPath);
+
+        if (wasMarkdown && isMarkdown) {
+          if (tasks.length > 0) {
+            const dailyNoteDate = dailyNoteDateForPath(newPath, this.options.dailyNoteFormat);
+            this.replaceFile(
+              newPath,
+              tasks.map((task) => relocateSnapshot(task, newPath, dailyNoteDate)),
+            );
+            this.publish({ type: 'renamed', oldPath, newPath });
+          } else {
+            const read = this.loadFile(file, newPath, true).then((committed) => {
+              if (committed || this.isFileAt(file, newPath)) {
+                this.publish({ type: 'renamed', oldPath, newPath });
+              }
+            });
+            this.trackRead(read);
+          }
+          return;
+        }
+
+        if (wasMarkdown) {
+          this.publish({ type: 'renamed', oldPath, newPath });
+          return;
+        }
+
+        const read = this.loadFile(file, newPath, true).then((committed) => {
+          if (committed || this.isFileAt(file, newPath)) {
+            this.publish({ type: 'renamed', oldPath, newPath });
+          }
+        });
+        this.trackRead(read);
       }),
       this.app.vault.on('delete', (file: TAbstractFile) => {
         if (!(file instanceof TFile) || file.extension !== 'md' || this.destroyed) return;
-        const existed = this.taskMap.has(file.path);
-        this.replaceFile(file.path, []);
-        this.pendingFiles.delete(file.path);
-        if (existed) this.publish({ type: 'deleted', path: file.path });
+        const path = file.path;
+        const existed = this.taskMap.has(path);
+        this.advance(file, undefined);
+        this.replaceFile(path, []);
+        this.pendingFiles.delete(path);
+        if (existed) this.publish({ type: 'deleted', path });
       }),
     );
   }
 
+  private observe(file: TFile, path: string): FileObservation | undefined {
+    if (this.destroyed || this.app.vault.getAbstractFileByPath(path) !== file) return undefined;
+    const existing = this.fileLifecycles.get(file);
+    if (existing && existing.path !== path) return undefined;
+    const lifecycle = existing ?? { path, generation: 0 };
+    if (!existing) this.fileLifecycles.set(file, lifecycle);
+    return { file, path, generation: lifecycle.generation };
+  }
+
+  private advance(file: TFile, path: string | undefined): void {
+    const lifecycle = this.fileLifecycles.get(file);
+    this.fileLifecycles.set(file, {
+      path,
+      generation: (lifecycle?.generation ?? 0) + 1,
+    });
+  }
+
+  private isCurrent(observation: FileObservation): boolean {
+    const lifecycle = this.fileLifecycles.get(observation.file);
+    return (
+      !this.destroyed &&
+      lifecycle?.path === observation.path &&
+      lifecycle.generation === observation.generation &&
+      observation.file.extension === 'md' &&
+      this.app.vault.getAbstractFileByPath(observation.path) === observation.file
+    );
+  }
+
+  private isFileAt(file: TFile, path: string): boolean {
+    const lifecycle = this.fileLifecycles.get(file);
+    return (
+      !this.destroyed &&
+      lifecycle?.path === path &&
+      file.extension === 'md' &&
+      this.app.vault.getAbstractFileByPath(path) === file
+    );
+  }
+
+  private trackRead(read: Promise<void>): void {
+    this.pendingReads.add(read);
+    void read.finally(() => this.pendingReads.delete(read));
+  }
+
+  private async drainPendingReads(): Promise<void> {
+    while (!this.destroyed && this.pendingReads.size > 0) {
+      await Promise.all([...this.pendingReads]);
+    }
+  }
+
   private queueChanged(filePath: string): void {
-    if (this.destroyed) return;
+    if (this.destroyed || !this.initialized) return;
     this.pendingFiles.add(filePath);
     if (this.flushScheduled) return;
     this.flushScheduled = true;
@@ -621,7 +772,7 @@ export class TaskIndex implements TaskQueryApi {
   }
 
   private publish(event: TaskIndexEvent): void {
-    if (this.destroyed) return;
+    if (this.destroyed || (!this.initialized && event.type !== 'initialized')) return;
     const detached = immutableEvent(event);
     for (const listener of [...this.listeners]) listener(detached);
   }
