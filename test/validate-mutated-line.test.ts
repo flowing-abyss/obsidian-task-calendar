@@ -5,6 +5,10 @@ import { canonicalStatusCatalog } from './helpers';
 const ctx = { filePath: 'f.md', line: 0, statusCatalog: canonicalStatusCatalog() };
 
 describe('validateMutatedTaskLine', () => {
+  it('keeps the exact temporary architecture bridge marker', () => {
+    expect(validateMutatedTaskLine.toString()).toContain('TASK-ARCH-BRIDGE: remove in Task 12');
+  });
+
   it('accepts an ordinary, well-formed task line', () => {
     expect(validateMutatedTaskLine('- [ ] Gym ⏰ 10:00 ⏱️ 1h 📅 2026-07-11', ctx)).toBe(true);
   });

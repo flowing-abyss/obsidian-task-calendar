@@ -1,4 +1,5 @@
 import type { TaskPriority } from '../tasks/domain/types';
+import { durationMinutes, formatDurationMinutes } from '../tasks/domain/validation';
 import {
   TaskMarkdownCodec,
   type ParsedTaskLine,
@@ -36,11 +37,7 @@ export function parseDurationToMinutes(raw: string): number | undefined {
 
 /** Format total minutes into the shortest "XhYm" form (e.g. 90 -> "1h30m", 120 -> "2h", 45 -> "45m"). */
 export function formatDurationFromMinutes(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h > 0 && m > 0) return `${h}h${m}m`;
-  if (h > 0) return `${h}h`;
-  return `${m}m`;
+  return formatDurationMinutes(durationMinutes(minutes));
 }
 
 /**

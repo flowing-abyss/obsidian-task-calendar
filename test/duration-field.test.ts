@@ -7,13 +7,22 @@ import {
   parseTask as parseTaskWithCatalog,
 } from '../src/parser/TaskParser';
 import type { ParseContext } from '../src/parser/types';
+import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
 import { canonicalStatusCatalog } from './helpers';
 
 const statusCatalog = canonicalStatusCatalog();
+const codec = new TaskMarkdownCodec(statusCatalog);
 const parseTask = (rawText: string, ctx: Omit<ParseContext, 'statusCatalog'>) =>
   parseTaskWithCatalog(rawText, { ...ctx, statusCatalog });
 
 describe('duration parsing', () => {
+  it('validates introduced duration values and preserves the original on failure', () => {
+    expect(codec.applyLineEdit('- [ ] gym ⏱️ 45m', { type: 'set-duration', value: 0 })).toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-duration', field: 'duration' }],
+    });
+  });
+
   it('parses hours+minutes combined', () => {
     expect(parseDurationToMinutes('1h30m')).toBe(90);
   });

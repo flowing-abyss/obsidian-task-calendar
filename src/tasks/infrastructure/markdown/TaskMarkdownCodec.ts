@@ -1,5 +1,46 @@
 import { StatusCatalog } from '../../domain/StatusCatalog';
 import type { TaskPriority, TaskStatus } from '../../domain/types';
+import {
+  formatDurationMinutes,
+  localDate,
+  localTime,
+  type TaskIssue,
+  type TaskValidationField,
+  type TaskValidationState,
+  durationMinutes as validatedDurationMinutes,
+  validateTaskChange,
+} from '../../domain/validation';
+
+export type LineEdit =
+  | { readonly type: 'set-title'; readonly markdownTitle: string }
+  | { readonly type: 'append-title'; readonly markdown: string }
+  | { readonly type: 'set-status'; readonly symbol: string; readonly today: string }
+  | { readonly type: 'set-priority'; readonly priority: TaskPriority }
+  | {
+      readonly type: 'set-date';
+      readonly field: 'due' | 'scheduled' | 'start';
+      readonly value: string | null;
+    }
+  | { readonly type: 'set-time'; readonly value: string | null }
+  | { readonly type: 'set-duration'; readonly value: number | null }
+  | {
+      readonly type: 'change-tags';
+      readonly add: readonly string[];
+      readonly remove: readonly string[];
+    };
+
+export type LineEditResult =
+  | { readonly type: 'changed'; readonly content: string }
+  | { readonly type: 'unchanged'; readonly content: string }
+  | { readonly type: 'invalid'; readonly issues: readonly TaskIssue[] };
+
+type PreparedLineEdit =
+  | {
+      readonly type: 'prepared';
+      readonly content: string;
+      readonly fields: readonly TaskValidationField[];
+    }
+  | Extract<LineEditResult, { readonly type: 'unchanged' | 'invalid' }>;
 
 export type TaskSpanKind =
   | 'prefix'
@@ -81,6 +122,40 @@ const TIME_RE = /⏰\s*(\d{1,2}:\d{2})/gu;
 const DURATION_RE = /⏱️\s*(?:(\d+)h)?(?:(\d+)m)?/gu;
 const RECURRENCE_MARKER_RE = /🔁/gu;
 const BLOCK_ID_RE = /\^[A-Za-z0-9-]+(?=\s*$)/gu;
+
+const MARKER_BY_FIELD: Readonly<Record<TaskValidationField, string>> = {
+  title: '',
+  status: '',
+  due: '📅',
+  scheduled: '⏳',
+  start: '🛫',
+  completion: '✅',
+  cancelled: '❌',
+  time: '⏰',
+  duration: '⏱️',
+};
+
+const TOKEN_BY_PRIORITY: Readonly<Record<TaskPriority, string>> = {
+  A: '🔺',
+  B: '⏫',
+  C: '🔼',
+  D: '',
+  E: '🔽',
+  F: '⏬',
+};
+
+const TOKEN_RANK: Readonly<Partial<Record<TaskSpanKind, number>>> = {
+  time: 10,
+  duration: 20,
+  priority: 30,
+  recurrence: 40,
+  created: 50,
+  start: 60,
+  scheduled: 70,
+  due: 80,
+  cancelled: 90,
+  completion: 100,
+};
 
 const TASK_ID = '[A-Za-z0-9_-]+';
 const TASK_ID_SEQUENCE = `${TASK_ID}( *, *${TASK_ID} *)*`;
@@ -234,11 +309,454 @@ function pushBlockIdCandidates(candidates: Candidate[], body: string, bodyFrom: 
   }
 }
 
+function spliceSource(source: string, from: number, to: number, replacement: string): string {
+  return source.slice(0, from) + replacement + source.slice(to);
+}
+
+function markerCount(source: string, marker: string): number {
+  if (marker.length === 0) return 0;
+  let count = 0;
+  let from = 0;
+  while (from < source.length) {
+    const at = source.indexOf(marker, from);
+    if (at < 0) break;
+    count++;
+    from = at + marker.length;
+  }
+  return count;
+}
+
+function removeSpan(source: string, span: SourceSpan): string {
+  let from = span.from;
+  let to = span.to;
+  if (source[from - 1] === ' ') from--;
+  else if (source[to] === ' ') to++;
+  return spliceSource(source, from, to, '');
+}
+
+function insertionPoint(parsed: ParsedTaskLine, kind: TaskSpanKind): number {
+  const rank = TOKEN_RANK[kind];
+  if (rank !== undefined) {
+    const later = parsed.spans.find((span) => {
+      const candidateRank = TOKEN_RANK[span.kind];
+      if (candidateRank === undefined || candidateRank <= rank) return false;
+      const raw = parsed.original.slice(span.from, span.to);
+      try {
+        if (
+          span.kind === 'created' ||
+          span.kind === 'start' ||
+          span.kind === 'scheduled' ||
+          span.kind === 'due' ||
+          span.kind === 'cancelled' ||
+          span.kind === 'completion'
+        ) {
+          localDate(raw.slice(-10));
+        } else if (span.kind === 'time') {
+          localTime(raw.slice(-5));
+        }
+      } catch {
+        return false;
+      }
+      return true;
+    });
+    if (later) return later.from;
+  }
+  const blockId = parsed.occurrences.get('block-id')?.[0];
+  if (blockId) return blockId.from;
+  return parsed.original.length - parsed.lineEnding.length;
+}
+
+function insertToken(parsed: ParsedTaskLine, kind: TaskSpanKind, token: string): string {
+  const at = insertionPoint(parsed, kind);
+  const before = parsed.original[at - 1];
+  const after = parsed.original[at];
+  const left = before === undefined || /\s/u.test(before) ? '' : ' ';
+  const right = after === undefined || /\s/u.test(after) ? '' : ' ';
+  return spliceSource(parsed.original, at, at, `${left}${token}${right}`);
+}
+
+function invalid(
+  code: TaskIssue['code'],
+  field?: string,
+): Extract<LineEditResult, { readonly type: 'invalid' }> {
+  return { type: 'invalid', issues: [{ code, ...(field !== undefined && { field }) }] };
+}
+
 export class TaskMarkdownCodec {
   constructor(private readonly statusCatalog: StatusCatalog) {}
 
   statusForSymbol(symbol: string): TaskStatus {
     return this.statusCatalog.statusForSymbol(symbol);
+  }
+
+  private validationState(parsed: ParsedTaskLine): TaskValidationState {
+    const malformedFields: TaskValidationField[] = [];
+    const kindByField: Readonly<Partial<Record<TaskValidationField, TaskSpanKind>>> = {
+      due: 'due',
+      scheduled: 'scheduled',
+      start: 'start',
+      completion: 'completion',
+      cancelled: 'cancelled',
+      time: 'time',
+      duration: 'duration',
+    };
+    for (const [field, kind] of Object.entries(kindByField) as Array<
+      [TaskValidationField, TaskSpanKind]
+    >) {
+      const occurrences = parsed.occurrences.get(kind)?.length ?? 0;
+      if (markerCount(parsed.original, MARKER_BY_FIELD[field]) > occurrences) {
+        malformedFields.push(field);
+      }
+    }
+    if (
+      (parsed.occurrences.get('duration')?.length ?? 0) > 0 &&
+      parsed.planning.duration === undefined &&
+      !malformedFields.includes('duration')
+    ) {
+      malformedFields.push('duration');
+    }
+    return {
+      markdownTitle: parsed.markdownTitle,
+      statusSymbol: parsed.statusSymbol,
+      statusConfigured: this.statusCatalog.ruleForSymbol(parsed.statusSymbol) !== undefined,
+      planning: parsed.planning,
+      malformedFields,
+    };
+  }
+
+  /** Full-candidate validation used only by the temporary legacy write safety net. */
+  validateLine(original: string): readonly TaskIssue[] {
+    const parsed = this.parseLine(original, { filePath: '', line: 0 });
+    if (!parsed) return [{ code: 'invalid-task-syntax' }];
+    return validateTaskChange(
+      this.validationState(parsed),
+      new Set<TaskValidationField>([
+        'due',
+        'scheduled',
+        'start',
+        'completion',
+        'cancelled',
+        'time',
+        'duration',
+      ]),
+    );
+  }
+
+  private duplicateIssue(parsed: ParsedTaskLine, kind: TaskSpanKind, field: string): TaskIssue[] {
+    return (parsed.occurrences.get(kind)?.length ?? 0) > 1
+      ? [{ code: 'duplicate-field', field }]
+      : [];
+  }
+
+  private malformedTargetIssue(
+    parsed: ParsedTaskLine,
+    kind: TaskSpanKind,
+    field: TaskValidationField,
+  ): TaskIssue[] {
+    const recognized = parsed.occurrences.get(kind)?.length ?? 0;
+    if (markerCount(parsed.original, MARKER_BY_FIELD[field]) <= recognized) return [];
+    if (field === 'time') return [{ code: 'invalid-time', field }];
+    if (field === 'duration') return [{ code: 'invalid-duration', field }];
+    return [{ code: 'invalid-date', field }];
+  }
+
+  private replaceOrInsertToken(
+    parsed: ParsedTaskLine,
+    kind: TaskSpanKind,
+    token: string | null,
+  ): string {
+    const occurrence = parsed.occurrences.get(kind)?.[0];
+    if (occurrence) {
+      return token === null
+        ? removeSpan(parsed.original, occurrence)
+        : spliceSource(parsed.original, occurrence.from, occurrence.to, token);
+    }
+    return token === null ? parsed.original : insertToken(parsed, kind, token);
+  }
+
+  private replaceTitle(parsed: ParsedTaskLine, markdownTitle: string): string {
+    const contentEnd = parsed.original.length - parsed.lineEnding.length;
+    const bodySpans = parsed.spans.filter(
+      (span) => span.kind !== 'prefix' && !(span.kind === 'separator' && span.from === contentEnd),
+    );
+    const mutable = (span: SourceSpan): boolean =>
+      span.kind === 'title' || span.kind === 'unknown' || span.kind === 'separator';
+    const runs: SourceSpan[][] = [];
+    let run: SourceSpan[] = [];
+    for (const span of bodySpans) {
+      if (mutable(span)) {
+        run.push(span);
+      } else if (run.length > 0) {
+        runs.push(run);
+        run = [];
+      }
+    }
+    if (run.length > 0) runs.push(run);
+    const titleRuns = runs.filter((candidate) =>
+      candidate.some((span) => span.kind === 'title' || span.kind === 'unknown'),
+    );
+    if (titleRuns.length === 0) {
+      const firstProtected = bodySpans.find((span) => !mutable(span));
+      const at = firstProtected?.from ?? contentEnd;
+      const left = /\s/u.test(parsed.original[at - 1] ?? '') ? '' : ' ';
+      const right = /\s/u.test(parsed.original[at] ?? '') || at === contentEnd ? '' : ' ';
+      return spliceSource(parsed.original, at, at, `${left}${markdownTitle}${right}`);
+    }
+
+    const patches = titleRuns.map((candidate, index) => {
+      const first = candidate[0]!;
+      const last = candidate[candidate.length - 1]!;
+      const raw = parsed.original.slice(first.from, last.to);
+      const separators = candidate
+        .filter((span) => span.kind === 'separator')
+        .map((span) => parsed.original.slice(span.from, span.to))
+        .join('');
+      const leading = raw.slice(0, raw.length - raw.trimStart().length);
+      const trailing = raw.slice(raw.trimEnd().length);
+      return {
+        from: first.from,
+        to: last.to,
+        replacement: index === 0 ? `${leading}${markdownTitle}${trailing}` : separators,
+      };
+    });
+    let content = parsed.original;
+    patches.sort((left, right) => right.from - left.from);
+    for (const candidate of patches) {
+      content = spliceSource(content, candidate.from, candidate.to, candidate.replacement);
+    }
+    return content;
+  }
+
+  private appendTitle(parsed: ParsedTaskLine, markdown: string): string {
+    const semantic = parsed.spans.filter(
+      (span) => span.kind === 'title' || span.kind === 'unknown',
+    );
+    const last = semantic[semantic.length - 1];
+    if (!last) return this.replaceTitle(parsed, markdown);
+    return spliceSource(parsed.original, last.to, last.to, ` ${markdown}`);
+  }
+
+  private prepareTagChange(
+    parsed: ParsedTaskLine,
+    add: readonly string[],
+    remove: readonly string[],
+  ): PreparedLineEdit {
+    const normalize = (tag: string): string => (tag.startsWith('#') ? tag : `#${tag}`);
+    const additions = [...new Set(add.map(normalize))];
+    const removals = new Set(remove.map(normalize));
+    if ([...additions, ...removals].some((tag) => !/^#[\w/-]+$/u.test(tag))) {
+      return invalid('invalid-target', 'tags');
+    }
+
+    let content = parsed.original;
+    for (const span of [...(parsed.occurrences.get('tag') ?? [])].reverse()) {
+      const tag = parsed.original.slice(span.from, span.to);
+      if (removals.has(tag)) content = removeSpan(content, span);
+    }
+    const candidate = this.parseLine(content, { filePath: '', line: 0 })!;
+    const present = new Set(candidate.tags);
+    const pending = additions.filter((tag) => !present.has(tag));
+    if (pending.length === 0) return { type: 'prepared', content, fields: [] };
+
+    const tags = candidate.occurrences.get('tag') ?? [];
+    const lastTag = tags[tags.length - 1];
+    if (lastTag) {
+      return {
+        type: 'prepared',
+        content: spliceSource(content, lastTag.to, lastTag.to, ` ${pending.join(' ')}`),
+        fields: [],
+      };
+    }
+    const protectedSpan = candidate.spans.find(
+      (span) => METADATA_KINDS.has(span.kind) || span.kind === 'block-id',
+    );
+    const at = protectedSpan?.from ?? content.length - candidate.lineEnding.length;
+    const left = /\s/u.test(content[at - 1] ?? '') ? '' : ' ';
+    const right = /\s/u.test(content[at] ?? '') || at === content.length ? '' : ' ';
+    return {
+      type: 'prepared',
+      content: spliceSource(content, at, at, `${left}${pending.join(' ')}${right}`),
+      fields: [],
+    };
+  }
+
+  private prepareStatusEdit(
+    parsed: ParsedTaskLine,
+    edit: Extract<LineEdit, { readonly type: 'set-status' }>,
+  ): PreparedLineEdit {
+    if (parsed.statusSymbol === edit.symbol) {
+      return { type: 'unchanged', content: parsed.original };
+    }
+    const rule = this.statusCatalog.ruleForSymbol(edit.symbol);
+    if (edit.symbol.length !== 1 || !rule) return invalid('invalid-status', 'status');
+
+    const issues: TaskIssue[] = [];
+    for (const field of ['completion', 'cancelled'] as const) {
+      issues.push(...this.duplicateIssue(parsed, field, field));
+      issues.push(...this.malformedTargetIssue(parsed, field, field));
+    }
+    if (issues.length > 0) return { type: 'invalid', issues };
+
+    const statusAt = (parsed.occurrences.get('prefix')?.[0]?.to ?? 0) - 2;
+    let content = spliceSource(parsed.original, statusAt, statusAt + 1, edit.symbol);
+    for (const kind of ['completion', 'cancelled'] as const) {
+      const current = this.parseLine(content, { filePath: '', line: 0 })!;
+      content = this.replaceOrInsertToken(current, kind, null);
+    }
+    if (rule.type === 'done' || rule.type === 'cancelled') {
+      const kind = rule.type === 'done' ? 'completion' : 'cancelled';
+      const marker = kind === 'completion' ? '✅' : '❌';
+      const current = this.parseLine(content, { filePath: '', line: 0 })!;
+      content = this.replaceOrInsertToken(current, kind, `${marker} ${edit.today}`);
+    }
+    return { type: 'prepared', content, fields: ['status', 'completion', 'cancelled'] };
+  }
+
+  private preparePriorityEdit(
+    parsed: ParsedTaskLine,
+    edit: Extract<LineEdit, { readonly type: 'set-priority' }>,
+  ): PreparedLineEdit {
+    const issues = this.duplicateIssue(parsed, 'priority', 'priority');
+    if (issues.length > 0) return { type: 'invalid', issues };
+    const occurrences = parsed.occurrences.get('priority')?.length ?? 0;
+    if (parsed.priority === edit.priority && (edit.priority !== 'D' || occurrences === 0)) {
+      return { type: 'unchanged', content: parsed.original };
+    }
+    const content = this.replaceOrInsertToken(
+      parsed,
+      'priority',
+      TOKEN_BY_PRIORITY[edit.priority] || null,
+    );
+    return { type: 'prepared', content, fields: [] };
+  }
+
+  private prepareDateEdit(
+    parsed: ParsedTaskLine,
+    edit: Extract<LineEdit, { readonly type: 'set-date' }>,
+  ): PreparedLineEdit {
+    const issues = [
+      ...this.duplicateIssue(parsed, edit.field, edit.field),
+      ...this.malformedTargetIssue(parsed, edit.field, edit.field),
+    ];
+    if (issues.length > 0) return { type: 'invalid', issues };
+    const current = parsed.planning[edit.field];
+    if (
+      (edit.value === null && current === undefined) ||
+      (edit.value !== null && current === edit.value)
+    ) {
+      return { type: 'unchanged', content: parsed.original };
+    }
+    const marker = MARKER_BY_FIELD[edit.field];
+    const token = edit.value === null ? null : `${marker} ${edit.value}`;
+    return {
+      type: 'prepared',
+      content: this.replaceOrInsertToken(parsed, edit.field, token),
+      fields: [edit.field],
+    };
+  }
+
+  private prepareTimeEdit(
+    parsed: ParsedTaskLine,
+    edit: Extract<LineEdit, { readonly type: 'set-time' }>,
+  ): PreparedLineEdit {
+    const issues = [
+      ...this.duplicateIssue(parsed, 'time', 'time'),
+      ...this.malformedTargetIssue(parsed, 'time', 'time'),
+    ];
+    if (issues.length > 0) return { type: 'invalid', issues };
+    const current = parsed.planning.time;
+    if (
+      (edit.value === null && current === undefined) ||
+      (edit.value !== null && current === edit.value)
+    ) {
+      return { type: 'unchanged', content: parsed.original };
+    }
+    return {
+      type: 'prepared',
+      content: this.replaceOrInsertToken(
+        parsed,
+        'time',
+        edit.value === null ? null : `⏰ ${edit.value}`,
+      ),
+      fields: ['time'],
+    };
+  }
+
+  private prepareDurationEdit(
+    parsed: ParsedTaskLine,
+    edit: Extract<LineEdit, { readonly type: 'set-duration' }>,
+  ): PreparedLineEdit {
+    const issues = [
+      ...this.duplicateIssue(parsed, 'duration', 'duration'),
+      ...this.malformedTargetIssue(parsed, 'duration', 'duration'),
+    ];
+    if (issues.length > 0) return { type: 'invalid', issues };
+    const current = parsed.planning.duration;
+    if (
+      (edit.value === null && current === undefined) ||
+      (edit.value !== null && current === edit.value)
+    ) {
+      return { type: 'unchanged', content: parsed.original };
+    }
+    let token: string | null = null;
+    if (edit.value !== null) {
+      try {
+        token = `⏱️ ${formatDurationMinutes(validatedDurationMinutes(edit.value))}`;
+      } catch {
+        return invalid('invalid-duration', 'duration');
+      }
+    }
+    return {
+      type: 'prepared',
+      content: this.replaceOrInsertToken(parsed, 'duration', token),
+      fields: ['duration'],
+    };
+  }
+
+  private prepareLineEdit(parsed: ParsedTaskLine, edit: LineEdit): PreparedLineEdit {
+    switch (edit.type) {
+      case 'set-title':
+        return parsed.markdownTitle === edit.markdownTitle
+          ? { type: 'unchanged', content: parsed.original }
+          : {
+              type: 'prepared',
+              content: this.replaceTitle(parsed, edit.markdownTitle),
+              fields: ['title'],
+            };
+      case 'append-title':
+        return edit.markdown.length === 0
+          ? { type: 'unchanged', content: parsed.original }
+          : {
+              type: 'prepared',
+              content: this.appendTitle(parsed, edit.markdown),
+              fields: ['title'],
+            };
+      case 'set-status':
+        return this.prepareStatusEdit(parsed, edit);
+      case 'set-priority':
+        return this.preparePriorityEdit(parsed, edit);
+      case 'set-date':
+        return this.prepareDateEdit(parsed, edit);
+      case 'set-time':
+        return this.prepareTimeEdit(parsed, edit);
+      case 'set-duration':
+        return this.prepareDurationEdit(parsed, edit);
+      case 'change-tags':
+        return this.prepareTagChange(parsed, edit.add, edit.remove);
+    }
+  }
+
+  applyLineEdit(original: string, edit: LineEdit): LineEditResult {
+    const parsed = this.parseLine(original, { filePath: '', line: 0 });
+    if (!parsed) return invalid('invalid-task-syntax');
+    const prepared = this.prepareLineEdit(parsed, edit);
+    if (prepared.type !== 'prepared') return prepared;
+    if (prepared.content === original) return { type: 'unchanged', content: original };
+    const reparsed = this.parseLine(prepared.content, { filePath: '', line: 0 });
+    if (!reparsed) return invalid('invalid-task-syntax');
+    const issues = validateTaskChange(this.validationState(reparsed), new Set(prepared.fields));
+    if (issues.length > 0) return { type: 'invalid', issues };
+    return { type: 'changed', content: prepared.content };
   }
 
   parseLine(original: string, source: ParseSource): ParsedTaskLine | null {

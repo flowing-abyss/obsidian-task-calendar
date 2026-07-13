@@ -1,5 +1,50 @@
 import type { DurationMinutes, LocalDate, LocalTime } from './types';
 
+type TaskIssueCode =
+  | 'invalid-title'
+  | 'invalid-date'
+  | 'invalid-time'
+  | 'invalid-duration'
+  | 'invalid-status'
+  | 'inverted-span'
+  | 'duplicate-field'
+  | 'invalid-task-syntax'
+  | 'invalid-block-structure'
+  | 'invalid-target'
+  | 'destination-unavailable';
+
+export interface TaskIssue {
+  readonly code: TaskIssueCode;
+  readonly field?: string;
+}
+
+export type TaskValidationField =
+  | 'title'
+  | 'status'
+  | 'due'
+  | 'scheduled'
+  | 'start'
+  | 'completion'
+  | 'cancelled'
+  | 'time'
+  | 'duration';
+
+export interface TaskValidationState {
+  readonly markdownTitle: string;
+  readonly statusSymbol: string;
+  readonly statusConfigured: boolean;
+  readonly planning: {
+    readonly due?: string;
+    readonly scheduled?: string;
+    readonly start?: string;
+    readonly completion?: string;
+    readonly cancelled?: string;
+    readonly time?: string;
+    readonly duration?: number;
+  };
+  readonly malformedFields?: readonly TaskValidationField[];
+}
+
 export function localDate(value: string): LocalDate {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
   if (!match) throw new Error('invalid-date');
@@ -25,4 +70,108 @@ export function durationMinutes(value: number): DurationMinutes {
     throw new Error('invalid-duration');
   }
   return value as DurationMinutes;
+}
+
+export function formatDurationMinutes(value: DurationMinutes): string {
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
+}
+
+function isValidDate(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  try {
+    localDate(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidTime(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  try {
+    localTime(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidDuration(value: number | undefined): boolean {
+  if (value === undefined) return false;
+  try {
+    durationMinutes(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Validate only fields introduced by an edit, plus their semantic dependencies. */
+export function validateTaskChange(
+  state: TaskValidationState,
+  changedFields: ReadonlySet<TaskValidationField>,
+): TaskIssue[] {
+  const fields = new Set(changedFields);
+  if (fields.has('start') || fields.has('due')) {
+    fields.add('start');
+    fields.add('due');
+  }
+
+  const malformed = new Set(state.malformedFields ?? []);
+  const issues: TaskIssue[] = [];
+  if (fields.has('title') && state.markdownTitle.trim().length === 0) {
+    issues.push({ code: 'invalid-title', field: 'title' });
+  }
+  if (fields.has('status') && (state.statusSymbol.length !== 1 || !state.statusConfigured)) {
+    issues.push({ code: 'invalid-status', field: 'status' });
+  }
+
+  const dateFields = ['start', 'scheduled', 'due', 'completion', 'cancelled'] as const;
+  const validDates = new Set<string>();
+  for (const field of dateFields) {
+    if (!fields.has(field)) continue;
+    const value = state.planning[field];
+    if (value === undefined && !malformed.has(field)) continue;
+    if (malformed.has(field) || !isValidDate(value)) {
+      issues.push({ code: 'invalid-date', field });
+    } else {
+      validDates.add(field);
+    }
+  }
+
+  if (fields.has('time')) {
+    const value = state.planning.time;
+    if (
+      malformed.has('time') ||
+      (value !== undefined && !isValidTime(value)) ||
+      (value === undefined && malformed.has('time'))
+    ) {
+      issues.push({ code: 'invalid-time', field: 'time' });
+    }
+  }
+  if (fields.has('duration')) {
+    const value = state.planning.duration;
+    if (
+      malformed.has('duration') ||
+      (value !== undefined && !isValidDuration(value)) ||
+      (value === undefined && malformed.has('duration'))
+    ) {
+      issues.push({ code: 'invalid-duration', field: 'duration' });
+    }
+  }
+
+  if (
+    fields.has('start') &&
+    fields.has('due') &&
+    validDates.has('start') &&
+    validDates.has('due') &&
+    state.planning.start! > state.planning.due!
+  ) {
+    issues.push({ code: 'inverted-span', field: 'start,due' });
+  }
+  return issues;
 }

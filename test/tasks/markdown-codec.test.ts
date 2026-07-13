@@ -33,6 +33,102 @@ function expectLosslessPartition(parsed: ParsedTaskLine): void {
 }
 
 describe('TaskMarkdownCodec', () => {
+  describe('lossless line edits', () => {
+    it('preserves unrelated malformed and opaque source spans when setting time', () => {
+      const source = '- [?] Old [[Title]] #work 🆔 keep-me ⛔ a,b 📅 2026-02-30 ⏱️ nope ^block';
+
+      expect(codec.applyLineEdit(source, { type: 'set-time', value: '09:30' })).toEqual({
+        type: 'changed',
+        content:
+          '- [?] Old [[Title]] #work 🆔 keep-me ⛔ a,b 📅 2026-02-30 ⏱️ nope ⏰ 09:30 ^block',
+      });
+    });
+
+    it('rejects an ambiguous targeted single-valued field without changing source', () => {
+      const source = '- [ ] Duplicate 📅 2026-07-20 📅 2026-07-21';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-date',
+          field: 'due',
+          value: '2026-07-20',
+        }),
+      ).toEqual({
+        type: 'invalid',
+        issues: [{ code: 'duplicate-field', field: 'due' }],
+      });
+    });
+
+    it('preserves an unrelated duplicate while replacing only the targeted span', () => {
+      const source = '- [ ] Task 📅 2026-07-20 📅 2026-07-21 ⏰ 08:00';
+
+      expect(codec.applyLineEdit(source, { type: 'set-time', value: '09:30' })).toEqual({
+        type: 'changed',
+        content: '- [ ] Task 📅 2026-07-20 📅 2026-07-21 ⏰ 09:30',
+      });
+    });
+
+    it('validates a changed field but ignores malformed unrelated fields', () => {
+      const source = '- [ ] Task 📅 2026-02-30';
+
+      expect(codec.applyLineEdit(source, { type: 'set-time', value: '25:00' })).toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-time', field: 'time' }],
+      });
+      expect(codec.applyLineEdit(source, { type: 'set-time', value: '09:30' })).toEqual({
+        type: 'changed',
+        content: '- [ ] Task 📅 2026-02-30 ⏰ 09:30',
+      });
+    });
+
+    it('checks start/due ordering only when a span boundary changes', () => {
+      const source = '- [ ] Old #work 🛫 2026-07-21 📅 2026-07-20';
+
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New #work 🛫 2026-07-21 📅 2026-07-20',
+      });
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-date',
+          field: 'due',
+          value: '2026-07-19',
+        }),
+      ).toEqual({
+        type: 'invalid',
+        issues: [{ code: 'inverted-span', field: 'start,due' }],
+      });
+    });
+
+    it('replaces title source while preserving tags, IDs, dependencies, metadata, and block ID', () => {
+      const source =
+        '- [ ] Old [[Title|alias]] #work 🆔 keep-me ⛔ a,b ⏰ 08:00 📅 2026-07-20 ^block';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: 'New [title](https://example.test)',
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '- [ ] New [title](https://example.test) #work 🆔 keep-me ⛔ a,b ⏰ 08:00 📅 2026-07-20 ^block',
+      });
+    });
+
+    it('returns unchanged for semantic no-op edits without normalizing bytes', () => {
+      const source = '- [ ] Task  📅   2026-07-20 ^block\r\n';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-date',
+          field: 'due',
+          value: '2026-07-20',
+        }),
+      ).toEqual({ type: 'unchanged', content: source });
+    });
+  });
+
   it('partitions a representative Tasks-compatible line without losing source bytes', () => {
     const source =
       '> - [/] Review [[Design|spec]] #work 🆔 review-1 ⛔ prep-1, prep_2 📅 2026-07-20 ^review';
