@@ -252,6 +252,7 @@ interface FallbackListAncestor {
 interface FallbackFence {
   readonly marker: '`' | '~';
   readonly length: number;
+  readonly quoteDepth: number;
 }
 
 const FALLBACK_LIST_ITEM_RE = /^([\s>]*)(?:[-*+]|\d+[.)])\s+/u;
@@ -261,17 +262,21 @@ const FALLBACK_PREFIX_RE = /^([\s>]*)/u;
 
 function fallbackFenceState(
   line: string,
+  quoteDepth: number,
   active: FallbackFence | undefined,
 ): { readonly active: FallbackFence | undefined; readonly skip: boolean } {
   const token = FALLBACK_FENCE_RE.exec(line)?.[1];
-  if (active) {
-    const closes = token?.[0] === active.marker && token.length >= active.length;
+  if (active && quoteDepth >= active.quoteDepth) {
+    const closes =
+      quoteDepth === active.quoteDepth &&
+      token?.[0] === active.marker &&
+      token.length >= active.length;
     return { active: closes ? undefined : active, skip: true };
   }
   if (token === undefined) return { active: undefined, skip: false };
   const marker = token[0];
   return marker === '`' || marker === '~'
-    ? { active: { marker, length: token.length }, skip: true }
+    ? { active: { marker, length: token.length, quoteDepth }, skip: true }
     : { active: undefined, skip: false };
 }
 
@@ -292,7 +297,9 @@ function fallbackListItems(data: string): FallbackListItem[] {
       continue;
     }
 
-    const nextFence = fallbackFenceState(line, fence);
+    const leadingPrefix = FALLBACK_PREFIX_RE.exec(line)?.[1] ?? '';
+    const quoteDepth = [...leadingPrefix].filter((character) => character === '>').length;
+    const nextFence = fallbackFenceState(line, quoteDepth, fence);
     fence = nextFence.active;
     if (nextFence.skip) {
       offset += line.length + 1;
@@ -303,8 +310,6 @@ function fallbackListItems(data: string): FallbackListItem[] {
       continue;
     }
 
-    const leadingPrefix = FALLBACK_PREFIX_RE.exec(line)?.[1] ?? '';
-    const quoteDepth = [...leadingPrefix].filter((character) => character === '>').length;
     if (previousQuoteDepth !== undefined && previousQuoteDepth !== quoteDepth) {
       ancestorsByQuoteDepth.clear();
     }

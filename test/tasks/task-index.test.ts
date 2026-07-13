@@ -269,6 +269,29 @@ describe('TaskIndex lifecycle and events', () => {
     index.destroy();
   });
 
+  it('fallback creation leaves an unclosed quoted fence before indexing plain tasks', async () => {
+    const content = [
+      '> [!example] Fenced tasks',
+      '> ```md',
+      '> - [ ] hidden quoted example',
+      '- [ ] visible plain',
+    ].join('\n');
+    const app = await createAppWithFiles({ 'created.md': content });
+    app.metadataCache.getFileCache = (): null => null;
+    const index = new TaskIndex(app, {
+      statusCatalog: canonicalStatusCatalog(),
+      dailyNoteFormat: 'YYYY-MM-DD',
+    });
+    const fireCreate = captureCreateCallback(app);
+    await index.initialize();
+
+    fireCreate(mdFile(app, 'created.md'));
+    await flushMicrotasks();
+
+    expect(index.list().map((task) => task.title)).toEqual(['visible plain']);
+    index.destroy();
+  });
+
   it('keeps a metadata modification that arrives during a blocked initial read', async () => {
     const { app, index, fireChanged } = await setup({ 'blocked.md': '- [ ] stale' });
     const read = blockRead(app, 'blocked.md', '- [ ] stale');
@@ -447,6 +470,33 @@ describe('TaskIndex lifecycle and events', () => {
     const tasks = index.list();
     expect(tasks.map((task) => task.title)).toEqual(['quoted parent', 'quoted sibling']);
     expect(tasks[0]?.subtasks.map((task) => task.title)).toEqual(['quoted child']);
+    index.destroy();
+  });
+
+  it('fallback rename does not close an outer fence from a deeper quote container', async () => {
+    const content = [
+      '> [!example] Fenced tasks',
+      '> ```md',
+      '> > ```',
+      '> > - [ ] hidden deeper example',
+      '> - [ ] hidden outer example',
+      '> ```',
+      '- [ ] visible root',
+    ].join('\n');
+    const app = await createAppWithFiles({ 'examples.txt': content });
+    app.metadataCache.getFileCache = (): null => null;
+    const index = new TaskIndex(app, {
+      statusCatalog: canonicalStatusCatalog(),
+      dailyNoteFormat: 'YYYY-MM-DD',
+    });
+    await index.initialize();
+    const file = app.vault.getAbstractFileByPath('examples.txt');
+    if (!(file instanceof TFile)) throw new Error('missing examples.txt');
+
+    await app.vault.rename(file, 'examples.md');
+    await flushMicrotasks();
+
+    expect(index.list().map((task) => task.title)).toEqual(['visible root']);
     index.destroy();
   });
 
