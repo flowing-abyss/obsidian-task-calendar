@@ -7,6 +7,7 @@ import { RightPanel } from '../src/panels/RightPanel';
 import type { SubTask, Task, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
+import type { TaskApplicationApi, TaskCommandResult, TaskSnapshot } from '../src/tasks';
 import type { TaskRef } from '../src/tasks/domain/types';
 import { openInFile } from '../src/ui/taskNavigation';
 import { createAppWithFiles, freshContainer, seedTaskCache, task, useRealMoment } from './helpers';
@@ -106,6 +107,228 @@ describe('RightPanel.getTagColor', () => {
     const panel = new RightPanel(state, app, undefined);
     expect(call<string | undefined>(panel, 'getTagColor', '#anything')).toBeUndefined();
   });
+});
+
+describe('RightPanel planning API delegation', () => {
+  it('routes due/scheduled/start set and clear through TaskApplicationApi', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] task\n' });
+    const state = new AppState();
+    const ref: TaskRef = { filePath: 't.md', line: 0, revision: 'r' };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'not-found',
+      target: { type: 'task', ref },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const current = Object.assign(task({ filePath: 't.md', line: 0 }), { ref });
+    const process = vi.spyOn(app.vault, 'process');
+
+    await call(panel, 'updateDue', current, '2026-07-20');
+    await call(panel, 'clearDate', current);
+    await call(panel, 'updateScheduled', current, '2026-07-21');
+    await call(panel, 'clearScheduled', current);
+    await call(panel, 'updateStart', current, '2026-07-19');
+    await call(panel, 'clearStart', current);
+
+    expect(execute.mock.calls.map(([command]) => command)).toEqual([
+      {
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { due: { type: 'set', value: '2026-07-20' } },
+      },
+      { type: 'patch', target: { type: 'task', ref }, patch: { due: { type: 'clear' } } },
+      {
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { scheduled: { type: 'set', value: '2026-07-21' } },
+      },
+      { type: 'patch', target: { type: 'task', ref }, patch: { scheduled: { type: 'clear' } } },
+      {
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { start: { type: 'set', value: '2026-07-19' } },
+      },
+      { type: 'patch', target: { type: 'task', ref }, patch: { start: { type: 'clear' } } },
+    ]);
+    expect(process).not.toHaveBeenCalled();
+  });
+
+  it('keeps the edited nested task selected from the returned fresh aggregate', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] root\n  - [ ] child\n' });
+    const state = new AppState();
+    const rootRef: TaskRef = { filePath: 't.md', line: 0, revision: 'old-root' };
+    const childRef = {
+      parent: { type: 'task' as const, ref: rootRef },
+      relativeLine: 1,
+      originalBlock: '  - [ ] child',
+    };
+    const freshRootRef: TaskRef = { ...rootRef, revision: 'new-root' };
+    const freshChildRef = {
+      ...childRef,
+      parent: { type: 'task' as const, ref: freshRootRef },
+      originalBlock: '  - [ ] child 📅 2026-07-20',
+    };
+    const freshRoot = {
+      ref: freshRootRef,
+      title: 'root',
+      markdownTitle: 'root',
+      status: 'open' as const,
+      statusSymbol: ' ',
+      priority: 'D' as const,
+      planning: {},
+      tags: [],
+      subtasks: [
+        {
+          ref: freshChildRef,
+          title: 'child',
+          markdownTitle: 'child',
+          status: 'open' as const,
+          statusSymbol: ' ',
+          priority: 'D' as const,
+          planning: { due: '2026-07-20' as import('../src/tasks').LocalDate },
+          tags: [],
+          subtasks: [],
+          comments: [],
+        },
+      ],
+      comments: [],
+      source: { filePath: 't.md', line: 0, originalMarkdown: '- [ ] root' },
+      presentation: { linkCount: 0 },
+    };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'ok',
+      changed: true,
+      outcome: { type: 'task', task: freshRoot },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const legacyRoot = Object.assign(task({ filePath: 't.md', line: 0, text: 'root' }), {
+      ref: rootRef,
+    });
+    const legacyChild = Object.assign(task({ filePath: 't.md', line: 1, text: 'child' }), {
+      ref: childRef,
+    });
+    state.set('taskStack', [legacyRoot, legacyChild]);
+
+    await call(panel, 'updateDue', legacyChild, '2026-07-20');
+
+    expect(state.get('taskStack')).toHaveLength(2);
+    expect(state.get('taskStack')[1]).toMatchObject({ due: '2026-07-20', ref: freshChildRef });
+  });
+
+  it.each(['root', 'child'] as const)(
+    'does not restore a previously selected %s when its async planning result arrives late',
+    async (selection) => {
+      const app = await createAppWithFiles({
+        'a.md': '- [ ] A\n  - [ ] A child\n',
+        'b.md': '- [ ] B\n',
+      });
+      const state = new AppState();
+      const acknowledge = vi.fn<(ref?: TaskRef) => void>();
+      const rootRef: TaskRef = { filePath: 'a.md', line: 0, revision: 'old-a' };
+      const childRef = {
+        parent: { type: 'task' as const, ref: rootRef },
+        relativeLine: 1,
+        originalBlock: '  - [ ] A child',
+      };
+      let resolveExecute!: (result: TaskCommandResult) => void;
+      const execute = vi.fn<TaskApplicationApi['execute']>().mockImplementation(
+        () =>
+          new Promise<TaskCommandResult>((resolve) => {
+            resolveExecute = resolve;
+          }),
+      );
+      const tasks: TaskApplicationApi = {
+        queries: {
+          list: () => [],
+          forCalendarDates: () => [],
+          resolve: (target) => ({ type: 'not-found', ref: target }),
+          subscribe: () => () => {},
+        },
+        execute,
+      };
+      const panel = new RightPanel(state, app, DEFAULT_SETTINGS, acknowledge, tasks);
+      const legacyRoot = Object.assign(task({ filePath: 'a.md', line: 0, text: 'A' }), {
+        ref: rootRef,
+      });
+      const legacyChild = Object.assign(task({ filePath: 'a.md', line: 1, text: 'A child' }), {
+        ref: childRef,
+      });
+      state.set('taskStack', selection === 'child' ? [legacyRoot, legacyChild] : [legacyRoot]);
+      const pending = call<Promise<void>>(
+        panel,
+        'updateDue',
+        selection === 'child' ? legacyChild : legacyRoot,
+        '2026-07-20',
+      );
+
+      const other = Object.assign(task({ filePath: 'b.md', line: 0, text: 'B' }), {
+        ref: { filePath: 'b.md', line: 0, revision: 'b' },
+      });
+      state.set('taskStack', [other]);
+      const freshRootRef: TaskRef = { ...rootRef, revision: 'new-a' };
+      const freshRoot: TaskSnapshot = {
+        ref: freshRootRef,
+        title: 'A',
+        markdownTitle: 'A',
+        status: 'open',
+        statusSymbol: ' ',
+        priority: 'D',
+        planning:
+          selection === 'root' ? { due: '2026-07-20' as import('../src/tasks').LocalDate } : {},
+        tags: [],
+        subtasks:
+          selection === 'child'
+            ? [
+                {
+                  ref: {
+                    ...childRef,
+                    parent: { type: 'task', ref: freshRootRef },
+                    originalBlock: '  - [ ] A child 📅 2026-07-20',
+                  },
+                  title: 'A child',
+                  markdownTitle: 'A child',
+                  status: 'open',
+                  statusSymbol: ' ',
+                  priority: 'D',
+                  planning: { due: '2026-07-20' as import('../src/tasks').LocalDate },
+                  tags: [],
+                  subtasks: [],
+                  comments: [],
+                },
+              ]
+            : [],
+        comments: [],
+        source: { filePath: 'a.md', line: 0, originalMarkdown: '- [ ] A' },
+        presentation: { linkCount: 0 },
+      };
+      resolveExecute({
+        type: 'ok',
+        changed: true,
+        outcome: { type: 'task', task: freshRoot },
+      });
+      await pending;
+
+      expect(state.get('taskStack')).toEqual([other]);
+      expect(acknowledge).toHaveBeenCalledWith(rootRef);
+    },
+  );
 });
 
 describe('RightPanel.formatDate', () => {
@@ -624,104 +847,7 @@ describe('RightPanel.deleteComment', () => {
   });
 });
 
-describe('RightPanel.updateDue', () => {
-  it('with due: replaces existing 📅 date', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] task 📅 2026-06-20' });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task 📅 2026-06-20',
-      due: '2026-06-20',
-    });
-    await call<Promise<void>>(panel, 'updateDue', t, '2026-06-28');
-    const after = await readMd(app, 't.md');
-    expect(after).toContain('📅 2026-06-28');
-    expect(after).not.toContain('2026-06-20');
-  });
-
-  it('without due: appends " 📅 <date>" to the line', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
-    await call<Promise<void>>(panel, 'updateDue', t, '2026-06-28');
-    const after = await readMd(app, 't.md');
-    expect(after).toContain('📅 2026-06-28');
-  });
-
-  it('file not found → no-op', async () => {
-    const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'updateDue', t, '2026-06-28')).resolves.toBeUndefined();
-  });
-});
-
-describe('RightPanel scheduled/start/duration writers', () => {
-  it('updateScheduled adds ⏳ without touching an existing 📅', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] t 📅 2026-07-01' });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 't',
-      rawText: '- [ ] t 📅 2026-07-01',
-      due: '2026-07-01',
-    });
-    await call<Promise<void>>(panel, 'updateScheduled', t, '2026-07-02');
-    const content = await readMd(app, 't.md');
-    expect(content).toContain('⏳ 2026-07-02');
-    expect(content).toContain('📅 2026-07-01');
-  });
-
-  it('clearScheduled strips only ⏳, leaves 📅 intact', async () => {
-    const { panel, app } = await makePanel({
-      't.md': '- [ ] t ⏳ 2026-07-02 📅 2026-07-01',
-    });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 't',
-      rawText: '- [ ] t ⏳ 2026-07-02 📅 2026-07-01',
-      due: '2026-07-01',
-      scheduled: '2026-07-02',
-    });
-    await call<Promise<void>>(panel, 'clearScheduled', t);
-    const content = await readMd(app, 't.md');
-    expect(content).not.toContain('⏳');
-    expect(content).toContain('📅 2026-07-01');
-  });
-
-  it('updateStart adds 🛫 alongside 📅', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] t 📅 2026-07-05' });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 't',
-      rawText: '- [ ] t 📅 2026-07-05',
-      due: '2026-07-05',
-    });
-    await call<Promise<void>>(panel, 'updateStart', t, '2026-07-01');
-    const content = await readMd(app, 't.md');
-    expect(content).toContain('🛫 2026-07-01');
-    expect(content).toContain('📅 2026-07-05');
-  });
-
-  it('clearStart strips only 🛫', async () => {
-    const { panel, app } = await makePanel({
-      't.md': '- [ ] t 🛫 2026-07-01 📅 2026-07-05',
-    });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 't',
-      rawText: '- [ ] t 🛫 2026-07-01 📅 2026-07-05',
-      due: '2026-07-05',
-      start: '2026-07-01',
-    });
-    await call<Promise<void>>(panel, 'clearStart', t);
-    const content = await readMd(app, 't.md');
-    expect(content).not.toContain('🛫');
-    expect(content).toContain('📅 2026-07-05');
-  });
-
+describe('RightPanel duration writers', () => {
   it('updateDuration writes ⏱️ in shortest form', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] t ⏰ 15:00' });
     const t: Task = task({
@@ -752,71 +878,11 @@ describe('RightPanel scheduled/start/duration writers', () => {
     expect(content).toContain('⏰ 15:00');
   });
 
-  it('file not found → no-op for updateScheduled/clearScheduled/updateStart/clearStart', async () => {
-    const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(
-      call<Promise<void>>(panel, 'updateScheduled', t, '2026-07-02'),
-    ).resolves.toBeUndefined();
-    await expect(call<Promise<void>>(panel, 'clearScheduled', t)).resolves.toBeUndefined();
-    await expect(
-      call<Promise<void>>(panel, 'updateStart', t, '2026-07-01'),
-    ).resolves.toBeUndefined();
-    await expect(call<Promise<void>>(panel, 'clearStart', t)).resolves.toBeUndefined();
-  });
-
   it('file not found → no-op for updateDuration/clearDuration', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t: Task = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
     await expect(call<Promise<void>>(panel, 'updateDuration', t, 30)).resolves.toBeUndefined();
     await expect(call<Promise<void>>(panel, 'clearDuration', t)).resolves.toBeUndefined();
-  });
-});
-
-describe('RightPanel.clearDate', () => {
-  // CURRENT BEHAVIOR (follow-up: FU-24): clearDate strips 📅 (due), ⏳ (scheduled),
-  // AND 🛫 (start) — all three date emojis — not just the due date. The regex is
-  // /[📅⏳🛫]\s*\d{4}-\d{2}-\d{2}/gu. This is a known quirk: the method name suggests
-  // it clears only the due date but it actually clears all dates.
-  it('strips ALL date emojis: 📅, ⏳, and 🛫 (CURRENT BEHAVIOR, FU-24)', async () => {
-    const content = '- [ ] task 📅 2026-06-20 ⏳ 2026-06-21 🛫 2026-06-19';
-    const { panel, app } = await makePanel({ 't.md': content });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: content,
-      due: '2026-06-20',
-      scheduled: '2026-06-21',
-      start: '2026-06-19',
-    });
-    await call<Promise<void>>(panel, 'clearDate', t);
-    const after = await readMd(app, 't.md');
-    expect(after).not.toContain('📅');
-    expect(after).not.toContain('⏳');
-    expect(after).not.toContain('🛫');
-    expect(after).toContain('task');
-  });
-
-  it('strips only 📅 when no scheduled/start present', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] task 📅 2026-06-20' });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task 📅 2026-06-20',
-      due: '2026-06-20',
-    });
-    await call<Promise<void>>(panel, 'clearDate', t);
-    const after = await readMd(app, 't.md');
-    expect(after).not.toContain('📅');
-    expect(after).toBe('- [ ] task');
-  });
-
-  it('file not found → no-op', async () => {
-    const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'clearDate', t)).resolves.toBeUndefined();
   });
 });
 

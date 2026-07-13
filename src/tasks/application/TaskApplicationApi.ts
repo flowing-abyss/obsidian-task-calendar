@@ -1,11 +1,5 @@
-import type {
-  DateRange,
-  LocalDate,
-  TaskMutationTarget,
-  TaskRef,
-  TaskSnapshot,
-  TaskStatus,
-} from '../domain/types';
+import type { TaskCommand, TaskCommandResult, TaskResolutionCandidate } from '../domain/commands';
+import type { DateRange, LocalDate, TaskRef, TaskSnapshot, TaskStatus } from '../domain/types';
 
 export interface TaskQuery {
   readonly filePath?: string;
@@ -21,11 +15,6 @@ export type TaskIndexEvent =
   | { readonly type: 'renamed'; readonly oldPath: string; readonly newPath: string }
   | { readonly type: 'deleted'; readonly path: string };
 
-export interface TaskResolutionCandidate {
-  readonly root: TaskSnapshot;
-  readonly target: TaskMutationTarget;
-}
-
 export type TaskResolution =
   | { readonly type: 'exact'; readonly task: TaskSnapshot }
   | { readonly type: 'conflict'; readonly current: TaskSnapshot }
@@ -37,4 +26,9 @@ export interface TaskQueryApi {
   forCalendarDates(dates: readonly LocalDate[]): readonly TaskSnapshot[];
   resolve(ref: TaskRef): TaskResolution;
   subscribe(listener: (event: TaskIndexEvent) => void): () => void;
+}
+
+export interface TaskApplicationApi {
+  readonly queries: TaskQueryApi;
+  execute(command: TaskCommand): Promise<TaskCommandResult>;
 }

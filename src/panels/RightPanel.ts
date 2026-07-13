@@ -16,9 +16,16 @@ import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
 import { colorForTag } from '../tags/tagColor';
-import { taskRefOf } from '../tasks/compat/legacyTaskView';
+import {
+  localDate,
+  type PlanningTarget,
+  type TaskApplicationApi,
+  type TaskCommandResult,
+  type TaskPatch,
+} from '../tasks';
+import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import type { TaskRef } from '../tasks/domain/types';
+import type { SubtaskRef, TaskNodeRef, TaskRef } from '../tasks/domain/types';
 import {
   enableAttachmentDrop,
   enableAttachmentPaste,
@@ -30,9 +37,50 @@ import { renderTaskText } from '../ui/renderTaskText';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { showStatusMenuAt } from '../ui/statusMenu';
 import { showTagDropdown } from '../ui/tagDropdown';
+import { presentTaskCommandResult } from '../ui/taskCommandResult';
 import { openInFile } from '../ui/taskNavigation';
 
 type TaskLike = Task | SubTask;
+
+function rootRefForPlanningTarget(target: PlanningTarget): TaskRef {
+  let node: TaskNodeRef = target;
+  while (node.type === 'subtask') node = node.ref.parent;
+  return node.ref;
+}
+
+function sameTaskRef(left: TaskRef, right: TaskRef): boolean {
+  return (
+    left.filePath === right.filePath && left.line === right.line && left.revision === right.revision
+  );
+}
+
+function planningChildChain(target: PlanningTarget): readonly SubtaskRef[] {
+  const chain: SubtaskRef[] = [];
+  let node: TaskNodeRef = target;
+  while (node.type === 'subtask') {
+    chain.unshift(node.ref);
+    node = node.ref.parent;
+  }
+  return chain;
+}
+
+function rebuildPlanningTargetStack(
+  root: ReturnType<typeof legacyTaskView>,
+  target: PlanningTarget,
+) {
+  const stack: TaskLike[] = [root];
+  let current: TaskLike = root;
+  for (const ref of planningChildChain(target)) {
+    const child = (current.subtasks ?? []).find((candidate) => {
+      if (!('ref' in candidate)) return false;
+      return (candidate.ref as SubtaskRef).relativeLine === ref.relativeLine;
+    });
+    if (!child) break;
+    stack.push(child);
+    current = child;
+  }
+  return stack;
+}
 
 export class RightPanel {
   private el!: HTMLElement;
@@ -41,13 +89,16 @@ export class RightPanel {
   private mutations: TaskMutationService;
   private statusRegistry: StatusRegistry;
   private md = new Component();
+  private onSuccessfulMutation?: (ref?: TaskRef) => void;
 
   constructor(
     private state: AppState,
     private app: App,
     private settings?: CalendarSettings,
     onSuccessfulMutation?: (ref?: TaskRef) => void,
+    private tasks?: TaskApplicationApi,
   ) {
+    this.onSuccessfulMutation = onSuccessfulMutation;
     this.statusRegistry = new StatusRegistry(
       this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
     );
@@ -1097,72 +1148,70 @@ export class RightPanel {
   }
 
   private async updateDue(task: TaskLike, date: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const withDate = task.due
-        ? line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${date}`)
-        : line.trimEnd() + ` 📅 ${date}`;
-      lines[taskLine] = formatTaskLine(withDate);
-    });
+    await this.executePlanningPatch(task, { due: { type: 'set', value: localDate(date) } });
   }
 
   private async clearDate(task: TaskLike): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const stripped = line
-        .replace(/[📅⏳🛫]\s*\d{4}-\d{2}-\d{2}/gu, '')
-        .replace(/\s{2,}/gu, ' ')
-        .trimEnd();
-      lines[taskLine] = formatTaskLine(stripped);
-    });
+    await this.executePlanningPatch(task, { due: { type: 'clear' } });
   }
 
   private async updateScheduled(task: TaskLike, date: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const withDate = task.scheduled
-        ? line.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${date}`)
-        : line.trimEnd() + ` ⏳ ${date}`;
-      lines[taskLine] = formatTaskLine(withDate);
+    await this.executePlanningPatch(task, {
+      scheduled: { type: 'set', value: localDate(date) },
     });
   }
 
   private async clearScheduled(task: TaskLike): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const stripped = line
-        .replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, '')
-        .replace(/\s{2,}/gu, ' ')
-        .trimEnd();
-      lines[taskLine] = formatTaskLine(stripped);
-    });
+    await this.executePlanningPatch(task, { scheduled: { type: 'clear' } });
   }
 
   private async updateStart(task: TaskLike, date: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const withDate = task.start
-        ? line.replace(/🛫\s*\d{4}-\d{2}-\d{2}/u, `🛫 ${date}`)
-        : line.trimEnd() + ` 🛫 ${date}`;
-      lines[taskLine] = formatTaskLine(withDate);
-    });
+    await this.executePlanningPatch(task, { start: { type: 'set', value: localDate(date) } });
   }
 
   private async clearStart(task: TaskLike): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const stripped = line
-        .replace(/🛫\s*\d{4}-\d{2}-\d{2}/u, '')
-        .replace(/\s{2,}/gu, ' ')
-        .trimEnd();
-      lines[taskLine] = formatTaskLine(stripped);
-    });
+    await this.executePlanningPatch(task, { start: { type: 'clear' } });
+  }
+
+  private planningTarget(task: TaskLike): PlanningTarget | undefined {
+    if (!('ref' in task)) return undefined;
+    const ref = task.ref;
+    if (typeof ref !== 'object' || ref === null) return undefined;
+    if ('revision' in ref) return { type: 'task', ref: ref as TaskRef };
+    if ('relativeLine' in ref) {
+      return { type: 'subtask', ref: ref as SubtaskRef };
+    }
+    return undefined;
+  }
+
+  private async executePlanningPatch(task: TaskLike, patch: TaskPatch): Promise<void> {
+    const target = this.planningTarget(task);
+    if (!target || !this.tasks) return;
+    let result: TaskCommandResult;
+    try {
+      result = await this.tasks.execute({ type: 'patch', target, patch });
+    } catch {
+      return;
+    }
+    this.applyPlanningResult(result, target);
+  }
+
+  private applyPlanningResult(result: TaskCommandResult, target: PlanningTarget): void {
+    presentTaskCommandResult(result);
+    if (result.type !== 'ok' || result.outcome.type !== 'task') return;
+    const stack = this.state.get('taskStack');
+    const initiatingRoot = rootRefForPlanningTarget(target);
+    const selectedRoot = stack[0] ? taskRefOf(stack[0]) : undefined;
+    if (selectedRoot && sameTaskRef(selectedRoot, initiatingRoot)) {
+      const root = legacyTaskView(result.outcome.task);
+      this.state.set(
+        'taskStack',
+        target.type === 'subtask'
+          ? rebuildPlanningTargetStack(root, target)
+          : rebuildLegacyTaskStack(root, stack),
+      );
+    }
+    if (result.changed) this.onSuccessfulMutation?.(initiatingRoot);
   }
 
   private async updateDuration(task: Task, minutes: number): Promise<void> {

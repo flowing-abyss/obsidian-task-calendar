@@ -4,7 +4,7 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 type OperationFamily =
-  | 'planning/time/spans'
+  | 'time/spans'
   | 'status/priority'
   | 'per-task tags'
   | 'title/links'
@@ -21,6 +21,11 @@ interface NonTaskWriterReason {
   reason: string;
 }
 
+interface CanonicalTaskWriterReason {
+  scope: 'single-task transaction';
+  reason: string;
+}
+
 const SRC_ROOT = resolve(import.meta.dirname, '..', 'src');
 
 // Temporary migration debt only. Task 5A may replace applicable entries with the single named
@@ -32,19 +37,19 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     reason: 'TaskStore owns the legacy calendar/list status and priority command facade.',
   },
   'src/panels/CenterPanel.ts#CenterPanel.constructor#new TaskMutationService#1': {
-    families: ['planning/time/spans', 'creation/deletion/movement'],
-    reason: 'CenterPanel still performs drag/time mutations and task deletion directly.',
+    families: ['time/spans', 'creation/deletion/movement'],
+    reason: 'CenterPanel still performs time/span gestures and task deletion directly.',
   },
   'src/panels/RightPanel.ts#RightPanel.constructor#new TaskMutationService#1': {
     families: [
-      'planning/time/spans',
+      'time/spans',
       'status/priority',
       'per-task tags',
       'title/links',
       'description/comments/subtasks',
       'creation/deletion/movement',
     ],
-    reason: 'RightPanel still owns the broad legacy task editor command surface.',
+    reason: 'RightPanel still owns time/span and the remaining legacy editor command surface.',
   },
   'src/tags/TagManager.ts#TagManager.constructor#new TaskMutationService#1': {
     families: ['per-task tags'],
@@ -56,7 +61,7 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
     families: [
-      'planning/time/spans',
+      'time/spans',
       'status/priority',
       'per-task tags',
       'title/links',
@@ -113,6 +118,15 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     families: ['creation/deletion/movement'],
     reason: 'Dateless fallback creation still appends the task from CenterPanel.',
   },
+};
+
+const CANONICAL_TASK_WRITERS: Record<string, CanonicalTaskWriterReason> = {
+  'src/tasks/infrastructure/obsidian/ObsidianTaskRepository.ts#ObsidianTaskRepository.edit#vault.process#1':
+    {
+      scope: 'single-task transaction',
+      reason:
+        'The sole canonical revision-confirming transaction boundary for migrated task commands.',
+    },
 };
 
 // Project frontmatter/status writes are deliberately outside the task-write migration. Keeping
@@ -248,6 +262,7 @@ describe('task architecture migration writer guardrail', () => {
   it('matches the named, reasoned writer allowlist exactly', () => {
     const allowlisted = [
       ...Object.keys(LEGACY_TASK_WRITERS),
+      ...Object.keys(CANONICAL_TASK_WRITERS),
       ...Object.keys(PERMITTED_NON_TASK_WRITERS),
     ].sort();
 
@@ -262,12 +277,21 @@ describe('task architecture migration writer guardrail', () => {
     expect(constructionSites).toHaveLength(5);
   });
 
+  it('keeps exactly one canonical single-task transaction boundary', () => {
+    expect(Object.keys(CANONICAL_TASK_WRITERS)).toEqual([
+      'src/tasks/infrastructure/obsidian/ObsidianTaskRepository.ts#ObsidianTaskRepository.edit#vault.process#1',
+    ]);
+  });
+
   it('documents the operation family and reason for every temporary task writer', () => {
     for (const entry of Object.values(LEGACY_TASK_WRITERS)) {
       expect(entry.families.length).toBeGreaterThan(0);
       expect(entry.reason.trim().length).toBeGreaterThan(0);
     }
     for (const entry of Object.values(PERMITTED_NON_TASK_WRITERS)) {
+      expect(entry.reason.trim().length).toBeGreaterThan(0);
+    }
+    for (const entry of Object.values(CANONICAL_TASK_WRITERS)) {
       expect(entry.reason.trim().length).toBeGreaterThan(0);
     }
   });

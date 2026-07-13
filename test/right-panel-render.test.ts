@@ -1,9 +1,11 @@
 import { TFile, type App } from 'obsidian';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
 import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import type { TaskApplicationApi } from '../src/tasks';
+import type { TaskRef } from '../src/tasks/domain/types';
 import {
   createAppWithFiles,
   flushMicrotasks,
@@ -48,10 +50,11 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
  */
 async function makePanel(
   files: Record<string, string> = {},
+  tasks?: TaskApplicationApi,
 ): Promise<{ panel: RightPanel; state: AppState; app: App; el: HTMLElement }> {
   const app = await createAppWithFiles(files);
   const state = new AppState();
-  const panel = new RightPanel(state, app, DEFAULT_SETTINGS);
+  const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
   const el = freshContainer();
   panel.mount(el);
   return { panel, state, app, el };
@@ -520,17 +523,34 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
     expect(popover?.querySelector('input[type="date"]')).not.toBeNull();
   });
 
-  it('setting a Start date via the "+" menu\'s popover writes 🛫 to the file and shows a normal top-row pill', async () => {
-    const { state, app, el } = await makePanel({ 'f.md': '- [ ] Dated 📅 2026-06-25\n' });
+  it('setting a Start date via the "+" menu delegates a typed planning command', async () => {
+    const ref: TaskRef = { filePath: 'f.md', line: 0, revision: 'revision' };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'not-found',
+      target: { type: 'task', ref },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const { state, app, el } = await makePanel({ 'f.md': '- [ ] Dated 📅 2026-06-25\n' }, tasks);
     state.set('taskStack', [
-      task({
-        filePath: 'f.md',
-        line: 0,
-        text: 'Dated',
-        due: '2026-06-25',
-        duration: undefined,
-        rawText: '- [ ] Dated 📅 2026-06-25',
-      }),
+      Object.assign(
+        task({
+          filePath: 'f.md',
+          line: 0,
+          text: 'Dated',
+          due: '2026-06-25',
+          duration: undefined,
+          rawText: '- [ ] Dated 📅 2026-06-25',
+        }),
+        { ref },
+      ),
     ]);
     const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
     click(addBtn);
@@ -542,8 +562,12 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
     input.value = '2026-07-01';
     input.dispatchEvent(new Event('change'));
     await flushMicrotasks();
-    const content = await readMd(app, 'f.md');
-    expect(content).toContain('🛫 2026-07-01');
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: { start: { type: 'set', value: '2026-07-01' } },
+    });
+    expect(await readMd(app, 'f.md')).toBe('- [ ] Dated 📅 2026-06-25\n');
   });
 
   it('a SubTask (no duration field) offers the "+" control for its own unset Start/Plan — not gated on the removed Planning disclosure', async () => {

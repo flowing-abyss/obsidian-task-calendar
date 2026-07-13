@@ -30,8 +30,8 @@ import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { searchTaskList, selectTaskList } from '../task-lists/TaskListSelector';
-import type { LocalDate, TaskQueryApi } from '../tasks';
-import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
+import { localDate, type LocalDate, type TaskApplicationApi, type TaskQueryApi } from '../tasks';
+import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
 import { LinkEditModal } from '../ui/LinkEditModal';
@@ -41,6 +41,7 @@ import { TaskModal } from '../ui/TaskModal';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { buildStatusSubmenu, showStatusMenuAt } from '../ui/statusMenu';
+import { presentTaskCommandResult } from '../ui/taskCommandResult';
 import { openInFile } from '../ui/taskNavigation';
 import { MonthGridView } from '../views/MonthGridView';
 import { TodayView } from '../views/TodayView';
@@ -127,6 +128,7 @@ export class CenterPanel {
     onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
     private projectManager: ProjectManager | null = null,
+    private tasks?: TaskApplicationApi,
   ) {
     this.onSaveSettings = onSaveSettings;
     this.mutations = new TaskMutationService(
@@ -138,7 +140,7 @@ export class CenterPanel {
 
   mount(container: HTMLElement): void {
     this.el = container;
-    this.taskModal = new TaskModal(this.app, this.settings, this.store, this.queries);
+    this.taskModal = new TaskModal(this.app, this.settings, this.store, this.queries, this.tasks);
 
     // Initialize per-list state before first render
     const initialKey = listSelectionToKey(this.state.get('selectedList'));
@@ -2092,6 +2094,18 @@ export class CenterPanel {
     const task = legacyTaskViews(this.queries.list({ filePath })).find((t) => t.line === line);
     if (!task) return;
 
+    const ref = taskRefOf(task);
+    if (ref && this.tasks && !task.time) {
+      try {
+        presentTaskCommandResult(
+          await this.tasks.execute({ type: 'reschedule', ref, date: localDate(targetDate) }),
+        );
+      } catch {
+        // The date comes from calendar controls; an invalid value is ignored like the legacy path.
+      }
+      return;
+    }
+
     await this.mutations.applyValidatedLineMutation(locatorOf(task), (tl) => {
       let updated: string;
       if (task.scheduled) {
@@ -2164,21 +2178,27 @@ export class CenterPanel {
   }
 
   private async updateTaskStart(task: Task, newStart: string): Promise<void> {
-    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
-      const withStart = task.start
-        ? line.replace(/🛫\s*\d{4}-\d{2}-\d{2}/u, `🛫 ${newStart}`)
-        : line.trimEnd() + ` 🛫 ${newStart}`;
-      return formatTaskLine(withStart);
-    });
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    presentTaskCommandResult(
+      await this.tasks.execute({
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { start: { type: 'set', value: localDate(newStart) } },
+      }),
+    );
   }
 
   private async rescheduleTaskDue(task: Task, newDue: string): Promise<void> {
-    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
-      const withDue = task.due
-        ? line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`)
-        : line.trimEnd() + ` 📅 ${newDue}`;
-      return formatTaskLine(withDue);
-    });
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    presentTaskCommandResult(
+      await this.tasks.execute({
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { due: { type: 'set', value: localDate(newDue) } },
+      }),
+    );
   }
 
   // A plain task has no `start` yet, so extending it into a span needs both ends
@@ -2231,22 +2251,17 @@ export class CenterPanel {
 
   private async toggleDueToday(task: Task): Promise<void> {
     const today = window.moment().format('YYYY-MM-DD');
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      let updated: string;
-      if (task.due === today) {
-        updated = line
-          .replace(/📅\s*\d{4}-\d{2}-\d{2}/u, '')
-          .replace(/\s{2,}/gu, ' ')
-          .trimEnd();
-      } else if (task.due) {
-        updated = line.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${today}`);
-      } else {
-        updated = line.trimEnd() + ` 📅 ${today}`;
-      }
-      lines[taskLine] = updated;
-    });
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    presentTaskCommandResult(
+      await this.tasks.execute({
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: {
+          due: task.due === today ? { type: 'clear' } : { type: 'set', value: localDate(today) },
+        },
+      }),
+    );
   }
 
   private taskKey(task: Task): string {

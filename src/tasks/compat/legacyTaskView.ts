@@ -6,6 +6,7 @@ import type {
   TaskRef,
   TaskSnapshot,
 } from '../domain/types';
+import { TaskLocator } from '../infrastructure/markdown/TaskLocator';
 
 interface LegacyTaskCommentView extends TaskComment {
   readonly ref: TaskCommentSnapshot['ref'];
@@ -64,17 +65,12 @@ function subtaskView(
 }
 
 function blockRange(task: TaskSnapshot): { from: number; to: number } | undefined {
-  if (!task.ref.revision.startsWith('block:')) return undefined;
-  try {
-    const block = JSON.parse(task.ref.revision.slice('block:'.length)) as unknown;
-    if (typeof block !== 'string') return undefined;
-    const lineCount = block.split('\n').length;
-    return lineCount > 1
-      ? { from: task.source.line + 1, to: task.source.line + lineCount - 1 }
-      : undefined;
-  } catch {
-    return undefined;
-  }
+  const block = new TaskLocator().exactSource(task.ref.revision);
+  if (block === undefined) return undefined;
+  const lineCount = block.split(/\r?\n/u).length;
+  return lineCount > 1
+    ? { from: task.source.line + 1, to: task.source.line + lineCount - 1 }
+    : undefined;
 }
 
 export function legacyTaskView(task: TaskSnapshot): LegacyTaskView {

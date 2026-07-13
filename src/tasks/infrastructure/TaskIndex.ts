@@ -8,8 +8,8 @@ import type {
   TaskQuery,
   TaskQueryApi,
   TaskResolution,
-  TaskResolutionCandidate,
 } from '../application/TaskApplicationApi';
+import type { TaskResolutionCandidate } from '../domain/commands';
 import type { StatusCatalog } from '../domain/StatusCatalog';
 import type {
   CommentRef,
@@ -25,6 +25,8 @@ import type {
   TaskSnapshot,
 } from '../domain/types';
 import { durationMinutes, localDate, localTime } from '../domain/validation';
+import { TaskBlockEditor } from './markdown/TaskBlockEditor';
+import { TaskLocator } from './markdown/TaskLocator';
 import { TaskMarkdownCodec } from './markdown/TaskMarkdownCodec';
 import { calendarDatesForPlanning, TaskDateIndex } from './TaskDateIndex';
 
@@ -139,11 +141,6 @@ function subtaskPlanning(task: SubTask): SubtaskPlanning {
 
 function tagsIn(markdown: string): readonly string[] {
   return [...markdown.matchAll(TAG_RE)].map((match) => match[0]);
-}
-
-function revisionOf(block: string): string {
-  // JSON string encoding is one-to-one, so equality confirms exact source rather than a hash.
-  return `block:${JSON.stringify(block)}`;
 }
 
 function cloneTaskRef(ref: TaskRef): TaskRef {
@@ -512,6 +509,8 @@ export class TaskIndex implements TaskQueryApi {
   private initialized = false;
   private destroyed = false;
   private statusCatalog: StatusCatalog;
+  private readonly blockEditor = new TaskBlockEditor();
+  private readonly locator = new TaskLocator();
 
   constructor(
     private readonly app: App,
@@ -600,14 +599,14 @@ export class TaskIndex implements TaskQueryApi {
   resolve(ref: TaskRef): TaskResolution {
     const tasks = this.taskMap.get(ref.filePath) ?? [];
     const current = tasks.find((task) => task.source.line === ref.line);
-    if (current?.ref.revision === ref.revision) {
-      return { type: 'exact', task: cloneSnapshot(current) };
-    }
     const matches = tasks.filter((task) => task.ref.revision === ref.revision);
-    if (matches.length === 1) return { type: 'exact', task: cloneSnapshot(matches[0]!) };
     if (matches.length > 1) {
       return { type: 'ambiguous', candidates: matches.map(cloneCandidate) };
     }
+    if (current?.ref.revision === ref.revision) {
+      return { type: 'exact', task: cloneSnapshot(current) };
+    }
+    if (matches.length === 1) return { type: 'exact', task: cloneSnapshot(matches[0]!) };
     if (current) return { type: 'conflict', current: cloneSnapshot(current) };
     return { type: 'not-found', ref: cloneTaskRef(ref) };
   }
@@ -672,7 +671,12 @@ export class TaskIndex implements TaskQueryApi {
     cache: CachedMetadata,
   ): readonly TaskSnapshot[] {
     if (!cache.listItems) return [];
+    // Preserve the legacy raw-line shape (`\r` stays attached under CRLF) for compatibility
+    // consumers while TaskBlockEditor independently owns exact block revision bytes.
     const lines = content.split('\n');
+    const blockByLine = new Map(
+      this.blockEditor.rootBlocks(content).map((block) => [block.line, block] as const),
+    );
     const dailyNoteDate = dailyNoteDateForPath(filePath, this.options.dailyNoteFormat);
     const codec = new TaskMarkdownCodec(this.statusCatalog);
     const frontmatter = cache.frontmatter;
@@ -714,8 +718,9 @@ export class TaskIndex implements TaskQueryApi {
         codec.statusForSymbol(symbol),
       );
       const subitems = parseSubItems(lines, line, filePath, this.statusCatalog);
-      const exactBlock = blockFor(lines, line, subitems.subtaskRange?.to);
-      const ref: TaskRef = { filePath, line, revision: revisionOf(exactBlock) };
+      const exactBlock =
+        blockByLine.get(line)?.source ?? blockFor(lines, line, subitems.subtaskRange?.to);
+      const ref: TaskRef = { filePath, line, revision: this.locator.revision(exactBlock) };
       const node: TaskNodeRef = { type: 'task', ref };
       const presentation = {
         linkCount: countLinksIn([
@@ -746,6 +751,11 @@ export class TaskIndex implements TaskQueryApi {
       });
     }
     return snapshots.sort(stableTaskOrder);
+  }
+
+  /** Pure infrastructure collaborator used by the repository for immediate command outcomes. */
+  snapshotsFromContent(filePath: string, content: string): readonly TaskSnapshot[] {
+    return this.parseFile(filePath, content, cacheWithContentFallback(content, null));
   }
 
   private replaceFile(filePath: string, tasks: readonly TaskSnapshot[]): void {

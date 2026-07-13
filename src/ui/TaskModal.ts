@@ -3,7 +3,7 @@ import { AppState } from '../app/AppState';
 import { RightPanel } from '../panels/RightPanel';
 import type { SubTask, Task } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
-import type { TaskIndexEvent, TaskQueryApi, TaskResolution } from '../tasks';
+import type { TaskApplicationApi, TaskIndexEvent, TaskQueryApi, TaskResolution } from '../tasks';
 import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
 import type { TaskRef } from '../tasks/domain/types';
 
@@ -23,6 +23,7 @@ export class TaskModal {
     private settings?: CalendarSettings,
     _store?: unknown,
     private queries?: TaskQueryApi,
+    private tasks?: TaskApplicationApi,
   ) {}
 
   open(task: Task): void {
@@ -55,8 +56,12 @@ export class TaskModal {
     this.modalEl = modal;
 
     const panelEl = modal.createDiv({ cls: 'tc-right tc-modal-body' });
-    this.innerPanel = new RightPanel(this.innerState, this.app, this.settings, (root) =>
-      this.acknowledgeOwnWrite(root),
+    this.innerPanel = new RightPanel(
+      this.innerState,
+      this.app,
+      this.settings,
+      (root) => this.acknowledgeOwnWrite(root),
+      this.tasks,
     );
     this.innerPanel.mount(panelEl);
 

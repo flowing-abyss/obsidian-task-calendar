@@ -7,8 +7,13 @@ import { toStatusRules } from './settings/statusCatalogAdapter';
 import type { CalendarSettings, CodeBlockParams } from './settings/types';
 import { TaskStore } from './store/TaskStore';
 import { TagManager } from './tags/TagManager';
-import type { TaskQueryApi } from './tasks';
+import type { TaskApplicationApi, TaskQueryApi } from './tasks';
+import { TaskApplicationService } from './tasks/application/TaskApplicationService';
 import { StatusCatalog } from './tasks/domain/StatusCatalog';
+import { TaskBlockEditor } from './tasks/infrastructure/markdown/TaskBlockEditor';
+import { TaskLocator } from './tasks/infrastructure/markdown/TaskLocator';
+import { TaskMarkdownCodec } from './tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskRepository } from './tasks/infrastructure/obsidian/ObsidianTaskRepository';
 import { TaskIndex } from './tasks/infrastructure/TaskIndex';
 import { CalendarRenderer } from './ui/CalendarRenderer';
 import { PANEL_VIEW_TYPE, PanelView } from './views/PanelView';
@@ -18,25 +23,41 @@ export default class TaskCalendarPlugin extends Plugin {
   settings!: CalendarSettings;
   tagManager!: TagManager;
   queries!: TaskQueryApi;
+  tasks!: TaskApplicationApi;
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    const statusCatalog = new StatusCatalog(toStatusRules(this.settings.taskStatuses));
     const taskIndex = new TaskIndex(this.app, {
-      statusCatalog: new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
+      statusCatalog,
       dailyNoteFormat: this.settings.desktop.dailyNoteFormat,
       ...(this.settings.desktop.globalTaskFilter && {
         globalTaskFilter: this.settings.desktop.globalTaskFilter,
       }),
     });
+    const codec = new TaskMarkdownCodec(statusCatalog);
+    const repository = new ObsidianTaskRepository(this.app, {
+      codec,
+      editor: new TaskBlockEditor(),
+      locator: new TaskLocator(),
+      snapshotsFromContent: (path, content) => taskIndex.snapshotsFromContent(path, content),
+    });
+    this.tasks = new TaskApplicationService(taskIndex, repository);
     this.store = new TaskStore(this.app, this.settings, taskIndex);
-    this.queries = taskIndex;
+    this.queries = this.tasks.queries;
     this.tagManager = new TagManager(this.app, this.settings, () => this.saveSettings());
 
     this.registerView(
       PANEL_VIEW_TYPE,
       (leaf) =>
-        new PanelView(leaf, this.store, this.settings, this.tagManager, this.queries, () =>
-          this.saveSettings(),
+        new PanelView(
+          leaf,
+          this.store,
+          this.settings,
+          this.tagManager,
+          this.queries,
+          () => this.saveSettings(),
+          this.tasks,
         ),
     );
 

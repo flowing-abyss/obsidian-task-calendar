@@ -11,7 +11,7 @@ import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
-import type { TaskIndexEvent, TaskQueryApi, TaskResolution } from '../tasks';
+import type { TaskApplicationApi, TaskIndexEvent, TaskQueryApi, TaskResolution } from '../tasks';
 import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
 import type { TaskRef } from '../tasks/domain/types';
 
@@ -37,6 +37,7 @@ export class PanelView extends ItemView {
     private tagManager: TagManager,
     private queries: TaskQueryApi,
     private onSaveSettings: () => Promise<void> = async () => {},
+    private tasks?: TaskApplicationApi,
   ) {
     super(leaf);
   }
@@ -92,9 +93,14 @@ export class PanelView extends ItemView {
       this.onSaveSettings,
       projectStore,
       projectManager,
+      this.tasks,
     );
-    this.right = new RightPanel(this.state, this.app, this.settings, (root) =>
-      this.acknowledgeOwnWrite(root),
+    this.right = new RightPanel(
+      this.state,
+      this.app,
+      this.settings,
+      (root) => this.acknowledgeOwnWrite(root),
+      this.tasks,
     );
 
     // Keep panels fresh when the project set / stats change. Only the left
