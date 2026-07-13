@@ -6,7 +6,13 @@ import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
-import { freshContainer, makeStubStore, task, useRealMoment } from './helpers';
+import {
+  freshContainer,
+  makeCenterPanelForTest,
+  makeStubStore,
+  task,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -16,7 +22,7 @@ function makeCenter(tasks: Task[]): { el: HTMLElement; state: AppState; panel: C
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
   const store = makeStubStore(tasks) as unknown as TaskStore;
-  const panel = new CenterPanel(state, store, null as never, DEFAULT_SETTINGS, tm);
+  const panel = makeCenterPanelForTest(state, store, null as never, DEFAULT_SETTINGS, tm);
   const el = freshContainer();
   panel.mount(el);
   return { el, state, panel };

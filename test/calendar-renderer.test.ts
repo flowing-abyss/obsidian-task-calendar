@@ -28,14 +28,6 @@ class StubStore {
       return () => this.listeners.delete(listener);
     },
   );
-  getTasks(): Task[] {
-    return this.tasks;
-  }
-  onUpdate(cb: (p: { changedFile?: string }) => void): () => void {
-    const listener = (): void => cb({});
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
   emit(changedFile?: string): void {
     for (const listener of this.listeners) {
       listener({ type: 'changed', files: changedFile ? [changedFile] : [] });
@@ -54,17 +46,21 @@ function fakeApp(): App {
   return {} as App;
 }
 
+function makeRenderer(
+  root: HTMLElement,
+  store: StubStore,
+  config: ReturnType<typeof resolvedConfig>,
+  app: App,
+): CalendarRenderer {
+  return new CalendarRenderer(root, store as unknown as TaskStore, config, app, store.taskQueries);
+}
+
 describe('CalendarRenderer', () => {
   describe('construction & mount', () => {
     it('constructor sets activeViewType from config.defaultView', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'week' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'week' }), fakeApp());
       r.mount();
       expect(root.getAttribute('view')).toBe('week');
       r.destroy();
@@ -73,12 +69,7 @@ describe('CalendarRenderer', () => {
     it('selectedDate = moment().date(1) when no startPosition', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       // currentTitle reflects selectedDate month
       const tb = root.querySelector('.current') as HTMLButtonElement;
@@ -91,12 +82,7 @@ describe('CalendarRenderer', () => {
     it('selectedDate = moment(startPosition).date(1) when set', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ startPosition: '2026-03' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ startPosition: '2026-03' }), fakeApp());
       r.mount();
       const tb = root.querySelector('.current') as HTMLButtonElement;
       expect(tb.textContent).toContain('March');
@@ -108,9 +94,9 @@ describe('CalendarRenderer', () => {
     it('startPosition ignored when defaultView === week', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
+      const r = makeRenderer(
         root,
-        store as unknown as TaskStore,
+        store,
         resolvedConfig({ defaultView: 'week', startPosition: '2026-03' }),
         fakeApp(),
       );
@@ -124,12 +110,7 @@ describe('CalendarRenderer', () => {
     it('mount wraps everything in a span', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       expect(root.querySelector(':scope > span')).not.toBeNull();
       r.destroy();
@@ -138,12 +119,7 @@ describe('CalendarRenderer', () => {
     it('mount instantiates Toolbar (.buttons present)', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       expect(root.querySelector('.buttons')).not.toBeNull();
       r.destroy();
@@ -152,12 +128,7 @@ describe('CalendarRenderer', () => {
     it('mount subscribes to store.onUpdate — emit triggers patch + updateToolbar', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       store.setTasks([task({ due: window.moment().format('YYYY-MM-DD'), status: 'open' })]);
       store.emit();
@@ -173,12 +144,7 @@ describe('CalendarRenderer', () => {
     it('default month → grid with .gridHeads + .wrappers', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       expect(root.querySelector('.gridHeads')).not.toBeNull();
       expect(root.querySelector('.wrappers')).not.toBeNull();
@@ -188,12 +154,7 @@ describe('CalendarRenderer', () => {
     it('switchView("week") → 7 cells', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       // click weekView button
       (root.querySelector('.weekView') as HTMLButtonElement).click();
@@ -204,12 +165,7 @@ describe('CalendarRenderer', () => {
     it('switchView("list") → .tc-list-view present', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       (root.querySelector('.listView') as HTMLButtonElement).click();
       expect(root.querySelector('.tc-list-view')).not.toBeNull();
@@ -219,12 +175,7 @@ describe('CalendarRenderer', () => {
     it('switchView back to month restores month grid', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       (root.querySelector('.weekView') as HTMLButtonElement).click();
       expect(root.querySelector('.gridHeads')).toBeNull();
@@ -236,12 +187,7 @@ describe('CalendarRenderer', () => {
     it('switchView(sameType) is a no-op', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       const gridBefore = root.querySelector('.grid');
       (root.querySelector('.monthView') as HTMLButtonElement).click();
@@ -255,12 +201,7 @@ describe('CalendarRenderer', () => {
     it('onPrev in month → previous month title', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       const prevTitle = (root.querySelector('.current') as HTMLButtonElement).textContent;
       (root.querySelector('.previous') as HTMLButtonElement).click();
@@ -272,12 +213,7 @@ describe('CalendarRenderer', () => {
     it('onNext in month → next month title', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       const prevTitle = (root.querySelector('.current') as HTMLButtonElement).textContent;
       (root.querySelector('.next') as HTMLButtonElement).click();
@@ -288,9 +224,9 @@ describe('CalendarRenderer', () => {
     it('onToday resets to current month', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
+      const r = makeRenderer(
         root,
-        store as unknown as TaskStore,
+        store,
         resolvedConfig({ defaultView: 'month', startPosition: '2026-01' }),
         fakeApp(),
       );
@@ -307,12 +243,7 @@ describe('CalendarRenderer', () => {
     it('currentTitle week format = "Week N · YYYY"', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'week' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'week' }), fakeApp());
       r.mount();
       expect((root.querySelector('.current') as HTMLButtonElement).textContent).toMatch(
         /^Week \d+ · \d{4}$/,
@@ -325,12 +256,7 @@ describe('CalendarRenderer', () => {
     it('onFilterToggle toggles rootEl "filter" class', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       expect(root.classList.contains('filter')).toBe(false);
       (root.querySelector('.filter') as HTMLButtonElement).click();
@@ -343,12 +269,7 @@ describe('CalendarRenderer', () => {
     it('onOverdueHighlight toggles overdue button active', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       const btn = root.querySelector('.overdueHighlighter') as HTMLButtonElement;
       btn.click();
@@ -361,12 +282,7 @@ describe('CalendarRenderer', () => {
     it('onStatFilter(group) → rootEl gains focus<Group> class', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       // open stat popup and click a group li
       (root.querySelector('.statistic') as HTMLButtonElement).click();
@@ -378,12 +294,7 @@ describe('CalendarRenderer', () => {
     it('onStatFilter(null) → all focus* classes removed', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       (root.querySelector('.statistic') as HTMLButtonElement).click();
       const li = root.querySelector('.statisticPopup li[data-group="due"]') as HTMLElement;
@@ -396,9 +307,9 @@ describe('CalendarRenderer', () => {
     it('onStyleChange("style3") → style class swapped on rootEl', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
+      const r = makeRenderer(
         root,
-        store as unknown as TaskStore,
+        store,
         resolvedConfig({ defaultView: 'month', style: 'style1' }),
         fakeApp(),
       );
@@ -413,15 +324,10 @@ describe('CalendarRenderer', () => {
   });
 
   describe('stats computation', () => {
-    it('stats reflect store.getTasks()', () => {
+    it('stats reflect TaskQueryApi snapshots', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       const todayStr = window.moment().format('YYYY-MM-DD');
       store.setTasks([
@@ -449,12 +355,7 @@ describe('CalendarRenderer', () => {
     it('onWeekClick switches to week view + updates selectedDate', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       // find first wrapperButton and click it (triggers onWeekClick)
       const wBtn = root.querySelector('.wrapperButton') as HTMLElement;
@@ -473,12 +374,7 @@ describe('CalendarRenderer', () => {
     it('FU-20: onWeekClick-in-week-view no-rerender bug is unreachable via CalendarRenderer UI', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'week' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'week' }), fakeApp());
       r.mount();
       // Week view has no .wrapperButton elements to click, so the bug cannot manifest here.
       expect(root.querySelectorAll('.wrapperButton')).toHaveLength(0);
@@ -488,12 +384,7 @@ describe('CalendarRenderer', () => {
     it('onToggle(task) → store.toggleTask called', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig({ defaultView: 'month' }),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       const todayStr = window.moment().format('YYYY-MM-DD');
       const t = task({ due: todayStr, status: 'open' });
@@ -545,9 +436,9 @@ describe('CalendarRenderer', () => {
           it(`fresh mount with defaultView 'week' contains today exactly once, spans 7 consecutive days, starts on firstDayOfWeek=${firstDayOfWeek}`, () => {
             const store = new StubStore();
             const root = freshContainer();
-            const r = new CalendarRenderer(
+            const r = makeRenderer(
               root,
-              store as unknown as TaskStore,
+              store,
               resolvedConfig({ defaultView: 'week', firstDayOfWeek }),
               fakeApp(),
             );
@@ -567,9 +458,9 @@ describe('CalendarRenderer', () => {
           it(`switching to week view then clicking "today" contains today exactly once, spans 7 consecutive days, starts on firstDayOfWeek=${firstDayOfWeek}`, () => {
             const store = new StubStore();
             const root = freshContainer();
-            const r = new CalendarRenderer(
+            const r = makeRenderer(
               root,
-              store as unknown as TaskStore,
+              store,
               resolvedConfig({ defaultView: 'month', firstDayOfWeek }),
               fakeApp(),
             );
@@ -597,12 +488,7 @@ describe('CalendarRenderer', () => {
     it('unsubscribes from store', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       r.destroy();
       // emit after destroy should not throw and should not update DOM
@@ -612,12 +498,7 @@ describe('CalendarRenderer', () => {
     it('empties rootEl', () => {
       const store = new StubStore();
       const root = freshContainer();
-      const r = new CalendarRenderer(
-        root,
-        store as unknown as TaskStore,
-        resolvedConfig(),
-        fakeApp(),
-      );
+      const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
       r.destroy();
       expect(root.children).toHaveLength(0);

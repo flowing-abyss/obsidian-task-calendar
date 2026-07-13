@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
-import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
-import { freshContainer, makeStubStore, task, useRealMoment } from './helpers';
+import {
+  freshContainer,
+  makeCenterPanelForTest,
+  makeStubStore,
+  task,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -21,7 +26,7 @@ function makeCenter(
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, s, save);
   const store = makeStubStore(tasks) as unknown as TaskStore;
-  const panel = new CenterPanel(state, store, null as never, s, tm);
+  const panel = makeCenterPanelForTest(state, store, null as never, s, tm);
   const el = freshContainer();
   panel.mount(el);
   return { el, state, tm };

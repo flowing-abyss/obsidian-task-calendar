@@ -35,10 +35,10 @@ export class LeftPanel {
     private settings: CalendarSettings,
     private tagManager: TagManager,
     private app: App,
+    private queries: TaskQueryApi,
     private onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
     private projectManager: ProjectManager | null = null,
-    private queries: TaskQueryApi = store.taskQueries,
   ) {}
 
   mount(container: HTMLElement): void {

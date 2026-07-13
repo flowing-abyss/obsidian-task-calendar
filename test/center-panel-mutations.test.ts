@@ -8,7 +8,13 @@ import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
-import { createAppWithFiles, makeStubStore, task, useRealMoment } from './helpers';
+import {
+  createAppWithFiles,
+  makeCenterPanelForTest,
+  makeStubStore,
+  task,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -32,7 +38,7 @@ async function makePanel(
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
   const store = makeStubStore(extraTasks, app) as unknown as TaskStore;
-  const panel = new CenterPanel(state, store, app, DEFAULT_SETTINGS, tm);
+  const panel = makeCenterPanelForTest(state, store, app, DEFAULT_SETTINGS, tm);
   return { panel, app };
 }
 

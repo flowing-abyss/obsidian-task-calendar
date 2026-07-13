@@ -1,6 +1,5 @@
 export type {
   TaskIndexEvent,
-  TaskQuery,
   TaskQueryApi,
   TaskResolution,
 } from './application/TaskApplicationApi';

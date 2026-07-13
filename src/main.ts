@@ -35,13 +35,8 @@ export default class TaskCalendarPlugin extends Plugin {
     this.registerView(
       PANEL_VIEW_TYPE,
       (leaf) =>
-        new PanelView(
-          leaf,
-          this.store,
-          this.settings,
-          this.tagManager,
-          () => this.saveSettings(),
-          this.queries,
+        new PanelView(leaf, this.store, this.settings, this.tagManager, this.queries, () =>
+          this.saveSettings(),
         ),
     );
 

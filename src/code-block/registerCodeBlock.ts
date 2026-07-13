@@ -51,7 +51,7 @@ export function registerCodeBlock(
   plugin: Plugin,
   store: TaskStore,
   settings: CalendarSettings,
-  queries: TaskQueryApi = store.taskQueries,
+  queries: TaskQueryApi,
 ): void {
   plugin.registerMarkdownCodeBlockProcessor('task-calendar', (source, el, ctx) => {
     let params: CodeBlockParams;

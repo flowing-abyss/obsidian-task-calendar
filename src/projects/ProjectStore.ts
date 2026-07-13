@@ -34,6 +34,11 @@ function wasMarkdown(path: string): boolean {
   return dot >= 0 && name.slice(dot + 1) === 'md';
 }
 
+function metadataMayContainTasks(data: string, cache: CachedMetadata): boolean {
+  if (cache.listItems?.some((item) => item.task !== undefined)) return true;
+  return data.split('\n').some((line) => /^[\s>]*- \[.\]/u.test(line));
+}
+
 /**
  * Enumerates and caches project notes (markdown files matching the membership
  * query), computing per-note task stats. Registers its own vault/metadata
@@ -50,6 +55,7 @@ export class ProjectStore {
   private debounce = 0;
   private pendingPaths = new Set<string>();
   private pendingFull = false;
+  private pendingCreates = new Set<string>();
 
   constructor(
     private app: App,
@@ -61,21 +67,44 @@ export class ProjectStore {
     this.recomputeAll();
     // A single note edit re-evaluates only that note (O(1) note + its tasks).
     // Create/delete/rename change the membership set → full rescan (rare events).
-    const metadataRef = this.app.metadataCache.on('changed', (file) => {
+    const metadataRef = this.app.metadataCache.on('changed', (file, data, cache) => {
       if (file.extension === 'md' && this.app.vault.getAbstractFileByPath(file.path) === file) {
+        if (this.pendingCreates.has(file.path)) {
+          if (!metadataMayContainTasks(data, cache) && !this.hasIndexedTasks(file.path)) {
+            this.pendingCreates.delete(file.path);
+            this.settlePath(file.path);
+            return;
+          }
+        }
         this.enqueueUpdate(file.path);
       }
     });
     this.eventUnsubs.push(() => this.app.metadataCache.offref(metadataRef));
     const createRef = this.app.vault.on('create', (file) => {
-      if (isMarkdownFile(file)) this.enqueueFull();
+      if (isMarkdownFile(file)) this.pendingCreates.add(file.path);
     });
     const deleteRef = this.app.vault.on('delete', (file) => {
-      if (isMarkdownFile(file)) this.enqueueFull();
+      if (!isMarkdownFile(file)) return;
+      this.pendingCreates.delete(file.path);
+      const project = this.byPath.get(file.path);
+      if (project?.stats.total === 0 && !this.hasIndexedTasks(file.path)) {
+        this.settleDeletedPath(file.path);
+      } else {
+        this.enqueueFull();
+      }
     });
     const renameRef = this.app.vault.on('rename', (file, oldPath) => {
       if (file instanceof TFile && (file.extension === 'md' || wasMarkdown(oldPath))) {
-        this.enqueueFull();
+        this.pendingCreates.delete(oldPath);
+        const project = this.byPath.get(oldPath);
+        if (
+          (project === undefined || project.stats.total === 0) &&
+          !this.hasIndexedTasks(oldPath, file.path)
+        ) {
+          this.settleRenamedPath(oldPath, file.path);
+        } else {
+          this.enqueueFull();
+        }
       }
     });
     this.eventUnsubs.push(
@@ -88,7 +117,10 @@ export class ProjectStore {
 
   private onTaskIndexEvent(event: TaskIndexEvent): void {
     if (event.type === 'changed') {
-      for (const path of event.files) this.scheduleUpdate(path);
+      for (const path of event.files) {
+        this.pendingCreates.delete(path);
+        this.scheduleUpdate(path);
+      }
     } else if (event.type === 'initialized') {
       this.scheduleFull();
     } else {
@@ -120,6 +152,7 @@ export class ProjectStore {
   }
 
   private flush(): void {
+    const before = this.cacheSignature();
     if (this.pendingFull) {
       this.recomputeAll();
     } else if (this.pendingPaths.size > 0) {
@@ -128,6 +161,41 @@ export class ProjectStore {
     }
     this.pendingFull = false;
     this.pendingPaths.clear();
+    this.notifyIfChanged(before);
+  }
+
+  private hasIndexedTasks(...paths: string[]): boolean {
+    return paths.some((path) => this.queries.list({ filePath: path }).length > 0);
+  }
+
+  private settlePath(path: string): void {
+    const before = this.cacheSignature();
+    this.updateOne(path);
+    this.rebuildCache();
+    this.notifyIfChanged(before);
+  }
+
+  private settleDeletedPath(path: string): void {
+    const before = this.cacheSignature();
+    this.byPath.delete(path);
+    this.rebuildCache();
+    this.notifyIfChanged(before);
+  }
+
+  private settleRenamedPath(oldPath: string, newPath: string): void {
+    const before = this.cacheSignature();
+    this.byPath.delete(oldPath);
+    this.updateOne(newPath);
+    this.rebuildCache();
+    this.notifyIfChanged(before);
+  }
+
+  private cacheSignature(): string {
+    return JSON.stringify(this.cache);
+  }
+
+  private notifyIfChanged(before: string): void {
+    if (this.cacheSignature() === before) return;
     for (const cb of this.listeners) cb();
   }
 
@@ -223,6 +291,7 @@ export class ProjectStore {
     this.queryUnsub = undefined;
     for (const unsubscribe of this.eventUnsubs) unsubscribe();
     this.eventUnsubs = [];
+    this.pendingCreates.clear();
     this.listeners = [];
   }
 }

@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppState } from '../src/app/AppState';
 import type { TaskIndexEvent, TaskQueryApi, TaskResolution, TaskSnapshot } from '../src/tasks';
 import { legacyTaskView, rebuildLegacyTaskStack } from '../src/tasks/compat/legacyTaskView';
+import type { TaskRef } from '../src/tasks/domain/types';
 
 const captured = vi.hoisted(() => ({
   state: null as AppState | null,
-  acknowledgeOwnWrite: undefined as (() => void) | undefined,
+  acknowledgeOwnWrite: undefined as ((ref?: TaskRef) => void) | undefined,
 }));
 
 vi.mock('../src/panels/RightPanel', () => ({
@@ -15,7 +16,7 @@ vi.mock('../src/panels/RightPanel', () => ({
     state: AppState,
     _app: unknown,
     _settings: unknown,
-    acknowledgeOwnWrite?: () => void,
+    acknowledgeOwnWrite?: (ref?: TaskRef) => void,
   ) {
     captured.state = state;
     captured.acknowledgeOwnWrite = acknowledgeOwnWrite;
@@ -104,6 +105,22 @@ describe('revision-aware TaskModal refresh', () => {
       ref: current.ref,
     });
     expect(activeDocument.body.querySelector('.tc-task-selection-stale')).toBeNull();
+    modal.close();
+  });
+
+  it('rejects a late write acknowledgement after selection switched away from its root', () => {
+    const first = snapshot('first', 'First');
+    const second = snapshot('second', 'Second');
+    const external = snapshot('external', 'External');
+    const h = queryHarness({ type: 'conflict', current: external });
+    const modal = new TaskModal({} as App, undefined, undefined, h.queries);
+    modal.open(legacyTaskView(first));
+    captured.state?.set('taskStack', [legacyTaskView(second)]);
+    captured.acknowledgeOwnWrite?.(first.ref);
+    captured.state?.set('taskStack', [legacyTaskView(first)]);
+    h.changed();
+    expect(captured.state?.get('taskStack')[0]).toMatchObject({ text: 'First' });
+    expect(activeDocument.body.querySelector('.tc-task-selection-stale')).not.toBeNull();
     modal.close();
   });
 

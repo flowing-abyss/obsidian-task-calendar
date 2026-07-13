@@ -179,10 +179,13 @@ export class TaskModal {
   }
 
   private acknowledgeOwnWrite(taskOrRef?: Task | SubTask | TaskRef): void {
-    const root = taskOrRef ?? this.innerState?.get('taskStack')[0];
-    let ref: TaskRef | undefined;
-    if (root) ref = 'revision' in root ? root : taskRefOf(root);
-    this.ownedWriteRef = ref ? { ...ref } : undefined;
+    const selected = this.innerState?.get('taskStack')[0];
+    const selectedRef = selected ? taskRefOf(selected) : undefined;
+    let suppliedRef: TaskRef | undefined;
+    if (taskOrRef) suppliedRef = 'revision' in taskOrRef ? taskOrRef : taskRefOf(taskOrRef);
+    if (suppliedRef && (!selectedRef || !this.sameRef(suppliedRef, selectedRef))) return;
+    const acknowledged = suppliedRef ?? selectedRef;
+    this.ownedWriteRef = acknowledged ? { ...acknowledged } : undefined;
   }
 
   private sameRef(left: TaskRef, right: TaskRef): boolean {

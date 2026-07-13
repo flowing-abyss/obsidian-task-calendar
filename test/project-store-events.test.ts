@@ -1,4 +1,4 @@
-import { TFile } from 'obsidian';
+import { TFile, type CachedMetadata } from 'obsidian';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProjectStore } from '../src/projects/ProjectStore';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
@@ -28,28 +28,41 @@ function task(status: TaskSnapshot['status']): TaskSnapshot {
   };
 }
 
+function taskAt(path: string, status: TaskSnapshot['status']): TaskSnapshot {
+  const snapshot = task(status);
+  return {
+    ...snapshot,
+    ref: { ...snapshot.ref, filePath: path },
+    source: { ...snapshot.source, filePath: path },
+  };
+}
+
 function harness() {
   const file = tfile('Projects/A.md');
-  const metadataChanged: Array<(file: TFile) => void> = [];
+  let files = [file];
+  const metadataChanged: Array<(file: TFile, data: string, cache: CachedMetadata) => void> = [];
   const vaultHandlers = new Map<string, Array<() => void>>();
   const refs = new Set<object>();
   const offref = vi.fn((ref: object) => refs.delete(ref));
   const on = (event: string, listener: (...args: never[]) => void): object => {
     const ref = { event, listener };
     refs.add(ref);
-    if (event === 'changed') metadataChanged.push(listener as unknown as (file: TFile) => void);
-    else {
+    if (event === 'changed') {
+      metadataChanged.push(
+        listener as unknown as (file: TFile, data: string, cache: CachedMetadata) => void,
+      );
+    } else {
       const handlers = vaultHandlers.get(event) ?? [];
       handlers.push(listener as unknown as () => void);
       vaultHandlers.set(event, handlers);
     }
     return ref;
   };
-  const getMarkdownFiles = vi.fn(() => [file]);
+  const getMarkdownFiles = vi.fn(() => files);
   const app = {
     vault: {
       getMarkdownFiles,
-      getAbstractFileByPath: (path: string) => (path === file.path ? file : null),
+      getAbstractFileByPath: (path: string) => files.find((candidate) => candidate.path === path),
       on,
       offref,
     },
@@ -63,7 +76,10 @@ function harness() {
   let indexListener: ((event: TaskIndexEvent) => void) | undefined;
   const indexUnsub = vi.fn();
   const queries: TaskQueryApi = {
-    list: () => snapshots,
+    list: (query) =>
+      snapshots.filter(
+        (snapshot) => query?.filePath === undefined || snapshot.ref.filePath === query.filePath,
+      ),
     forCalendarDates: () => [],
     resolve: vi.fn(),
     subscribe: (listener) => {
@@ -74,7 +90,8 @@ function harness() {
   return {
     app: app as never,
     queries,
-    metadata: (changedFile: TFile = file) => metadataChanged[0]?.(changedFile),
+    metadata: (changedFile: TFile = file, data = '', cache = { listItems: [] } as CachedMetadata) =>
+      metadataChanged[0]?.(changedFile, data, cache),
     vault: (
       event: 'create' | 'delete' | 'rename',
       changedFile: TFile = file,
@@ -88,6 +105,10 @@ function harness() {
     setTasks: (next: readonly TaskSnapshot[]) => {
       snapshots = next;
     },
+    setFiles: (next: TFile[]) => {
+      files = next;
+    },
+    file,
     indexUnsub,
     offref,
     getMarkdownFiles,
@@ -97,6 +118,82 @@ function harness() {
 afterEach(() => vi.useRealTimers());
 
 describe('ProjectStore event convergence', () => {
+  it('waits for TaskIndex when task metadata arrives before a created file is indexed', () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const store = new ProjectStore(h.app, h.queries, DEFAULT_SETTINGS);
+    store.initialize();
+    const listener = vi.fn();
+    store.onUpdate(listener);
+    const created = tfile('Projects/B.md');
+    h.setFiles([h.file, created]);
+    h.vault('create', created);
+    h.metadata(created, '- [ ] New task', {
+      listItems: [
+        {
+          task: ' ',
+          parent: -1,
+          position: {
+            start: { line: 0, col: 0, offset: 0 },
+            end: { line: 0, col: 14, offset: 14 },
+          },
+        },
+      ],
+    } as CachedMetadata);
+
+    expect(store.get(created.path)).toBeUndefined();
+    expect(listener).not.toHaveBeenCalled();
+
+    h.setTasks([task('open'), taskAt(created.path, 'open')]);
+    h.index({ type: 'changed', files: [created.path] });
+    vi.advanceTimersByTime(150);
+    expect(store.get(created.path)?.stats.total).toBe(1);
+    expect(listener).toHaveBeenCalledOnce();
+    store.destroy();
+  });
+
+  it.each(['create', 'delete', 'rename'] as const)(
+    'settles an empty project %s without flushing unrelated task work or waiting for an index event',
+    (event) => {
+      vi.useFakeTimers();
+      const h = harness();
+      const oldProject = tfile('Projects/B.md');
+      if (event !== 'create') h.setFiles([h.file, oldProject]);
+      const store = new ProjectStore(h.app, h.queries, DEFAULT_SETTINGS);
+      store.initialize();
+      const listener = vi.fn();
+      store.onUpdate(listener);
+      h.setTasks([task('done')]);
+      h.metadata(h.file);
+
+      if (event === 'create') {
+        const created = tfile('Projects/B.md');
+        h.setFiles([h.file, created]);
+        h.vault('create', created);
+        h.metadata(created);
+      } else if (event === 'delete') {
+        h.setFiles([h.file]);
+        h.vault('delete', oldProject);
+      } else {
+        const renamed = tfile('Projects/C.md');
+        h.setFiles([h.file, renamed]);
+        h.vault('rename', renamed, oldProject.path);
+      }
+
+      expect(store.get('Projects/A.md')?.stats.done).toBe(0);
+      if (event === 'create') expect(store.get('Projects/B.md')).toBeDefined();
+      else expect(store.get('Projects/B.md')).toBeUndefined();
+      if (event === 'rename') expect(store.get('Projects/C.md')).toBeDefined();
+      expect(listener).toHaveBeenCalledOnce();
+
+      h.index({ type: 'changed', files: ['Projects/A.md'] });
+      vi.advanceTimersByTime(150);
+      expect(store.get('Projects/A.md')?.stats.done).toBe(1);
+      expect(listener).toHaveBeenCalledTimes(2);
+      store.destroy();
+    },
+  );
+
   it.each(['metadata-first', 'index-first'] as const)(
     'coalesces %s delivery and publishes once from consistent index data',
     (order) => {
@@ -169,11 +266,15 @@ describe('ProjectStore event convergence', () => {
     (event) => {
       vi.useFakeTimers();
       const h = harness();
+      h.setFiles([]);
+      h.setTasks([]);
       const store = new ProjectStore(h.app, h.queries, DEFAULT_SETTINGS);
       store.initialize();
       const listener = vi.fn();
       store.onUpdate(listener);
-      h.vault(event);
+      h.setFiles([h.file]);
+      h.setTasks([task('open')]);
+      h.vault(event, h.file, 'Old.md');
       vi.advanceTimersByTime(1_000);
       expect(listener).not.toHaveBeenCalled();
       if (event === 'create') h.index({ type: 'changed', files: ['Projects/A.md'] });

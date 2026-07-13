@@ -35,8 +35,8 @@ export class PanelView extends ItemView {
     private store: TaskStore,
     private settings: CalendarSettings,
     private tagManager: TagManager,
+    private queries: TaskQueryApi,
     private onSaveSettings: () => Promise<void> = async () => {},
-    private queries: TaskQueryApi = store.taskQueries,
   ) {
     super(leaf);
   }
@@ -77,10 +77,10 @@ export class PanelView extends ItemView {
       this.settings,
       this.tagManager,
       this.app,
+      this.queries,
       this.onSaveSettings,
       projectStore,
       projectManager,
-      this.queries,
     );
     this.center = new CenterPanel(
       this.state,
@@ -88,10 +88,10 @@ export class PanelView extends ItemView {
       this.app,
       this.settings,
       this.tagManager,
+      this.queries,
       this.onSaveSettings,
       projectStore,
       projectManager,
-      this.queries,
     );
     this.right = new RightPanel(this.state, this.app, this.settings, (root) =>
       this.acknowledgeOwnWrite(root),
@@ -254,10 +254,13 @@ export class PanelView extends ItemView {
   }
 
   private acknowledgeOwnWrite(taskOrRef?: Task | SubTask | TaskRef): void {
-    const root = taskOrRef ?? this.state.get('taskStack')[0];
-    let ref: TaskRef | undefined;
-    if (root) ref = 'revision' in root ? root : taskRefOf(root);
-    this.ownedWriteRef = ref ? { ...ref } : undefined;
+    const selected = this.state.get('taskStack')[0];
+    const selectedRef = selected ? taskRefOf(selected) : undefined;
+    let suppliedRef: TaskRef | undefined;
+    if (taskOrRef) suppliedRef = 'revision' in taskOrRef ? taskOrRef : taskRefOf(taskOrRef);
+    if (suppliedRef && (!selectedRef || !this.sameRef(suppliedRef, selectedRef))) return;
+    const acknowledged = suppliedRef ?? selectedRef;
+    this.ownedWriteRef = acknowledged ? { ...acknowledged } : undefined;
   }
 
   private sameRef(left: TaskRef, right: TaskRef): boolean {

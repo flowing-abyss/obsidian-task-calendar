@@ -6,7 +6,13 @@ import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
-import { freshContainer, makeStubStore, task, useRealMoment } from './helpers';
+import {
+  freshContainer,
+  makeLeftPanelForTest,
+  makeStubStore,
+  task,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -26,7 +32,7 @@ function makePanel(
   };
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, merged, save);
-  const panel = new LeftPanel(state, store, merged, tm, null as never);
+  const panel = makeLeftPanelForTest(state, store, merged, tm, null as never);
   const el = freshContainer();
   panel.mount(el);
   return { panel, state, el, tm };
@@ -123,7 +129,7 @@ describe('LeftPanel smart lists', () => {
     const store = makeStubStore([]) as TaskStore;
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     const active = el.querySelector('.tc-left-item.is-active .tc-left-label');
@@ -195,7 +201,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
     };
     const tm = new TagManager(null as never, settings, save);
-    const panel = new LeftPanel(state, store, settings, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.querySelector('.tc-tag-group-header')?.classList.contains('is-active')).toBe(true);
@@ -230,7 +236,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     };
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, settings, save);
-    const panel = new LeftPanel(state, store, settings, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     // auto-expanded due to active child
@@ -249,7 +255,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     };
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, settings, save);
-    const panel = new LeftPanel(state, store, settings, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.querySelector('.tc-tag-group-children')).not.toBeNull();
@@ -265,7 +271,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     };
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, settings, save);
-    const panel = new LeftPanel(state, store, settings, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     // Collapse explicitly
@@ -308,7 +314,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     };
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, settings, save);
-    const panel = new LeftPanel(state, store, settings, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, settings, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.querySelector('.tc-tag-child.is-active .tc-left-label')?.textContent).toBe('dev');
@@ -422,7 +428,7 @@ describe('LeftPanel lifecycle', () => {
     const store = makeStubStore([]) as TaskStore;
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     state.set('selectedList', 'inbox');
@@ -435,7 +441,7 @@ describe('LeftPanel lifecycle', () => {
     const store = makeStubStore([]) as TaskStore;
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.children.length).toBeGreaterThan(0);
@@ -457,7 +463,7 @@ describe('LeftPanel lifecycle', () => {
     const store = makeStubStore([]) as TaskStore;
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     panel.destroy();
@@ -473,7 +479,7 @@ describe('LeftPanel lifecycle', () => {
     const store = makeStubStore([]) as TaskStore;
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
-    const panel = new LeftPanel(state, store, DEFAULT_SETTINGS, tm, null as never);
+    const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
     const el = freshContainer();
     panel.mount(el);
     expect(el.children).toHaveLength(0);
@@ -614,7 +620,7 @@ describe('LeftPanel collapsible sections, projects, and tags +', () => {
       onUpdate: () => () => {},
     } as never;
     const projectManager = { create: vi.fn().mockResolvedValue(null) } as never;
-    const panel = new LeftPanel(
+    const panel = makeLeftPanelForTest(
       state,
       store,
       merged,

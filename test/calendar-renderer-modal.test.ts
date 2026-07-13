@@ -47,14 +47,6 @@ class StubStore {
       return () => this.listeners.delete(listener);
     },
   );
-  getTasks(): Task[] {
-    return this.tasks;
-  }
-  onUpdate(cb: (p: { changedFile?: string }) => void): () => void {
-    const listener = (): void => cb({});
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
   emit(changedFile?: string): void {
     for (const listener of this.listeners) {
       listener({ type: 'changed', files: changedFile ? [changedFile] : [] });
@@ -71,6 +63,15 @@ function fakeApp(): App {
   return {} as App;
 }
 
+function makeRenderer(
+  root: HTMLElement,
+  store: StubStore,
+  config: ReturnType<typeof resolvedConfig>,
+  app: App,
+): CalendarRenderer {
+  return new CalendarRenderer(root, store as unknown as TaskStore, config, app, store.taskQueries);
+}
+
 describe('CalendarRenderer TaskInputModal submit', () => {
   let store: StubStore;
   let root: HTMLElement;
@@ -80,12 +81,7 @@ describe('CalendarRenderer TaskInputModal submit', () => {
     vi.useFakeTimers();
     store = new StubStore();
     root = freshContainer();
-    renderer = new CalendarRenderer(
-      root,
-      store as unknown as TaskStore,
-      resolvedConfig({ defaultView: 'month' }),
-      fakeApp(),
-    );
+    renderer = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
     renderer.mount();
   });
 

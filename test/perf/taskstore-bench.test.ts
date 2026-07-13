@@ -14,6 +14,8 @@ import { App as ObsidianApp } from 'obsidian';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../src/settings/defaults';
 import { TaskStore } from '../../src/store/TaskStore';
+import type { LocalDate } from '../../src/tasks';
+import { readStoreTasks, taskQueriesOf } from '../helpers';
 
 beforeEach(() => {
   (window as unknown as { moment: unknown }).moment = moment;
@@ -185,23 +187,23 @@ async function runScenario(fileCount: number, tasksPerFile: number): Promise<Sce
   // Build reusable store for query benchmarks
   const store = new TaskStore(app, DEFAULT_SETTINGS);
   await store.initialize();
-  const totalTasks = store.getTasks().length;
+  const totalTasks = readStoreTasks(store).length;
 
   // Query benchmarks (repeated for stable avg)
   const queryAllMs = await avgMs(() => {
-    store.getTasks();
+    readStoreTasks(store);
   }, QUERY_RUNS);
   const queryTagMs = await avgMs(() => {
-    store.getTasks({ tag: '#tag1' });
+    readStoreTasks(store, { tag: '#tag1' });
   }, QUERY_RUNS);
   const queryListDateMs = await avgMs(() => {
-    store.getTasks({ dateRange: { from: '2026-01-01', to: '2026-12-31' } });
+    readStoreTasks(store, { dateRange: { from: '2026-01-01', to: '2026-12-31' } });
   }, QUERY_RUNS);
   const queryCalendarDateMs = await avgMs(() => {
-    store.getTasksForDateRange(CALENDAR_DATES);
+    taskQueriesOf(store).forCalendarDates(CALENDAR_DATES as LocalDate[]);
   }, QUERY_RUNS);
   const queryFileMs = await avgMs(() => {
-    store.getTasks({ filePath: 'file-0.md' });
+    readStoreTasks(store, { filePath: 'file-0.md' });
   }, QUERY_RUNS);
 
   store.destroy();
@@ -223,13 +225,13 @@ function printMetrics(label: string, metrics: ScenarioMetrics): void {
   console.log(`\n📊 ${label}`);
   console.log(`   Total tasks:                ${metrics.totalTasks}`);
   console.log(`   Initial index:              ${metrics.initialIndexMs.toFixed(3)} ms`);
-  console.log(`   getTasks() all:             ${metrics.queryAllMs.toFixed(3)} ms (30 avg)`);
-  console.log(`   getTasks() by tag:          ${metrics.queryByTagMs.toFixed(3)} ms (30 avg)`);
-  console.log(`   getTasks() list date:       ${metrics.queryByListDateMs.toFixed(3)} ms (30 avg)`);
+  console.log(`   query list all:             ${metrics.queryAllMs.toFixed(3)} ms (30 avg)`);
+  console.log(`   query list by tag:          ${metrics.queryByTagMs.toFixed(3)} ms (30 avg)`);
+  console.log(`   query list date range:      ${metrics.queryByListDateMs.toFixed(3)} ms (30 avg)`);
   console.log(
     `   calendar date union:        ${metrics.queryByCalendarDateMs.toFixed(3)} ms (30 avg)`,
   );
-  console.log(`   getTasks() filePath:        ${metrics.queryByFileMs.toFixed(3)} ms (30 avg)`);
+  console.log(`   query list filePath:        ${metrics.queryByFileMs.toFixed(3)} ms (30 avg)`);
   console.log(`   JSON: ${JSON.stringify(metrics)}`);
 }
 

@@ -36,7 +36,7 @@ export class CalendarRenderer {
     private store: TaskStore,
     private config: ResolvedConfig,
     private app: App,
-    private queries: TaskQueryApi = store.taskQueries,
+    private queries: TaskQueryApi,
   ) {
     this.activeViewType = config.defaultView;
     this.selectedDate = window.moment().date(1);

@@ -2,14 +2,23 @@
 import moment from 'moment';
 import { App as ObsidianApp, Platform, TFile, type CachedMetadata } from 'obsidian';
 import { afterEach, beforeEach, vi } from 'vitest';
+import type { AppState } from '../src/app/AppState';
 import { locatorOf } from '../src/mutation/TaskLocator';
 import { TaskMutationService } from '../src/mutation/TaskMutationService';
+import { CenterPanel } from '../src/panels/CenterPanel';
+import { LeftPanel } from '../src/panels/LeftPanel';
 import type { Task } from '../src/parser/types';
+import type { ProjectManager } from '../src/projects/ProjectManager';
+import type { ProjectStore } from '../src/projects/ProjectStore';
 import { buildDefaultTaskStatuses, DEFAULT_VIEW_CONFIG } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
-import type { ResolvedConfig } from '../src/settings/types';
+import type { CalendarSettings, ResolvedConfig } from '../src/settings/types';
 import { StatusRegistry } from '../src/status/StatusRegistry';
+import type { TaskStore } from '../src/store/TaskStore';
+import type { TagManager } from '../src/tags/TagManager';
 import type { LocalDate, TaskIndexEvent, TaskQueryApi, TaskSnapshot } from '../src/tasks';
+import type { TaskQuery } from '../src/tasks/application/TaskApplicationApi';
+import { legacyTaskViews } from '../src/tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskPriority } from '../src/tasks/domain/types';
 
@@ -84,6 +93,97 @@ export function queryApiForTasks(
     },
     subscribe: onSubscribe ?? (() => () => {}),
   };
+}
+
+/** Test-only access to the independently queryable index injected into the command-only store. */
+export function taskQueriesOf(store: TaskStore): TaskQueryApi {
+  const source = store as unknown as {
+    taskIndex?: TaskQueryApi;
+    taskQueries?: TaskQueryApi;
+  };
+  const queries = source.taskIndex ?? source.taskQueries;
+  if (!queries) throw new Error('Test store has no TaskQueryApi');
+  return queries;
+}
+
+interface TestTaskFilter {
+  dateRange?: { from: string; to: string };
+  status?: Array<Task['status']>;
+  filePath?: string;
+  tag?: string;
+  folder?: string;
+}
+
+/** Legacy view projection for command tests that need a mutation target from the query index. */
+export function readStoreTasks(store: TaskStore, filter?: TestTaskFilter): Task[] {
+  const query: TaskQuery | undefined = filter
+    ? {
+        ...(filter.filePath !== undefined && { filePath: filter.filePath }),
+        ...(filter.folder !== undefined && { folder: filter.folder }),
+        ...(filter.tag !== undefined && { tag: filter.tag }),
+        ...(filter.status !== undefined && { statuses: filter.status }),
+        ...(filter.dateRange !== undefined && {
+          dateRange: {
+            from: filter.dateRange.from as LocalDate,
+            to: filter.dateRange.to as LocalDate,
+          },
+        }),
+      }
+    : undefined;
+  return legacyTaskViews(taskQueriesOf(store).list(query));
+}
+
+export function emitStoreQueryEvent(store: TaskStore, event: TaskIndexEvent): void {
+  const queries = taskQueriesOf(store) as unknown as {
+    listeners: Array<(value: TaskIndexEvent) => void>;
+  };
+  for (const listener of [...queries.listeners]) listener(event);
+}
+
+export function makeCenterPanelForTest(
+  state: AppState,
+  store: TaskStore,
+  app: ObsidianApp,
+  settings: CalendarSettings,
+  tagManager: TagManager,
+  onSaveSettings: () => Promise<void> = async () => {},
+  projectStore: ProjectStore | null = null,
+  projectManager: ProjectManager | null = null,
+): CenterPanel {
+  return new CenterPanel(
+    state,
+    store,
+    app,
+    settings,
+    tagManager,
+    taskQueriesOf(store),
+    onSaveSettings,
+    projectStore,
+    projectManager,
+  );
+}
+
+export function makeLeftPanelForTest(
+  state: AppState,
+  store: TaskStore,
+  settings: CalendarSettings,
+  tagManager: TagManager,
+  app: ObsidianApp,
+  onSaveSettings: () => Promise<void> = async () => {},
+  projectStore: ProjectStore | null = null,
+  projectManager: ProjectManager | null = null,
+): LeftPanel {
+  return new LeftPanel(
+    state,
+    store,
+    settings,
+    tagManager,
+    app,
+    taskQueriesOf(store),
+    onSaveSettings,
+    projectStore,
+    projectManager,
+  );
 }
 
 /** Canonical semantic status catalog for parser/codec compatibility tests. */
@@ -274,26 +374,22 @@ export function freshContainer(): HTMLElement {
 }
 
 /**
- * Minimal TaskStore stub exposing getTasks() (with optional tag/status filtering)
- * for panels that read tasks. Cast to TaskStore via `as unknown as TaskStore`.
+ * Minimal command-only TaskStore stub paired with a detached TaskQueryApi.
  *
  * When `app` is supplied, `setPriority`/`setTaskStatus` delegate to a real
  * `TaskMutationService` so write-path tests (e.g. CenterPanel.setPriority) can
  * assert on actual file content, mirroring TaskStore's real behavior.
  */
-export function makeStubStore(tasks: Task[], app?: ObsidianApp): unknown {
+export function makeStubStore(
+  tasks: Task[],
+  app?: ObsidianApp,
+): TaskStore & { taskQueries: TaskQueryApi } {
   const registry = new StatusRegistry(buildDefaultTaskStatuses());
   const mutations = app
     ? new TaskMutationService(app, () => registry, canonicalStatusCatalog)
     : undefined;
   const store = {
     statusRegistry: registry,
-    getTasks: (filter?: { tag?: string; status?: string[] }): Task[] => {
-      let all = tasks;
-      if (filter?.tag) all = all.filter((t) => t.rawText.includes(filter.tag!));
-      if (filter?.status?.length) all = all.filter((t) => filter.status!.includes(t.status));
-      return all;
-    },
     toggleTask: async (t: Task): Promise<void> => {
       if (!mutations) return;
       const today = moment().format('YYYY-MM-DD');
@@ -313,7 +409,10 @@ export function makeStubStore(tasks: Task[], app?: ObsidianApp): unknown {
       await mutations.setStatusChar(locatorOf(t), char, today);
     },
   };
-  return { ...store, taskQueries: queryApiForTasks(() => store.getTasks()) };
+  return {
+    ...store,
+    taskQueries: queryApiForTasks(() => tasks),
+  } as unknown as TaskStore & { taskQueries: TaskQueryApi };
 }
 
 /**

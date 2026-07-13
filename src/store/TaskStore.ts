@@ -1,31 +1,19 @@
 import { Notice, TFile, type App } from 'obsidian';
 import { locatorOf, TaskMutationService } from '../mutation';
-import type { Task, TaskFilter } from '../parser/types';
+import type { Task } from '../parser/types';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
-import type { LocalDate, TaskIndexEvent, TaskPriority, TaskQuery, TaskQueryApi } from '../tasks';
-import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
+import type { TaskPriority } from '../tasks';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import { TaskIndex } from '../tasks/infrastructure/TaskIndex';
 
-interface StoreUpdateEvent {
-  changedFiles: string[];
-}
-
-type UpdateCallback = (event: StoreUpdateEvent) => void;
-
 export class TaskStore {
-  private listeners: UpdateCallback[] = [];
-  private pendingFiles = new Set<string>();
-  private flushScheduled = false;
   private resolver: DailyNoteResolver;
   private mutations: TaskMutationService;
   private statusCatalog: StatusCatalog;
   private readonly taskIndex: TaskIndex;
-  private readonly queries: TaskQueryApi;
-  private readonly unsubscribeIndex: () => void;
   statusRegistry: StatusRegistry;
 
   constructor(
@@ -50,15 +38,6 @@ export class TaskStore {
           globalTaskFilter: settings.desktop.globalTaskFilter,
         }),
       });
-    this.queries = this.taskIndex;
-    this.unsubscribeIndex = this.queries.subscribe((event: TaskIndexEvent) => {
-      if (event.type === 'initialized') this.notify({ changedFile: undefined });
-      else if (event.type === 'changed') {
-        for (const file of event.files) this.pendingFiles.add(file);
-        this.notify({ changedFile: undefined });
-      } else if (event.type === 'renamed') this.notify({ changedFile: event.newPath });
-      else this.notify({ changedFile: event.path });
-    });
   }
 
   rebuildStatusRegistry(): void {
@@ -67,38 +46,8 @@ export class TaskStore {
     this.taskIndex.setStatusCatalog(this.statusCatalog);
   }
 
-  get taskQueries(): TaskQueryApi {
-    return this.queries;
-  }
-
   async initialize(): Promise<void> {
     await this.taskIndex.initialize();
-  }
-
-  getTasks(filter?: TaskFilter): Task[] {
-    const query: TaskQuery | undefined = filter
-      ? {
-          ...(filter.filePath !== undefined && { filePath: filter.filePath }),
-          ...(filter.folder !== undefined && { folder: filter.folder }),
-          ...(filter.tag !== undefined && { tag: filter.tag }),
-          ...(filter.status !== undefined && { statuses: filter.status }),
-          ...(filter.dateRange !== undefined && {
-            dateRange: {
-              from: filter.dateRange.from as LocalDate,
-              to: filter.dateRange.to as LocalDate,
-            },
-          }),
-        }
-      : undefined;
-    return legacyTaskViews(this.queries.list(query));
-  }
-
-  getTasksForDate(date: string): Task[] {
-    return legacyTaskViews(this.queries.forCalendarDates([date as LocalDate]));
-  }
-
-  getTasksForDateRange(dates: string[]): Task[] {
-    return legacyTaskViews(this.queries.forCalendarDates(dates as LocalDate[]));
   }
 
   async toggleTask(task: Task): Promise<void> {
@@ -159,29 +108,7 @@ export class TaskStore {
     await this.resolver.appendLine(rawLine);
   }
 
-  onUpdate(callback: UpdateCallback): () => void {
-    this.listeners.push(callback);
-    return () => {
-      this.listeners = this.listeners.filter((listener) => listener !== callback);
-    };
-  }
-
   destroy(): void {
-    this.unsubscribeIndex();
     this.taskIndex.destroy();
-    this.listeners = [];
-    this.pendingFiles.clear();
-  }
-
-  private notify(event: { changedFile?: string }): void {
-    if (event.changedFile) this.pendingFiles.add(event.changedFile);
-    if (this.flushScheduled) return;
-    this.flushScheduled = true;
-    void Promise.resolve().then(() => {
-      this.flushScheduled = false;
-      const changedFiles = [...this.pendingFiles];
-      this.pendingFiles.clear();
-      for (const listener of [...this.listeners]) listener({ changedFiles });
-    });
   }
 }

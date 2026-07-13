@@ -54,14 +54,6 @@ export interface TaskComment {
   text: string;
 }
 
-export interface TaskFilter {
-  dateRange?: { from: string; to: string }; // YYYY-MM-DD inclusive
-  status?: TaskStatus[];
-  filePath?: string;
-  tag?: string; // filter by vault tag present in task text
-  folder?: string; // filter by vault folder prefix of task's file
-}
-
 export interface ParseContext {
   filePath: string;
   line: number;

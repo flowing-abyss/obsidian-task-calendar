@@ -123,10 +123,10 @@ export class CenterPanel {
     private app: App,
     private settings: CalendarSettings,
     private tagManager: TagManager,
+    private queries: TaskQueryApi,
     onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
     private projectManager: ProjectManager | null = null,
-    private queries: TaskQueryApi = store.taskQueries,
   ) {
     this.onSaveSettings = onSaveSettings;
     this.mutations = new TaskMutationService(

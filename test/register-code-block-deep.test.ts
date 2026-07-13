@@ -3,7 +3,7 @@ import { registerCodeBlock, resolveConfig } from '../src/code-block/registerCode
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, CodeBlockParams } from '../src/settings/types';
 import { TaskStore } from '../src/store/TaskStore';
-import { useRealMoment } from './helpers';
+import { queryApiForTasks, useRealMoment } from './helpers';
 
 useRealMoment();
 
@@ -27,6 +27,7 @@ function setupCodeBlock(settings: CalendarSettings = DEFAULT_SETTINGS): {
     fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0],
     store,
     settings,
+    queryApiForTasks(() => []),
   );
   if (!captured) throw new Error('processor not registered');
   return { processor: captured, store };
@@ -121,6 +122,7 @@ describe('registerCodeBlock processor', () => {
       fakePlugin as unknown as Parameters<typeof registerCodeBlock>[0],
       store,
       DEFAULT_SETTINGS,
+      queryApiForTasks(() => []),
     );
     expect(registered).toBe(true);
   });

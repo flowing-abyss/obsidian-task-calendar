@@ -7,7 +7,7 @@ import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS, getListViewDefaults } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
-import { fixedToday, makeStubStore, task, useRealMoment } from './helpers';
+import { fixedToday, makeCenterPanelForTest, makeStubStore, task, useRealMoment } from './helpers';
 
 const TODAY = moment().format('YYYY-MM-DD');
 
@@ -24,7 +24,7 @@ function makePanel(
 ): { panel: CenterPanel; state: AppState } {
   const store = makeStubStore(tasks) as TaskStore;
   const app = {} as App;
-  const panel = new CenterPanel(state, store, app, settings, null as never);
+  const panel = makeCenterPanelForTest(state, store, app, settings, null as never);
   return { panel, state };
 }
 
@@ -171,7 +171,7 @@ describe('CenterPanel pure helpers', () => {
       expect(result.map((t) => t.text)).toEqual(['open']);
     });
 
-    it('{type:"tag"} filters via store.getTasks({tag}) and status open', () => {
+    it('{type:"tag"} filters query snapshots by tag and open status', () => {
       const tasks = [
         task({ text: 'work', rawText: '- [ ] work #work' }),
         task({
@@ -618,7 +618,7 @@ describe('getFilteredTasks respects property filters', () => {
       sortBy: { field: 'date', dir: 'asc' },
       filters: [{ type: 'tag', value: '#work' }],
     });
-    // 'upcoming' with no dates → default branch returns all tasks via store.getTasks()
+    // 'upcoming' with no dates → default branch returns all query snapshots
     state.set(
       'selectedList',
       'all-tasks' as unknown as import('../src/app/AppState').ListSelection,

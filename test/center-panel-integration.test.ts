@@ -14,7 +14,9 @@ import {
   fixedToday,
   flushMicrotasks,
   freshContainer,
+  makeCenterPanelForTest,
   makeStubStore,
+  readStoreTasks,
   seedTaskCache,
   task,
   useRealMoment,
@@ -58,7 +60,7 @@ async function makePanel(
   const store = new TaskStore(app, settings);
   await store.initialize();
   const state = new AppState();
-  const panel = new CenterPanel(state, store, app, settings, null as never);
+  const panel = makeCenterPanelForTest(state, store, app, settings, null as never);
   return { panel, state, store, app };
 }
 
@@ -166,7 +168,7 @@ describe('CenterPanel.deleteTask', () => {
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 1 }] }],
     );
-    const target = store.getTasks().find((t) => t.text === 'delete me')!;
+    const target = readStoreTasks(store).find((t) => t.text === 'delete me')!;
     await call<void>(panel, 'deleteTask', target);
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] keep\n- [ ] keep2');
@@ -178,7 +180,7 @@ describe('CenterPanel.deleteTask', () => {
     const { panel, store, app } = await makePanel({ 't.md': content }, DEFAULT_SETTINGS, [
       { path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] },
     ]);
-    const target = store.getTasks()[0]!;
+    const target = readStoreTasks(store)[0]!;
     // Force subtaskRange to cover both lines
     const withRange: Task = { ...target, subtaskRange: { from: 0, to: 1 } };
     await call<void>(panel, 'deleteTask', withRange);
@@ -190,7 +192,7 @@ describe('CenterPanel.deleteTask', () => {
     const { panel, store } = await makePanel({ 't.md': '- [ ] x' }, DEFAULT_SETTINGS, [
       { path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] },
     ]);
-    const target = { ...store.getTasks()[0]!, filePath: 'does-not-exist.md' };
+    const target = { ...readStoreTasks(store)[0]!, filePath: 'does-not-exist.md' };
     await expect(call<void>(panel, 'deleteTask', target)).resolves.toBeUndefined();
   });
 
@@ -198,7 +200,7 @@ describe('CenterPanel.deleteTask', () => {
     const { panel, state, store } = await makePanel({ 't.md': '- [ ] x' }, DEFAULT_SETTINGS, [
       { path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] },
     ]);
-    const target = store.getTasks()[0]!;
+    const target = readStoreTasks(store)[0]!;
     state.set('taskStack', [target]);
     await call<void>(panel, 'deleteTask', target);
     expect(state.get('taskStack')).toEqual([]);
@@ -212,7 +214,7 @@ describe('CenterPanel.rescheduleTask', () => {
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = store.getTasks()[0]!;
+    const target = readStoreTasks(store)[0]!;
     await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-28');
@@ -224,7 +226,7 @@ describe('CenterPanel.rescheduleTask', () => {
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = store.getTasks()[0]!;
+    const target = readStoreTasks(store)[0]!;
     await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task ⏳ 2026-06-28');
@@ -236,7 +238,7 @@ describe('CenterPanel.rescheduleTask', () => {
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = store.getTasks()[0]!;
+    const target = readStoreTasks(store)[0]!;
     await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] plain task 📅 2026-06-28');
@@ -251,7 +253,7 @@ describe('CenterPanel.rescheduleTask', () => {
     await call<void>(panel, 'rescheduleTask', 'bogus', '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-20');
-    expect(store.getTasks()[0]?.due).toBe('2026-06-20');
+    expect(readStoreTasks(store)[0]?.due).toBe('2026-06-20');
   });
 
   it('task not found in store → no-op', async () => {
@@ -264,7 +266,7 @@ describe('CenterPanel.rescheduleTask', () => {
     await call<void>(panel, 'rescheduleTask', 't.md:::999', '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-20');
-    expect(store.getTasks()[0]?.due).toBe('2026-06-20');
+    expect(readStoreTasks(store)[0]?.due).toBe('2026-06-20');
   });
 
   // Task 26: dropping a previously-timed block onto the all-day/"No-time" row reuses this
@@ -277,7 +279,7 @@ describe('CenterPanel.rescheduleTask', () => {
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = store.getTasks()[0]!;
+    const target = readStoreTasks(store)[0]!;
     expect(target.time).toBe('09:00');
     await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
@@ -292,7 +294,7 @@ describe('CenterPanel.rescheduleTask', () => {
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = store.getTasks()[0]!;
+    const target = readStoreTasks(store)[0]!;
     await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-28');
@@ -304,7 +306,7 @@ describe('CenterPanel.rescheduleTask', () => {
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = store.getTasks()[0]!;
+    const target = readStoreTasks(store)[0]!;
     await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-28');
@@ -327,7 +329,7 @@ describe('CenterPanel.renderWithGrouping (date grouping)', () => {
       statusGroups: undefined,
       filters: [],
     });
-    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS, null as never);
+    const panel = makeCenterPanelForTest(state, store, {} as App, DEFAULT_SETTINGS, null as never);
     const container = freshContainer();
     void call<void>(panel, 'renderWithGrouping', container, tasks);
     return container;
@@ -378,7 +380,7 @@ describe('CenterPanel.renderSearch', () => {
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', 'milk');
-    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS, null as never);
+    const panel = makeCenterPanelForTest(state, store, {} as App, DEFAULT_SETTINGS, null as never);
     panel.mount(freshContainer());
     const cards = panel['el'].querySelectorAll('.tc-task-card');
     expect(cards).toHaveLength(1);
@@ -396,7 +398,7 @@ describe('CenterPanel.renderSearch', () => {
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', 'milk');
-    const panel = new CenterPanel(state, store, {} as App, DEFAULT_SETTINGS, null as never);
+    const panel = makeCenterPanelForTest(state, store, {} as App, DEFAULT_SETTINGS, null as never);
     panel.mount(freshContainer());
     const card = panel['el'].querySelector<HTMLElement>('.tc-task-card')!;
     card.click();
@@ -420,7 +422,7 @@ describe('CenterPanel source note chip', () => {
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', tasks[0]?.text ?? '');
-    const panel = new CenterPanel(
+    const panel = makeCenterPanelForTest(
       state,
       store,
       {} as App,
@@ -571,7 +573,7 @@ describe('CenterPanel projects mode teardown (regression)', () => {
     const store = new TaskStore(app, DEFAULT_SETTINGS);
     await store.initialize();
     const state = new AppState();
-    const panel = new CenterPanel(
+    const panel = makeCenterPanelForTest(
       state,
       store,
       app,
@@ -781,7 +783,7 @@ describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
     // Simulate a store-driven re-render (e.g. toggling a checkbox anywhere), which routes
     // through the `store.onUpdate` subscription in renderCalendarMode -> mountView(), NOT
     // through CenterPanel.render() — this is the exact path the brief's root cause describes.
-    const seededTask = store.getTasks({ filePath: 't.md' })[0]!;
+    const seededTask = readStoreTasks(store, { filePath: 't.md' })[0]!;
     await store.toggleTask(seededTask);
     await flushMicrotasks();
 
@@ -831,7 +833,7 @@ describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
     // Same view/date -> shouldScrollToNow will be false on this reactive re-render, but the
     // now-line interval must still be torn down (old view destroy()) and re-registered (new
     // view render()) exactly as before this change.
-    const seededTask = store.getTasks({ filePath: 't.md' })[0]!;
+    const seededTask = readStoreTasks(store, { filePath: 't.md' })[0]!;
     await store.toggleTask(seededTask);
     await flushMicrotasks();
 
@@ -883,7 +885,7 @@ describe('CenterPanel calendar mode — preserve scroll position across reactive
 
     // Reactive re-render of the SAME view/date, via store.onUpdate -> mountView(), exactly the
     // path a checkbox toggle anywhere in the vault takes (not through CenterPanel.render()).
-    const seededTask = store.getTasks({ filePath: 't.md' })[0]!;
+    const seededTask = readStoreTasks(store, { filePath: 't.md' })[0]!;
     await store.toggleTask(seededTask);
     await flushMicrotasks();
 
