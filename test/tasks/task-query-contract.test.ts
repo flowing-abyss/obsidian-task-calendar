@@ -68,6 +68,15 @@ describe('TaskQueryApi contract', () => {
     index.destroy();
   });
 
+  it('matches query tags canonically, excluding inline code and longer tag names', async () => {
+    const index = await queryIndex({
+      'tags.md': ['- [ ] inline `#work`', '- [ ] longer #workplace', '- [ ] real #work'].join('\n'),
+    });
+
+    expect(index.list({ tag: '#work' }).map((task) => task.title)).toEqual(['real']);
+    index.destroy();
+  });
+
   it('returns a distinct calendar union for spans, scheduled/due markers, and repeated dates', async () => {
     const index = await queryIndex({
       'calendar.md': [

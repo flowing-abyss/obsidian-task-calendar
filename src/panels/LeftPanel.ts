@@ -349,7 +349,7 @@ export class LeftPanel {
   private renderPinnedTag(parent: HTMLElement, tag: string, allTasks: Task[]): void {
     const sel = this.state.get('selectedList');
     const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
-    const count = allTasks.filter((t) => isActiveTask(t) && t.rawText.includes(tag)).length;
+    const count = allTasks.filter((t) => isActiveTask(t) && t.tags?.includes(tag) === true).length;
 
     const row = parent.createDiv({
       cls: `tc-left-item tc-pinned-tag${isActive ? ' is-active' : ''}`,
@@ -379,7 +379,7 @@ export class LeftPanel {
   private renderTagLeaf(parent: HTMLElement, group: TagGroup, tag: string, allTasks: Task[]): void {
     const sel = this.state.get('selectedList');
     const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
-    const count = allTasks.filter((t) => isActiveTask(t) && t.rawText.includes(tag)).length;
+    const count = allTasks.filter((t) => isActiveTask(t) && t.tags?.includes(tag) === true).length;
 
     const row = parent.createDiv({
       cls: `tc-left-item tc-tag-leaf${isActive ? ' is-active' : ''}`,
@@ -502,7 +502,7 @@ export class LeftPanel {
     const rootTag = group.mode === 'prefix' && group.prefix ? `#${group.prefix}` : null;
     const allGroupTags = rootTag ? [rootTag, ...tags] : tags;
     const groupCount = allTasks.filter(
-      (t) => isActiveTask(t) && allGroupTags.some((tag) => t.rawText.includes(tag)),
+      (t) => isActiveTask(t) && allGroupTags.some((tag) => t.tags?.includes(tag) === true),
     ).length;
     if (groupCount > 0) {
       header.createEl('span', { cls: 'tc-left-count', text: String(groupCount) });
@@ -524,7 +524,9 @@ export class LeftPanel {
         const tagSel = this.state.get('selectedList');
         const isTagActive =
           typeof tagSel === 'object' && tagSel.type === 'tag' && tagSel.tag === tag;
-        const tagCount = allTasks.filter((t) => t.rawText.includes(tag) && isActiveTask(t)).length;
+        const tagCount = allTasks.filter(
+          (t) => t.tags?.includes(tag) === true && isActiveTask(t),
+        ).length;
 
         const child = children.createDiv({
           cls: `tc-left-item tc-tag-child${isTagActive ? ' is-active' : ''}`,
@@ -729,7 +731,7 @@ export class LeftPanel {
     const ref = taskRefOf(task);
     if (!ref || !this.tasks) return;
     const inboxTag = this.settings.inbox.tag;
-    const tags = new Set(task.rawText.match(/#[\w/-]+/gu) ?? []);
+    const tags = new Set(task.tags ?? []);
     const remove = this.settings.inbox.removeTagOnAssign && tags.has(inboxTag) ? [inboxTag] : [];
     presentTaskCommandResult(
       await this.tasks.execute({
@@ -745,8 +747,7 @@ export class LeftPanel {
       const prefix = group.prefix;
       const found = new Set<string>();
       for (const task of allTasks) {
-        const matches = task.rawText.match(/#[\w/-]+/gu) ?? [];
-        for (const tag of matches) {
+        for (const tag of task.tags ?? []) {
           // Only include subtags (e.g. #work/dev), not the root tag (#work) itself
           if (tag.startsWith(`#${prefix}/`)) {
             found.add(tag);
@@ -762,9 +763,9 @@ export class LeftPanel {
     const { inbox } = this.settings;
     const allOpen = tasks.filter((t) => t.status === 'open');
     const withTag =
-      inbox.mode !== 'untagged' ? allOpen.filter((t) => t.rawText.includes(inbox.tag)) : [];
+      inbox.mode !== 'untagged' ? allOpen.filter((t) => t.tags?.includes(inbox.tag) === true) : [];
     const includeUntagged = inbox.mode !== 'tag';
-    const untagged = includeUntagged ? allOpen.filter((t) => !/#[\w/-]+/u.test(t.rawText)) : [];
+    const untagged = includeUntagged ? allOpen.filter((t) => (t.tags?.length ?? 0) === 0) : [];
     if (withTag.length === 0) return untagged.length;
     if (untagged.length === 0) return withTag.length;
     const seen = new Set<string>();

@@ -125,6 +125,19 @@ describe('selectTaskList', () => {
     ]);
   });
 
+  it('uses canonical tags instead of inline-code lookalikes for list membership', () => {
+    const inlineOnly = snapshot('inline only', {
+      source: {
+        filePath: 'tasks.md',
+        line: 0,
+        originalMarkdown: '- [ ] inline only `#work`',
+      },
+      tags: [],
+    });
+
+    expect(titles([inlineOnly], { type: 'tag', tag: '#work' })).toEqual([]);
+  });
+
   it('does not treat a start-only task as Today list membership', () => {
     const startOnly = snapshot('start only', { planning: { start: today } });
     expect(titles([startOnly], 'today')).toEqual([]);

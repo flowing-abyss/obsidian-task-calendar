@@ -123,7 +123,7 @@ function renderDraggableBody(
   // Tag-colored fill only — the priority-colored border was removed (Task 12): the
   // status marker above already conveys priority via its own border, so a second
   // priority border on the body was redundant visual noise.
-  const tagColor = tagColorFor(task.rawText, tagGroups);
+  const tagColor = tagColorFor(task.tags, tagGroups);
   if (tagColor) {
     el.setCssProps({ '--tc-tag-color': tagColor });
     // Task 40 (Round 4): see tagFillContrast.ts's own doc comment — a fixed text color loses

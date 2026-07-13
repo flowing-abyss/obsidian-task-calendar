@@ -26,10 +26,9 @@ function selected(
   settings: CalendarSettings,
   today: LocalDate,
 ): boolean {
-  const source = task.source.originalMarkdown;
   if (selection === 'inbox') {
-    const tagged = settings.inbox.mode !== 'untagged' && source.includes(settings.inbox.tag);
-    const untagged = settings.inbox.mode !== 'tag' && !/#[\w/-]+/u.test(source);
+    const tagged = settings.inbox.mode !== 'untagged' && task.tags.includes(settings.inbox.tag);
+    const untagged = settings.inbox.mode !== 'tag' && task.tags.length === 0;
     return tagged || untagged;
   }
   if (selection === 'today') {
@@ -45,7 +44,7 @@ function selected(
     return date !== undefined && date > today;
   }
   if (typeof selection === 'object' && selection.type === 'tag') {
-    return source.includes(selection.tag);
+    return task.tags.includes(selection.tag);
   }
   if (typeof selection === 'object' && selection.type === 'project') {
     return task.source.filePath === selection.path;
@@ -53,8 +52,11 @@ function selected(
   if (typeof selection === 'object' && selection.type === 'group') {
     const group = settings.tagGroups.find((candidate) => candidate.id === selection.groupId);
     if (!group) return false;
-    if (group.mode === 'prefix' && group.prefix) return source.includes(`#${group.prefix}`);
-    return (group.tags ?? []).some((tag) => source.includes(tag));
+    if (group.mode === 'prefix' && group.prefix) {
+      const root = `#${group.prefix}`;
+      return task.tags.some((tag) => tag === root || tag.startsWith(`${root}/`));
+    }
+    return (group.tags ?? []).some((tag) => task.tags.includes(tag));
   }
   return true;
 }
@@ -66,8 +68,7 @@ function statusTypeOf(task: TaskSnapshot): TaskStatusType {
 
 function matchesProperty(task: TaskSnapshot, filter: PropertyFilter): boolean {
   if (filter.type === 'tag') {
-    const escaped = filter.value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-    return new RegExp(`${escaped}(?![\\w/-])`, 'u').test(task.source.originalMarkdown);
+    return task.tags.includes(filter.value);
   }
   if (filter.type === 'file') return task.source.filePath === filter.filePath;
   if (filter.type === 'time') return String(task.planning.time) === filter.value;

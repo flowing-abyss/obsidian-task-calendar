@@ -169,7 +169,7 @@ export function renderTimedBlocksForDay(
     // Tag-colored fill only — the priority-colored border was removed (Task 12): the
     // status marker below already conveys priority via its own border, so a second
     // priority border on the block itself was redundant visual noise.
-    const tagColor = tagColorFor(p.task.rawText, tagGroups);
+    const tagColor = tagColorFor(p.task.tags, tagGroups);
     if (tagColor) {
       block.setCssProps({ '--tc-tag-color': tagColor });
       // Task 40 (Round 4): a single fixed var(--text-normal) title/subtitle color (the
@@ -365,7 +365,7 @@ export function renderTimedSpanContinuation(
     if (cap < MIN_BLOCK_HEIGHT_PX) {
       seg.style.minHeight = `${Math.max(heightPx, cap)}px`;
     }
-    const tagColor = tagColorFor(t.rawText, tagGroups);
+    const tagColor = tagColorFor(t.tags, tagGroups);
     if (tagColor) {
       seg.setCssProps({ '--tc-tag-color': tagColor });
       // Task 40 (Round 4): same contrast-driven text-color fix as the anchor block above,

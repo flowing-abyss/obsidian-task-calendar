@@ -218,6 +218,29 @@ describe('RightPanel.renderTask', () => {
     expect(tagChips[0]?.textContent).toContain('#work');
     expect(tagChips[1]?.textContent).toContain('#home/kitchen');
   });
+
+  it('does not render a removable chip for a tag lookalike inside inline code', async () => {
+    const { state, el } = await makePanel();
+    const inlineOnly = Object.assign(task({ text: 'Tagged', rawText: '- [ ] Tagged `#work`' }), {
+      tags: [],
+    });
+
+    state.set('taskStack', [inlineOnly]);
+
+    expect(el.querySelectorAll('.tc-chip-tag')).toHaveLength(0);
+  });
+
+  it('renders one canonical chip for mixed inline and real occurrences', async () => {
+    const { state, el } = await makePanel();
+    const mixed = Object.assign(task({ text: 'Tagged', rawText: '- [ ] Tagged `#work` #work' }), {
+      tags: ['#work'],
+    });
+
+    state.set('taskStack', [mixed]);
+
+    expect(el.querySelectorAll('.tc-chip-tag')).toHaveLength(1);
+    expect(el.querySelector('.tc-chip-tag')?.textContent).toContain('#work');
+  });
 });
 
 describe('RightPanel.renderSubTask', () => {

@@ -34,7 +34,10 @@ import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMark
 import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 
 export function taskSnapshotOf(value: Task): TaskSnapshot {
-  const tags = [...value.rawText.matchAll(/#[\w/-]+/gu)].map((match) => match[0]);
+  const explicitTags = (value as Task & { readonly tags?: readonly string[] }).tags;
+  const tags = explicitTags
+    ? [...explicitTags]
+    : [...value.rawText.matchAll(/#[\w/-]+/gu)].map((match) => match[0]);
   return {
     ref: {
       filePath: value.filePath,
@@ -83,7 +86,7 @@ export function queryApiForTasks(
     list: (query) =>
       getTasks()
         .filter((task) => query?.filePath === undefined || task.filePath === query.filePath)
-        .filter((task) => query?.tag === undefined || task.rawText.includes(query.tag))
+        .filter((task) => query?.tag === undefined || taskSnapshotOf(task).tags.includes(query.tag))
         .filter((task) => query?.statuses === undefined || query.statuses.includes(task.status))
         .map(taskSnapshotOf),
     forCalendarDates: (dates) => {
@@ -232,10 +235,12 @@ export function withMobile(value: boolean): void {
 /** Build a minimal Task satisfying the Task type; overrides win. */
 export function task(overrides: Partial<Task> = {}): Task {
   const text = overrides.text ?? 't';
+  const rawText = overrides.rawText ?? '- [ ] t';
   return {
     filePath: 'f.md',
     line: 0,
-    rawText: '- [ ] t',
+    rawText,
+    tags: rawText.match(/#[\w/-]+/gu) ?? [],
     text,
     markdownText: text,
     status: 'open',

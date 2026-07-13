@@ -9,24 +9,24 @@ describe('tagColorFor', () => {
   ];
 
   it('matches a prefix-mode group, including sub-tags', () => {
-    expect(tagColorFor('- [ ] t #work/dev', groups)).toBe('#3498db');
-    expect(tagColorFor('- [ ] t #work', groups)).toBe('#3498db');
+    expect(tagColorFor(['#work/dev'], groups)).toBe('#3498db');
+    expect(tagColorFor(['#work'], groups)).toBe('#3498db');
   });
 
   it('matches a manual-mode group', () => {
-    expect(tagColorFor('- [ ] t #personal', groups)).toBe('#2ecc71');
+    expect(tagColorFor(['#personal'], groups)).toBe('#2ecc71');
   });
 
   it('returns undefined when no tag is present', () => {
-    expect(tagColorFor('- [ ] t', groups)).toBeUndefined();
+    expect(tagColorFor([], groups)).toBeUndefined();
   });
 
   it('returns undefined when the tag matches no group', () => {
-    expect(tagColorFor('- [ ] t #other', groups)).toBeUndefined();
+    expect(tagColorFor(['#other'], groups)).toBeUndefined();
   });
 
   it('uses the first tag when a line has multiple', () => {
-    expect(tagColorFor('- [ ] t #work #personal', groups)).toBe('#3498db');
+    expect(tagColorFor(['#work', '#personal'], groups)).toBe('#3498db');
   });
 });
 

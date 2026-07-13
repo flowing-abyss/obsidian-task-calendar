@@ -149,7 +149,7 @@ export class ListView extends BaseView {
       renderSourceNoteChip(meta, task);
     }
 
-    const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
+    const tags = task.tags ?? [];
     for (const tag of tags.slice(0, 1)) {
       meta.createEl('span', { cls: 'tc-task-tag', text: tag });
     }

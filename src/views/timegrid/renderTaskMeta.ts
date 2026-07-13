@@ -3,11 +3,9 @@ import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import { colorForTag } from '../../tags/tagColor';
 
-const TAG_RE = /#[\w/-]+/gu;
-
-/** Extracts up to `max` hashtags from a task's raw line, same convention as CenterPanel. */
+/** Reads up to `max` canonical semantic tags from the task index projection. */
 export function extractTags(task: Task, max = Infinity): string[] {
-  const tags = task.rawText.match(TAG_RE) ?? [];
+  const tags = task.tags ?? [];
   return max === Infinity ? tags : tags.slice(0, max);
 }
 

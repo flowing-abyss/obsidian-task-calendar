@@ -358,7 +358,7 @@ export class RightPanel {
       this.renderAddDateMenu(chips, task);
 
       // Tag chips
-      const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
+      const tags = task.tags ?? [];
       for (const tag of tags) {
         this.renderTagChip(chips, task, tag);
       }

@@ -552,8 +552,7 @@ export class TaskIndex implements TaskQueryApi {
       filtered = filtered.filter((task) => task.source.filePath === query.filePath);
     if (query?.folder)
       filtered = filtered.filter((task) => task.source.filePath.startsWith(query.folder!));
-    if (query?.tag)
-      filtered = filtered.filter((task) => task.source.originalMarkdown.includes(query.tag!));
+    if (query?.tag) filtered = filtered.filter((task) => task.tags.includes(query.tag!));
     if (query?.statuses?.length) {
       filtered = filtered.filter((task) => query.statuses!.includes(task.status));
     }

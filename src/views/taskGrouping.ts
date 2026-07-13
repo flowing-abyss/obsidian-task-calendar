@@ -80,8 +80,6 @@ const PRIORITY_LABELS: Record<string, string> = {
   F: '⏬ Lowest',
 };
 
-const TAG_RE = /#[\w/-]+/u;
-
 function compareStrings(a: string, b: string): number {
   if (a < b) return -1;
   if (a > b) return 1;
@@ -106,8 +104,8 @@ function compareByDate(a: Task, b: Task): number {
 }
 
 function compareByTag(a: Task, b: Task): number {
-  const ta = TAG_RE.exec(a.rawText)?.[0] ?? '';
-  const tb = TAG_RE.exec(b.rawText)?.[0] ?? '';
+  const ta = a.tags?.[0] ?? '';
+  const tb = b.tags?.[0] ?? '';
   if (!ta && !tb) return 0;
   if (!ta) return 1;
   if (!tb) return -1;
@@ -177,7 +175,7 @@ export function groupTasksByStatus(
 export function groupTasksByTag(tasks: Task[]): Array<{ label: string; tasks: Task[] }> {
   const map = new Map<string, Task[]>();
   for (const t of tasks) {
-    const tag = TAG_RE.exec(t.rawText)?.[0] ?? '';
+    const tag = t.tags?.[0] ?? '';
     const key = tag || 'No tag';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);

@@ -1,3 +1,4 @@
+import { Menu } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import type { Task } from '../src/parser/types';
@@ -104,6 +105,107 @@ describe('CenterPanel tag→task drop target', () => {
     card.dispatchEvent(overEv);
     expect(card.classList.contains('tc-drop-target')).toBe(false);
   });
+
+  it('ignores inline-code tag lookalikes and adds the real tag through the API', () => {
+    const t = Object.assign(task({ rawText: '- [ ] t `#work` #task/inbox', status: 'open' }), {
+      tags: ['#task/inbox'],
+    });
+    const { el, state, execute } = makeCenter([t]);
+    const card = el.querySelector('.tc-task-card') as HTMLElement;
+
+    expect(Array.from(el.querySelectorAll('.tc-task-tag')).map((chip) => chip.textContent)).toEqual(
+      ['#task/inbox'],
+    );
+    state.set('draggingTag', '#work');
+    card.dispatchEvent(new MouseEvent('drop', { bubbles: true }));
+
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: {
+        type: 'task',
+        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+      },
+      patch: { tags: { add: ['#work'], remove: ['#task/inbox'] } },
+    });
+  });
+});
+
+describe('CenterPanel pinned-tag context menu', () => {
+  it('offers add for an inline-only lookalike and sends an add patch', () => {
+    const items: Array<{
+      checked__: boolean | null;
+      onClick__: ((event: MouseEvent) => unknown) | null;
+      title__: string;
+    }> = [];
+    const addItem = vi.spyOn(Menu.prototype, 'addItem').mockImplementation(function (
+      this: Menu,
+      callback,
+    ) {
+      const item = {
+        checked__: null as boolean | null,
+        dom: document.createElement('div'),
+        onClick__: null as ((event: MouseEvent) => unknown) | null,
+        title__: '',
+        onClick(value: (event: MouseEvent) => unknown) {
+          this.onClick__ = value;
+          return this;
+        },
+        setChecked(value: boolean | null) {
+          this.checked__ = value;
+          return this;
+        },
+        setDisabled() {
+          return this;
+        },
+        setIcon() {
+          return this;
+        },
+        setSection() {
+          return this;
+        },
+        setSubmenu() {
+          return new Menu();
+        },
+        setTitle(value: string) {
+          this.title__ = value;
+          return this;
+        },
+        setWarning() {
+          return this;
+        },
+      };
+      callback(item as never);
+      items.push(item);
+      return this;
+    });
+    const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent').mockImplementation(function (
+      this: Menu,
+    ) {
+      return this;
+    });
+    const t = Object.assign(task({ rawText: '- [ ] t `#work` #task/inbox', status: 'open' }), {
+      tags: ['#task/inbox'],
+    });
+    const { el, execute } = makeCenter([t], {}, ['#work']);
+
+    (el.querySelector('.tc-task-card') as HTMLElement).dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+    const pinned = items.find((item) => item.title__ === '#work');
+    expect(pinned?.checked__).toBe(false);
+
+    pinned?.onClick__?.(new MouseEvent('click'));
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: {
+        type: 'task',
+        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+      },
+      patch: { tags: { add: ['#work'], remove: [] } },
+    });
+    addItem.mockRestore();
+    show.mockRestore();
+  });
 });
 
 describe('CenterPanel tag chip replace on drop', () => {
@@ -145,6 +247,18 @@ describe('CenterPanel tag chip replace on drop', () => {
 
     chip.dispatchEvent(new MouseEvent('drop', { bubbles: true }));
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('renders one canonical chip when the same spelling also appears in inline code', () => {
+    const t = Object.assign(
+      task({ rawText: '- [ ] t `#work` #work #task/inbox', status: 'open' }),
+      { tags: ['#work', '#task/inbox'] },
+    );
+    const { el } = makeCenter([t]);
+
+    expect(Array.from(el.querySelectorAll('.tc-task-tag')).map((chip) => chip.textContent)).toEqual(
+      ['#work', '#task/inbox'],
+    );
   });
 });
 

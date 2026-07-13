@@ -171,6 +171,69 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
       expect(await h.read()).toBe('- [ ] task `code `` #inline ` #real #new\n');
     });
 
+    it('treats an exact closer preceded by a backslash as the end of inline code', async () => {
+      const source = '- [ ] task `code #inline \\` #real\n';
+      const h = await makeHarness(adapter, source);
+
+      const result = await h.tasks.execute({
+        type: 'patch',
+        target: rootTarget(h, source),
+        patch: { tags: { remove: ['real'] } },
+      });
+
+      expect(result).toMatchObject({
+        type: 'ok',
+        changed: true,
+        outcome: { type: 'task', task: { tags: [] } },
+      });
+      expect(await h.read()).toBe('- [ ] task `code #inline \\`\n');
+    });
+
+    it('uses the exact backslash-preceded closer for a nested task too', async () => {
+      const source = '- [ ] root\n  - [ ] child `code #inline \\` #real\n';
+      const h = await makeHarness(adapter, source);
+      const child = h.snapshots(source)[0]?.subtasks[0];
+      if (!child) throw new Error('missing child');
+
+      const result = await h.tasks.execute({
+        type: 'patch',
+        target: { type: 'subtask', ref: child.ref },
+        patch: { tags: { remove: ['real'] } },
+      });
+
+      expect(result).toMatchObject({
+        type: 'ok',
+        changed: true,
+        outcome: { type: 'task', task: { subtasks: [{ tags: [] }] } },
+      });
+      expect(await h.read()).toBe('- [ ] root\n  - [ ] child `code #inline \\`\n');
+    });
+
+    it('inserts a new tag after inline metadata lookalikes', async () => {
+      const source = '- [ ] task `#inline 🔮 🆔 fake ⛔ dep 🔁 every week 📅 2026-07-14`\n';
+      const h = await makeHarness(adapter, source);
+
+      const result = await h.tasks.execute({
+        type: 'patch',
+        target: rootTarget(h, source),
+        patch: { tags: { add: ['new'] } },
+      });
+
+      expect(result).toMatchObject({
+        type: 'ok',
+        changed: true,
+        outcome: { type: 'task', task: { tags: ['#new'] } },
+      });
+      if (result.type !== 'ok' || result.outcome.type !== 'task') {
+        throw new Error('missing task outcome');
+      }
+      expect(result.outcome.task.planning).toEqual({});
+      expect(result.outcome.task.recurrence).toBeUndefined();
+      expect(await h.read()).toBe(
+        '- [ ] task `#inline 🔮 🆔 fake ⛔ dep 🔁 every week 📅 2026-07-14` #new\n',
+      );
+    });
+
     it('never adopts a stale reference after the first revision commits', async () => {
       const source = '- [ ] task\n';
       const h = await makeHarness(adapter, source);

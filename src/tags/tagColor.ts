@@ -1,12 +1,8 @@
 import type { TagGroup } from '../settings/types';
 
-const TAG_RE = /#[\w/-]+/u;
-
 /**
  * The color for an already-extracted tag string (e.g. "#work" or "work"), matching it
- * against the plugin's configured tag groups. Shared by `RightPanel`'s per-chip lookup
- * (which already has each tag parsed out) and `tagColorFor` below (which extracts the
- * first tag from raw task text before delegating here).
+ * against the plugin's configured tag groups.
  */
 export function colorForTag(tag: string, tagGroups: TagGroup[]): string | undefined {
   const noHash = tag.replace(/^#/, '');
@@ -24,9 +20,11 @@ export function colorForTag(tag: string, tagGroups: TagGroup[]): string | undefi
   return undefined;
 }
 
-/** The color for a task's first matching tag group, or undefined if no tag/no matching group. */
-export function tagColorFor(rawText: string, tagGroups: TagGroup[]): string | undefined {
-  const match = TAG_RE.exec(rawText);
-  if (!match) return undefined;
-  return colorForTag(match[0], tagGroups);
+/** The color for a task's first canonical tag, or undefined if no tag/no matching group. */
+export function tagColorFor(
+  tags: readonly string[] | undefined,
+  tagGroups: TagGroup[],
+): string | undefined {
+  const first = tags?.[0];
+  return first ? colorForTag(first, tagGroups) : undefined;
 }

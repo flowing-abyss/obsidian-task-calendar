@@ -291,7 +291,7 @@ export class MonthGridView extends BaseView {
    * border on the compact item itself was redundant visual noise.
    */
   private applyTagFill(el: HTMLElement, t: Task, tagGroups: TagGroup[]): void {
-    const tagColor = tagColorFor(t.rawText, tagGroups);
+    const tagColor = tagColorFor(t.tags, tagGroups);
     if (tagColor) {
       el.setCssProps({ '--tc-tag-color': tagColor });
       // Task 40 (Round 4): see tagFillContrast.ts's own doc comment — a fixed text color loses

@@ -197,6 +197,20 @@ describe('revision-aware nested selection rebuild', () => {
     };
   }
 
+  it('projects canonical root and nested tags into the panel-facing legacy view', () => {
+    const root = withChild(
+      { ...snapshot('same', 'Root'), tags: ['#root'] },
+      '  - [ ] Child `#inline` #child',
+    );
+    const child = root.subtasks[0]!;
+    const tagged = { ...root, subtasks: [{ ...child, tags: ['#child'] }] };
+
+    expect(legacyTaskView(tagged)).toMatchObject({
+      tags: ['#root'],
+      subtasks: [{ tags: ['#child'] }],
+    });
+  });
+
   it('keeps a selected child by retained relative ref when an exact root moves', () => {
     const staleRoot = withChild(snapshot('same', 'Root'), '  - [ ] Child');
     const movedRoot = withChild(

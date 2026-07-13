@@ -4,6 +4,7 @@ export interface Task {
   filePath: string;
   line: number; // 0-based line index
   rawText: string; // full original line, for write-back
+  tags?: string[]; // canonical semantic tags when projected from the task index
   text: string; // display text: metadata emoji and tags stripped
   markdownText: string; // display text with link markup ([[…]], [](…)) preserved
   status: TaskStatus; // 'in-progress' from checkbox '/' only; derived date logic lives in views
@@ -32,6 +33,7 @@ export interface SubTask {
   filePath: string;
   line: number;
   rawText: string;
+  tags?: string[]; // canonical semantic tags when projected from the task index
   text: string;
   markdownText: string; // display text with link markup ([[…]], [](…)) preserved
   status: TaskStatus;

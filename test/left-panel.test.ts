@@ -372,13 +372,12 @@ describe('LeftPanel tag groups (prefix mode)', () => {
     expect(el.querySelectorAll('.tc-tag-child')).toHaveLength(0);
   });
 
-  it('group count over-counts #workplace as #work (CURRENT BEHAVIOR: substring match, follow-up: FU-21)', () => {
+  it('group count does not treat #workplace as the exact #work tag', () => {
     const tasks = [task({ rawText: '- [ ] #workplace task', status: 'open' })];
     const { el } = makePanel(tasks, {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
     });
-    // FU-21: group count uses rawText.includes('#work'), which matches '#workplace' too
-    expect(el.querySelector('.tc-tag-group-header .tc-left-count')?.textContent).toBe('1');
+    expect(el.querySelector('.tc-tag-group-header .tc-left-count')).toBeNull();
   });
 
   it('group color renders as dot', () => {
@@ -559,6 +558,18 @@ describe('LeftPanel inbox logic (new inbox object)', () => {
     });
     const inboxCount = el.querySelector('.tc-left-item .tc-left-count')?.textContent;
     expect(inboxCount).toBe('1');
+  });
+
+  it('does not count an inline-code tag lookalike as an inbox task', () => {
+    const inlineOnly = Object.assign(task({ rawText: '- [ ] t `#task/inbox`', status: 'open' }), {
+      tags: [],
+    });
+    const { el } = makePanel([inlineOnly], {
+      inbox: { mode: 'tag', tag: '#task/inbox', removeTagOnAssign: true },
+    });
+    const inboxCount = el.querySelector('.tc-left-item .tc-left-count')?.textContent;
+
+    expect(inboxCount).toBeUndefined();
   });
 
   it('countInbox untagged mode counts tasks without any tag', () => {

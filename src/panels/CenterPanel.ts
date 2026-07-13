@@ -902,7 +902,7 @@ export class CenterPanel {
     const today = window.moment().format('YYYY-MM-DD');
     const sel = this.state.get('selectedList');
     const d = task.due ?? task.scheduled; // only explicit dates show a badge
-    const tags = task.rawText.match(/#[\w/-]+/gu) ?? [];
+    const tags = task.tags ?? [];
     const subtaskCount = task.subtasks?.length ?? 0;
     const commentCount = task.comments?.length ?? 0;
     const doneCount = task.subtasks?.filter((s) => s.status === 'done').length ?? 0;
@@ -1160,10 +1160,7 @@ export class CenterPanel {
       // ── Pinned tags ────────────────────────────────────────
       if (this.settings.pinnedTags.length > 0) {
         for (const pinnedTag of this.settings.pinnedTags) {
-          const hasTag = new RegExp(
-            `${pinnedTag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?![\\w/-])`,
-            'u',
-          ).test(task.rawText);
+          const hasTag = this.getTaskTags(task).has(pinnedTag);
           menu.addItem((item) =>
             item
               .setTitle(pinnedTag)
@@ -1265,9 +1262,7 @@ export class CenterPanel {
   }
 
   private addBulkTagItem(menu: Menu, pinnedTag: string, selectedTasks: Task[]): void {
-    const escaped = pinnedTag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-    const tagRegex = new RegExp(`${escaped}(?![\\w/-])`, 'u');
-    const count = selectedTasks.filter((t) => tagRegex.test(t.rawText)).length;
+    const count = selectedTasks.filter((task) => task.tags?.includes(pinnedTag) === true).length;
     const allHave = count === selectedTasks.length;
     const indicator = this.bulkTagIndicator(count, selectedTasks.length);
     const clickHandler = allHave
@@ -1316,7 +1311,7 @@ export class CenterPanel {
   }
 
   private getTaskTags(task: Task): Set<string> {
-    return new Set(task.rawText.match(/#[\w/][\w/-]*/gu) ?? []);
+    return new Set(task.tags ?? []);
   }
 
   private async patchTaskTags(

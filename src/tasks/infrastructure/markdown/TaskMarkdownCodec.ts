@@ -260,10 +260,7 @@ function inlineCodeRanges(source: string): readonly SourceRange[] {
     while (source[open + runLength] === '`') runLength++;
     const delimiter = '`'.repeat(runLength);
     let close = source.indexOf(delimiter, open + runLength);
-    while (
-      close >= 0 &&
-      (isEscaped(source, close) || source[close - 1] === '`' || source[close + runLength] === '`')
-    ) {
+    while (close >= 0 && (source[close - 1] === '`' || source[close + runLength] === '`')) {
       close = source.indexOf(delimiter, close + 1);
     }
     if (close < 0) {
@@ -277,13 +274,19 @@ function inlineCodeRanges(source: string): readonly SourceRange[] {
 }
 
 function pushTagCandidates(candidates: Candidate[], body: string, bodyFrom: number): void {
-  const code = inlineCodeRanges(body);
   for (const match of matches(TAG_RE, body)) {
     const from = match.index;
     const to = from + match[0].length;
-    if (code.some((range) => from >= range.from && to <= range.to)) continue;
     candidates.push({ kind: 'tag', from: bodyFrom + from, to: bodyFrom + to });
   }
+}
+
+function overlapsRange(candidate: SourceRange, ranges: readonly SourceRange[]): boolean {
+  return ranges.some((range) => candidate.from < range.to && candidate.to > range.from);
+}
+
+function outsideRanges(candidate: SourceRange, ranges: readonly SourceRange[]): boolean {
+  return !overlapsRange(candidate, ranges);
 }
 
 function pushPinnedCarrierCandidates(
@@ -897,7 +900,11 @@ export class TaskMarkdownCodec {
     const statusSymbol = taskMatch[1] ?? '';
     const prefixEnd = taskMatch[0].length;
     const body = content.slice(prefixEnd);
-    const candidates: Candidate[] = [];
+    const inlineCode = inlineCodeRanges(body).map((range) => ({
+      from: prefixEnd + range.from,
+      to: prefixEnd + range.to,
+    }));
+    let candidates: Candidate[] = [];
 
     for (const pattern of DATE_PATTERNS) {
       pushPatternCandidates(candidates, body, prefixEnd, pattern.kind, pattern.regex, 1);
@@ -921,9 +928,11 @@ export class TaskMarkdownCodec {
       });
     }
 
-    const recurrenceMarkers = matches(RECURRENCE_MARKER_RE, body).map(
-      (match) => prefixEnd + match.index,
-    );
+    candidates = candidates.filter((candidate) => outsideRanges(candidate, inlineCode));
+
+    const recurrenceMarkers = matches(RECURRENCE_MARKER_RE, body)
+      .map((match) => prefixEnd + match.index)
+      .filter((from) => outsideRanges({ from, to: from + '🔁'.length }, inlineCode));
     for (let i = recurrenceMarkers.length - 1; i >= 0; i--) {
       const from = recurrenceMarkers[i];
       if (from === undefined) continue;
