@@ -53,8 +53,9 @@ export class ProjectStore {
   private eventUnsubs: Array<() => void> = [];
   private queryUnsub?: () => void;
   private debounce = 0;
-  private pendingPaths = new Set<string>();
-  private pendingFull = false;
+  private waitingPaths = new Set<string>();
+  private readyPaths = new Set<string>();
+  private readyFull = false;
   private pendingCreates = new Set<string>();
 
   constructor(
@@ -76,7 +77,7 @@ export class ProjectStore {
             return;
           }
         }
-        this.enqueueUpdate(file.path);
+        this.awaitBarrier(file.path);
       }
     });
     this.eventUnsubs.push(() => this.app.metadataCache.offref(metadataRef));
@@ -90,7 +91,7 @@ export class ProjectStore {
       if (project?.stats.total === 0 && !this.hasIndexedTasks(file.path)) {
         this.settleDeletedPath(file.path);
       } else {
-        this.enqueueFull();
+        this.awaitBarrier(file.path);
       }
     });
     const renameRef = this.app.vault.on('rename', (file, oldPath) => {
@@ -103,7 +104,7 @@ export class ProjectStore {
         ) {
           this.settleRenamedPath(oldPath, file.path);
         } else {
-          this.enqueueFull();
+          this.awaitBarrier(oldPath, file.path);
         }
       }
     });
@@ -119,31 +120,39 @@ export class ProjectStore {
     if (event.type === 'changed') {
       for (const path of event.files) {
         this.pendingCreates.delete(path);
-        this.scheduleUpdate(path);
+        this.releasePath(path);
       }
     } else if (event.type === 'initialized') {
-      this.scheduleFull();
+      this.releaseFull();
+    } else if (event.type === 'renamed') {
+      this.pendingCreates.delete(event.oldPath);
+      this.pendingCreates.delete(event.newPath);
+      this.releasePath(event.oldPath, event.newPath);
     } else {
-      this.scheduleFull();
+      this.pendingCreates.delete(event.path);
+      this.releasePath(event.path);
     }
   }
 
-  private scheduleUpdate(path: string): void {
-    this.enqueueUpdate(path);
+  private awaitBarrier(...paths: string[]): void {
+    if (this.readyFull) return;
+    for (const path of paths) {
+      if (!this.readyPaths.has(path)) this.waitingPaths.add(path);
+    }
+  }
+
+  private releasePath(...paths: string[]): void {
+    for (const path of paths) {
+      this.waitingPaths.delete(path);
+      this.readyPaths.add(path);
+    }
     this.scheduleFlush();
   }
 
-  private scheduleFull(): void {
-    this.enqueueFull();
+  private releaseFull(): void {
+    this.waitingPaths.clear();
+    this.readyFull = true;
     this.scheduleFlush();
-  }
-
-  private enqueueUpdate(path: string): void {
-    this.pendingPaths.add(path);
-  }
-
-  private enqueueFull(): void {
-    this.pendingFull = true;
   }
 
   private scheduleFlush(): void {
@@ -153,14 +162,15 @@ export class ProjectStore {
 
   private flush(): void {
     const before = this.cacheSignature();
-    if (this.pendingFull) {
+    if (this.readyFull) {
       this.recomputeAll();
-    } else if (this.pendingPaths.size > 0) {
-      for (const path of this.pendingPaths) this.updateOne(path);
+      this.readyPaths.clear();
+    } else if (this.readyPaths.size > 0) {
+      for (const path of this.readyPaths) this.updateOne(path);
       this.rebuildCache();
     }
-    this.pendingFull = false;
-    this.pendingPaths.clear();
+    this.readyFull = false;
+    this.readyPaths.clear();
     this.notifyIfChanged(before);
   }
 
@@ -291,6 +301,8 @@ export class ProjectStore {
     this.queryUnsub = undefined;
     for (const unsubscribe of this.eventUnsubs) unsubscribe();
     this.eventUnsubs = [];
+    this.waitingPaths.clear();
+    this.readyPaths.clear();
     this.pendingCreates.clear();
     this.listeners = [];
   }

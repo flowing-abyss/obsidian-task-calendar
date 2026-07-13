@@ -118,6 +118,49 @@ function harness() {
 afterEach(() => vi.useRealTimers());
 
 describe('ProjectStore event convergence', () => {
+  it.each(['changed', 'renamed'] as const)(
+    'does not let a late equivalent empty-project %s event release unrelated task metadata',
+    (lateEvent) => {
+      vi.useFakeTimers();
+      const h = harness();
+      const empty = tfile('Projects/B.md');
+      if (lateEvent === 'renamed') h.setFiles([h.file, empty]);
+      const store = new ProjectStore(h.app, h.queries, DEFAULT_SETTINGS);
+      store.initialize();
+      const listener = vi.fn();
+      store.onUpdate(listener);
+
+      h.setTasks([task('done')]);
+      h.metadata(h.file);
+      if (lateEvent === 'changed') {
+        h.setFiles([h.file, empty]);
+        h.vault('create', empty);
+        h.metadata(empty);
+      } else {
+        const renamed = tfile('Projects/C.md');
+        h.setFiles([h.file, renamed]);
+        h.vault('rename', renamed, empty.path);
+      }
+      expect(listener).toHaveBeenCalledOnce();
+      listener.mockClear();
+
+      if (lateEvent === 'changed') {
+        h.index({ type: 'changed', files: [empty.path] });
+      } else {
+        h.index({ type: 'renamed', oldPath: empty.path, newPath: 'Projects/C.md' });
+      }
+      vi.advanceTimersByTime(150);
+      expect(store.get(h.file.path)?.stats.done).toBe(0);
+      expect(listener).not.toHaveBeenCalled();
+
+      h.index({ type: 'changed', files: [h.file.path] });
+      vi.advanceTimersByTime(150);
+      expect(store.get(h.file.path)?.stats.done).toBe(1);
+      expect(listener).toHaveBeenCalledOnce();
+      store.destroy();
+    },
+  );
+
   it('waits for TaskIndex when task metadata arrives before a created file is indexed', () => {
     vi.useFakeTimers();
     const h = harness();
@@ -301,17 +344,25 @@ describe('ProjectStore event convergence', () => {
     },
   );
 
-  it('treats a markdown-to-attachment rename as a full-rescan event', () => {
+  it('settles a markdown-to-attachment rename from its scoped index barrier', () => {
     vi.useFakeTimers();
     const h = harness();
     const store = new ProjectStore(h.app, h.queries, DEFAULT_SETTINGS);
     store.initialize();
-    h.vault('rename', tfile('Projects/A.png', 'png'), 'Projects/A.md');
+    const listener = vi.fn();
+    store.onUpdate(listener);
+    const attachment = tfile('Projects/A.png', 'png');
+    h.setFiles([attachment]);
+    h.vault('rename', attachment, 'Projects/A.md');
     vi.advanceTimersByTime(1_000);
+    expect(store.get('Projects/A.md')).toBeDefined();
+    expect(listener).not.toHaveBeenCalled();
     expect(h.getMarkdownFiles).toHaveBeenCalledOnce();
     h.index({ type: 'renamed', oldPath: 'Projects/A.md', newPath: 'Projects/A.png' });
     vi.advanceTimersByTime(150);
-    expect(h.getMarkdownFiles).toHaveBeenCalledTimes(2);
+    expect(store.get('Projects/A.md')).toBeUndefined();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(h.getMarkdownFiles).toHaveBeenCalledOnce();
     store.destroy();
   });
 });
