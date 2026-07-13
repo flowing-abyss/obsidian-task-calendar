@@ -174,6 +174,9 @@ export function applyTaskCommand(
       break;
     }
     case 'set-description':
+    case 'add-subtask':
+    case 'delete-subtask':
+    case 'reorder-subtask':
     case 'add-comment':
     case 'update-comment':
     case 'delete-comment':

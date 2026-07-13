@@ -39,6 +39,67 @@ function snapshot(revision: string, description = 'old description'): TaskSnapsh
   };
 }
 
+function snapshotWithChildren(revision: string, titles: readonly string[]): TaskSnapshot {
+  const root = { ...snapshot(revision), comments: [], description: undefined };
+  const parent = { type: 'task' as const, ref: root.ref };
+  return {
+    ...root,
+    subtasks: titles.map((title, index) => ({
+      ref: {
+        parent,
+        relativeLine: index + 1,
+        originalBlock: `  - [ ] ${title}`,
+      },
+      title,
+      markdownTitle: title,
+      status: 'open' as const,
+      statusSymbol: ' ',
+      priority: 'D' as const,
+      planning: {},
+      tags: [],
+      subtasks: [],
+      comments: [],
+    })),
+  };
+}
+
+function snapshotWithNestedChildren(revision: string): TaskSnapshot {
+  const root = snapshotWithChildren(revision, ['branch', 'sibling']);
+  const rootNode = { type: 'task' as const, ref: root.ref };
+  const branchRef = {
+    parent: rootNode,
+    relativeLine: 1,
+    originalBlock: '  - [ ] branch\n    - [ ] nested one\n    - [ ] nested two',
+  };
+  const branchNode = { type: 'subtask' as const, ref: branchRef };
+  const nested = ['nested one', 'nested two'].map((title, index) => ({
+    ref: {
+      parent: branchNode,
+      relativeLine: index + 1,
+      originalBlock: `    - [ ] ${title}`,
+    },
+    title,
+    markdownTitle: title,
+    status: 'open' as const,
+    statusSymbol: ' ',
+    priority: 'D' as const,
+    planning: {},
+    tags: [],
+    subtasks: [],
+    comments: [],
+  }));
+  return {
+    ...root,
+    subtasks: [
+      { ...root.subtasks[0]!, ref: branchRef, subtasks: nested },
+      {
+        ...root.subtasks[1]!,
+        ref: { ...root.subtasks[1]!.ref, parent: rootNode, relativeLine: 4 },
+      },
+    ],
+  };
+}
+
 function api(execute: TaskApplicationApi['execute']): TaskApplicationApi {
   return {
     queries: {
@@ -143,6 +204,70 @@ describe('RightPanel block editing', () => {
     expect(state.get('taskStack')[0]).toMatchObject({ ref: initial.ref });
   });
 
+  it.each([
+    {
+      label: 'conflict',
+      result: { type: 'conflict', current: snapshot('external') } as TaskCommandResult,
+    },
+    {
+      label: 'not-found',
+      result: {
+        type: 'not-found',
+        target: { type: 'task', ref: snapshot('old').ref },
+      } as TaskCommandResult,
+    },
+    {
+      label: 'ambiguous',
+      result: {
+        type: 'ambiguous',
+        candidates: [
+          {
+            root: snapshot('candidate'),
+            target: { type: 'task', ref: snapshot('candidate').ref },
+          },
+        ],
+      } as TaskCommandResult,
+    },
+    {
+      label: 'invalid',
+      result: {
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'subtask' }],
+      } as TaskCommandResult,
+    },
+    {
+      label: 'io-error',
+      result: {
+        type: 'io-error',
+        cause: 'process-error',
+        contentState: 'unknown',
+      } as TaskCommandResult,
+    },
+  ])('keeps the add-subtask editor and exact draft open on $label', async ({ result }) => {
+    const initial = snapshot('old');
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue(result);
+    const { panel } = await panelWith(initial, execute);
+    const container = freshContainer();
+    panel.mount(container);
+    container.querySelector<HTMLElement>('.tc-subtask-add-row')!.click();
+    const input = container.querySelector<HTMLInputElement>('.tc-subtask-new-input')!;
+    input.value = 'keep this draft';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await flushMicrotasks(20);
+
+    expect(execute).toHaveBeenCalledWith({
+      type: 'add-subtask',
+      parent: { type: 'task', ref: initial.ref },
+      text: 'keep this draft',
+    });
+    expect(container.querySelector('.tc-subtask-new-input')).toBe(input);
+    expect(input.value).toBe('keep this draft');
+    expect(
+      container.querySelector('.tc-subtask-add-row')?.hasClass('tc-subtask-add-row--hidden'),
+    ).toBe(true);
+    panel.destroy();
+  });
+
   it('keeps the description textarea open when its save conflicts', async () => {
     const initial = snapshot('old');
     const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
@@ -222,4 +347,188 @@ describe('RightPanel block editing', () => {
     expect(state.get('taskStack')[0]).toMatchObject({ ref: other.ref });
     expect(acknowledge).toHaveBeenCalledWith(fresh.ref);
   });
+
+  it('delegates add and sibling reorder through revisioned structural commands', async () => {
+    const initial = snapshotWithChildren('old', ['first', 'second']);
+    const afterAdd = snapshotWithChildren('after-add', ['first', 'second', 'new child']);
+    const afterReorder = snapshotWithChildren('after-reorder', ['second', 'first', 'new child']);
+    const execute = vi
+      .fn<TaskApplicationApi['execute']>()
+      .mockResolvedValueOnce({
+        type: 'ok',
+        changed: true,
+        outcome: { type: 'task', task: afterAdd },
+      })
+      .mockResolvedValueOnce({
+        type: 'ok',
+        changed: true,
+        outcome: { type: 'task', task: afterReorder },
+      });
+    const { panel, state } = await panelWith(initial, execute);
+    const root = state.get('taskStack')[0]!;
+
+    await call<Promise<void>>(panel, 'addSubTask', root, 'new child');
+    expect(execute).toHaveBeenLastCalledWith({
+      type: 'add-subtask',
+      parent: { type: 'task', ref: initial.ref },
+      text: 'new child',
+    });
+
+    const current = state.get('taskStack')[0]!;
+    await call<Promise<void>>(
+      panel,
+      'reorderSubTask',
+      current,
+      current.subtasks![0]!,
+      current.subtasks![1]!,
+      'after',
+    );
+    expect(execute).toHaveBeenLastCalledWith({
+      type: 'reorder-subtask',
+      subtask: afterAdd.subtasks[0]!.ref,
+      target: afterAdd.subtasks[1]!.ref,
+      placement: 'after',
+    });
+    expect(state.get('taskStack')[0]!.subtasks?.map((child) => child.text)).toEqual([
+      'second',
+      'first',
+      'new child',
+    ]);
+  });
+
+  it('deletes the selected nested task through the menu and converges selection to its parent', async () => {
+    const initial = snapshotWithChildren('old', ['selected', 'sibling']);
+    const afterDelete = snapshotWithChildren('fresh', ['sibling']);
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'ok',
+      changed: true,
+      outcome: { type: 'task', task: afterDelete },
+    });
+    const { panel, state } = await panelWith(initial, execute);
+    const root = legacyTaskView(initial);
+    state.set('taskStack', [root, root.subtasks![0]!]);
+    const container = freshContainer();
+    panel.mount(container);
+
+    container.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!.click();
+    const deleteItem = container.querySelector<HTMLElement>('.tc-context-danger')!;
+    expect(deleteItem.textContent).toBe('Delete sub-task');
+    deleteItem.click();
+    await flushMicrotasks(20);
+
+    expect(execute).toHaveBeenCalledWith({
+      type: 'delete-subtask',
+      subtask: initial.subtasks[0]!.ref,
+    });
+    expect(state.get('taskStack')).toHaveLength(1);
+    expect(state.get('taskStack')[0]).toMatchObject({ ref: afterDelete.ref, text: 'root' });
+    panel.destroy();
+  });
+
+  it('does not overwrite a newer selection when a late reorder result arrives', async () => {
+    const initial = snapshotWithChildren('old', ['first', 'second']);
+    const other = { ...snapshot('other'), ref: { ...snapshot('other').ref, filePath: 'other.md' } };
+    let resolve!: (result: TaskCommandResult) => void;
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockImplementation(
+      () =>
+        new Promise<TaskCommandResult>((done) => {
+          resolve = done;
+        }),
+    );
+    const { panel, state } = await panelWith(initial, execute);
+    const root = state.get('taskStack')[0]!;
+    const pending = call<Promise<void>>(
+      panel,
+      'reorderSubTask',
+      root,
+      root.subtasks![0]!,
+      root.subtasks![1]!,
+      'after',
+    );
+    state.set('taskStack', [legacyTaskView(other)]);
+    resolve({
+      type: 'ok',
+      changed: true,
+      outcome: { type: 'task', task: snapshotWithChildren('fresh', ['second', 'first']) },
+    });
+    await pending;
+
+    expect(state.get('taskStack')[0]).toMatchObject({ ref: other.ref });
+  });
+
+  it('does not overwrite newer navigation within the same root when a reorder resolves late', async () => {
+    const initial = snapshotWithChildren('old', ['first', 'second']);
+    let resolve!: (result: TaskCommandResult) => void;
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockImplementation(
+      () =>
+        new Promise<TaskCommandResult>((done) => {
+          resolve = done;
+        }),
+    );
+    const { panel, state } = await panelWith(initial, execute);
+    const root = state.get('taskStack')[0]!;
+    const pending = call<Promise<void>>(
+      panel,
+      'reorderSubTask',
+      root,
+      root.subtasks![0]!,
+      root.subtasks![1]!,
+      'after',
+    );
+    const selectedChild = root.subtasks![1]!;
+    state.set('taskStack', [root, selectedChild]);
+    resolve({
+      type: 'ok',
+      changed: true,
+      outcome: { type: 'task', task: snapshotWithChildren('fresh', ['second', 'first']) },
+    });
+    await pending;
+
+    expect(state.get('taskStack')).toEqual([root, selectedChild]);
+  });
+
+  it.each(['add', 'delete', 'reorder'] as const)(
+    'keeps a newer sibling selection when a deferred nested %s completes',
+    async (operation) => {
+      const initial = snapshotWithNestedChildren('old');
+      let resolve!: (result: TaskCommandResult) => void;
+      const execute = vi.fn<TaskApplicationApi['execute']>().mockImplementation(
+        () =>
+          new Promise<TaskCommandResult>((done) => {
+            resolve = done;
+          }),
+      );
+      const { panel, state } = await panelWith(initial, execute);
+      const root = legacyTaskView(initial);
+      const branch = root.subtasks![0]!;
+      const sibling = root.subtasks![1]!;
+      state.set('taskStack', [root, branch]);
+
+      let pending: Promise<unknown>;
+      if (operation === 'add') {
+        pending = call<Promise<boolean>>(panel, 'addSubTask', branch, 'new nested child');
+      } else if (operation === 'delete') {
+        pending = call<Promise<void>>(panel, 'deleteTask', branch);
+      } else {
+        pending = call<Promise<void>>(
+          panel,
+          'reorderSubTask',
+          branch,
+          branch.subtasks![0]!,
+          branch.subtasks![1]!,
+          'after',
+        );
+      }
+
+      state.set('taskStack', [root, sibling]);
+      resolve({
+        type: 'ok',
+        changed: true,
+        outcome: { type: 'task', task: snapshotWithNestedChildren('fresh') },
+      });
+      await pending;
+
+      expect(state.get('taskStack')).toEqual([root, sibling]);
+    },
+  );
 });

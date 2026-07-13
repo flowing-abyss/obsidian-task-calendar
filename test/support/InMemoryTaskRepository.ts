@@ -14,6 +14,7 @@ import type {
   TaskRef,
   TaskSnapshot,
 } from '../../src/tasks/domain/types';
+import { sameTaskNodeRef } from '../../src/tasks/domain/types';
 import { applyTaskCommand } from '../../src/tasks/infrastructure/markdown/applyTaskCommand';
 import {
   type TaskBlockEdit,
@@ -48,6 +49,10 @@ function nodeTarget(command: TaskEditCommand): PlanningTarget | undefined {
     return command.target.type === 'comment' ? command.target.ref.parent : command.target.target;
   }
   if (command.type === 'set-description') return command.target;
+  if (command.type === 'add-subtask') return command.parent;
+  if (command.type === 'delete-subtask' || command.type === 'reorder-subtask') {
+    return command.subtask.parent;
+  }
   if (command.type === 'add-comment') return command.parent;
   if (command.type === 'update-comment' || command.type === 'delete-comment') {
     return command.comment.parent;
@@ -102,6 +107,10 @@ function targetOf(command: TaskEditCommand): TaskMutationTarget {
     return command.target.type === 'comment' ? command.target : command.target.target;
   }
   if (command.type === 'set-description') return command.target;
+  if (command.type === 'add-subtask') return command.parent;
+  if (command.type === 'delete-subtask' || command.type === 'reorder-subtask') {
+    return { type: 'subtask', ref: command.subtask };
+  }
   if (command.type === 'add-comment') return command.parent;
   if (command.type === 'update-comment' || command.type === 'delete-comment') {
     return { type: 'comment', ref: command.comment };
@@ -148,11 +157,21 @@ function blockTarget(
 function isStructuralCommand(command: TaskEditCommand): command is Extract<
   TaskEditCommand,
   {
-    readonly type: 'set-description' | 'add-comment' | 'update-comment' | 'delete-comment';
+    readonly type:
+      | 'set-description'
+      | 'add-subtask'
+      | 'delete-subtask'
+      | 'reorder-subtask'
+      | 'add-comment'
+      | 'update-comment'
+      | 'delete-comment';
   }
 > {
   return (
     command.type === 'set-description' ||
+    command.type === 'add-subtask' ||
+    command.type === 'delete-subtask' ||
+    command.type === 'reorder-subtask' ||
     command.type === 'add-comment' ||
     command.type === 'update-comment' ||
     command.type === 'delete-comment'
@@ -167,17 +186,53 @@ function ownsComment(node: TaskSnapshot | SubtaskSnapshot, comment: CommentRef):
   );
 }
 
+function ownsSubtask(node: TaskSnapshot | SubtaskSnapshot, subtask: SubtaskRef): boolean {
+  return node.subtasks.some(
+    (candidate) =>
+      candidate.ref.relativeLine === subtask.relativeLine &&
+      candidate.ref.originalBlock === subtask.originalBlock,
+  );
+}
+
 function structuralEdit(
   command: Extract<
     TaskEditCommand,
     {
-      readonly type: 'set-description' | 'add-comment' | 'update-comment' | 'delete-comment';
+      readonly type:
+        | 'set-description'
+        | 'add-subtask'
+        | 'delete-subtask'
+        | 'reorder-subtask'
+        | 'add-comment'
+        | 'update-comment'
+        | 'delete-comment';
     }
   >,
 ): TaskBlockEdit {
   switch (command.type) {
     case 'set-description':
       return { type: command.type, text: command.text };
+    case 'add-subtask':
+      return { type: command.type, text: command.text };
+    case 'delete-subtask':
+      return {
+        type: command.type,
+        relativeLine: command.subtask.relativeLine,
+        originalBlock: command.subtask.originalBlock,
+      };
+    case 'reorder-subtask':
+      return {
+        type: command.type,
+        source: {
+          relativeLine: command.subtask.relativeLine,
+          originalBlock: command.subtask.originalBlock,
+        },
+        target: {
+          relativeLine: command.target.relativeLine,
+          originalBlock: command.target.originalBlock,
+        },
+        placement: command.placement,
+      };
     case 'add-comment':
       return { type: command.type, text: command.text, stamp: command.stamp };
     case 'update-comment':
@@ -229,6 +284,15 @@ export class InMemoryTaskRepository implements TaskRepository {
   }
 
   async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
+    if (
+      command.type === 'reorder-subtask' &&
+      !sameTaskNodeRef(command.subtask.parent, command.target.parent)
+    ) {
+      return {
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'subtask-parent' }],
+      };
+    }
     const target = nodeTarget(command);
     const ref = commandRootRef(command);
     const content = this.files.get(ref.filePath);
@@ -278,6 +342,16 @@ export class InMemoryTaskRepository implements TaskRepository {
       if (
         (command.type === 'update-comment' || command.type === 'delete-comment') &&
         !ownsComment(targetSnapshot, command.comment)
+      ) {
+        return { type: 'conflict', current };
+      }
+      if (command.type === 'delete-subtask' && !ownsSubtask(targetSnapshot, command.subtask)) {
+        return { type: 'conflict', current };
+      }
+      if (
+        command.type === 'reorder-subtask' &&
+        (!ownsSubtask(targetSnapshot, command.subtask) ||
+          !ownsSubtask(targetSnapshot, command.target))
       ) {
         return { type: 'conflict', current };
       }

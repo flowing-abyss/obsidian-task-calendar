@@ -76,6 +76,101 @@ describe('TaskBlockEditor', () => {
 
     expect(result).toEqual({ type: 'conflict' });
   });
+
+  it('adds a quoted child without changing CRLF or the missing final newline', () => {
+    const editor = new TaskBlockEditor();
+    const source = '>\t- [ ] root\r\n>\t  - [ ] existing';
+    const block = editor.rootBlocks(source)[0]!;
+    const result = editor.edit(
+      source,
+      block,
+      { relativeLine: 0, lineCount: 2, childRanges: [{ from: 1, to: 1 }] },
+      { type: 'add-subtask', text: 'new [[child]]' },
+    );
+
+    expect(result).toMatchObject({
+      type: 'changed',
+      content: '>\t- [ ] root\r\n>\t  - [ ] existing\r\n>\t  - [ ] new [[child]]',
+    });
+  });
+
+  it('deletes the exact duplicate child and all of its descendants', () => {
+    const editor = new TaskBlockEditor();
+    const source =
+      '- [ ] root\n' + '  - [ ] duplicate\n' + '    - [ ] descendant\n' + '  - [ ] duplicate\n';
+    const block = editor.rootBlocks(source)[0]!;
+    const result = editor.edit(
+      source,
+      block,
+      {
+        relativeLine: 0,
+        lineCount: 4,
+        childRanges: [
+          { from: 1, to: 2 },
+          { from: 3, to: 3 },
+        ],
+      },
+      {
+        type: 'delete-subtask',
+        relativeLine: 1,
+        originalBlock: '  - [ ] duplicate\n    - [ ] descendant',
+      },
+    );
+
+    expect(result).toMatchObject({
+      type: 'changed',
+      content: '- [ ] root\n  - [ ] duplicate\n',
+    });
+  });
+
+  it('reorders only exact immediate-child blocks and preserves mixed indentation', () => {
+    const editor = new TaskBlockEditor();
+    const source =
+      '- [ ] root\r\n' + '\t- [ ] first\r\n' + '\t  - [ ] nested\r\n' + '    - [ ] second\r\n';
+    const block = editor.rootBlocks(source)[0]!;
+    const result = editor.edit(
+      source,
+      block,
+      {
+        relativeLine: 0,
+        lineCount: 4,
+        childRanges: [
+          { from: 1, to: 2 },
+          { from: 3, to: 3 },
+        ],
+      },
+      {
+        type: 'reorder-subtask',
+        source: {
+          relativeLine: 1,
+          originalBlock: '\t- [ ] first\r\n\t  - [ ] nested',
+        },
+        target: { relativeLine: 3, originalBlock: '    - [ ] second' },
+        placement: 'after',
+      },
+    );
+
+    expect(result).toMatchObject({
+      type: 'changed',
+      content:
+        '- [ ] root\r\n' + '    - [ ] second\r\n' + '\t- [ ] first\r\n' + '\t  - [ ] nested\r\n',
+    });
+  });
+
+  it('refuses structural edits whose exact child evidence is stale', () => {
+    const editor = new TaskBlockEditor();
+    const source = '- [ ] root\n  - [ ] current\n';
+    const block = editor.rootBlocks(source)[0]!;
+
+    expect(
+      editor.edit(
+        source,
+        block,
+        { relativeLine: 0, lineCount: 2, childRanges: [{ from: 1, to: 1 }] },
+        { type: 'delete-subtask', relativeLine: 1, originalBlock: '  - [ ] stale' },
+      ),
+    ).toEqual({ type: 'conflict' });
+  });
 });
 
 describe('TaskLocator', () => {

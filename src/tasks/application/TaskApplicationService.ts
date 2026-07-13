@@ -98,6 +98,12 @@ function multilineInputIssue(command: TaskCommand): TaskCommandResult | undefine
   ) {
     return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'comment' }] };
   }
+  if (
+    command.type === 'add-subtask' &&
+    (!isSingleLineText(command.text) || command.text.trim().length === 0)
+  ) {
+    return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'subtask' }] };
+  }
   if (command.type === 'set-description' && command.text?.replace(/\r\n/gu, '').includes('\r')) {
     return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'description' }] };
   }

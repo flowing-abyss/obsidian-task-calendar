@@ -99,6 +99,53 @@ describe('TaskApplicationService planning commands', () => {
     });
   });
 
+  it('delegates nested structural commands without weakening their references', async () => {
+    const parent = { type: 'task' as const, ref };
+    const first = { parent, relativeLine: 1, originalBlock: '  - [ ] first' };
+    const second = { parent, relativeLine: 2, originalBlock: '  - [ ] second' };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    });
+    const application = service({ edit });
+
+    await application.execute({ type: 'add-subtask', parent, text: 'new child' });
+    await application.execute({ type: 'delete-subtask', subtask: first });
+    await application.execute({
+      type: 'reorder-subtask',
+      subtask: first,
+      target: second,
+      placement: 'after',
+    });
+
+    expect(edit.mock.calls.map(([command]) => command)).toEqual([
+      { type: 'add-subtask', parent, text: 'new child' },
+      { type: 'delete-subtask', subtask: first },
+      {
+        type: 'reorder-subtask',
+        subtask: first,
+        target: second,
+        placement: 'after',
+      },
+    ]);
+  });
+
+  it.each(['', '   ', 'line one\nline two', 'line one\rline two'])(
+    'rejects invalid add-subtask text %j before the repository',
+    async (text) => {
+      const edit = vi.fn<TaskRepository['edit']>();
+
+      await expect(
+        service({ edit }).execute({ type: 'add-subtask', parent: { type: 'task', ref }, text }),
+      ).resolves.toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'subtask' }],
+      });
+      expect(edit).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     { type: 'add-comment' as const, parent: { type: 'task' as const, ref }, text: '' },
     {

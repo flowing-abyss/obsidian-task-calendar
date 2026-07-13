@@ -3,7 +3,6 @@ import { Component, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import { locatorOf, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
-import { applySubtaskReorder } from '../parser/subtask-reorder';
 import { formatDurationFromMinutes, parseDurationToMinutes } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
@@ -429,24 +428,36 @@ export class RightPanel {
         attr: { type: 'text', placeholder: 'New sub-task…' },
       });
       input.focus();
-      let committed = false;
-      const commit = (): void => {
-        if (committed) return;
-        committed = true;
-        if (input.value.trim()) void this.addSubTask(task, input.value.trim());
+      let closed = false;
+      let saving = false;
+      const close = (): void => {
+        if (closed) return;
+        closed = true;
         input.remove();
         addSubRow.removeClass('tc-subtask-add-row--hidden');
       };
+      const commit = async (): Promise<void> => {
+        if (closed || saving) return;
+        const text = input.value.trim();
+        if (!text) {
+          close();
+          return;
+        }
+        saving = true;
+        const succeeded = await this.addSubTask(task, text);
+        saving = false;
+        if (closed) return;
+        if (succeeded) close();
+        else input.focus();
+      };
       input.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === 'Enter') commit();
+        if (e.key === 'Enter') void commit();
         if (e.key === 'Escape') {
-          committed = true; // prevent blur from committing
-          input.remove();
-          addSubRow.removeClass('tc-subtask-add-row--hidden');
+          close();
         }
       });
       // Delay to allow click on commit button before blur fires
-      input.addEventListener('blur', () => window.setTimeout(commit, 150));
+      input.addEventListener('blur', () => window.setTimeout(() => void commit(), 150));
     });
 
     // Comments
@@ -1075,18 +1086,10 @@ export class RightPanel {
     );
   }
 
-  private async addSubTask(task: TaskLike, text: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const tl = lines[taskLine];
-      if (!tl) return;
-      // Leading prefix includes blockquote/callout markers so nested items stay
-      // inside the quote (e.g. "> - [ ]" → child ">   - [ ]").
-      const indent = (/^([\s>]*)/.exec(tl)?.[1] ?? '') + '  ';
-      const newLine = `${indent}- [ ] ${text}`;
-      const delta = taskLine - task.line;
-      const insertAt = task.subtaskRange ? task.subtaskRange.to + delta + 1 : taskLine + 1;
-      lines.splice(insertAt, 0, newLine);
-    });
+  private async addSubTask(task: TaskLike, text: string): Promise<boolean> {
+    const parent = this.planningTarget(task);
+    if (!parent) return false;
+    return this.executeBlockCommand({ type: 'add-subtask', parent, text }, parent);
   }
 
   private async toggleSubTask(sub: SubTask): Promise<void> {
@@ -1135,19 +1138,27 @@ export class RightPanel {
     command: Extract<
       TaskCommand,
       {
-        readonly type: 'set-description' | 'add-comment' | 'update-comment' | 'delete-comment';
+        readonly type:
+          | 'set-description'
+          | 'add-subtask'
+          | 'delete-subtask'
+          | 'reorder-subtask'
+          | 'add-comment'
+          | 'update-comment'
+          | 'delete-comment';
       }
     >,
     target: PlanningTarget,
   ): Promise<boolean> {
     if (!this.tasks) return false;
+    const initiatingStack = this.state.get('taskStack');
     let result: TaskCommandResult;
     try {
       result = await this.tasks.execute(command);
     } catch {
       result = { type: 'io-error', cause: 'repository-error', contentState: 'unknown' };
     }
-    this.applyPlanningResult(result, target);
+    this.applyPlanningResult(result, target, initiatingStack);
     return result.type === 'ok';
   }
 
@@ -1209,13 +1220,21 @@ export class RightPanel {
     this.applyPlanningResult(result, target);
   }
 
-  private applyPlanningResult(result: TaskCommandResult, target: PlanningTarget): void {
+  private applyPlanningResult(
+    result: TaskCommandResult,
+    target: PlanningTarget,
+    initiatingStack?: readonly TaskLike[],
+  ): void {
     presentTaskCommandResult(result);
     if (result.type !== 'ok' || result.outcome.type !== 'task') return;
     const stack = this.state.get('taskStack');
     const initiatingRoot = rootRefForPlanningTarget(target);
     const selectedRoot = stack[0] ? taskRefOf(stack[0]) : undefined;
-    if (selectedRoot && sameTaskRef(selectedRoot, initiatingRoot)) {
+    if (
+      selectedRoot &&
+      sameTaskRef(selectedRoot, initiatingRoot) &&
+      (initiatingStack === undefined || stack === initiatingStack)
+    ) {
       const root = legacyTaskView(result.outcome.task);
       this.state.set(
         'taskStack',
@@ -1352,7 +1371,7 @@ export class RightPanel {
 
     const deleteItem = menu.createDiv({
       cls: 'tc-context-item tc-context-danger',
-      text: 'Delete task',
+      text: this.planningTarget(task)?.type === 'subtask' ? 'Delete sub-task' : 'Delete task',
     });
     deleteItem.addEventListener('click', () => {
       menu.remove();
@@ -1385,6 +1404,14 @@ export class RightPanel {
   }
 
   private async deleteTask(task: TaskLike): Promise<void> {
+    const target = this.planningTarget(task);
+    if (target?.type === 'subtask') {
+      await this.executeBlockCommand(
+        { type: 'delete-subtask', subtask: target.ref },
+        target.ref.parent,
+      );
+      return;
+    }
     const rangeEnd = 'subtaskRange' in task && task.subtaskRange ? task.subtaskRange.to : task.line;
     const result = await this.mutations.deleteTaskBlock(locatorOf(task), rangeEnd);
     if (result.type === 'ok') {
@@ -1393,25 +1420,24 @@ export class RightPanel {
   }
 
   private async reorderSubTask(
-    _parentTask: TaskLike,
+    parentTask: TaskLike,
     moved: SubTask,
     target: SubTask,
     position: 'before' | 'after',
   ): Promise<void> {
-    // applySubtaskReorder operates on the full content string; use applyToLines with
-    // a full-array splice to apply it after confirming the anchor task is still present.
-    await this.mutations.applyToLines(locatorOf(moved), (lines, taskLine) => {
-      const delta = taskLine - moved.line;
-      const content = lines.join('\n');
-      const updated = applySubtaskReorder(
-        content,
-        { line: moved.line + delta, rangeTo: (moved.subtaskRange?.to ?? moved.line) + delta },
-        { line: target.line + delta, rangeTo: (target.subtaskRange?.to ?? target.line) + delta },
-        position,
-      );
-      const newLines = updated.split('\n');
-      lines.splice(0, lines.length, ...newLines);
-    });
+    const parent = this.planningTarget(parentTask);
+    const movedTarget = this.planningTarget(moved);
+    const targetNode = this.planningTarget(target);
+    if (!parent || movedTarget?.type !== 'subtask' || targetNode?.type !== 'subtask') return;
+    await this.executeBlockCommand(
+      {
+        type: 'reorder-subtask',
+        subtask: movedTarget.ref,
+        target: targetNode.ref,
+        placement: position,
+      },
+      parent,
+    );
   }
 
   private formatDate(d: string): string {

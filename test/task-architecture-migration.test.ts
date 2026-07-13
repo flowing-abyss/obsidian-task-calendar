@@ -36,18 +36,16 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     reason: 'CenterPanel still performs task deletion directly.',
   },
   'src/panels/RightPanel.ts#RightPanel.constructor#new TaskMutationService#1': {
-    families: ['description/comments/subtasks', 'creation/deletion/movement'],
-    reason:
-      'RightPanel still owns subtask/reorder and deletion paths; description/comment writes are migrated.',
+    families: ['creation/deletion/movement'],
+    reason: 'RightPanel retains only root-task deletion until the root lifecycle migration.',
   },
   'src/projects/ProjectManager.ts#ProjectManager.constructor#new TaskMutationService#1': {
     families: ['creation/deletion/movement'],
     reason: 'Project assignment still moves task blocks through the legacy service.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
-    families: ['description/comments/subtasks', 'creation/deletion/movement'],
-    reason:
-      'Shared legacy boundary remains only for pending subtask/reorder and deletion operations.',
+    families: ['creation/deletion/movement'],
+    reason: 'Shared legacy boundary remains only for pending root deletion operations.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.moveTaskToFile#vault.process#1': {
     families: ['creation/deletion/movement'],
@@ -254,6 +252,14 @@ describe('task architecture migration writer guardrail', () => {
     );
 
     expect(constructionSites).toHaveLength(3);
+  });
+
+  it('has no remaining legacy description, comment, or subtask writer family', () => {
+    expect(
+      Object.values(LEGACY_TASK_WRITERS).some((entry) =>
+        entry.families.includes('description/comments/subtasks'),
+      ),
+    ).toBe(false);
   });
 
   it('keeps exactly one canonical single-task transaction boundary', () => {

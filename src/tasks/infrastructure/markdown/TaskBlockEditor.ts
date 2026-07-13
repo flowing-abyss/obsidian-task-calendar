@@ -28,6 +28,18 @@ export interface TaskBlockTarget {
 
 export type TaskBlockEdit =
   | { readonly type: 'set-description'; readonly text: string | null }
+  | { readonly type: 'add-subtask'; readonly text: string }
+  | {
+      readonly type: 'delete-subtask';
+      readonly relativeLine: number;
+      readonly originalBlock: string;
+    }
+  | {
+      readonly type: 'reorder-subtask';
+      readonly source: { readonly relativeLine: number; readonly originalBlock: string };
+      readonly target: { readonly relativeLine: number; readonly originalBlock: string };
+      readonly placement: 'before' | 'after';
+    }
   | { readonly type: 'add-comment'; readonly text: string; readonly stamp: LocalDate }
   | {
       readonly type: 'update-comment';
@@ -45,7 +57,7 @@ export type TaskBlockEditResult =
   | { readonly type: 'changed'; readonly content: string; readonly block: TaskRootBlock }
   | { readonly type: 'unchanged'; readonly content: string; readonly block: TaskRootBlock }
   | { readonly type: 'conflict' }
-  | { readonly type: 'invalid'; readonly field: 'description' | 'comment' };
+  | { readonly type: 'invalid'; readonly field: 'description' | 'comment' | 'subtask' };
 
 function sourceLines(content: string): SourceLine[] {
   const result: SourceLine[] = [];
@@ -87,6 +99,10 @@ function serializeLines(
   ending: '\n' | '\r\n',
 ): string {
   const last = lines[lines.length - 1];
+  for (let index = 0; index < lines.length - 1; index++) {
+    const line = lines[index];
+    if (line && line.ending === '') line.ending = ending;
+  }
   if (last) last.ending = hadFinalEnding ? last.ending || ending : '';
   return lines.map((line) => line.text + line.ending).join('');
 }
@@ -108,6 +124,37 @@ function insertAt(
 
 function lineWithoutCr(line: string): string {
   return line.endsWith('\r') ? line.slice(0, -1) : line;
+}
+
+interface ConfirmedChildRange {
+  readonly from: number;
+  readonly to: number;
+}
+
+function childBlockLines(originalBlock: string): readonly string[] {
+  return originalBlock.split(/\r?\n/u).map(lineWithoutCr);
+}
+
+function confirmedChildRange(
+  lines: readonly SourceLine[],
+  parentLine: number,
+  target: TaskBlockTarget,
+  child: { readonly relativeLine: number; readonly originalBlock: string },
+): ConfirmedChildRange | undefined {
+  const expected = childBlockLines(child.originalBlock);
+  if (child.relativeLine <= 0 || expected.length === 0) return undefined;
+  const range = target.childRanges.find(
+    (candidate) =>
+      candidate.from === child.relativeLine &&
+      candidate.to === child.relativeLine + expected.length - 1,
+  );
+  if (!range) return undefined;
+  const from = parentLine + range.from;
+  const to = parentLine + range.to;
+  if (to >= lines.length) return undefined;
+  return expected.every((line, index) => lines[from + index]?.text === line)
+    ? { from, to }
+    : undefined;
 }
 
 function isConfirmedTarget(
@@ -239,6 +286,55 @@ export class TaskBlockEditor {
     return undefined;
   }
 
+  private editSubtaskStructure(
+    lines: SourceLine[],
+    content: string,
+    block: TaskRootBlock,
+    target: TaskBlockTarget,
+    parent: SourceLine,
+    parentLine: number,
+    ending: '\n' | '\r\n',
+    edit: Extract<
+      TaskBlockEdit,
+      { readonly type: 'add-subtask' | 'delete-subtask' | 'reorder-subtask' }
+    >,
+  ): TaskBlockEditResult | undefined {
+    if (edit.type === 'add-subtask') {
+      if (edit.text.trim().length === 0 || /[\r\n]/u.test(edit.text)) {
+        return { type: 'invalid', field: 'subtask' };
+      }
+      const prefix = `${PREFIX_RE.exec(parent.text)?.[1] ?? ''}  `;
+      insertAt(
+        lines,
+        parentLine + target.lineCount,
+        insertedLines([`${prefix}- [ ] ${edit.text}`], ending),
+        ending,
+      );
+      return undefined;
+    }
+
+    if (edit.type === 'delete-subtask') {
+      const range = confirmedChildRange(lines, parentLine, target, edit);
+      if (!range) return { type: 'conflict' };
+      lines.splice(range.from, range.to - range.from + 1);
+      return undefined;
+    }
+
+    const source = confirmedChildRange(lines, parentLine, target, edit.source);
+    const destination = confirmedChildRange(lines, parentLine, target, edit.target);
+    if (!source || !destination) return { type: 'conflict' };
+    if (source.from === destination.from && source.to === destination.to) {
+      return { type: 'unchanged', content, block };
+    }
+    const moved = lines.splice(source.from, source.to - source.from + 1);
+    const removed = moved.length;
+    const targetFrom = destination.from - (source.from < destination.from ? removed : 0);
+    const targetTo = destination.to - (source.from < destination.from ? removed : 0);
+    const insertion = edit.placement === 'before' ? targetFrom : targetTo + 1;
+    lines.splice(insertion, 0, ...moved);
+    return undefined;
+  }
+
   edit(
     content: string,
     block: TaskRootBlock,
@@ -257,6 +353,22 @@ export class TaskBlockEditor {
 
     if (edit.type === 'set-description') {
       const earlyResult = this.editDescription(
+        lines,
+        content,
+        block,
+        target,
+        parent,
+        parentLine,
+        ending,
+        edit,
+      );
+      if (earlyResult) return earlyResult;
+    } else if (
+      edit.type === 'add-subtask' ||
+      edit.type === 'delete-subtask' ||
+      edit.type === 'reorder-subtask'
+    ) {
+      const earlyResult = this.editSubtaskStructure(
         lines,
         content,
         block,

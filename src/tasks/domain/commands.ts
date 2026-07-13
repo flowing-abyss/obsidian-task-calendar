@@ -74,6 +74,14 @@ export type TaskCommand =
     }
   | { readonly type: 'extend-span'; readonly ref: TaskRef; readonly due: LocalDate }
   | { readonly type: 'set-description'; readonly target: TaskNodeRef; readonly text: string | null }
+  | { readonly type: 'add-subtask'; readonly parent: TaskNodeRef; readonly text: string }
+  | { readonly type: 'delete-subtask'; readonly subtask: SubtaskRef }
+  | {
+      readonly type: 'reorder-subtask';
+      readonly subtask: SubtaskRef;
+      readonly target: SubtaskRef;
+      readonly placement: 'before' | 'after';
+    }
   | { readonly type: 'add-comment'; readonly parent: TaskNodeRef; readonly text: string }
   | {
       readonly type: 'update-comment';

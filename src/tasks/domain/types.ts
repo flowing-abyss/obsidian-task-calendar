@@ -43,6 +43,25 @@ export type TaskNodeRef =
   | { readonly type: 'task'; readonly ref: TaskRef }
   | { readonly type: 'subtask'; readonly ref: SubtaskRef };
 
+export function sameTaskNodeRef(left: TaskNodeRef, right: TaskNodeRef): boolean {
+  if (left.type !== right.type) return false;
+  if (left.type === 'task' && right.type === 'task') {
+    return (
+      left.ref.filePath === right.ref.filePath &&
+      left.ref.line === right.ref.line &&
+      left.ref.revision === right.ref.revision
+    );
+  }
+  if (left.type === 'subtask' && right.type === 'subtask') {
+    return (
+      left.ref.relativeLine === right.ref.relativeLine &&
+      left.ref.originalBlock === right.ref.originalBlock &&
+      sameTaskNodeRef(left.ref.parent, right.ref.parent)
+    );
+  }
+  return false;
+}
+
 export type TaskMutationTarget =
   | TaskNodeRef
   | { readonly type: 'comment'; readonly ref: CommentRef };

@@ -140,6 +140,187 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
       );
     });
 
+    it('adds nested subtasks losslessly and returns a completely fresh root tree', async () => {
+      const source =
+        '>\t- [ ] root\r\n' +
+        '>\t  - [ ] parent\r\n' +
+        '>\t    - [ ] existing\r\n' +
+        '> - [ ] unrelated';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+      const parent = root.subtasks[0]!;
+
+      const result = await h.repository.edit({
+        type: 'add-subtask',
+        parent: { type: 'subtask', ref: parent.ref },
+        text: 'new [[child]]',
+      });
+
+      expect(result).toMatchObject({
+        type: 'committed',
+        changed: true,
+        outcome: {
+          type: 'task',
+          task: {
+            subtasks: [
+              {
+                subtasks: [{ markdownTitle: 'existing' }, { markdownTitle: 'new [[child]]' }],
+              },
+            ],
+          },
+        },
+      });
+      expect(await h.read()).toBe(
+        '>\t- [ ] root\r\n' +
+          '>\t  - [ ] parent\r\n' +
+          '>\t    - [ ] existing\r\n' +
+          '>\t    - [ ] new [[child]]\r\n' +
+          '> - [ ] unrelated',
+      );
+      if (result.type === 'committed') {
+        const freshRoot = result.outcome.task;
+        const freshParent = freshRoot.subtasks[0]!;
+        expect(freshParent.ref.parent).toEqual({ type: 'task', ref: freshRoot.ref });
+        expect(freshParent.subtasks[1]!.ref.parent).toEqual({
+          type: 'subtask',
+          ref: freshParent.ref,
+        });
+      }
+    });
+
+    it('deletes the exact duplicate child with descendants after confirming every ancestor', async () => {
+      const source =
+        '- [ ] root\n' +
+        '  - [ ] branch\n' +
+        '    - [ ] duplicate\n' +
+        '      - [ ] descendant\n' +
+        '    - [ ] duplicate\n' +
+        '- [ ] next\n';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+      const branch = root.subtasks[0]!;
+      const firstDuplicate = branch.subtasks[0]!;
+      const staleAncestorRef = {
+        ...firstDuplicate.ref,
+        parent: {
+          type: 'subtask' as const,
+          ref: {
+            ...branch.ref,
+            originalBlock: branch.ref.originalBlock.replace('branch', 'stale'),
+          },
+        },
+      };
+
+      await expect(
+        h.repository.edit({ type: 'delete-subtask', subtask: staleAncestorRef }),
+      ).resolves.toMatchObject({ type: 'conflict' });
+      expect(await h.read()).toBe(source);
+
+      const result = await h.repository.edit({
+        type: 'delete-subtask',
+        subtask: firstDuplicate.ref,
+      });
+      expect(result).toMatchObject({
+        type: 'committed',
+        changed: true,
+        outcome: { type: 'task', task: { subtasks: [{ subtasks: [{ title: 'duplicate' }] }] } },
+      });
+      expect(await h.read()).toBe('- [ ] root\n  - [ ] branch\n    - [ ] duplicate\n- [ ] next\n');
+    });
+
+    it('reorders lossless sibling blocks and rejects cross-parent targets', async () => {
+      const source =
+        '- [ ] root\r\n' +
+        '\t- [ ] first\r\n' +
+        '\t  - [ ] first child\r\n' +
+        '    - [ ] second\r\n' +
+        '    - [ ] branch\r\n' +
+        '      - [ ] nested target\r\n';
+      const h = await makeHarness(adapter, source);
+      let root = h.snapshots(source)[0]!;
+      const first = root.subtasks[0]!;
+      const second = root.subtasks[1]!;
+      const nestedTarget = root.subtasks[2]!.subtasks[0]!;
+
+      await expect(
+        h.repository.edit({
+          type: 'reorder-subtask',
+          subtask: first.ref,
+          target: nestedTarget.ref,
+          placement: 'after',
+        }),
+      ).resolves.toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'subtask-parent' }],
+      });
+      expect(await h.read()).toBe(source);
+
+      const result = await h.repository.edit({
+        type: 'reorder-subtask',
+        subtask: first.ref,
+        target: second.ref,
+        placement: 'after',
+      });
+      expect(result).toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toBe(
+        '- [ ] root\r\n' +
+          '    - [ ] second\r\n' +
+          '\t- [ ] first\r\n' +
+          '\t  - [ ] first child\r\n' +
+          '    - [ ] branch\r\n' +
+          '      - [ ] nested target\r\n',
+      );
+
+      root = h.snapshots(await h.read())[0]!;
+      expect(root.subtasks.map((child) => child.title)).toEqual(['second', 'first', 'branch']);
+    });
+
+    it('rejects forged child evidence and direct invalid subtask text without writing', async () => {
+      const source = '- [ ] root\n  - [ ] child\n  - [ ] sibling\n';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+      const child = root.subtasks[0]!;
+
+      await expect(
+        h.repository.edit({
+          type: 'delete-subtask',
+          subtask: { ...child.ref, originalBlock: '  - [ ] forged' },
+        }),
+      ).resolves.toMatchObject({ type: 'conflict' });
+      await expect(
+        h.repository.edit({
+          type: 'add-subtask',
+          parent: { type: 'task', ref: root.ref },
+          text: 'invalid\nchild',
+        }),
+      ).resolves.toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'subtask' }],
+      });
+      expect(await h.read()).toBe(source);
+    });
+
+    it('returns an unchanged fresh root when reordering a child onto itself', async () => {
+      const source = '- [ ] root\n  - [ ] child\n';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+      const child = root.subtasks[0]!;
+
+      await expect(
+        h.repository.edit({
+          type: 'reorder-subtask',
+          subtask: child.ref,
+          target: child.ref,
+          placement: 'after',
+        }),
+      ).resolves.toMatchObject({
+        type: 'committed',
+        changed: false,
+        outcome: { type: 'task', task: { ref: root.ref } },
+      });
+      expect(await h.read()).toBe(source);
+    });
+
     it('clears only direct descriptions and preserves no-op bytes, child descriptions, and list content', async () => {
       const source =
         '- [ ] root\n' +

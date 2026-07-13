@@ -1,81 +1,71 @@
 import { describe, expect, it } from 'vitest';
-import { applySubtaskReorder } from '../src/parser/subtask-reorder';
+import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
 
-describe('applySubtaskReorder deep edges', () => {
-  it('moves block down with position=before (L23 false branch)', () => {
-    // moved.line < target.line → adjusted branch; position !== 'before' → false → adjRangeTo + 1
-    // To hit L23 false: moved.line < target.line AND position === 'before'
-    const content = ['- [ ] Parent', '  - [ ] A', '  - [ ] B', '  - [ ] C'].join('\n');
-    const result = applySubtaskReorder(
+describe('TaskBlockEditor reorder losslessness', () => {
+  it('preserves CRLF, final newline, quotes, and mixed indentation', () => {
+    const content =
+      '> - [ ] Parent\r\n' +
+      '>\t- [ ] Tab child\r\n' +
+      '>\t  - > description\r\n' +
+      '>   - [ ] Space child\r\n';
+    const editor = new TaskBlockEditor();
+    const block = editor.rootBlocks(content)[0]!;
+    const result = editor.edit(
       content,
-      { line: 1, rangeTo: 1 },
-      { line: 3, rangeTo: 3 },
-      'before',
+      block,
+      {
+        relativeLine: 0,
+        lineCount: 4,
+        childRanges: [
+          { from: 1, to: 2 },
+          { from: 3, to: 3 },
+        ],
+      },
+      {
+        type: 'reorder-subtask',
+        source: {
+          relativeLine: 1,
+          originalBlock: '>\t- [ ] Tab child\r\n>\t  - > description',
+        },
+        target: { relativeLine: 3, originalBlock: '>   - [ ] Space child' },
+        placement: 'after',
+      },
     );
-    // A moved before C: adjLine = 3 - 1 = 2; position before → insertAt = 2
-    expect(result.split('\n')).toEqual(['- [ ] Parent', '  - [ ] B', '  - [ ] A', '  - [ ] C']);
+
+    expect(result).toMatchObject({
+      type: 'changed',
+      content:
+        '> - [ ] Parent\r\n' +
+        '>   - [ ] Space child\r\n' +
+        '>\t- [ ] Tab child\r\n' +
+        '>\t  - > description\r\n',
+    });
   });
 
-  it('moves block up with position=after (L26 false branch)', () => {
-    // moved.line > target.line → unadjusted branch; position === 'after' → false → target.rangeTo + 1
-    // To hit L26 false: moved.line > target.line AND position === 'after'
-    const content = ['- [ ] Parent', '  - [ ] A', '  - [ ] B', '  - [ ] C'].join('\n');
-    const result = applySubtaskReorder(
-      content,
-      { line: 3, rangeTo: 3 },
-      { line: 1, rangeTo: 1 },
-      'after',
-    );
-    // C moved after A: insertAt = 1 + 1 = 2
-    expect(result.split('\n')).toEqual(['- [ ] Parent', '  - [ ] A', '  - [ ] C', '  - [ ] B']);
-  });
+  it('rejects a range that is not an immediate child of the confirmed parent', () => {
+    const content = '- [ ] Parent\n  - [ ] Branch\n    - [ ] Nested\n  - [ ] Sibling';
+    const editor = new TaskBlockEditor();
+    const block = editor.rootBlocks(content)[0]!;
 
-  it('moves multi-line block down with position=before', () => {
-    const content = ['- [ ] Parent', '  - [ ] A', '    - [ ] A1', '  - [ ] B', '  - [ ] C'].join(
-      '\n',
-    );
-    const result = applySubtaskReorder(
-      content,
-      { line: 1, rangeTo: 2 },
-      { line: 4, rangeTo: 4 },
-      'before',
-    );
-    expect(result.split('\n')).toEqual([
-      '- [ ] Parent',
-      '  - [ ] B',
-      '  - [ ] A',
-      '    - [ ] A1',
-      '  - [ ] C',
-    ]);
-  });
-
-  it('moves multi-line block up with position=after', () => {
-    const content = ['- [ ] Parent', '  - [ ] A', '  - [ ] B', '    - [ ] B1', '  - [ ] C'].join(
-      '\n',
-    );
-    const result = applySubtaskReorder(
-      content,
-      { line: 4, rangeTo: 4 },
-      { line: 1, rangeTo: 2 },
-      'after',
-    );
-    // C moved after A block (line 1, rangeTo 2): insertAt = 2 + 1 = 3
-    // CURRENT BEHAVIOR: moved.line (4) > target.line (1), so unadjusted branch;
-    // position='after' → insertAt = target.rangeTo + 1 = 3. After splicing out C,
-    // lines = [Parent, A, B, B1]; splice(3, 0, C) → [Parent, A, B, C, B1].
-    expect(result.split('\n')).toEqual([
-      '- [ ] Parent',
-      '  - [ ] A',
-      '  - [ ] B',
-      '  - [ ] C',
-      '    - [ ] B1',
-    ]);
-  });
-
-  it('same line is no-op (already covered, verifying stability)', () => {
-    const content = '- [ ] Parent\n  - [ ] A\n  - [ ] B';
     expect(
-      applySubtaskReorder(content, { line: 1, rangeTo: 1 }, { line: 1, rangeTo: 1 }, 'before'),
-    ).toBe(content);
+      editor.edit(
+        content,
+        block,
+        {
+          relativeLine: 0,
+          lineCount: 4,
+          childRanges: [
+            { from: 1, to: 2 },
+            { from: 3, to: 3 },
+          ],
+        },
+        {
+          type: 'reorder-subtask',
+          source: { relativeLine: 2, originalBlock: '    - [ ] Nested' },
+          target: { relativeLine: 3, originalBlock: '  - [ ] Sibling' },
+          placement: 'after',
+        },
+      ),
+    ).toEqual({ type: 'conflict' });
   });
 });

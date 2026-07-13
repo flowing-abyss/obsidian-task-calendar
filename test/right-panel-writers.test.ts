@@ -45,6 +45,7 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
       method === 'updateTaskTitle' ||
       method === 'appendToTitle' ||
       method === 'updateDescription' ||
+      method === 'addSubTask' ||
       method === 'addComment' ||
       method === 'updateComment' ||
       method === 'deleteComment') &&
@@ -818,7 +819,7 @@ describe('RightPanel.addSubTask', () => {
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'addSubTask', t, 'sub')).resolves.toBeUndefined();
+    await expect(call<Promise<boolean>>(panel, 'addSubTask', t, 'sub')).resolves.toBe(false);
   });
 });
 
@@ -1420,7 +1421,19 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
   });
 
   it('addSubTask nests a quoted child under a blockquote parent', async () => {
-    const { panel, app } = await makePanel({ 't.md': '> - [ ] parent\n> - [ ] other' });
+    const { panel, app } = await makePanel(
+      { 't.md': '> - [ ] parent\n> - [ ] other' },
+      DEFAULT_SETTINGS,
+      [
+        {
+          path: 't.md',
+          items: [
+            { task: ' ', parent: -1, line: 0 },
+            { task: ' ', parent: -1, line: 1 },
+          ],
+        },
+      ],
+    );
     const t = task({ filePath: 't.md', line: 0, text: 'parent', rawText: '> - [ ] parent' });
     await call<Promise<void>>(panel, 'addSubTask', t, 'child');
     const lines = (await readMd(app, 't.md')).split('\n');

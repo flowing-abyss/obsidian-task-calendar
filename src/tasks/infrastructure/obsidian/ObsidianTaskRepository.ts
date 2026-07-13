@@ -15,6 +15,7 @@ import type {
   TaskRef,
   TaskSnapshot,
 } from '../../domain/types';
+import { sameTaskNodeRef } from '../../domain/types';
 import { applyTaskCommand } from '../markdown/applyTaskCommand';
 import type { TaskBlockEdit, TaskRootBlock } from '../markdown/TaskBlockEditor';
 import { TaskBlockEditor } from '../markdown/TaskBlockEditor';
@@ -31,7 +32,14 @@ interface RepositoryOptions {
 type StructuralTaskEditCommand = Extract<
   TaskEditCommand,
   {
-    readonly type: 'set-description' | 'add-comment' | 'update-comment' | 'delete-comment';
+    readonly type:
+      | 'set-description'
+      | 'add-subtask'
+      | 'delete-subtask'
+      | 'reorder-subtask'
+      | 'add-comment'
+      | 'update-comment'
+      | 'delete-comment';
   }
 >;
 
@@ -53,6 +61,10 @@ function nodeTargetOf(command: TaskEditCommand): PlanningTarget | undefined {
     return command.target.type === 'comment' ? command.target.ref.parent : command.target.target;
   }
   if (command.type === 'set-description') return command.target;
+  if (command.type === 'add-subtask') return command.parent;
+  if (command.type === 'delete-subtask' || command.type === 'reorder-subtask') {
+    return command.subtask.parent;
+  }
   if (command.type === 'add-comment') return command.parent;
   if (command.type === 'update-comment' || command.type === 'delete-comment') {
     return command.comment.parent;
@@ -158,6 +170,10 @@ function mutationTarget(command: TaskEditCommand): TaskMutationTarget {
     return command.target.type === 'comment' ? command.target : command.target.target;
   }
   if (command.type === 'set-description') return command.target;
+  if (command.type === 'add-subtask') return command.parent;
+  if (command.type === 'delete-subtask' || command.type === 'reorder-subtask') {
+    return { type: 'subtask', ref: command.subtask };
+  }
   if (command.type === 'add-comment') return command.parent;
   if (command.type === 'update-comment' || command.type === 'delete-comment') {
     return { type: 'comment', ref: command.comment };
@@ -206,6 +222,9 @@ function blockTarget(
 function isStructuralCommand(command: TaskEditCommand): command is StructuralTaskEditCommand {
   return (
     command.type === 'set-description' ||
+    command.type === 'add-subtask' ||
+    command.type === 'delete-subtask' ||
+    command.type === 'reorder-subtask' ||
     command.type === 'add-comment' ||
     command.type === 'update-comment' ||
     command.type === 'delete-comment'
@@ -220,10 +239,39 @@ function ownsComment(node: TaskSnapshot | SubtaskSnapshot, comment: CommentRef):
   );
 }
 
+function ownsSubtask(node: TaskSnapshot | SubtaskSnapshot, subtask: SubtaskRef): boolean {
+  return node.subtasks.some(
+    (candidate) =>
+      candidate.ref.relativeLine === subtask.relativeLine &&
+      candidate.ref.originalBlock === subtask.originalBlock,
+  );
+}
+
 function structuralEdit(command: StructuralTaskEditCommand): TaskBlockEdit {
   switch (command.type) {
     case 'set-description':
       return { type: command.type, text: command.text };
+    case 'add-subtask':
+      return { type: command.type, text: command.text };
+    case 'delete-subtask':
+      return {
+        type: command.type,
+        relativeLine: command.subtask.relativeLine,
+        originalBlock: command.subtask.originalBlock,
+      };
+    case 'reorder-subtask':
+      return {
+        type: command.type,
+        source: {
+          relativeLine: command.subtask.relativeLine,
+          originalBlock: command.subtask.originalBlock,
+        },
+        target: {
+          relativeLine: command.target.relativeLine,
+          originalBlock: command.target.originalBlock,
+        },
+        placement: command.placement,
+      };
     case 'add-comment':
       return { type: command.type, text: command.text, stamp: command.stamp };
     case 'update-comment':
@@ -261,6 +309,15 @@ export class ObsidianTaskRepository implements TaskRepository {
   ) {}
 
   async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
+    if (
+      command.type === 'reorder-subtask' &&
+      !sameTaskNodeRef(command.subtask.parent, command.target.parent)
+    ) {
+      return {
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'subtask-parent' }],
+      };
+    }
     const rootRef = rootRefForCommand(command);
     const file = this.app.vault.getAbstractFileByPath(rootRef.filePath);
     if (!(file instanceof TFile)) {
@@ -390,6 +447,15 @@ export class ObsidianTaskRepository implements TaskRepository {
     if (
       (command.type === 'update-comment' || command.type === 'delete-comment') &&
       !ownsComment(node, command.comment)
+    ) {
+      return { result: { type: 'conflict', current }, content };
+    }
+    if (command.type === 'delete-subtask' && !ownsSubtask(node, command.subtask)) {
+      return { result: { type: 'conflict', current }, content };
+    }
+    if (
+      command.type === 'reorder-subtask' &&
+      (!ownsSubtask(node, command.subtask) || !ownsSubtask(node, command.target))
     ) {
       return { result: { type: 'conflict', current }, content };
     }
