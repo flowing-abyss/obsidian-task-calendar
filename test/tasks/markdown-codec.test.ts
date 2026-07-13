@@ -1,0 +1,236 @@
+import { describe, expect, it } from 'vitest';
+import {
+  TaskMarkdownCodec,
+  type ParsedTaskLine,
+  type TaskSpanKind,
+} from '../../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { canonicalStatusCatalog } from '../helpers';
+
+const codec = new TaskMarkdownCodec(canonicalStatusCatalog());
+const location = { filePath: 'Projects/Test.md', line: 4 };
+
+function parse(source: string): ParsedTaskLine {
+  const parsed = codec.parseLine(source, location);
+  expect(parsed).not.toBeNull();
+  return parsed!;
+}
+
+function spanText(parsed: ParsedTaskLine, kind: TaskSpanKind): string[] {
+  return parsed.spans
+    .filter((span) => span.kind === kind)
+    .map((span) => parsed.original.slice(span.from, span.to));
+}
+
+function expectLosslessPartition(parsed: ParsedTaskLine): void {
+  expect(parsed.spans[0]?.from).toBe(0);
+  for (let i = 1; i < parsed.spans.length; i++) {
+    expect(parsed.spans[i]?.from).toBe(parsed.spans[i - 1]?.to);
+  }
+  expect(parsed.spans[parsed.spans.length - 1]?.to).toBe(parsed.original.length);
+  expect(parsed.spans.map((span) => parsed.original.slice(span.from, span.to)).join('')).toBe(
+    parsed.original,
+  );
+}
+
+describe('TaskMarkdownCodec', () => {
+  it('partitions a representative Tasks-compatible line without losing source bytes', () => {
+    const source =
+      '> - [/] Review [[Design|spec]] #work 🆔 review-1 ⛔ prep-1, prep_2 📅 2026-07-20 ^review';
+    const parsed = parse(source);
+
+    expect(parsed).toMatchObject({
+      statusSymbol: '/',
+      markdownTitle: 'Review [[Design|spec]]',
+      tags: ['#work'],
+      planning: { due: '2026-07-20' },
+      source: { filePath: 'Projects/Test.md', line: 4, originalMarkdown: source },
+    });
+    expect(spanText(parsed, 'task-id')).toEqual(['🆔 review-1']);
+    expect(spanText(parsed, 'depends-on')).toEqual(['⛔ prep-1, prep_2']);
+    expect(spanText(parsed, 'block-id')).toEqual(['^review']);
+    expectLosslessPartition(parsed);
+  });
+
+  it.each([
+    ['🔺', 'A'],
+    ['⏫', 'B'],
+    ['🔼', 'C'],
+    ['', 'D'],
+    ['🔽', 'E'],
+    ['⏬', 'F'],
+  ] as const)('decodes priority %s as %s', (marker, priority) => {
+    const parsed = parse(`- [ ] Task${marker ? ` ${marker}` : ''}`);
+    expect(parsed.priority).toBe(priority);
+    expect(parsed.markdownTitle).toBe('Task');
+    expectLosslessPartition(parsed);
+  });
+
+  it('recognizes every planning field, recurrence, created date, time, and duration', () => {
+    const source =
+      '- [x] Ship ⏰ 09:05 ⏱️ 1h30m 🔁 every week ➕ 2026-07-01 🛫 2026-07-02 ⏳ 2026-07-03 📅 2026-07-04 ❌ 2026-07-05 ✅ 2026-07-06';
+    const parsed = parse(source);
+
+    expect(parsed.markdownTitle).toBe('Ship');
+    expect(parsed.recurrence).toBe('every week');
+    expect(parsed.planning).toEqual({
+      start: '2026-07-02',
+      scheduled: '2026-07-03',
+      due: '2026-07-04',
+      cancelled: '2026-07-05',
+      completion: '2026-07-06',
+      time: '09:05',
+      duration: 90,
+    });
+    expect(spanText(parsed, 'created')).toEqual(['➕ 2026-07-01']);
+    expectLosslessPartition(parsed);
+  });
+
+  it('retains every duplicate occurrence while exposing legacy first-value semantics', () => {
+    const parsed = parse('- [ ] Task 📅 2026-07-01 📅 2026-07-02 🔼 🔽');
+
+    expect(parsed.planning.due).toBe('2026-07-01');
+    expect(parsed.priority).toBe('C');
+    expect(parsed.occurrences.get('due')).toHaveLength(2);
+    expect(parsed.occurrences.get('priority')).toHaveLength(2);
+    expectLosslessPartition(parsed);
+  });
+
+  it('does not skip a zero-duration first occurrence in favor of a later duplicate', () => {
+    const parsed = parse('- [ ] Task ⏱️ 0m ⏱️ 1h');
+    expect(parsed.planning.duration).toBeUndefined();
+    expect(parsed.occurrences.get('duration')).toHaveLength(2);
+    expectLosslessPartition(parsed);
+  });
+
+  it('keeps tags and nested tags as dedicated spans while preserving Markdown title markup', () => {
+    const parsed = parse(
+      '- [ ] Read [[Sources|secondary sources]] and [docs](https://example.test) #work #project/alpha-beta',
+    );
+
+    expect(parsed.markdownTitle).toBe(
+      'Read [[Sources|secondary sources]] and [docs](https://example.test)',
+    );
+    expect(parsed.tags).toEqual(['#work', '#project/alpha-beta']);
+    expect(spanText(parsed, 'tag')).toEqual(['#work', '#project/alpha-beta']);
+    expectLosslessPartition(parsed);
+  });
+
+  it.each([
+    '  - [ ] Indented',
+    '\t- [ ] Tabbed',
+    '> - [ ] Quoted',
+    '> > - [ ] Nested callout task',
+    '>>- [ ] Compact quote',
+  ])('preserves indentation and blockquote/callout prefix in %j', (source) => {
+    const parsed = parse(source);
+    expect(spanText(parsed, 'prefix')).toHaveLength(1);
+    expectLosslessPartition(parsed);
+  });
+
+  it('preserves CRLF as its own exact source span', () => {
+    const source = '> - [ ] Windows task 📅 2026-07-20\r\n';
+    const parsed = parse(source);
+
+    expect(parsed.lineEnding).toBe('\r\n');
+    expect(parsed.source.originalMarkdown).toBe(source);
+    const separators = spanText(parsed, 'separator');
+    expect(separators[separators.length - 1]).toBe('\r\n');
+    expectLosslessPartition(parsed);
+  });
+
+  it.each([
+    ['🆔 A', 'A'],
+    ['🆔 abc-DEF_123', 'abc-DEF_123'],
+    ['🆔️ id_with-vs16', 'id_with-vs16'],
+  ])('recognizes the pinned task ID grammar in %j', (carrier, id) => {
+    const parsed = parse(`- [ ] Task ${carrier}`);
+    expect(spanText(parsed, 'task-id')).toEqual([carrier]);
+    expect(parsed.markdownTitle).toBe('Task');
+    expect(parsed.original).toContain(id);
+    expectLosslessPartition(parsed);
+  });
+
+  it.each([
+    '⛔ one',
+    '⛔ one,two',
+    '⛔ one, two',
+    '⛔ one ,two',
+    '⛔ one , two',
+    '⛔️ one_1, two-2',
+  ])('recognizes pinned dependency lists in %j', (carrier) => {
+    const parsed = parse(`- [ ] Task ${carrier}`);
+    expect(spanText(parsed, 'depends-on')).toEqual([carrier]);
+    expect(parsed.markdownTitle).toBe('Task');
+    expectLosslessPartition(parsed);
+  });
+
+  it('recognizes adjacent metadata only when separated by whitespace', () => {
+    const parsed = parse('- [ ] Task 🆔 id-1 📅 2026-07-20 ⛔ prep,next ✅ 2026-07-21');
+    expect(spanText(parsed, 'task-id')).toEqual(['🆔 id-1']);
+    expect(spanText(parsed, 'depends-on')).toEqual(['⛔ prep,next']);
+    expect(parsed.planning).toMatchObject({ due: '2026-07-20', completion: '2026-07-21' });
+    expectLosslessPartition(parsed);
+  });
+
+  it.each(['🆔 id!', '🆔 id.dot', '🆔 id/next', '⛔ one,two!', '⛔ one,,two', '⛔ one,two/three'])(
+    'rejects partial ID/dependency matches with adjacent invalid characters in %j',
+    (carrier) => {
+      const parsed = parse(`- [ ] Task ${carrier}`);
+      expect(parsed.occurrences.get('task-id') ?? []).toHaveLength(0);
+      expect(parsed.occurrences.get('depends-on') ?? []).toHaveLength(0);
+      expect(parsed.markdownTitle).toContain(carrier);
+      expect(spanText(parsed, 'unknown').join('')).toContain(carrier.split(' ')[0]);
+      expectLosslessPartition(parsed);
+    },
+  );
+
+  it('retains malformed recognized-looking values and unknown emoji in the semantic title', () => {
+    const source =
+      '- [ ] Keep 🧭 north 📅 not-a-date ⏰ 9:5 ⏱️ nope ➕ 2026-7-1 🆔 bad.value ^bad/value';
+    const parsed = parse(source);
+
+    expect(parsed.planning).toEqual({});
+    expect(parsed.markdownTitle).toBe(
+      'Keep 🧭 north 📅 not-a-date ⏰ 9:5 ⏱️ nope ➕ 2026-7-1 🆔 bad.value ^bad/value',
+    );
+    expect(spanText(parsed, 'unknown').length).toBeGreaterThan(0);
+    expectLosslessPartition(parsed);
+  });
+
+  it('recognizes only a terminal Obsidian block ID', () => {
+    const parsed = parse('- [ ] Mention ^middle in title ^terminal');
+    expect(spanText(parsed, 'block-id')).toEqual(['^terminal']);
+    expect(parsed.markdownTitle).toBe('Mention ^middle in title');
+    expectLosslessPartition(parsed);
+  });
+
+  it('does not recognize a terminal caret token without the required whitespace boundary', () => {
+    const parsed = parse('- [ ] Keep title^not-a-block');
+    expect(spanText(parsed, 'block-id')).toEqual([]);
+    expect(parsed.markdownTitle).toBe('Keep title^not-a-block');
+    expectLosslessPartition(parsed);
+  });
+
+  it('parses shuffled suffix tokens from right to left without reordering source', () => {
+    const source = '- [ ] Task 📅 2026-07-20 🔁 every week ⏫ ⏰ 14:30';
+    const parsed = parse(source);
+
+    expect(parsed.markdownTitle).toBe('Task');
+    expect(parsed.recurrence).toBe('every week');
+    expect(parsed.priority).toBe('B');
+    expect(parsed.planning).toMatchObject({ due: '2026-07-20', time: '14:30' });
+    expectLosslessPartition(parsed);
+  });
+
+  it('returns null for non-task source', () => {
+    expect(codec.parseLine('> [!todo] Callout header', location)).toBeNull();
+    expect(codec.parseLine('- plain bullet', location)).toBeNull();
+  });
+
+  it('uses the injected status catalog without requiring configured symbols to parse', () => {
+    expect(codec.statusForSymbol('/')).toBe('in-progress');
+    expect(codec.statusForSymbol('X')).toBe('done');
+    expect(codec.statusForSymbol('?')).toBe('open');
+    expect(parse('- [?] Unknown but compatible').statusSymbol).toBe('?');
+  });
+});

@@ -1,26 +1,27 @@
-import { buildDefaultTaskStatuses } from '../settings/defaults';
-import { StatusRegistry } from '../status/StatusRegistry';
+import { StatusCatalog } from '../tasks/domain/StatusCatalog';
+import type { TaskPriority, TaskStatus } from '../tasks/domain/types';
+import {
+  TaskMarkdownCodec,
+  type ParsedTaskLine,
+  type SourceSpan,
+  type TaskSpanKind,
+} from '../tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { legacyRecurrenceFromParsed } from './extractMetadata';
 import { collapseLinks } from './links';
-import type { ParseContext, Task, TaskPriority, TaskStatus } from './types';
+import type { ParseContext, Task } from './types';
 
-const DEFAULT_REGISTRY = new StatusRegistry(buildDefaultTaskStatuses());
-
-// Matches task lines: optional indent and blockquote/callout markers (spaces, tabs,
-// and `>`), then "- [char] rest". The `[\s>]*` prefix lets tasks inside blockquotes
-// and callouts (`> - [ ]`, `> > - [ ]`) parse like plain list tasks.
-const CHECKBOX_RE = /^([\s>]*)- \[(.)\]\s*(.*)/;
-
-const DUE_RE = /📅\s*(\d{4}-\d{2}-\d{2})/u;
-const SCHEDULED_RE = /⏳\s*(\d{4}-\d{2}-\d{2})/u;
-const START_RE = /🛫\s*(\d{4}-\d{2}-\d{2})/u;
-const COMPLETION_RE = /✅\s*(\d{4}-\d{2}-\d{2})/u;
-const CANCELLED_EMOJI_RE = /❌\s*(\d{4}-\d{2}-\d{2})/u;
-const TIME_RE = /⏰\s*(\d{1,2}:\d{2})/u;
-// Recurrence: capture text after 🔁 until another metadata emoji (includes 🔺⏬ for Tasks compat)
-const RECURRENCE_RE = /🔁\s*([^📅⏳🛫✅❌⏰🔺⏫🔼🔽⏬\n]*)/u;
+const EMPTY_STATUS_CATALOG = new StatusCatalog([]);
 const DURATION_RE = /⏱️\s*(?:(\d+)h)?(?:(\d+)m)?/u;
 
 const TAGS_RE = /#[\w/-]+/gu;
+const PRIORITY_MARKER: Readonly<Record<TaskPriority, string>> = {
+  A: '🔺',
+  B: '⏫',
+  C: '🔼',
+  D: '',
+  E: '🔽',
+  F: '⏬',
+};
 
 /** Parse a duration token body (e.g. "1h30m", "2h", "45m") into total minutes. */
 export function parseDurationToMinutes(raw: string): number | undefined {
@@ -58,108 +59,16 @@ function matchDuration(text: string): { raw: string; minutes: number | undefined
 }
 
 export function parseTask(rawText: string, ctx: ParseContext): Task | null {
-  const match = CHECKBOX_RE.exec(rawText);
-  if (!match) return null;
+  const codec = new TaskMarkdownCodec(ctx.statusCatalog ?? EMPTY_STATUS_CATALOG);
+  const parsed = codec.parseLine(rawText, { filePath: ctx.filePath, line: ctx.line });
+  if (!parsed) return null;
 
-  const state = match[2] ?? '';
-  const rest = match[3];
-  if (rest === undefined) return null;
-
-  let text = rest;
-
-  // Status from checkbox char, resolved via the status registry
-  const statusSymbol = state;
-  const registry = ctx.statusRegistry ?? DEFAULT_REGISTRY;
-  // typeForSymbol folds 'X' -> 'x' internally; statusSymbol keeps the raw glyph.
-  let status: TaskStatus = registry.typeForSymbol(state);
-
-  // Extract and strip emoji metadata
-  let due: string | undefined;
-  let scheduled: string | undefined;
-  let start: string | undefined;
-  let completion: string | undefined;
-  let cancelledDate: string | undefined;
-  let time: string | undefined;
-  let recurrence: string | undefined;
-  let priority: TaskPriority = 'D';
-
-  const dueMatch = DUE_RE.exec(text);
-  if (dueMatch) {
-    due = dueMatch[1];
-    text = text.replace(dueMatch[0], '');
-  }
-
-  const scheduledMatch = SCHEDULED_RE.exec(text);
-  if (scheduledMatch) {
-    scheduled = scheduledMatch[1];
-    text = text.replace(scheduledMatch[0], '');
-  }
-
-  const startMatch = START_RE.exec(text);
-  if (startMatch) {
-    start = startMatch[1];
-    text = text.replace(startMatch[0], '');
-  }
-
-  const completionMatch = COMPLETION_RE.exec(text);
-  if (completionMatch) {
-    completion = completionMatch[1];
-    text = text.replace(completionMatch[0], '');
-  }
-
-  const cancelledMatch = CANCELLED_EMOJI_RE.exec(text);
-  if (cancelledMatch) {
-    cancelledDate = cancelledMatch[1];
-    status = 'cancelled';
-    text = text.replace(cancelledMatch[0], '');
-  }
-
-  const timeMatch = TIME_RE.exec(text);
-  if (timeMatch) {
-    time = timeMatch[1];
-    text = text.replace(timeMatch[0], '');
-  }
-
-  let duration: number | undefined;
-  const durationMatch = matchDuration(text);
-  if (durationMatch) {
-    duration = durationMatch.minutes;
-    text = text.replace(durationMatch.raw, '');
-  }
-
-  const recurrenceMatch = RECURRENCE_RE.exec(text);
-  if (recurrenceMatch) {
-    recurrence = (recurrenceMatch[1] ?? '').trim() || undefined;
-    text = text.replace(recurrenceMatch[0], '');
-  }
-
-  // Priority emoji — all five Tasks-plugin levels mapped to A–F (D = normal/none).
-  if (/🔺/u.test(text)) {
-    priority = 'A';
-    text = text.replace(/🔺/gu, '');
-  } else if (/⏫/u.test(text)) {
-    priority = 'B';
-    text = text.replace(/⏫/gu, '');
-  } else if (/🔼/u.test(text)) {
-    priority = 'C';
-    text = text.replace(/🔼/gu, '');
-  } else if (/🔽/u.test(text)) {
-    priority = 'E';
-    text = text.replace(/🔽/gu, '');
-  } else if (/⏬/u.test(text)) {
-    priority = 'F';
-    text = text.replace(/⏬/gu, '');
-  }
-
-  // Strip tags
-  if (ctx.globalTaskFilter) {
-    text = text.split(ctx.globalTaskFilter).join('');
-  }
-  const markdownText = text
-    .replace(TAGS_RE, '')
-    .replace(/\s{2,}/gu, ' ')
-    .trim();
-  text = collapseLinks(markdownText);
+  const markdownText = compatibilityMarkdownTitle(parsed, ctx.globalTaskFilter);
+  const text = collapseLinks(markdownText);
+  let status = ctx.statusCatalog
+    ? codec.statusForSymbol(parsed.statusSymbol)
+    : compatibilityStatusForSymbol(parsed.statusSymbol);
+  if (parsed.planning.cancelled !== undefined) status = 'cancelled';
 
   return {
     filePath: ctx.filePath,
@@ -168,18 +77,67 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
     text,
     markdownText,
     status,
-    statusSymbol,
-    due,
-    scheduled,
-    start,
-    completion,
-    cancelledDate,
-    time,
-    duration,
-    recurrence,
-    priority,
+    statusSymbol: parsed.statusSymbol,
+    due: parsed.planning.due,
+    scheduled: parsed.planning.scheduled,
+    start: parsed.planning.start,
+    completion: parsed.planning.completion,
+    cancelledDate: parsed.planning.cancelled,
+    time: parsed.planning.time,
+    duration: parsed.planning.duration,
+    recurrence: legacyRecurrenceFromParsed(parsed),
+    priority: parsed.priority,
     dailyNoteDate: ctx.dailyNoteDate,
   };
+}
+
+const FIRST_ONLY_KINDS = new Set<TaskSpanKind>([
+  'due',
+  'scheduled',
+  'start',
+  'completion',
+  'cancelled',
+  'time',
+  'duration',
+  'recurrence',
+]);
+
+function compatibilityStatusForSymbol(symbol: string): TaskStatus {
+  if (symbol === 'x' || symbol === 'X') return 'done';
+  if (symbol === '-') return 'cancelled';
+  if (symbol === '/') return 'in-progress';
+  return 'open';
+}
+
+function compatibilityMarkdownTitle(
+  parsed: ParsedTaskLine,
+  globalTaskFilter: string | undefined,
+): string {
+  const firstByKind = new Map<TaskSpanKind, SourceSpan>();
+  for (const span of parsed.spans) {
+    if (!firstByKind.has(span.kind)) firstByKind.set(span.kind, span);
+  }
+
+  let markdown = parsed.spans
+    .map((span) => {
+      if (span.kind === 'prefix') return '';
+      if (span.kind === 'tag') return parsed.original.slice(span.from, span.to);
+      if (FIRST_ONLY_KINDS.has(span.kind)) {
+        return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
+      }
+      if (span.kind === 'priority') {
+        const marker = parsed.original.slice(span.from, span.to);
+        return marker === PRIORITY_MARKER[parsed.priority] ? '' : marker;
+      }
+      return parsed.original.slice(span.from, span.to);
+    })
+    .join('');
+
+  if (globalTaskFilter) markdown = markdown.split(globalTaskFilter).join('');
+  return markdown
+    .replace(TAGS_RE, '')
+    .replace(/\s{2,}/gu, ' ')
+    .trim();
 }
 
 // Checkbox prefix including trailing space and any blockquote/callout markers:

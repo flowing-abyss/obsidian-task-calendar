@@ -155,5 +155,10 @@ describe('extractMetadata', () => {
       expect(r.priority).toBe('D');
       expect(r.cleanText).toBe('Just a plain task');
     });
+
+    it('preserves fields outside the legacy extractor contract', () => {
+      const r = extractMetadata('Task ⏱️ 1h 🆔 task-1 ⛔ prep-1 ^task-block');
+      expect(r.cleanText).toBe('Task ⏱️ 1h 🆔 task-1 ⛔ prep-1 ^task-block');
+    });
   });
 });

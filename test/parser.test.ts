@@ -181,6 +181,13 @@ describe('parseTask', () => {
     expect(t?.rawText).toBe(raw);
   });
 
+  it('keeps existing Tasks IDs, dependencies, and block IDs visible through the legacy parser', () => {
+    const raw = '- [ ] Task 🆔 task-1 ⛔ prep-1 ^task-block';
+    const t = parseTask(raw, { filePath: 'f.md', line: 0 });
+    expect(t?.markdownText).toBe('Task 🆔 task-1 ⛔ prep-1 ^task-block');
+    expect(t?.rawText).toBe(raw);
+  });
+
   it('handles indented tasks', () => {
     const t = parseTask('  - [ ] Indented subtask', { filePath: 'f.md', line: 0 });
     expect(t).not.toBeNull();
@@ -194,6 +201,12 @@ describe('parseTask', () => {
     expect(t?.due).toBe('2026-01-01');
     // second emoji not stripped: stays in text
     expect(t?.text).toContain('📅 2026-01-02');
+  });
+
+  it('keeps first-occurrence semantics when a zero duration precedes a valid duplicate', () => {
+    const t = parseTask('- [ ] Task ⏱️ 0m ⏱️ 1h', { filePath: 'f.md', line: 0 });
+    expect(t?.duration).toBeUndefined();
+    expect(t?.text).toBe('Task ⏱️ 1h');
   });
 
   it('does not match a non-date string (CURRENT BEHAVIOR)', () => {

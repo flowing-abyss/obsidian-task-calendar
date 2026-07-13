@@ -6,9 +6,16 @@ import { locatorOf } from '../src/mutation/TaskLocator';
 import { TaskMutationService } from '../src/mutation/TaskMutationService';
 import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses, DEFAULT_VIEW_CONFIG } from '../src/settings/defaults';
+import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { ResolvedConfig } from '../src/settings/types';
 import { StatusRegistry } from '../src/status/StatusRegistry';
+import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskPriority } from '../src/tasks/domain/types';
+
+/** Canonical semantic status catalog for parser/codec compatibility tests. */
+export function canonicalStatusCatalog(): StatusCatalog {
+  return new StatusCatalog(toStatusRules(buildDefaultTaskStatuses()));
+}
 
 /** Install real moment as window.moment for date-aware tests. Idempotent; restores in afterEach. */
 export function useRealMoment(): void {

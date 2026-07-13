@@ -12,8 +12,10 @@ import { parseSubItems } from '../parser/SubItemParser';
 import { parseTask } from '../parser/TaskParser';
 import type { Task, TaskFilter } from '../parser/types';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
+import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
+import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type { TaskPriority } from '../tasks/domain/types';
 import { TaskDateIndex } from './TaskDateIndex';
 
@@ -55,6 +57,7 @@ export class TaskStore {
   private vaultRefs: EventRef[] = [];
   private resolver: DailyNoteResolver;
   private mutations: TaskMutationService;
+  private statusCatalog: StatusCatalog;
   statusRegistry: StatusRegistry;
 
   constructor(
@@ -63,12 +66,14 @@ export class TaskStore {
   ) {
     this.resolver = new DailyNoteResolver(app, settings);
     this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
+    this.statusCatalog = new StatusCatalog(toStatusRules(this.settings.taskStatuses));
     this.mutations = new TaskMutationService(app, () => this.statusRegistry);
   }
 
   /** Rebuild the status registry from current settings. Call after settings edits. */
   rebuildStatusRegistry(): void {
     this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
+    this.statusCatalog = new StatusCatalog(toStatusRules(this.settings.taskStatuses));
   }
 
   async initialize(): Promise<void> {
@@ -153,14 +158,14 @@ export class TaskStore {
         line: lineIdx,
         dailyNoteDate,
         globalTaskFilter: this.settings.desktop.globalTaskFilter || undefined,
-        statusRegistry: this.statusRegistry,
+        statusCatalog: this.statusCatalog,
       });
       if (task) {
         task.noteColor = fm?.color;
         task.noteTextColor = fm?.textColor;
         task.noteIcon = fm?.icon;
         // Parse sub-items (sub-tasks, comments, description)
-        const sub = parseSubItems(lines, lineIdx, filePath, this.statusRegistry);
+        const sub = parseSubItems(lines, lineIdx, filePath, this.statusCatalog);
         if (sub.subtasks.length) task.subtasks = sub.subtasks;
         if (sub.comments.length) task.comments = sub.comments;
         if (sub.description) task.description = sub.description;

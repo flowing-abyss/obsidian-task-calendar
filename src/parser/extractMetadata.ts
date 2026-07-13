@@ -1,13 +1,11 @@
+import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type { TaskPriority } from '../tasks/domain/types';
-
-const DUE_RE = /📅\s*(\d{4}-\d{2}-\d{2})/u;
-const SCHEDULED_RE = /⏳\s*(\d{4}-\d{2}-\d{2})/u;
-const START_RE = /🛫\s*(\d{4}-\d{2}-\d{2})/u;
-const COMPLETION_RE = /✅\s*(\d{4}-\d{2}-\d{2})/u;
-const CANCELLED_EMOJI_RE = /❌\s*(\d{4}-\d{2}-\d{2})/u;
-const TIME_RE = /⏰\s*(\d{1,2}:\d{2})/u;
-const RECURRENCE_RE = /🔁\s*([^📅⏳🛫✅❌⏰🔺⏫🔼🔽⏬\n]*)/u;
-const TAGS_RE = /#[\w/-]+/gu;
+import {
+  TaskMarkdownCodec,
+  type ParsedTaskLine,
+  type SourceSpan,
+  type TaskSpanKind,
+} from '../tasks/infrastructure/markdown/TaskMarkdownCodec';
 
 export interface ExtractedMetadata {
   due?: string;
@@ -21,90 +19,85 @@ export interface ExtractedMetadata {
   cleanText: string;
 }
 
-export function extractMetadata(text: string): ExtractedMetadata {
-  let t = text;
-  let due: string | undefined;
-  let scheduled: string | undefined;
-  let start: string | undefined;
-  let completion: string | undefined;
-  let cancelledDate: string | undefined;
-  let time: string | undefined;
-  let recurrence: string | undefined;
-  let priority: TaskPriority = 'D';
+const CODEC = new TaskMarkdownCodec(new StatusCatalog([]));
+const SYNTHETIC_PREFIX = '- [ ] ';
+const PRIORITY_MARKER: Readonly<Record<TaskPriority, string>> = {
+  A: '🔺',
+  B: '⏫',
+  C: '🔼',
+  D: '',
+  E: '🔽',
+  F: '⏬',
+};
+const LEGACY_REMOVED_BEFORE_RECURRENCE = new Set<TaskSpanKind>([
+  'due',
+  'scheduled',
+  'start',
+  'completion',
+  'cancelled',
+  'time',
+]);
 
-  const dueMatch = DUE_RE.exec(t);
-  if (dueMatch) {
-    due = dueMatch[1];
-    t = t.replace(dueMatch[0], '');
+/** Reproduce the old extractor's recurrence value from the codec's lossless spans. */
+export function legacyRecurrenceFromParsed(parsed: ParsedTaskLine): string | undefined {
+  const recurrence = parsed.occurrences.get('recurrence')?.[0];
+  if (!recurrence) return undefined;
+
+  const firstByKind = new Map<TaskSpanKind, SourceSpan>();
+  for (const span of parsed.spans) {
+    if (!firstByKind.has(span.kind)) firstByKind.set(span.kind, span);
   }
 
-  const scheduledMatch = SCHEDULED_RE.exec(t);
-  if (scheduledMatch) {
-    scheduled = scheduledMatch[1];
-    t = t.replace(scheduledMatch[0], '');
+  let value = parsed.original.slice(recurrence.from + '🔁'.length, recurrence.to);
+  for (const span of parsed.spans) {
+    if (span.from < recurrence.to) continue;
+    if (span.kind === 'priority') break;
+    if (LEGACY_REMOVED_BEFORE_RECURRENCE.has(span.kind)) {
+      if (firstByKind.get(span.kind) === span) continue;
+      break;
+    }
+    value += parsed.original.slice(span.from, span.to);
+  }
+  return value.trim() || undefined;
+}
+
+function legacyCleanText(parsed: ParsedTaskLine): string {
+  const firstByKind = new Map<TaskSpanKind, SourceSpan>();
+  for (const span of parsed.spans) {
+    if (!firstByKind.has(span.kind)) firstByKind.set(span.kind, span);
   }
 
-  const startMatch = START_RE.exec(t);
-  if (startMatch) {
-    start = startMatch[1];
-    t = t.replace(startMatch[0], '');
-  }
-
-  const completionMatch = COMPLETION_RE.exec(t);
-  if (completionMatch) {
-    completion = completionMatch[1];
-    t = t.replace(completionMatch[0], '');
-  }
-
-  const cancelledMatch = CANCELLED_EMOJI_RE.exec(t);
-  if (cancelledMatch) {
-    cancelledDate = cancelledMatch[1];
-    t = t.replace(cancelledMatch[0], '');
-  }
-
-  const timeMatch = TIME_RE.exec(t);
-  if (timeMatch) {
-    time = timeMatch[1];
-    t = t.replace(timeMatch[0], '');
-  }
-
-  const recurrenceMatch = RECURRENCE_RE.exec(t);
-  if (recurrenceMatch) {
-    recurrence = (recurrenceMatch[1] ?? '').trim() || undefined;
-    t = t.replace(recurrenceMatch[0], '');
-  }
-
-  if (/🔺/u.test(t)) {
-    priority = 'A';
-    t = t.replace(/🔺/gu, '');
-  } else if (/⏫/u.test(t)) {
-    priority = 'B';
-    t = t.replace(/⏫/gu, '');
-  } else if (/🔼/u.test(t)) {
-    priority = 'C';
-    t = t.replace(/🔼/gu, '');
-  } else if (/🔽/u.test(t)) {
-    priority = 'E';
-    t = t.replace(/🔽/gu, '');
-  } else if (/⏬/u.test(t)) {
-    priority = 'F';
-    t = t.replace(/⏬/gu, '');
-  }
-
-  const cleanText = t
-    .replace(TAGS_RE, '')
+  return parsed.spans
+    .map((span) => {
+      if (span.kind === 'prefix' || span.kind === 'tag') return '';
+      if (LEGACY_REMOVED_BEFORE_RECURRENCE.has(span.kind) || span.kind === 'recurrence') {
+        return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
+      }
+      if (span.kind === 'priority') {
+        const marker = parsed.original.slice(span.from, span.to);
+        return marker === PRIORITY_MARKER[parsed.priority] ? '' : marker;
+      }
+      return parsed.original.slice(span.from, span.to);
+    })
+    .join('')
     .replace(/\s{2,}/gu, ' ')
     .trim();
+}
+
+/** Compatibility projection for legacy callers that parse a task title body. */
+export function extractMetadata(text: string): ExtractedMetadata {
+  const parsed = CODEC.parseLine(SYNTHETIC_PREFIX + text, { filePath: '', line: 0 });
+  if (!parsed) return { priority: 'D', cleanText: text };
 
   return {
-    due,
-    scheduled,
-    start,
-    completion,
-    cancelledDate,
-    time,
-    recurrence,
-    priority,
-    cleanText,
+    due: parsed.planning.due,
+    scheduled: parsed.planning.scheduled,
+    start: parsed.planning.start,
+    completion: parsed.planning.completion,
+    cancelledDate: parsed.planning.cancelled,
+    time: parsed.planning.time,
+    recurrence: legacyRecurrenceFromParsed(parsed),
+    priority: parsed.priority,
+    cleanText: legacyCleanText(parsed),
   };
 }

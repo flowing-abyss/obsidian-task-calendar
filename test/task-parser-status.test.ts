@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseTask } from '../src/parser/TaskParser';
-import { buildDefaultTaskStatuses } from '../src/settings/defaults';
-import { StatusRegistry } from '../src/status/StatusRegistry';
+import { canonicalStatusCatalog } from './helpers';
 
-const registry = new StatusRegistry(buildDefaultTaskStatuses());
-const ctx = (line = 0) => ({ filePath: 'n.md', line, statusRegistry: registry });
+const statusCatalog = canonicalStatusCatalog();
+const ctx = (line = 0) => ({ filePath: 'n.md', line, statusCatalog });
 
 describe('parseTask status', () => {
   it('parses each default symbol to type + statusSymbol', () => {

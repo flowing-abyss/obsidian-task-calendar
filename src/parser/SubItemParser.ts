@@ -1,7 +1,5 @@
-import { buildDefaultTaskStatuses } from '../settings/defaults';
-import { StatusRegistry } from '../status/StatusRegistry';
-import { extractMetadata } from './extractMetadata';
-import { collapseLinks } from './links';
+import type { StatusCatalog } from '../tasks/domain/StatusCatalog';
+import { parseTask } from './TaskParser';
 import type { SubTask, TaskComment } from './types';
 
 export interface SubItemResult {
@@ -10,8 +8,6 @@ export interface SubItemResult {
   description: string;
   subtaskRange: { from: number; to: number } | undefined;
 }
-
-const DEFAULT_REGISTRY = new StatusRegistry(buildDefaultTaskStatuses());
 
 // Leading group allows blockquote/callout markers (`>`) alongside whitespace so
 // sub-items inside a blockquote (`> \t- [ ]`) nest correctly under their parent.
@@ -45,30 +41,26 @@ function parseSubtask(
   i: number,
   filePath: string,
   subtaskMatch: RegExpExecArray,
-  statusRegistry?: StatusRegistry,
+  statusCatalog?: StatusCatalog,
 ): { subtask: SubTask; nextIdx: number; rangeTo: number } {
   const rawText = lines[i] ?? '';
+  const parsed = parseTask(rawText, { filePath, line: i, statusCatalog });
   const statusChar = subtaskMatch[2] ?? ' ';
-  const rawContent = (subtaskMatch[3] ?? '').trim();
-  const meta = extractMetadata(rawContent);
-  const registry = statusRegistry ?? DEFAULT_REGISTRY;
-  // typeForSymbol folds 'X' -> 'x' internally; statusSymbol keeps the raw glyph.
-  const status = registry.typeForSymbol(statusChar);
-  const childResult = parseSubItems(lines, i, filePath, statusRegistry);
+  const childResult = parseSubItems(lines, i, filePath, statusCatalog);
   const subtask: SubTask = {
     filePath,
     line: i,
     rawText,
-    text: collapseLinks(meta.cleanText),
-    markdownText: meta.cleanText,
-    status,
+    text: parsed?.text ?? '',
+    markdownText: parsed?.markdownText ?? '',
+    status: parsed?.status ?? 'open',
     statusSymbol: statusChar,
-    priority: meta.priority,
-    ...(meta.due !== undefined && { due: meta.due }),
-    ...(meta.scheduled !== undefined && { scheduled: meta.scheduled }),
-    ...(meta.start !== undefined && { start: meta.start }),
-    ...(meta.time !== undefined && { time: meta.time }),
-    ...(meta.recurrence !== undefined && { recurrence: meta.recurrence }),
+    priority: parsed?.priority ?? 'D',
+    ...(parsed?.due !== undefined && { due: parsed.due }),
+    ...(parsed?.scheduled !== undefined && { scheduled: parsed.scheduled }),
+    ...(parsed?.start !== undefined && { start: parsed.start }),
+    ...(parsed?.time !== undefined && { time: parsed.time }),
+    ...(parsed?.recurrence !== undefined && { recurrence: parsed.recurrence }),
   };
   if (childResult.subtasks.length) subtask.subtasks = childResult.subtasks;
   if (childResult.comments.length) subtask.comments = childResult.comments;
@@ -87,7 +79,7 @@ export function parseSubItems(
   lines: string[],
   taskLineIdx: number,
   filePath: string,
-  statusRegistry?: StatusRegistry,
+  statusCatalog?: StatusCatalog,
 ): SubItemResult {
   const taskLine = lines[taskLineIdx] ?? '';
   const taskIndent = getIndent(taskLine);
@@ -122,7 +114,7 @@ export function parseSubItems(
 
     const subtaskMatch = SUBTASK_RE.exec(line);
     if (subtaskMatch) {
-      const parsed = parseSubtask(lines, i, filePath, subtaskMatch, statusRegistry);
+      const parsed = parseSubtask(lines, i, filePath, subtaskMatch, statusCatalog);
       subtasks.push(parsed.subtask);
       rangeTo = parsed.rangeTo;
       i = parsed.nextIdx;
