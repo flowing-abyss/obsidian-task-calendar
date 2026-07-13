@@ -44,6 +44,32 @@ describe('extractMetadata', () => {
       expect(r.recurrence).toBe('every day');
       expect(r.cleanText).toBe('Standup');
     });
+
+    it.each([
+      ['priority', '🔺 trailing', 'every day', 'Task trailing'],
+      ['recurrence', '🔁 every week', 'every day 🔁 every week', 'Task'],
+      ['created', '➕ 2026-01-01 trailing', 'every day ➕ 2026-01-01 trailing', 'Task'],
+      ['start', '🛫 2026-01-01 trailing', 'every day  trailing', 'Task'],
+      ['scheduled', '⏳ 2026-01-01 trailing', 'every day  trailing', 'Task'],
+      ['due', '📅 2026-01-01 trailing', 'every day  trailing', 'Task'],
+      ['completion', '✅ 2026-01-01 trailing', 'every day  trailing', 'Task'],
+      ['cancelled', '❌ 2026-01-01 trailing', 'every day  trailing', 'Task'],
+      ['time', '⏰ 09:30 trailing', 'every day  trailing', 'Task'],
+      ['duration', '⏱️ 1h trailing', 'every day ⏱️ 1h trailing', 'Task'],
+      ['tag', '#work trailing', 'every day #work trailing', 'Task'],
+      ['task ID', '🆔 task-1 trailing', 'every day 🆔 task-1 trailing', 'Task 🆔 task-1'],
+      ['dependency', '⛔ prep-1 trailing', 'every day ⛔ prep-1 trailing', 'Task ⛔ prep-1'],
+      ['block ID', 'trailing ^task-block', 'every day trailing ^task-block', 'Task ^task-block'],
+      ['unknown', '🧭 trailing', 'every day 🧭 trailing', 'Task'],
+      ['title', 'trailing', 'every day trailing', 'Task'],
+    ] as const)(
+      'uses the extractor recurrence policy before %s spans',
+      (_kind, suffix, recurrence, cleanText) => {
+        const r = extractMetadata(`Task 🔁 every day ${suffix}`);
+        expect(r.recurrence).toBe(recurrence);
+        expect(r.cleanText).toBe(cleanText);
+      },
+    );
   });
 
   describe('priority levels', () => {

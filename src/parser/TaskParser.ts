@@ -5,7 +5,10 @@ import {
   type SourceSpan,
   type TaskSpanKind,
 } from '../tasks/infrastructure/markdown/TaskMarkdownCodec';
-import { isLegacyRecurrenceSpanConsumed, legacyRecurrenceFromParsed } from './extractMetadata';
+import {
+  isLegacyTaskRecurrenceSpanConsumed,
+  legacyTaskRecurrenceFromParsed,
+} from './extractMetadata';
 import { collapseLinks } from './links';
 import type { ParseContext, Task } from './types';
 
@@ -81,7 +84,7 @@ export function parseTask(rawText: string, ctx: ParseContext): Task | null {
     cancelledDate: parsed.planning.cancelled,
     time: parsed.planning.time,
     duration: parsed.planning.duration,
-    recurrence: legacyRecurrenceFromParsed(parsed),
+    recurrence: legacyTaskRecurrenceFromParsed(parsed),
     priority: parsed.priority,
     dailyNoteDate: ctx.dailyNoteDate,
   };
@@ -110,7 +113,7 @@ function compatibilityMarkdownTitle(
     .map((span) => {
       if (span.kind === 'prefix') return '';
       if (span.kind === 'tag') return parsed.original.slice(span.from, span.to);
-      if (isLegacyRecurrenceSpanConsumed(parsed, span)) return '';
+      if (isLegacyTaskRecurrenceSpanConsumed(parsed, span)) return '';
       if (FIRST_ONLY_KINDS.has(span.kind)) {
         return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
       }
