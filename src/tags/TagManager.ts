@@ -1,25 +1,14 @@
 // src/tags/TagManager.ts
 import type { App } from 'obsidian';
 import { Notice } from 'obsidian';
-import { locatorOf, TaskMutationService } from '../mutation';
-import type { Task } from '../parser/types';
-import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
-import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 
 export class TagManager {
-  private mutations: TaskMutationService;
-
   constructor(
     private app: App,
     private settings: CalendarSettings,
     private saveSettings: () => Promise<void>,
-  ) {
-    this.mutations = new TaskMutationService(
-      app,
-      () => new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
-    );
-  }
+  ) {}
 
   /**
    * Zero-friction manual tag: creates a manual TagGroup holding one tag derived
@@ -70,73 +59,6 @@ export class TagManager {
     if (idx < 0) return;
     this.settings.archivedTags.splice(idx, 1);
     await this.saveSettings();
-  }
-
-  async addTagToTask(task: Task, tag: string): Promise<void> {
-    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const existsRe = new RegExp(escaped + '(?![\\w/-])', 'u');
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line || existsRe.test(line)) return;
-      lines[taskLine] = line.trimEnd() + ' ' + tag;
-    });
-  }
-
-  async removeTagFromTask(task: Task, tag: string): Promise<void> {
-    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp('\\s*' + escaped + '(?![\\w/-])', 'gu');
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      lines[taskLine] = line.replace(re, '');
-    });
-  }
-
-  async toggleTagOnTask(task: Task, tag: string): Promise<void> {
-    if (task.rawText.includes(tag)) {
-      await this.removeTagFromTask(task, tag);
-    } else {
-      await this.addTagToTask(task, tag);
-    }
-  }
-
-  async replaceTagOnTask(task: Task, oldTag: string, newTag: string): Promise<void> {
-    if (oldTag === newTag) return;
-    // Atomic: add new and remove old in one vault.process to avoid stale-rawText issues.
-    const escapedOld = oldTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const escapedNew = newTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const removeRe = new RegExp('\\s*' + escapedOld + '(?![\\w/-])', 'gu');
-    const existsRe = new RegExp(escapedNew + '(?![\\w/-])', 'u');
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      let updated = line.replace(removeRe, '');
-      if (!existsRe.test(updated)) updated = updated.trimEnd() + ' ' + newTag;
-      lines[taskLine] = updated;
-    });
-  }
-
-  async assignTagFromInbox(task: Task, tag: string): Promise<void> {
-    const inboxTag = this.settings.inbox.tag;
-    const shouldRemoveInbox =
-      this.settings.inbox.removeTagOnAssign && task.rawText.includes(inboxTag);
-
-    if (shouldRemoveInbox) {
-      // Atomic: add new tag and remove inbox tag in a single vault.process.
-      const escapedInbox = inboxTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const removeRe = new RegExp('\\s*' + escapedInbox + '(?![\\w/-])', 'gu');
-      const escapedNew = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const existsRe = new RegExp(escapedNew + '(?![\\w/-])', 'u');
-      await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-        const line = lines[taskLine];
-        if (!line) return;
-        let updated = line.replace(removeRe, '');
-        if (!existsRe.test(updated)) updated = updated.trimEnd() + ' ' + tag;
-        lines[taskLine] = updated;
-      });
-    } else {
-      await this.addTagToTask(task, tag);
-    }
   }
 
   async renameTag(oldTag: string, newTag: string): Promise<void> {

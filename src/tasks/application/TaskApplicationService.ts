@@ -12,6 +12,16 @@ import type {
 import type { TaskApplicationApi, TaskQueryApi } from './TaskApplicationApi';
 import type { TaskEditCommand, TaskRepository } from './TaskRepository';
 
+const TAG_RE = /^#[\w/-]+$/u;
+
+function normalizeTag(tag: string): string {
+  return tag.startsWith('#') ? tag : `#${tag}`;
+}
+
+function uniqueInOrder(values: readonly string[]): string[] {
+  return [...new Set(values)];
+}
+
 function rootRefOf(target: TaskStatusTarget): TaskRef {
   let node: TaskNodeRef = target;
   while (node.type === 'subtask') node = node.ref.parent;
@@ -97,6 +107,34 @@ export class TaskApplicationService implements TaskApplicationApi {
   private prepare(
     command: TaskCommand,
   ): { readonly command: TaskEditCommand } | { readonly result: TaskCommandResult } {
+    if (command.type === 'patch' && command.patch.tags !== undefined) {
+      const add = uniqueInOrder((command.patch.tags.add ?? []).map(normalizeTag));
+      const remove = uniqueInOrder((command.patch.tags.remove ?? []).map(normalizeTag));
+      if ([...add, ...remove].some((tag) => !TAG_RE.test(tag))) {
+        return {
+          result: {
+            type: 'invalid',
+            issues: [{ code: 'invalid-target', field: 'tags' }],
+          },
+        };
+      }
+      const removed = new Set(remove);
+      return {
+        command: {
+          ...command,
+          patch: {
+            ...command.patch,
+            tags: {
+              ...(command.patch.tags.add !== undefined && {
+                add: add.filter((tag) => !removed.has(tag)),
+              }),
+              ...(command.patch.tags.remove !== undefined && { remove }),
+            },
+          },
+        },
+      };
+    }
+
     if (command.type !== 'set-status' && command.type !== 'toggle-completion') {
       return { command };
     }

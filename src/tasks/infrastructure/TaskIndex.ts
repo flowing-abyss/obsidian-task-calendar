@@ -404,6 +404,7 @@ function subtaskSnapshot(
   parent: TaskNodeRef,
   parentLine: number,
   lines: readonly string[],
+  codec: TaskMarkdownCodec,
 ): SubtaskSnapshot {
   const ref = {
     parent,
@@ -419,9 +420,14 @@ function subtaskSnapshot(
     statusSymbol: task.statusSymbol,
     priority: task.priority,
     planning: subtaskPlanning(task),
-    tags: tagsIn(task.rawText),
+    tags: [
+      ...(codec.parseLine(task.rawText, { filePath: task.filePath, line: task.line })?.tags ??
+        tagsIn(task.rawText)),
+    ],
     ...(task.recurrence !== undefined && { recurrence: task.recurrence }),
-    subtasks: (task.subtasks ?? []).map((child) => subtaskSnapshot(child, node, task.line, lines)),
+    subtasks: (task.subtasks ?? []).map((child) =>
+      subtaskSnapshot(child, node, task.line, lines, codec),
+    ),
     comments: (task.comments ?? []).map((comment) =>
       commentSnapshot(comment, node, task.line, lines),
     ),
@@ -718,9 +724,11 @@ export class TaskIndex implements TaskQueryApi {
         statusSymbol: task.statusSymbol,
         priority: task.priority,
         planning: taskPlanning(task),
-        tags: tagsIn(originalMarkdown),
+        tags: [...parsed.tags],
         ...(task.recurrence !== undefined && { recurrence: task.recurrence }),
-        subtasks: subitems.subtasks.map((subtask) => subtaskSnapshot(subtask, node, line, lines)),
+        subtasks: subitems.subtasks.map((subtask) =>
+          subtaskSnapshot(subtask, node, line, lines, codec),
+        ),
         comments: subitems.comments.map((comment) => commentSnapshot(comment, node, line, lines)),
         ...(subitems.description && { description: subitems.description }),
         source: { filePath, line, originalMarkdown },

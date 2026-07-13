@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
+import type { TaskApplicationApi } from '../src/tasks';
 import {
   freshContainer,
   makeCenterPanelForTest,
@@ -19,17 +20,26 @@ function makeCenter(
   tasks: Task[] = [],
   settings: Partial<CalendarSettings> = {},
   pinnedTags: string[] = [],
-): { el: HTMLElement; state: AppState; tm: TagManager } {
+) {
   const state = new AppState();
   state.set('selectedList', 'inbox');
   const s: CalendarSettings = { ...DEFAULT_SETTINGS, ...settings, pinnedTags, archivedTags: [] };
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, s, save);
   const store = makeStubStore(tasks) as unknown as TaskStore;
-  const panel = makeCenterPanelForTest(state, store, null as never, s, tm);
+  const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] }).taskQueries;
+  const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+    type: 'io-error',
+    cause: 'test',
+    contentState: 'unchanged',
+  });
+  const panel = makeCenterPanelForTest(state, store, null as never, s, tm, undefined, null, null, {
+    queries,
+    execute,
+  });
   const el = freshContainer();
   panel.mount(el);
-  return { el, state, tm };
+  return { el, state, tm, execute };
 }
 
 describe('CenterPanel drag source', () => {
@@ -62,10 +72,9 @@ describe('CenterPanel drag source', () => {
 });
 
 describe('CenterPanel tag→task drop target', () => {
-  it('task card accepts drop when draggingTag is set', () => {
+  it('task card assigns a tag and removes the inbox tag in one API patch', () => {
     const t = task({ rawText: '- [ ] t #task/inbox', status: 'open' });
-    const { el, state, tm } = makeCenter([t]);
-    const spy = vi.spyOn(tm, 'assignTagFromInbox').mockResolvedValue(undefined);
+    const { el, state, execute } = makeCenter([t]);
     const card = el.querySelector('.tc-task-card') as HTMLElement;
 
     state.set('draggingTag', '#task/next');
@@ -76,7 +85,14 @@ describe('CenterPanel tag→task drop target', () => {
     const dropEv = new MouseEvent('drop', { bubbles: true });
     card.dispatchEvent(dropEv);
     expect(card.classList.contains('tc-drop-target')).toBe(false);
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ rawText: t.rawText }), '#task/next');
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: {
+        type: 'task',
+        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+      },
+      patch: { tags: { add: ['#task/next'], remove: ['#task/inbox'] } },
+    });
   });
 
   it('task card ignores dragover when draggingTag is null', () => {
@@ -91,13 +107,11 @@ describe('CenterPanel tag→task drop target', () => {
 });
 
 describe('CenterPanel tag chip replace on drop', () => {
-  it('dropping draggingTag onto a chip calls replaceTagOnTask, not assignTagFromInbox', () => {
+  it('dropping draggingTag onto a chip sends one replacement patch', () => {
     const t = task({ rawText: '- [ ] t #work #task/inbox', status: 'open', line: 1 });
-    const { el, state, tm } = makeCenter([t], {
+    const { el, state, execute } = makeCenter([t], {
       inbox: { mode: 'both', tag: '#task/inbox', removeTagOnAssign: true },
     });
-    const replaceSpy = vi.spyOn(tm, 'replaceTagOnTask').mockResolvedValue(undefined);
-    const assignSpy = vi.spyOn(tm, 'assignTagFromInbox').mockResolvedValue(undefined);
 
     state.set('draggingTag', '#task/next');
     const chip = el.querySelector('.tc-task-tag') as HTMLElement;
@@ -108,16 +122,21 @@ describe('CenterPanel tag chip replace on drop', () => {
 
     chip.dispatchEvent(new MouseEvent('drop', { bubbles: true }));
     expect(chip.classList.contains('tc-drop-target')).toBe(false);
-    expect(replaceSpy).toHaveBeenCalledOnce();
-    expect(assignSpy).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: {
+        type: 'task',
+        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+      },
+      patch: { tags: { add: ['#task/next'], remove: ['#work'] } },
+    });
   });
 
   it('dragging a chip onto itself is a no-op', () => {
     const t = task({ rawText: '- [ ] t #work', status: 'open', line: 1 });
-    const { el, state, tm } = makeCenter([t], {
+    const { el, state, execute } = makeCenter([t], {
       inbox: { mode: 'tag', tag: '#work', removeTagOnAssign: true },
     });
-    const replaceSpy = vi.spyOn(tm, 'replaceTagOnTask').mockResolvedValue(undefined);
 
     state.set('draggingTag', '#work');
     const chip = el.querySelector('.tc-task-tag') as HTMLElement;
@@ -125,7 +144,7 @@ describe('CenterPanel tag chip replace on drop', () => {
     expect(chip.classList.contains('tc-drop-target')).toBe(false);
 
     chip.dispatchEvent(new MouseEvent('drop', { bubbles: true }));
-    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 });
 

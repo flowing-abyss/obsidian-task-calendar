@@ -235,6 +235,57 @@ function pushPatternCandidates(
   }
 }
 
+interface SourceRange {
+  readonly from: number;
+  readonly to: number;
+}
+
+function isEscaped(source: string, at: number): boolean {
+  let slashes = 0;
+  for (let index = at - 1; index >= 0 && source[index] === '\\'; index--) slashes++;
+  return slashes % 2 === 1;
+}
+
+function inlineCodeRanges(source: string): readonly SourceRange[] {
+  const ranges: SourceRange[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    const open = source.indexOf('`', cursor);
+    if (open < 0) break;
+    if (isEscaped(source, open)) {
+      cursor = open + 1;
+      continue;
+    }
+    let runLength = 1;
+    while (source[open + runLength] === '`') runLength++;
+    const delimiter = '`'.repeat(runLength);
+    let close = source.indexOf(delimiter, open + runLength);
+    while (
+      close >= 0 &&
+      (isEscaped(source, close) || source[close - 1] === '`' || source[close + runLength] === '`')
+    ) {
+      close = source.indexOf(delimiter, close + 1);
+    }
+    if (close < 0) {
+      cursor = open + runLength;
+      continue;
+    }
+    ranges.push({ from: open, to: close + runLength });
+    cursor = close + runLength;
+  }
+  return ranges;
+}
+
+function pushTagCandidates(candidates: Candidate[], body: string, bodyFrom: number): void {
+  const code = inlineCodeRanges(body);
+  for (const match of matches(TAG_RE, body)) {
+    const from = match.index;
+    const to = from + match[0].length;
+    if (code.some((range) => from >= range.from && to <= range.to)) continue;
+    candidates.push({ kind: 'tag', from: bodyFrom + from, to: bodyFrom + to });
+  }
+}
+
 function pushPinnedCarrierCandidates(
   candidates: Candidate[],
   body: string,
@@ -851,7 +902,7 @@ export class TaskMarkdownCodec {
     for (const pattern of DATE_PATTERNS) {
       pushPatternCandidates(candidates, body, prefixEnd, pattern.kind, pattern.regex, 1);
     }
-    pushPatternCandidates(candidates, body, prefixEnd, 'tag', TAG_RE);
+    pushTagCandidates(candidates, body, prefixEnd);
     pushPatternCandidates(candidates, body, prefixEnd, 'priority', PRIORITY_RE);
     pushPatternCandidates(candidates, body, prefixEnd, 'time', TIME_RE, 1);
     pushBlockIdCandidates(candidates, body, prefixEnd);

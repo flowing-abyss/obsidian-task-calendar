@@ -156,7 +156,7 @@ export function makeCenterPanelForTest(
   store: TaskStore,
   app: ObsidianApp,
   settings: CalendarSettings,
-  tagManager: TagManager,
+  _tagManager: TagManager,
   onSaveSettings: () => Promise<void> = async () => {},
   projectStore: ProjectStore | null = null,
   projectManager: ProjectManager | null = null,
@@ -167,7 +167,6 @@ export function makeCenterPanelForTest(
     store,
     app,
     settings,
-    tagManager,
     taskQueriesOf(store),
     onSaveSettings,
     projectStore,
@@ -185,6 +184,7 @@ export function makeLeftPanelForTest(
   onSaveSettings: () => Promise<void> = async () => {},
   projectStore: ProjectStore | null = null,
   projectManager: ProjectManager | null = null,
+  tasks?: TaskApplicationApi,
 ): LeftPanel {
   return new LeftPanel(
     state,
@@ -196,6 +196,7 @@ export function makeLeftPanelForTest(
     onSaveSettings,
     projectStore,
     projectManager,
+    tasks,
   );
 }
 

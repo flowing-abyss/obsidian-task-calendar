@@ -1256,25 +1256,11 @@ export class RightPanel {
   }
 
   private async removeTag(task: TaskLike, tag: string): Promise<void> {
-    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const stripped = line
-        .replace(new RegExp(`${escaped}(?![\\w/-])`, 'gu'), '')
-        .replace(/\s{2,}/gu, ' ')
-        .trimEnd();
-      lines[taskLine] = formatTaskLine(stripped);
-    });
+    await this.executePlanningPatch(task, { tags: { remove: [tag] } });
   }
 
   private async addTag(task: TaskLike, tag: string): Promise<void> {
-    const tagStr = tag.startsWith('#') ? tag : `#${tag}`;
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      lines[taskLine] = formatTaskLine(line.trimEnd() + ` ${tagStr}`);
-    });
+    await this.executePlanningPatch(task, { tags: { add: [tag] } });
   }
 
   private showTimePopover(anchor: HTMLElement, task: TaskLike): void {

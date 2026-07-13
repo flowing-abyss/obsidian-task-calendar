@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
-import { LeftPanel } from '../src/panels/LeftPanel';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
+import type { TaskApplicationApi } from '../src/tasks';
 import {
   freshContainer,
   makeLeftPanelForTest,
@@ -21,7 +21,7 @@ function makePanel(
   settings: Partial<CalendarSettings> = {},
   pinnedTags: string[] = [],
   archivedTags: string[] = [],
-): { panel: LeftPanel; state: AppState; el: HTMLElement; tm: TagManager } {
+) {
   const state = new AppState();
   const store = makeStubStore(tasks) as TaskStore;
   const merged: CalendarSettings = {
@@ -32,10 +32,26 @@ function makePanel(
   };
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, merged, save);
-  const panel = makeLeftPanelForTest(state, store, merged, tm, null as never);
+  const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] }).taskQueries;
+  const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+    type: 'io-error',
+    cause: 'test',
+    contentState: 'unchanged',
+  });
+  const panel = makeLeftPanelForTest(
+    state,
+    store,
+    merged,
+    tm,
+    null as never,
+    undefined,
+    null,
+    null,
+    { queries, execute },
+  );
   const el = freshContainer();
   panel.mount(el);
-  return { panel, state, el, tm };
+  return { panel, state, el, tm, execute };
 }
 
 function today(): string {
@@ -588,6 +604,30 @@ describe('LeftPanel drop zones', () => {
     const ev = new MouseEvent('dragover', { bubbles: true, cancelable: true });
     pinned.dispatchEvent(ev);
     expect(pinned.classList.contains('tc-drop-target')).toBe(false);
+  });
+
+  it('assigns a dropped inbox task through one combined API patch', () => {
+    const t = Object.assign(task({ rawText: '- [ ] t #task/inbox', status: 'open' }), {
+      ref: { filePath: 'f.md', line: 0, revision: 'test-ref' },
+    });
+    const { el, state, execute } = makePanel(
+      [t],
+      { inbox: { mode: 'tag', tag: '#task/inbox', removeTagOnAssign: true } },
+      ['#task/next'],
+    );
+    state.set('draggingTask', t);
+    const pinned = el.querySelector('.tc-pinned-tag') as HTMLElement;
+
+    pinned.dispatchEvent(new MouseEvent('drop', { bubbles: true, cancelable: true }));
+
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: {
+        type: 'task',
+        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+      },
+      patch: { tags: { add: ['#task/next'], remove: ['#task/inbox'] } },
+    });
   });
 });
 

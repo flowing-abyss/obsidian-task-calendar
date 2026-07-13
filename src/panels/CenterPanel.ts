@@ -27,7 +27,6 @@ import type {
 } from '../settings/types';
 import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/statusConstants';
 import type { TaskStore } from '../store/TaskStore';
-import type { TagManager } from '../tags/TagManager';
 import { searchTaskList, selectTaskList } from '../task-lists/TaskListSelector';
 import {
   durationMinutes,
@@ -129,7 +128,6 @@ export class CenterPanel {
     private store: TaskStore,
     private app: App,
     private settings: CalendarSettings,
-    private tagManager: TagManager,
     private queries: TaskQueryApi,
     onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
@@ -1032,7 +1030,7 @@ export class CenterPanel {
           tagEl.classList.remove('tc-drop-target');
           const dragging = this.state.get('draggingTag');
           if (!dragging || dragging === tag) return;
-          void this.tagManager.replaceTagOnTask(task, tag, dragging);
+          void this.patchTaskTags(task, [dragging], [tag]);
         });
       }
     }
@@ -1119,7 +1117,7 @@ export class CenterPanel {
       const project = this.state.get('draggingProject');
       if (tag) {
         e.preventDefault();
-        void this.tagManager.assignTagFromInbox(task, tag);
+        void this.assignTagFromInbox(task, tag);
       } else if (project && project !== task.filePath && this.projectManager) {
         e.preventDefault();
         void this.projectManager.moveTaskToProject(task, project);
@@ -1172,7 +1170,14 @@ export class CenterPanel {
               .setIcon('tag')
               .setSection('tags')
               .setChecked(hasTag)
-              .onClick(() => void this.tagManager.toggleTagOnTask(task, pinnedTag)),
+              .onClick(
+                () =>
+                  void this.patchTaskTags(
+                    task,
+                    hasTag ? [] : [pinnedTag],
+                    hasTag ? [pinnedTag] : [],
+                  ),
+              ),
           );
         }
       }
@@ -1251,12 +1256,12 @@ export class CenterPanel {
 
   private makeBulkTagRemoveHandler(selectedTasks: Task[], pinnedTag: string): () => void {
     return () =>
-      void Promise.all(selectedTasks.map((t) => this.tagManager.toggleTagOnTask(t, pinnedTag)));
+      void Promise.all(selectedTasks.map((task) => this.patchTaskTags(task, [], [pinnedTag])));
   }
 
   private makeBulkTagAddHandler(selectedTasks: Task[], pinnedTag: string): () => void {
     return () =>
-      void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, pinnedTag)));
+      void Promise.all(selectedTasks.map((task) => this.patchTaskTags(task, [pinnedTag], [])));
   }
 
   private addBulkTagItem(menu: Menu, pinnedTag: string, selectedTasks: Task[]): void {
@@ -1314,11 +1319,35 @@ export class CenterPanel {
     return new Set(task.rawText.match(/#[\w/][\w/-]*/gu) ?? []);
   }
 
+  private async patchTaskTags(
+    task: Task,
+    add: readonly string[],
+    remove: readonly string[],
+  ): Promise<void> {
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    presentTaskCommandResult(
+      await this.tasks.execute({
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { tags: { add, remove } },
+      }),
+    );
+  }
+
+  private async assignTagFromInbox(task: Task, tag: string): Promise<void> {
+    const inboxTag = this.settings.inbox.tag;
+    const remove =
+      this.settings.inbox.removeTagOnAssign && this.getTaskTags(task).has(inboxTag)
+        ? [inboxTag]
+        : [];
+    await this.patchTaskTags(task, [tag], remove);
+  }
+
   private openTagPicker(task: Task): void {
     const currentTags = this.getTaskTags(task);
     const handleCommit = (toAdd: string[], toRemove: string[]): void => {
-      for (const tag of toAdd) void this.tagManager.addTagToTask(task, tag);
-      for (const tag of toRemove) void this.tagManager.removeTagFromTask(task, tag);
+      void this.patchTaskTags(task, toAdd, toRemove);
     };
     new TagPickerModal(
       this.app,
@@ -1336,10 +1365,7 @@ export class CenterPanel {
     const currentTags = new Set([...allTags].filter(hasAll));
     const partialTags = new Set([...allTags].filter((tag) => !hasAll(tag)));
     const handleBulkCommit = (toAdd: string[], toRemove: string[]): void => {
-      for (const tag of toAdd)
-        void Promise.all(selectedTasks.map((t) => this.tagManager.addTagToTask(t, tag)));
-      for (const tag of toRemove)
-        void Promise.all(selectedTasks.map((t) => this.tagManager.removeTagFromTask(t, tag)));
+      void Promise.all(selectedTasks.map((task) => this.patchTaskTags(task, toAdd, toRemove)));
     };
     new TagPickerModal(
       this.app,

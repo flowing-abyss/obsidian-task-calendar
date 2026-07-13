@@ -8,8 +8,9 @@ import type { CalendarSettings, TagGroup } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
 import { RenameTagModal } from '../tags/RenameTagModal';
 import type { TagManager } from '../tags/TagManager';
-import type { TaskQueryApi } from '../tasks';
-import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
+import type { TaskApplicationApi, TaskQueryApi } from '../tasks';
+import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
+import { presentTaskCommandResult } from '../ui/taskCommandResult';
 
 const PROJECTS_CAP = 10;
 
@@ -39,6 +40,7 @@ export class LeftPanel {
     private onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
     private projectManager: ProjectManager | null = null,
+    private tasks?: TaskApplicationApi,
   ) {}
 
   mount(container: HTMLElement): void {
@@ -719,8 +721,23 @@ export class LeftPanel {
       el.classList.remove('tc-drop-target');
       const dragging = this.state.get('draggingTask');
       if (!dragging) return;
-      void this.tagManager.assignTagFromInbox(dragging, tag);
+      void this.assignTagFromInbox(dragging, tag);
     });
+  }
+
+  private async assignTagFromInbox(task: Task, tag: string): Promise<void> {
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    const inboxTag = this.settings.inbox.tag;
+    const tags = new Set(task.rawText.match(/#[\w/-]+/gu) ?? []);
+    const remove = this.settings.inbox.removeTagOnAssign && tags.has(inboxTag) ? [inboxTag] : [];
+    presentTaskCommandResult(
+      await this.tasks.execute({
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { tags: { add: [tag], remove } },
+      }),
+    );
   }
 
   private resolveGroupTags(group: TagGroup, allTasks: Task[]): string[] {

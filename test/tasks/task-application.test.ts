@@ -53,6 +53,81 @@ function service(repository: TaskRepository, taskQueries: TaskQueryApi = queries
 }
 
 describe('TaskApplicationService planning commands', () => {
+  it('normalizes task tag patches once at the application boundary with removal winning', async () => {
+    const committed: TaskRepositoryResult = {
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
+
+    await service({ edit }).execute({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: {
+        tags: {
+          add: ['work', '#deep/nested', '#work', 'later', '#deep/nested'],
+          remove: ['#old', 'work', '#old', 'later'],
+        },
+      },
+    });
+
+    expect(edit).toHaveBeenCalledWith({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: {
+        tags: {
+          add: ['#deep/nested'],
+          remove: ['#old', '#work', '#later'],
+        },
+      },
+    });
+  });
+
+  it('normalizes nested-task tag patches without changing the target reference', async () => {
+    const childRef = {
+      parent: { type: 'task' as const, ref },
+      relativeLine: 1,
+      originalBlock: '  - [ ] child',
+    };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    });
+
+    await service({ edit }).execute({
+      type: 'patch',
+      target: { type: 'subtask', ref: childRef },
+      patch: { tags: { add: ['child/next'], remove: [] } },
+    });
+
+    expect(edit).toHaveBeenCalledWith({
+      type: 'patch',
+      target: { type: 'subtask', ref: childRef },
+      patch: { tags: { add: ['#child/next'], remove: [] } },
+    });
+  });
+
+  it.each(['', '#', 'two words', '##double', '#bad!', '#bad\\tag'])(
+    'rejects invalid tag %j before touching the repository',
+    async (tag) => {
+      const edit = vi.fn<TaskRepository['edit']>();
+
+      await expect(
+        service({ edit }).execute({
+          type: 'patch',
+          target: { type: 'task', ref },
+          patch: { tags: { add: [tag] } },
+        }),
+      ).resolves.toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'tags' }],
+      });
+      expect(edit).not.toHaveBeenCalled();
+    },
+  );
+
   it('delegates a typed planning patch and maps a committed result', async () => {
     const committed: TaskRepositoryResult = {
       type: 'committed',

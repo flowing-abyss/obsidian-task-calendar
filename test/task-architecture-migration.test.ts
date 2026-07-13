@@ -16,7 +16,7 @@ interface LegacyWriterReason {
 }
 
 interface NonTaskWriterReason {
-  scope: 'project-note metadata';
+  scope: 'project-note metadata' | 'vault-wide tag rename';
   reason: string;
 }
 
@@ -36,29 +36,15 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     reason: 'CenterPanel still performs task deletion directly.',
   },
   'src/panels/RightPanel.ts#RightPanel.constructor#new TaskMutationService#1': {
-    families: [
-      'per-task tags',
-      'title/links',
-      'description/comments/subtasks',
-      'creation/deletion/movement',
-    ],
+    families: ['title/links', 'description/comments/subtasks', 'creation/deletion/movement'],
     reason: 'RightPanel still owns the remaining legacy editor command surface.',
-  },
-  'src/tags/TagManager.ts#TagManager.constructor#new TaskMutationService#1': {
-    families: ['per-task tags'],
-    reason: 'TagManager still mutates individual task tags through the legacy service.',
   },
   'src/projects/ProjectManager.ts#ProjectManager.constructor#new TaskMutationService#1': {
     families: ['creation/deletion/movement'],
     reason: 'Project assignment still moves task blocks through the legacy service.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
-    families: [
-      'per-task tags',
-      'title/links',
-      'description/comments/subtasks',
-      'creation/deletion/movement',
-    ],
+    families: ['title/links', 'description/comments/subtasks', 'creation/deletion/movement'],
     reason: 'Shared legacy task-line transaction boundary pending ObsidianTaskRepository.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.moveTaskToFile#vault.process#1': {
@@ -93,10 +79,6 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     families: ['creation/deletion/movement'],
     reason: 'Daily-note task creation still inserts the task block directly.',
   },
-  'src/tags/TagManager.ts#TagManager.renameTag#vault.process#1': {
-    families: ['per-task tags'],
-    reason: 'Vault-wide tag rename still rewrites task tag text directly.',
-  },
   'src/panels/CenterPanel.ts#CenterPanel.appendTaskToNote#vault.process#1': {
     families: ['creation/deletion/movement'],
     reason: 'Project-context creation still appends a task from CenterPanel.',
@@ -123,6 +105,10 @@ const CANONICAL_TASK_WRITERS: Record<string, CanonicalTaskWriterReason> = {
 // Project frontmatter/status writes are deliberately outside the task-write migration. Keeping
 // them explicit still makes any new direct vault writer fail this fitness test.
 const PERMITTED_NON_TASK_WRITERS: Record<string, NonTaskWriterReason> = {
+  'src/tags/TagManager.ts#TagManager.renameTag#vault.process#1': {
+    scope: 'vault-wide tag rename',
+    reason: 'Global tag rename intentionally updates tag text in every note, including non-tasks.',
+  },
   'src/projects/ProjectManager.ts#ProjectManager.stripInlineStatusTags#vault.process#1': {
     scope: 'project-note metadata',
     reason: 'Project status markers belong to project notes, not task Markdown.',
@@ -260,12 +246,12 @@ describe('task architecture migration writer guardrail', () => {
     expect(writerSites()).toEqual(allowlisted);
   });
 
-  it('keeps exactly the four remaining TaskMutationService construction sites', () => {
+  it('keeps exactly the three remaining TaskMutationService construction sites', () => {
     const constructionSites = Object.keys(LEGACY_TASK_WRITERS).filter((site) =>
       site.includes('#new TaskMutationService#'),
     );
 
-    expect(constructionSites).toHaveLength(4);
+    expect(constructionSites).toHaveLength(3);
   });
 
   it('keeps exactly one canonical single-task transaction boundary', () => {

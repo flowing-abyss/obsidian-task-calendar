@@ -50,6 +50,13 @@ function orderedPatchEdits(parsed: ParsedTaskLine, patch: TaskPatch): readonly L
       value: patch.duration.type === 'set' ? patch.duration.value : null,
     });
   }
+  if (patch.tags) {
+    edits.push({
+      type: 'change-tags',
+      add: patch.tags.add ?? [],
+      remove: patch.tags.remove ?? [],
+    });
+  }
   return edits;
 }
 

@@ -22,6 +22,10 @@ export interface TaskPatch {
   readonly start?: FieldUpdate<LocalDate>;
   readonly time?: FieldUpdate<LocalTime>;
   readonly duration?: FieldUpdate<DurationMinutes>;
+  readonly tags?: {
+    readonly add?: readonly string[];
+    readonly remove?: readonly string[];
+  };
 }
 
 export type SubtaskPatch = Omit<TaskPatch, 'duration'>;

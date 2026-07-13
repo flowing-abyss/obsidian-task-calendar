@@ -37,7 +37,11 @@ async function readMd(app: App, path: string): Promise<string> {
 function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
   const candidate = args[0];
   if (
-    (method === 'toggleSubTask' || method === 'updatePriority' || method === 'setStatus') &&
+    (method === 'toggleSubTask' ||
+      method === 'updatePriority' ||
+      method === 'setStatus' ||
+      method === 'addTag' ||
+      method === 'removeTag') &&
     typeof candidate === 'object' &&
     candidate !== null &&
     !('ref' in candidate)
@@ -1130,6 +1134,51 @@ describe('RightPanel.updatePriority', () => {
 });
 
 describe('RightPanel.removeTag', () => {
+  it('routes root removal and nested addition through typed patches without direct vault writes', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] root #work\n  - [ ] child\n' });
+    const state = new AppState();
+    const rootRef: TaskRef = { filePath: 't.md', line: 0, revision: 'root' };
+    const childRef = {
+      parent: { type: 'task' as const, ref: rootRef },
+      relativeLine: 1,
+      originalBlock: '  - [ ] child',
+    };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'not-found',
+      target: { type: 'task', ref: rootRef },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
+    const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
+    const process = vi.spyOn(app.vault, 'process');
+
+    await call<Promise<void>>(panel, 'removeTag', root, '#work');
+    await call<Promise<void>>(panel, 'addTag', child, 'child/next');
+
+    expect(execute.mock.calls.map(([command]) => command)).toEqual([
+      {
+        type: 'patch',
+        target: { type: 'task', ref: rootRef },
+        patch: { tags: { remove: ['#work'] } },
+      },
+      {
+        type: 'patch',
+        target: { type: 'subtask', ref: childRef },
+        patch: { tags: { add: ['child/next'] } },
+      },
+    ]);
+    expect(process).not.toHaveBeenCalled();
+  });
+
   it('removes a standalone tag (with leading #)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task #work' });
     const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task #work' });

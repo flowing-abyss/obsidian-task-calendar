@@ -82,13 +82,13 @@ export class PanelView extends ItemView {
       this.onSaveSettings,
       projectStore,
       projectManager,
+      this.tasks,
     );
     this.center = new CenterPanel(
       this.state,
       this.store,
       this.app,
       this.settings,
-      this.tagManager,
       this.queries,
       this.onSaveSettings,
       projectStore,

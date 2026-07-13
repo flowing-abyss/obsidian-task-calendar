@@ -8,7 +8,6 @@ import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { TaskStore } from '../src/store/TaskStore';
-import { TagManager } from '../src/tags/TagManager';
 import type { TaskApplicationApi } from '../src/tasks';
 import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
@@ -50,8 +49,6 @@ async function makePanel(
     if (snapshot) Object.assign(current, { ref: snapshot.ref });
   }
   const state = new AppState();
-  const save = vi.fn().mockResolvedValue(undefined);
-  const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
   const store = makeStubStore(extraTasks, app) as unknown as TaskStore;
   const snapshots = Object.entries(files).flatMap(([path, content]) =>
     index.snapshotsFromContent(path, content),
@@ -84,7 +81,6 @@ async function makePanel(
     store,
     app,
     DEFAULT_SETTINGS,
-    tm,
     queries,
     undefined,
     null,
@@ -111,7 +107,6 @@ describe('CenterPanel planning API delegation', () => {
       store,
       app,
       DEFAULT_SETTINGS,
-      new TagManager(null as never, DEFAULT_SETTINGS, vi.fn()),
       queries,
       undefined,
       null,
@@ -197,7 +192,6 @@ describe('CenterPanel planning API delegation', () => {
       store,
       app,
       DEFAULT_SETTINGS,
-      new TagManager(null as never, DEFAULT_SETTINGS, vi.fn()),
       queries,
       undefined,
       null,
