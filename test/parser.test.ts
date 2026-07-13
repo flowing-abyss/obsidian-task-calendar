@@ -264,6 +264,23 @@ describe('parseTask', () => {
     expect(t?.markdownText).toBe('Task');
   });
 
+  it('removes trailing title text consumed around an already-extracted date', () => {
+    const t = parseTask('- [ ] Task 🔁 every day 📅 2026-01-01 trailing', {
+      filePath: 'f.md',
+      line: 0,
+    });
+    expect(t?.recurrence).toBe('every day  trailing');
+    expect(t?.markdownText).toBe('Task');
+  });
+
+  it('keeps explicit task carriers visible inside the legacy recurrence range', () => {
+    const t = parseTask(
+      '- [ ] Task 🔁 every day 📅 2026-01-01 trailing 🆔 task-1 ⛔ prep-1 ^task-block',
+      { filePath: 'f.md', line: 0 },
+    );
+    expect(t?.markdownText).toBe('Task 🆔 task-1 ⛔ prep-1 ^task-block');
+  });
+
   it('strips literal non-link brackets from title (CURRENT BEHAVIOR)', () => {
     const t = parseTask('- [ ] Note [draft]', { filePath: 'f.md', line: 0 });
     // BRACKETS_RE collapses [draft] to draft after wikilink/md-link collapses ran

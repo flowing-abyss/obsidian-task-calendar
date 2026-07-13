@@ -110,11 +110,7 @@ function compatibilityMarkdownTitle(
     .map((span) => {
       if (span.kind === 'prefix') return '';
       if (span.kind === 'tag') return parsed.original.slice(span.from, span.to);
-      if (span.kind === 'recurrence') {
-        return isLegacyRecurrenceSpanConsumed(parsed, span)
-          ? ''
-          : parsed.original.slice(span.from, span.to);
-      }
+      if (isLegacyRecurrenceSpanConsumed(parsed, span)) return '';
       if (FIRST_ONLY_KINDS.has(span.kind)) {
         return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
       }

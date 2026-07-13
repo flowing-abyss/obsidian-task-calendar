@@ -37,6 +37,7 @@ const LEGACY_REMOVED_BEFORE_RECURRENCE = new Set<TaskSpanKind>([
   'cancelled',
   'time',
 ]);
+const LEGACY_RECURRENCE_HIDDEN_KINDS = new Set<TaskSpanKind>(['recurrence', 'title', 'unknown']);
 
 /** Reproduce the old extractor's recurrence value from the codec's lossless spans. */
 function legacyRecurrenceProjection(
@@ -73,12 +74,12 @@ export function legacyRecurrenceFromParsed(parsed: ParsedTaskLine): string | und
   return legacyRecurrenceProjection(parsed)?.value;
 }
 
-/** Whether the old greedy recurrence match removed this lossless recurrence occurrence. */
+/** Whether the old greedy recurrence match hid this span from legacy visible text. */
 export function isLegacyRecurrenceSpanConsumed(parsed: ParsedTaskLine, span: SourceSpan): boolean {
   const first = parsed.occurrences.get('recurrence')?.[0];
   const projection = legacyRecurrenceProjection(parsed);
   return (
-    span.kind === 'recurrence' &&
+    LEGACY_RECURRENCE_HIDDEN_KINDS.has(span.kind) &&
     first !== undefined &&
     projection !== undefined &&
     span.from >= first.from &&
@@ -95,13 +96,9 @@ function legacyCleanText(parsed: ParsedTaskLine): string {
   return parsed.spans
     .map((span) => {
       if (span.kind === 'prefix' || span.kind === 'tag') return '';
+      if (isLegacyRecurrenceSpanConsumed(parsed, span)) return '';
       if (LEGACY_REMOVED_BEFORE_RECURRENCE.has(span.kind)) {
         return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
-      }
-      if (span.kind === 'recurrence') {
-        return isLegacyRecurrenceSpanConsumed(parsed, span)
-          ? ''
-          : parsed.original.slice(span.from, span.to);
       }
       if (span.kind === 'priority') {
         const marker = parsed.original.slice(span.from, span.to);

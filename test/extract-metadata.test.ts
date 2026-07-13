@@ -166,5 +166,18 @@ describe('extractMetadata', () => {
       expect(r.recurrence).toBe('every day 🔁 every week');
       expect(r.cleanText).toBe('Task');
     });
+
+    it('removes trailing title text consumed around an already-extracted date', () => {
+      const r = extractMetadata('Task 🔁 every day 📅 2026-01-01 trailing');
+      expect(r.recurrence).toBe('every day  trailing');
+      expect(r.cleanText).toBe('Task');
+    });
+
+    it('keeps explicit task carriers visible inside the legacy recurrence range', () => {
+      const r = extractMetadata(
+        'Task 🔁 every day 📅 2026-01-01 trailing 🆔 task-1 ⛔ prep-1 ^task-block',
+      );
+      expect(r.cleanText).toBe('Task 🆔 task-1 ⛔ prep-1 ^task-block');
+    });
   });
 });
