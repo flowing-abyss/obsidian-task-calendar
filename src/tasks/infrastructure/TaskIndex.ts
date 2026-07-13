@@ -255,6 +255,12 @@ interface FallbackFence {
   readonly quoteDepth: number;
 }
 
+interface FallbackFenceTransition {
+  readonly active: FallbackFence | undefined;
+  readonly skip: boolean;
+  readonly opening: boolean;
+}
+
 const FALLBACK_LIST_ITEM_RE = /^([\s>]*)(?:[-*+]|\d+[.)])\s+/u;
 const FALLBACK_TASK_RE = /^[\s>]*- \[(.)\]/u;
 const FALLBACK_FENCE_RE = /^[\s>]*(`{3,}|~{3,})/u;
@@ -264,20 +270,24 @@ function fallbackFenceState(
   line: string,
   quoteDepth: number,
   active: FallbackFence | undefined,
-): { readonly active: FallbackFence | undefined; readonly skip: boolean } {
+): FallbackFenceTransition {
   const token = FALLBACK_FENCE_RE.exec(line)?.[1];
   if (active && quoteDepth >= active.quoteDepth) {
     const closes =
       quoteDepth === active.quoteDepth &&
       token?.[0] === active.marker &&
       token.length >= active.length;
-    return { active: closes ? undefined : active, skip: true };
+    return { active: closes ? undefined : active, skip: true, opening: false };
   }
-  if (token === undefined) return { active: undefined, skip: false };
+  if (token === undefined) return { active: undefined, skip: false, opening: false };
   const marker = token[0];
   return marker === '`' || marker === '~'
-    ? { active: { marker, length: token.length, quoteDepth }, skip: true }
-    : { active: undefined, skip: false };
+    ? {
+        active: { marker, length: token.length, quoteDepth },
+        skip: true,
+        opening: true,
+      }
+    : { active: undefined, skip: false, opening: false };
 }
 
 function transitionFallbackQuoteDepth(
@@ -289,6 +299,25 @@ function transitionFallbackQuoteDepth(
     ancestorsByQuoteDepth.clear();
   }
   return quoteDepth;
+}
+
+function transitionFallbackNonListBoundary(
+  quoteDepth: number,
+  indent: number,
+  previousQuoteDepth: number | undefined,
+  ancestorsByQuoteDepth: Map<number, FallbackListAncestor[]>,
+): number {
+  const nextQuoteDepth = transitionFallbackQuoteDepth(
+    quoteDepth,
+    previousQuoteDepth,
+    ancestorsByQuoteDepth,
+  );
+  const ancestors = ancestorsByQuoteDepth.get(quoteDepth) ?? [];
+  while (ancestors.length > 0 && ancestors[ancestors.length - 1]!.indent >= indent) {
+    ancestors.pop();
+  }
+  ancestorsByQuoteDepth.set(quoteDepth, ancestors);
+  return nextQuoteDepth;
 }
 
 function fallbackListItems(data: string): FallbackListItem[] {
@@ -310,13 +339,14 @@ function fallbackListItems(data: string): FallbackListItem[] {
 
     const leadingPrefix = FALLBACK_PREFIX_RE.exec(line)?.[1] ?? '';
     const quoteDepth = [...leadingPrefix].filter((character) => character === '>').length;
-    const activeFence = fence;
     const nextFence = fallbackFenceState(line, quoteDepth, fence);
     fence = nextFence.active;
     if (nextFence.skip) {
-      if (activeFence === undefined || quoteDepth <= activeFence.quoteDepth) {
-        previousQuoteDepth = transitionFallbackQuoteDepth(
+      if (nextFence.opening) {
+        const indent = leadingPrefix.replace(/\t/gu, '    ').length;
+        previousQuoteDepth = transitionFallbackNonListBoundary(
           quoteDepth,
+          indent,
           previousQuoteDepth,
           ancestorsByQuoteDepth,
         );
@@ -329,23 +359,23 @@ function fallbackListItems(data: string): FallbackListItem[] {
       continue;
     }
 
+    const listMatch = FALLBACK_LIST_ITEM_RE.exec(line);
+    if (!listMatch) {
+      const indent = leadingPrefix.replace(/\t/gu, '    ').length;
+      previousQuoteDepth = transitionFallbackNonListBoundary(
+        quoteDepth,
+        indent,
+        previousQuoteDepth,
+        ancestorsByQuoteDepth,
+      );
+      offset += line.length + 1;
+      continue;
+    }
     previousQuoteDepth = transitionFallbackQuoteDepth(
       quoteDepth,
       previousQuoteDepth,
       ancestorsByQuoteDepth,
     );
-
-    const listMatch = FALLBACK_LIST_ITEM_RE.exec(line);
-    if (!listMatch) {
-      const indent = leadingPrefix.replace(/\t/gu, '    ').length;
-      const ancestors = ancestorsByQuoteDepth.get(quoteDepth) ?? [];
-      while (ancestors.length > 0 && ancestors[ancestors.length - 1]!.indent >= indent) {
-        ancestors.pop();
-      }
-      ancestorsByQuoteDepth.set(quoteDepth, ancestors);
-      offset += line.length + 1;
-      continue;
-    }
     const prefix = listMatch[1] ?? '';
     const indent = prefix.replace(/\t/gu, '    ').length;
     const ancestors = ancestorsByQuoteDepth.get(quoteDepth) ?? [];

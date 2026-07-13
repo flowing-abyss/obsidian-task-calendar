@@ -318,6 +318,54 @@ describe('TaskIndex lifecycle and events', () => {
     index.destroy();
   });
 
+  it('fallback creation treats a same-depth root fence as a non-list boundary', async () => {
+    const content = ['- [ ] parent', '```md', 'code example', '```', '  - [ ] after boundary'].join(
+      '\n',
+    );
+    const app = await createAppWithFiles({ 'created.md': content });
+    app.metadataCache.getFileCache = (): null => null;
+    const index = new TaskIndex(app, {
+      statusCatalog: canonicalStatusCatalog(),
+      dailyNoteFormat: 'YYYY-MM-DD',
+    });
+    const fireCreate = captureCreateCallback(app);
+    await index.initialize();
+
+    fireCreate(mdFile(app, 'created.md'));
+    await flushMicrotasks();
+
+    const tasks = index.list();
+    expect(tasks.map((task) => task.title)).toEqual(['parent', 'after boundary']);
+    expect(tasks[0]?.subtasks).toEqual([]);
+    index.destroy();
+  });
+
+  it('fallback creation preserves hierarchy across a list-indented fence', async () => {
+    const content = [
+      '- [ ] parent',
+      '  ```md',
+      '  code example',
+      '  ```',
+      '  - [ ] child after fence',
+    ].join('\n');
+    const app = await createAppWithFiles({ 'created.md': content });
+    app.metadataCache.getFileCache = (): null => null;
+    const index = new TaskIndex(app, {
+      statusCatalog: canonicalStatusCatalog(),
+      dailyNoteFormat: 'YYYY-MM-DD',
+    });
+    const fireCreate = captureCreateCallback(app);
+    await index.initialize();
+
+    fireCreate(mdFile(app, 'created.md'));
+    await flushMicrotasks();
+
+    const tasks = index.list();
+    expect(tasks.map((task) => task.title)).toEqual(['parent']);
+    expect(tasks[0]?.subtasks.map((task) => task.title)).toEqual(['child after fence']);
+    index.destroy();
+  });
+
   it('keeps a metadata modification that arrives during a blocked initial read', async () => {
     const { app, index, fireChanged } = await setup({ 'blocked.md': '- [ ] stale' });
     const read = blockRead(app, 'blocked.md', '- [ ] stale');
@@ -533,6 +581,33 @@ describe('TaskIndex lifecycle and events', () => {
       '> callout code example',
       '> ~~~',
       '  - [ ] after boundary',
+    ].join('\n');
+    const app = await createAppWithFiles({ 'examples.txt': content });
+    app.metadataCache.getFileCache = (): null => null;
+    const index = new TaskIndex(app, {
+      statusCatalog: canonicalStatusCatalog(),
+      dailyNoteFormat: 'YYYY-MM-DD',
+    });
+    await index.initialize();
+    const file = app.vault.getAbstractFileByPath('examples.txt');
+    if (!(file instanceof TFile)) throw new Error('missing examples.txt');
+
+    await app.vault.rename(file, 'examples.md');
+    await flushMicrotasks();
+
+    const tasks = index.list();
+    expect(tasks.map((task) => task.title)).toEqual(['parent', 'after boundary']);
+    expect(tasks[0]?.subtasks).toEqual([]);
+    index.destroy();
+  });
+
+  it('fallback rename treats a same-depth quoted fence as a non-list boundary', async () => {
+    const content = [
+      '> - [ ] parent',
+      '> ~~~md',
+      '> code example',
+      '> ~~~',
+      '>   - [ ] after boundary',
     ].join('\n');
     const app = await createAppWithFiles({ 'examples.txt': content });
     app.metadataCache.getFileCache = (): null => null;
