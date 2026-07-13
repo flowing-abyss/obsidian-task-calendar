@@ -3,7 +3,7 @@ import type {
   TaskRepository,
   TaskRepositoryResult,
 } from '../../src/tasks/application/TaskRepository';
-import type { PlanningTarget, TaskPatch } from '../../src/tasks/domain/commands';
+import type { PlanningTarget } from '../../src/tasks/domain/commands';
 import type {
   SubtaskRef,
   TaskMutationTarget,
@@ -11,12 +11,10 @@ import type {
   TaskRef,
   TaskSnapshot,
 } from '../../src/tasks/domain/types';
+import { applyPlanningCommand } from '../../src/tasks/infrastructure/markdown/applyPlanningCommand';
 import { TaskBlockEditor } from '../../src/tasks/infrastructure/markdown/TaskBlockEditor';
 import { TaskLocator } from '../../src/tasks/infrastructure/markdown/TaskLocator';
-import {
-  TaskMarkdownCodec,
-  type LineEdit,
-} from '../../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { TaskMarkdownCodec } from '../../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
 
 interface Options {
   readonly files: Record<string, string>;
@@ -109,25 +107,10 @@ export class InMemoryTaskRepository implements TaskRepository {
     const lines = content.split(/\r?\n/u);
     const sourceLine = lines[located.block.line + relativeLine];
     if (sourceLine === undefined) return { type: 'not-found', target: targetOf(command) };
-    const patch = command.type === 'patch' ? command.patch : undefined;
-    if (
-      patch?.start?.type === 'set' &&
-      patch.due?.type === 'set' &&
-      patch.start.value > patch.due.value
-    ) {
-      return { type: 'invalid', issues: [{ code: 'inverted-span', field: 'start,due' }] };
-    }
-    const edits = this.edits(sourceLine, command, patch);
-    let nextLine = sourceLine;
-    let changed = false;
-    for (const edit of edits) {
-      const result = this.options.codec.applyLineEdit(nextLine, edit);
-      if (result.type === 'invalid') return result;
-      if (result.type === 'changed') {
-        nextLine = result.content;
-        changed = true;
-      }
-    }
+    const result = applyPlanningCommand(this.options.codec, sourceLine, command);
+    if (result.type === 'invalid') return result;
+    const nextLine = result.content;
+    const changed = result.type === 'changed';
     const nextContent = changed
       ? this.editor.replaceLine(content, located.block, relativeLine, nextLine).content
       : content;
@@ -136,30 +119,6 @@ export class InMemoryTaskRepository implements TaskRepository {
     return root
       ? { type: 'committed', outcome: { type: 'task', task: root }, changed }
       : { type: 'not-found', target: targetOf(command) };
-  }
-
-  private edits(
-    sourceLine: string,
-    command: TaskEditCommand,
-    patch: TaskPatch | undefined,
-  ): LineEdit[] {
-    if (command.type === 'reschedule') {
-      const parsed = this.options.codec.parseLine(sourceLine, { filePath: '', line: 0 });
-      const field: 'scheduled' | 'due' = parsed?.planning.scheduled ? 'scheduled' : 'due';
-      return [{ type: 'set-date' as const, field, value: command.date }];
-    }
-    return (['scheduled', 'start', 'due'] as const).flatMap((field) => {
-      const update = patch?.[field];
-      return update
-        ? [
-            {
-              type: 'set-date' as const,
-              field,
-              value: update.type === 'set' ? update.value : null,
-            },
-          ]
-        : [];
-    });
   }
 
   private snapshot(path: string, content: string, line: number): TaskSnapshot | undefined {

@@ -4,7 +4,7 @@ import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
 import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
-import type { TaskApplicationApi } from '../src/tasks';
+import type { TaskApplicationApi, TaskSnapshot } from '../src/tasks';
 import type { TaskRef } from '../src/tasks/domain/types';
 import {
   createAppWithFiles,
@@ -300,6 +300,68 @@ describe('RightPanel popovers', () => {
     click(dateChip);
     expect(el.querySelector('.tc-date-popover')).not.toBeNull();
     expect(el.querySelector('.tc-date-input')).not.toBeNull();
+  });
+
+  it('clears a scheduled-only task through the visible Date chip and refreshes the UI', async () => {
+    const ref: TaskRef = { filePath: 'f.md', line: 0, revision: 'old' };
+    const freshRef: TaskRef = { ...ref, revision: 'fresh' };
+    const fresh: TaskSnapshot = {
+      ref: freshRef,
+      title: 'Scheduled',
+      markdownTitle: 'Scheduled',
+      status: 'open',
+      statusSymbol: ' ',
+      priority: 'D',
+      planning: {},
+      tags: [],
+      subtasks: [],
+      comments: [],
+      source: { filePath: 'f.md', line: 0, originalMarkdown: '- [ ] Scheduled' },
+      presentation: { linkCount: 0 },
+    };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'ok',
+      changed: true,
+      outcome: { type: 'task', task: fresh },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const { state, el } = await makePanel({ 'f.md': '- [ ] Scheduled ⏳ 2026-07-05\n' }, tasks);
+    state.set('taskStack', [
+      Object.assign(
+        task({
+          filePath: 'f.md',
+          text: 'Scheduled',
+          due: undefined,
+          scheduled: '2026-07-05',
+          rawText: '- [ ] Scheduled ⏳ 2026-07-05',
+        }),
+        { ref },
+      ),
+    ]);
+
+    const dateChip = Array.from(el.querySelectorAll<HTMLElement>('.tc-chips-row .tc-chip')).find(
+      (chip) => chip.textContent?.startsWith('📅'),
+    );
+    expect(dateChip).toBeDefined();
+    click(dateChip!);
+    click(el.querySelector<HTMLElement>('.tc-popover-clear-icon-btn')!);
+    await flushMicrotasks();
+
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: { scheduled: { type: 'clear' } },
+    });
+    expect(el2Text(el, '.tc-chips-row .tc-chip')).toContain('Date');
+    expect(el.querySelector('.tc-chip-scheduled')).toBeNull();
   });
 
   it('time chip click → popover has both a time input and a duration input', async () => {

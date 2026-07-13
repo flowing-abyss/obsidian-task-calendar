@@ -161,6 +161,58 @@ describe('RightPanel planning API delegation', () => {
     expect(process).not.toHaveBeenCalled();
   });
 
+  it('clears the effective Date field scheduled-only, while preserving due-first when both exist', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] task ⏳ 2026-07-20\n' });
+    const state = new AppState();
+    const ref: TaskRef = { filePath: 't.md', line: 0, revision: 'r' };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'not-found',
+      target: { type: 'task', ref },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const current = Object.assign(
+      task({ filePath: 't.md', line: 0, due: undefined, scheduled: '2026-07-20' }),
+      { ref },
+    );
+
+    await call(panel, 'clearDate', current);
+
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: { scheduled: { type: 'clear' } },
+    });
+
+    execute.mockClear();
+    await call(
+      panel,
+      'clearDate',
+      Object.assign(
+        task({
+          filePath: 't.md',
+          line: 0,
+          due: '2026-07-21',
+          scheduled: '2026-07-20',
+        }),
+        { ref },
+      ),
+    );
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: { due: { type: 'clear' } },
+    });
+  });
+
   it('keeps the edited nested task selected from the returned fresh aggregate', async () => {
     const app = await createAppWithFiles({ 't.md': '- [ ] root\n  - [ ] child\n' });
     const state = new AppState();

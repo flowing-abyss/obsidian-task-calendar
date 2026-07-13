@@ -725,13 +725,15 @@ export class RightPanel {
 
   private renderDateChip(container: HTMLElement, task: TaskLike): void {
     const d = task.due ?? task.scheduled;
+    let field: 'due' | 'scheduled' = 'due';
+    if (!task.due && task.scheduled) field = 'scheduled';
     const chip = container.createEl('button', {
       cls: `tc-chip${d ? '' : ' tc-chip-empty'}`,
       text: d ? `📅 ${this.formatDate(d)}` : '📅 Date',
     });
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.showDatePopover(chip, task, 'due');
+      this.showDatePopover(chip, task, field);
     });
   }
 
@@ -1152,7 +1154,10 @@ export class RightPanel {
   }
 
   private async clearDate(task: TaskLike): Promise<void> {
-    await this.executePlanningPatch(task, { due: { type: 'clear' } });
+    await this.executePlanningPatch(
+      task,
+      task.due || !task.scheduled ? { due: { type: 'clear' } } : { scheduled: { type: 'clear' } },
+    );
   }
 
   private async updateScheduled(task: TaskLike, date: string): Promise<void> {

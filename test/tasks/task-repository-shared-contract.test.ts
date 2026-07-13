@@ -107,6 +107,52 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
       expect(await h.read()).toBe(source);
     });
 
+    it('applies valid multi-field and clear/set span patches atomically', async () => {
+      const forward = '- [ ] task 🛫 2026-07-01 📅 2026-07-10\n';
+      const forwardHarness = await makeHarness(adapter, forward);
+      await expect(
+        forwardHarness.repository.edit({
+          type: 'patch',
+          target: { type: 'task', ref: rootRef(forwardHarness, forward) },
+          patch: {
+            start: { type: 'set', value: localDate('2026-07-20') },
+            due: { type: 'set', value: localDate('2026-07-30') },
+          },
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await forwardHarness.read()).toContain('🛫 2026-07-20 📅 2026-07-30');
+
+      const clearStart = '- [ ] task 🛫 2026-07-10 📅 2026-07-20\n';
+      const clearStartHarness = await makeHarness(adapter, clearStart);
+      await expect(
+        clearStartHarness.repository.edit({
+          type: 'patch',
+          target: { type: 'task', ref: rootRef(clearStartHarness, clearStart) },
+          patch: {
+            start: { type: 'clear' },
+            due: { type: 'set', value: localDate('2026-07-05') },
+          },
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await clearStartHarness.read()).toContain('📅 2026-07-05');
+      expect(await clearStartHarness.read()).not.toContain('🛫');
+
+      const clearDue = '- [ ] task 🛫 2026-07-10 📅 2026-07-20\n';
+      const clearDueHarness = await makeHarness(adapter, clearDue);
+      await expect(
+        clearDueHarness.repository.edit({
+          type: 'patch',
+          target: { type: 'task', ref: rootRef(clearDueHarness, clearDue) },
+          patch: {
+            start: { type: 'set', value: localDate('2026-07-30') },
+            due: { type: 'clear' },
+          },
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await clearDueHarness.read()).toContain('🛫 2026-07-30');
+      expect(await clearDueHarness.read()).not.toContain('📅');
+    });
+
     it('rejects a stale child exact block without same-line adoption', async () => {
       const source = '- [ ] root\n  - [ ] child\n';
       const h = await makeHarness(adapter, source);

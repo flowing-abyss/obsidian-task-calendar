@@ -11,7 +11,7 @@ import { TaskBlockEditor } from '../../src/tasks/infrastructure/markdown/TaskBlo
 import { TaskLocator } from '../../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
 import { ObsidianTaskRepository } from '../../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
-import { createAppWithFiles } from '../helpers';
+import { createAppWithFiles, seedTaskCache } from '../helpers';
 
 interface Harness {
   readonly app: App;
@@ -263,5 +263,36 @@ describe('ObsidianTaskRepository planning contract', () => {
       },
     });
     expect(await read(h.app, 'tasks.md')).toContain('nested 📅 2026-07-21');
+  });
+
+  it('retains complete presentation metadata from exact post-edit frontmatter', async () => {
+    const source =
+      '---\ncolor: "#123456"\ntextColor: "#abcdef"\nicon: calendar-days\n---\n- [ ] [[Linked task]]\n';
+    const h = await harness({ 'tasks.md': source });
+    seedTaskCache(h.app, 'tasks.md', [{ task: ' ', parent: -1, line: 5 }], {
+      color: '#stale',
+      textColor: '#stale',
+      icon: 'stale',
+    });
+
+    const result = await h.repository.edit(
+      patch(refFor(h, 'tasks.md', source, 5), 'due', '2026-07-20'),
+    );
+
+    expect(result).toMatchObject({
+      type: 'committed',
+      changed: true,
+      outcome: {
+        type: 'task',
+        task: {
+          presentation: {
+            linkCount: 1,
+            noteColor: '#123456',
+            noteTextColor: '#abcdef',
+            noteIcon: 'calendar-days',
+          },
+        },
+      },
+    });
   });
 });

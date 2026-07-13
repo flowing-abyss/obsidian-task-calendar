@@ -1,12 +1,6 @@
 import { TFile, type App } from 'obsidian';
 import type { TaskRepository, TaskRepositoryResult } from '../../application/TaskRepository';
-import type {
-  FieldUpdate,
-  PlanningTarget,
-  TaskCommand,
-  TaskPatch,
-  TaskResolutionCandidate,
-} from '../../domain/commands';
+import type { PlanningTarget, TaskCommand, TaskResolutionCandidate } from '../../domain/commands';
 import type {
   SubtaskRef,
   SubtaskSnapshot,
@@ -15,10 +9,11 @@ import type {
   TaskRef,
   TaskSnapshot,
 } from '../../domain/types';
+import { applyPlanningCommand } from '../markdown/applyPlanningCommand';
 import type { TaskRootBlock } from '../markdown/TaskBlockEditor';
 import { TaskBlockEditor } from '../markdown/TaskBlockEditor';
 import { TaskLocator } from '../markdown/TaskLocator';
-import { TaskMarkdownCodec, type LineEdit } from '../markdown/TaskMarkdownCodec';
+import { TaskMarkdownCodec } from '../markdown/TaskMarkdownCodec';
 
 interface RepositoryOptions {
   readonly codec: TaskMarkdownCodec;
@@ -112,42 +107,6 @@ function mutationTarget(command: TaskCommand): TaskMutationTarget {
   return command.type === 'patch' ? command.target : { type: 'task', ref: command.ref };
 }
 
-function fieldEdit(field: 'due' | 'scheduled' | 'start', update: FieldUpdate<string>): LineEdit {
-  return {
-    type: 'set-date',
-    field,
-    value: update.type === 'set' ? update.value : null,
-  };
-}
-
-function planningEdits(
-  parsed: ReturnType<TaskMarkdownCodec['parseLine']>,
-  patch: TaskPatch,
-): LineEdit[] {
-  if (!parsed) return [];
-  const edits: LineEdit[] = [];
-  if (patch.scheduled) edits.push(fieldEdit('scheduled', patch.scheduled));
-  const start = patch.start?.type === 'set' ? patch.start.value : undefined;
-  const due = patch.due?.type === 'set' ? patch.due.value : undefined;
-  const currentDue = parsed.planning.due;
-  if (patch.start && patch.due && start !== undefined && due !== undefined && start > due) {
-    return [fieldEdit('start', patch.start), fieldEdit('due', patch.due)];
-  }
-  if (
-    patch.start &&
-    patch.due &&
-    start !== undefined &&
-    currentDue !== undefined &&
-    start > currentDue
-  ) {
-    edits.push(fieldEdit('due', patch.due), fieldEdit('start', patch.start));
-  } else {
-    if (patch.start) edits.push(fieldEdit('start', patch.start));
-    if (patch.due) edits.push(fieldEdit('due', patch.due));
-  }
-  return edits;
-}
-
 export class ObsidianTaskRepository implements TaskRepository {
   constructor(
     private readonly app: App,
@@ -190,7 +149,7 @@ export class ObsidianTaskRepository implements TaskRepository {
           return content;
         }
 
-        const editResult = this.applyCommand(sourceLine, command);
+        const editResult = applyPlanningCommand(this.options.codec, sourceLine, command);
         if (editResult.type === 'invalid') {
           result = editResult;
           return content;
@@ -233,42 +192,6 @@ export class ObsidianTaskRepository implements TaskRepository {
         contentState: 'unknown',
       }
     );
-  }
-
-  private applyCommand(sourceLine: string, command: TaskCommand) {
-    const parsed = this.options.codec.parseLine(sourceLine, { filePath: '', line: 0 });
-    if (!parsed)
-      return { type: 'invalid' as const, issues: [{ code: 'invalid-task-syntax' as const }] };
-    let edits: LineEdit[];
-    if (command.type === 'reschedule') {
-      const field = parsed.planning.scheduled ? 'scheduled' : 'due';
-      edits = [{ type: 'set-date', field, value: command.date }];
-    } else {
-      if (
-        command.patch.start?.type === 'set' &&
-        command.patch.due?.type === 'set' &&
-        command.patch.start.value > command.patch.due.value
-      ) {
-        return {
-          type: 'invalid' as const,
-          issues: [{ code: 'inverted-span' as const, field: 'start,due' }],
-        };
-      }
-      edits = planningEdits(parsed, command.patch);
-    }
-    let current = sourceLine;
-    let changed = false;
-    for (const edit of edits) {
-      const next = this.options.codec.applyLineEdit(current, edit);
-      if (next.type === 'invalid') return next;
-      if (next.type === 'changed') {
-        current = next.content;
-        changed = true;
-      }
-    }
-    return changed
-      ? ({ type: 'changed', content: current } as const)
-      : ({ type: 'unchanged', content: sourceLine } as const);
   }
 
   private snapshotFor(

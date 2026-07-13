@@ -1,4 +1,11 @@
-import { TFile, type App, type CachedMetadata, type EventRef, type TAbstractFile } from 'obsidian';
+import {
+  parseYaml,
+  TFile,
+  type App,
+  type CachedMetadata,
+  type EventRef,
+  type TAbstractFile,
+} from 'obsidian';
 import { legacyTaskFromParsed } from '../../parser/legacyTaskProjection';
 import { countLinksIn } from '../../parser/links';
 import { parseSubItems } from '../../parser/SubItemParser';
@@ -394,6 +401,21 @@ function cacheWithContentFallback(
   return { ...(cache ?? {}), listItems: fallbackItems };
 }
 
+function frontmatterFromContent(data: string): Record<string, unknown> | undefined {
+  const lines = data.split(/\r?\n/u);
+  if (lines[0]?.replace(/^\uFEFF/u, '').trim() !== '---') return undefined;
+  const closing = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
+  if (closing < 0) return undefined;
+  try {
+    const parsed: unknown = parseYaml(lines.slice(1, closing).join('\n'));
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function extensionOf(path: string): string {
   const name = path.replace(/^.*\//u, '');
   const dot = name.lastIndexOf('.');
@@ -755,7 +777,12 @@ export class TaskIndex implements TaskQueryApi {
 
   /** Pure infrastructure collaborator used by the repository for immediate command outcomes. */
   snapshotsFromContent(filePath: string, content: string): readonly TaskSnapshot[] {
-    return this.parseFile(filePath, content, cacheWithContentFallback(content, null));
+    const cache = cacheWithContentFallback(content, null);
+    const frontmatter = frontmatterFromContent(content);
+    return this.parseFile(filePath, content, {
+      ...cache,
+      ...(frontmatter && { frontmatter }),
+    });
   }
 
   private replaceFile(filePath: string, tasks: readonly TaskSnapshot[]): void {
