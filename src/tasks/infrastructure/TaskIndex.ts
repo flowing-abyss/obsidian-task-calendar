@@ -235,32 +235,128 @@ function blockFor(lines: readonly string[], line: number, rangeTo: number | unde
   return lines.slice(line, (rangeTo ?? line) + 1).join('\n');
 }
 
+interface FallbackListItem {
+  readonly task?: string;
+  readonly parent: number;
+  readonly position: {
+    readonly start: { readonly line: number; readonly col: number; readonly offset: number };
+    readonly end: { readonly line: number; readonly col: number; readonly offset: number };
+  };
+}
+
+interface FallbackListAncestor {
+  readonly line: number;
+  readonly indent: number;
+}
+
+interface FallbackFence {
+  readonly marker: '`' | '~';
+  readonly length: number;
+}
+
+const FALLBACK_LIST_ITEM_RE = /^([\s>]*)(?:[-*+]|\d+[.)])\s+/u;
+const FALLBACK_TASK_RE = /^[\s>]*- \[(.)\]/u;
+const FALLBACK_FENCE_RE = /^[\s>]*(`{3,}|~{3,})/u;
+const FALLBACK_PREFIX_RE = /^([\s>]*)/u;
+
+function fallbackFenceState(
+  line: string,
+  active: FallbackFence | undefined,
+): { readonly active: FallbackFence | undefined; readonly skip: boolean } {
+  const token = FALLBACK_FENCE_RE.exec(line)?.[1];
+  if (active) {
+    const closes = token?.[0] === active.marker && token.length >= active.length;
+    return { active: closes ? undefined : active, skip: true };
+  }
+  if (token === undefined) return { active: undefined, skip: false };
+  const marker = token[0];
+  return marker === '`' || marker === '~'
+    ? { active: { marker, length: token.length }, skip: true }
+    : { active: undefined, skip: false };
+}
+
+function fallbackListItems(data: string): FallbackListItem[] {
+  const lines = data.split('\n');
+  const items: FallbackListItem[] = [];
+  const ancestorsByQuoteDepth = new Map<number, FallbackListAncestor[]>();
+  let offset = 0;
+  let frontmatter = lines[0]?.trim() === '---';
+  let fence: FallbackFence | undefined;
+  let previousQuoteDepth: number | undefined;
+
+  for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
+    const line = lines[lineNumber] ?? '';
+    if (frontmatter) {
+      if (lineNumber > 0 && line.trim() === '---') frontmatter = false;
+      offset += line.length + 1;
+      continue;
+    }
+
+    const nextFence = fallbackFenceState(line, fence);
+    fence = nextFence.active;
+    if (nextFence.skip) {
+      offset += line.length + 1;
+      continue;
+    }
+    if (/^[\s>]*$/u.test(line)) {
+      offset += line.length + 1;
+      continue;
+    }
+
+    const leadingPrefix = FALLBACK_PREFIX_RE.exec(line)?.[1] ?? '';
+    const quoteDepth = [...leadingPrefix].filter((character) => character === '>').length;
+    if (previousQuoteDepth !== undefined && previousQuoteDepth !== quoteDepth) {
+      ancestorsByQuoteDepth.clear();
+    }
+    previousQuoteDepth = quoteDepth;
+
+    const listMatch = FALLBACK_LIST_ITEM_RE.exec(line);
+    if (!listMatch) {
+      const indent = leadingPrefix.replace(/\t/gu, '    ').length;
+      const ancestors = ancestorsByQuoteDepth.get(quoteDepth) ?? [];
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1]!.indent >= indent) {
+        ancestors.pop();
+      }
+      ancestorsByQuoteDepth.set(quoteDepth, ancestors);
+      offset += line.length + 1;
+      continue;
+    }
+    const prefix = listMatch[1] ?? '';
+    const indent = prefix.replace(/\t/gu, '    ').length;
+    const ancestors = ancestorsByQuoteDepth.get(quoteDepth) ?? [];
+    while (ancestors.length > 0 && ancestors[ancestors.length - 1]!.indent >= indent) {
+      ancestors.pop();
+    }
+    const parent = ancestors[ancestors.length - 1]?.line ?? -(lineNumber + 1);
+    const task = FALLBACK_TASK_RE.exec(line)?.[1];
+    items.push({
+      ...(task !== undefined && { task }),
+      parent,
+      position: {
+        start: { line: lineNumber, col: prefix.length, offset },
+        end: { line: lineNumber, col: line.length, offset: offset + line.length },
+      },
+    });
+    ancestors.push({ line: lineNumber, indent });
+    ancestorsByQuoteDepth.set(quoteDepth, ancestors);
+    offset += line.length + 1;
+  }
+  return items;
+}
+
 function cacheWithContentFallback(
   data: string,
   cache: CachedMetadata | null | undefined,
 ): CachedMetadata {
-  const sourceHasTask = data.split('\n').some((line) => /^[\s>]*- \[(.)\]/u.test(line));
+  const fallbackItems = fallbackListItems(data);
+  const sourceHasTask = fallbackItems.some((item) => item.task !== undefined);
   if (
     cache?.listItems !== undefined &&
     (cache.listItems.some((item) => item.task !== undefined) || !sourceHasTask)
   ) {
     return cache;
   }
-  const listItems = data.split('\n').flatMap((line, lineNumber) => {
-    const match = /^[\s>]*- \[(.)\]/u.exec(line);
-    if (!match) return [];
-    return [
-      {
-        task: match[1] ?? ' ',
-        parent: -1,
-        position: {
-          start: { line: lineNumber, col: 0, offset: 0 },
-          end: { line: lineNumber, col: line.length, offset: line.length },
-        },
-      },
-    ];
-  });
-  return { ...(cache ?? {}), listItems };
+  return { ...(cache ?? {}), listItems: fallbackItems };
 }
 
 function extensionOf(path: string): string {
@@ -369,7 +465,7 @@ export class TaskIndex implements TaskQueryApi {
   );
   private listeners: Listener[] = [];
   private readonly pendingFiles = new Set<string>();
-  private readonly fileLifecycles = new Map<TFile, FileLifecycle>();
+  private fileLifecycles = new WeakMap<TFile, FileLifecycle>();
   private readonly pendingReads = new Set<Promise<void>>();
   private flushScheduled = false;
   private metadataCacheRefs: EventRef[] = [];
@@ -494,7 +590,7 @@ export class TaskIndex implements TaskQueryApi {
     this.vaultRefs = [];
     this.listeners = [];
     this.pendingFiles.clear();
-    this.fileLifecycles.clear();
+    this.fileLifecycles = new WeakMap();
     this.pendingReads.clear();
     this.taskMap.clear();
     this.dateIndex.clear();

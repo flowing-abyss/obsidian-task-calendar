@@ -99,6 +99,14 @@ function captureCreateCallback(
 }
 
 describe('TaskIndex lifecycle and events', () => {
+  it('holds file lifecycle generations by weak identity', async () => {
+    const { index } = await setup({ 'task.md': '- [ ] task' });
+    expect((index as unknown as { fileLifecycles: unknown }).fileLifecycles).toBeInstanceOf(
+      WeakMap,
+    );
+    index.destroy();
+  });
+
   it('composes TaskMarkdownCodec directly instead of the legacy root parser', () => {
     const source = readFileSync(
       resolve(import.meta.dirname, '../../src/tasks/infrastructure/TaskIndex.ts'),
@@ -234,6 +242,30 @@ describe('TaskIndex lifecycle and events', () => {
 
     expect(index.list().map((task) => task.title)).toEqual(['initial', 'created']);
     expect(events).toEqual([{ type: 'initialized' }]);
+    index.destroy();
+  });
+
+  it('fallback creation indexes nested tasks once under their root parent', async () => {
+    const content = ['- [ ] parent', '  - [ ] child', '    - [ ] grandchild', '- [ ] sibling'].join(
+      '\n',
+    );
+    const app = await createAppWithFiles({ 'created.md': content });
+    app.metadataCache.getFileCache = (): null => null;
+    const index = new TaskIndex(app, {
+      statusCatalog: canonicalStatusCatalog(),
+      dailyNoteFormat: 'YYYY-MM-DD',
+    });
+    const fireCreate = captureCreateCallback(app);
+    await index.initialize();
+    const file = mdFile(app, 'created.md');
+
+    fireCreate(file);
+    await flushMicrotasks();
+
+    const tasks = index.list();
+    expect(tasks.map((task) => task.title)).toEqual(['parent', 'sibling']);
+    expect(tasks[0]?.subtasks.map((task) => task.title)).toEqual(['child']);
+    expect(tasks[0]?.subtasks[0]?.subtasks.map((task) => task.title)).toEqual(['grandchild']);
     index.destroy();
   });
 
@@ -394,6 +426,49 @@ describe('TaskIndex lifecycle and events', () => {
       ['task.md', 'newly markdown'],
     ]);
     expect(events).toEqual([{ type: 'renamed', oldPath: 'task.txt', newPath: 'task.md' }]);
+    index.destroy();
+  });
+
+  it('fallback rename preserves quoted task hierarchy without duplicate roots', async () => {
+    const content = [
+      '> [!todo] Tasks',
+      '> - [ ] quoted parent',
+      '>   - [ ] quoted child',
+      '> - [ ] quoted sibling',
+    ].join('\n');
+    const { app, index } = await setup({ 'callout.txt': content });
+    await index.initialize();
+    const file = app.vault.getAbstractFileByPath('callout.txt');
+    if (!(file instanceof TFile)) throw new Error('missing callout.txt');
+
+    await app.vault.rename(file, 'callout.md');
+    await flushMicrotasks();
+
+    const tasks = index.list();
+    expect(tasks.map((task) => task.title)).toEqual(['quoted parent', 'quoted sibling']);
+    expect(tasks[0]?.subtasks.map((task) => task.title)).toEqual(['quoted child']);
+    index.destroy();
+  });
+
+  it('fallback hierarchy does not cross quote-container boundaries', async () => {
+    const content = [
+      '- [ ] plain parent',
+      '> - [ ] quoted boundary',
+      '  - [ ] plain after boundary',
+    ].join('\n');
+    const { app, index } = await setup({ 'boundaries.txt': content });
+    await index.initialize();
+    const file = app.vault.getAbstractFileByPath('boundaries.txt');
+    if (!(file instanceof TFile)) throw new Error('missing boundaries.txt');
+
+    await app.vault.rename(file, 'boundaries.md');
+    await flushMicrotasks();
+
+    expect(index.list().map((task) => task.title)).toEqual([
+      'plain parent',
+      'quoted boundary',
+      'plain after boundary',
+    ]);
     index.destroy();
   });
 });
