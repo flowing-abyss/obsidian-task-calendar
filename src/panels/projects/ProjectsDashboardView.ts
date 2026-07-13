@@ -3,12 +3,6 @@ import type { Project } from '../../projects/types';
 import { renderProgressBar } from './progressBar';
 import type { ProjectsDashboardContext } from './viewContext';
 
-function formatMinutes(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
 /** Detail view for a single project: header, stats, description, its tasks. */
 export function renderProjectDashboard(
   container: HTMLElement,
@@ -58,16 +52,6 @@ export function renderProjectDashboard(
 
   const stats = container.createDiv({ cls: 'tc-project-dashboard-stats' });
   renderProgressBar(stats, project.stats.done, project.stats.total);
-  // Time slots render only when a future tracker has populated them.
-  if (project.stats.estimateMin !== undefined || project.stats.spentMin !== undefined) {
-    const time = stats.createDiv({ cls: 'tc-project-time' });
-    const spent = project.stats.spentMin ?? 0;
-    const est = project.stats.estimateMin ?? 0;
-    time.createSpan({
-      cls: 'tc-project-time-label',
-      text: `${formatMinutes(spent)} / ${formatMinutes(est)}`,
-    });
-  }
 
   const rawDesc = project.frontmatter['description'];
   const desc = typeof rawDesc === 'string' ? rawDesc.trim() : '';

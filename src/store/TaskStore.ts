@@ -16,7 +16,7 @@ import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
 import { TaskDateIndex } from './TaskDateIndex';
 
-export interface StoreUpdateEvent {
+interface StoreUpdateEvent {
   changedFiles: string[]; // empty = bulk init complete, no specific file
 }
 

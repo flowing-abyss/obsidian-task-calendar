@@ -113,6 +113,30 @@ describe('renderProjectDashboard', () => {
     });
     expect(el.querySelector('.tc-projects-empty')?.textContent).toBe('Project not found');
   });
+
+  it('does not render premature time statistics from stale runtime data', () => {
+    const el = freshContainer();
+    const project = proj({
+      stats: {
+        total: 4,
+        done: 1,
+        cancelled: 0,
+        inProgress: 0,
+        estimateMin: 90,
+        spentMin: 30,
+      } as Project['stats'] & { estimateMin: number; spentMin: number },
+    });
+
+    renderProjectDashboard(el, project, {
+      state: new AppState(),
+      settings: DEFAULT_SETTINGS,
+      onSetStatus: vi.fn(),
+      openNote: vi.fn(),
+      renderTasks: vi.fn(),
+    });
+
+    expect(el.querySelector('.tc-project-time')).toBeNull();
+  });
 });
 
 describe('ProjectsPanel dispatch', () => {

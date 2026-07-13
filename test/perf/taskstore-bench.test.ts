@@ -82,11 +82,96 @@ async function avgMs(fn: () => Promise<void> | void, runs: number): Promise<numb
 
 const DENSITY = 10; // tasks per file
 const RUNS = 3;
+const QUERY_RUNS = RUNS * 10; // frozen at 30 invocations per query path
+const CALENDAR_DATES = Array.from({ length: 42 }, (_, offset) => {
+  const date = new Date(Date.UTC(2026, 4, 25 + offset));
+  return date.toISOString().slice(0, 10);
+});
 
-async function runScenario(
-  fileCount: number,
-  tasksPerFile: number,
-): Promise<Record<string, number | string>> {
+interface ScenarioMetrics {
+  fileCount: number;
+  tasksPerFile: number;
+  totalTasks: number;
+  initialIndexMs: number;
+  queryAllMs: number;
+  queryByTagMs: number;
+  queryByListDateMs: number;
+  queryByCalendarDateMs: number;
+  queryByFileMs: number;
+}
+
+interface PerformanceBudget {
+  initialIndexMs: number;
+  queryAllMs: number;
+  queryByTagMs: number;
+  queryByListDateMs: number;
+  queryByCalendarDateMs: number;
+  queryByFileMs: number;
+}
+
+interface Scenario {
+  label: string;
+  fileCount: number;
+  tasksPerFile: number;
+  budget: PerformanceBudget;
+}
+
+const SCENARIOS: Scenario[] = [
+  {
+    label: '1,000 files × 10 tasks/file',
+    fileCount: 1_000,
+    tasksPerFile: DENSITY,
+    budget: {
+      initialIndexMs: 2_000,
+      queryAllMs: 25,
+      queryByTagMs: 50,
+      queryByListDateMs: 50,
+      queryByCalendarDateMs: 50,
+      queryByFileMs: 5,
+    },
+  },
+  {
+    label: '5,000 files × 10 tasks/file',
+    fileCount: 5_000,
+    tasksPerFile: DENSITY,
+    budget: {
+      initialIndexMs: 5_000,
+      queryAllMs: 50,
+      queryByTagMs: 100,
+      queryByListDateMs: 100,
+      queryByCalendarDateMs: 100,
+      queryByFileMs: 5,
+    },
+  },
+  {
+    label: '10,000 files × 10 tasks/file',
+    fileCount: 10_000,
+    tasksPerFile: DENSITY,
+    budget: {
+      initialIndexMs: 10_000,
+      queryAllMs: 100,
+      queryByTagMs: 200,
+      queryByListDateMs: 200,
+      queryByCalendarDateMs: 200,
+      queryByFileMs: 10,
+    },
+  },
+  {
+    label: 'dense: 100 files × 100 tasks/file',
+    fileCount: 100,
+    tasksPerFile: 100,
+    budget: {
+      initialIndexMs: 2_000,
+      queryAllMs: 25,
+      queryByTagMs: 50,
+      queryByListDateMs: 50,
+      queryByCalendarDateMs: 50,
+      queryByFileMs: 5,
+    },
+  },
+];
+
+async function runScenario(fileCount: number, tasksPerFile: number): Promise<ScenarioMetrics> {
   const files = buildFiles(fileCount, tasksPerFile);
   const app = await createApp(files);
 
@@ -105,16 +190,19 @@ async function runScenario(
   // Query benchmarks (repeated for stable avg)
   const queryAllMs = await avgMs(() => {
     store.getTasks();
-  }, RUNS * 10);
+  }, QUERY_RUNS);
   const queryTagMs = await avgMs(() => {
     store.getTasks({ tag: '#tag1' });
-  }, RUNS * 10);
-  const queryDateMs = await avgMs(() => {
+  }, QUERY_RUNS);
+  const queryListDateMs = await avgMs(() => {
     store.getTasks({ dateRange: { from: '2026-01-01', to: '2026-12-31' } });
-  }, RUNS * 10);
+  }, QUERY_RUNS);
+  const queryCalendarDateMs = await avgMs(() => {
+    store.getTasksForDateRange(CALENDAR_DATES);
+  }, QUERY_RUNS);
   const queryFileMs = await avgMs(() => {
     store.getTasks({ filePath: 'file-0.md' });
-  }, RUNS * 10);
+  }, QUERY_RUNS);
 
   store.destroy();
 
@@ -122,12 +210,36 @@ async function runScenario(
     fileCount,
     tasksPerFile,
     totalTasks,
-    initialIndexMs: Math.round(initialMs),
-    queryAllMs: Math.round(queryAllMs * 1000) / 1000,
-    queryByTagMs: Math.round(queryTagMs * 1000) / 1000,
-    queryByDateRangeMs: Math.round(queryDateMs * 1000) / 1000,
-    queryByFileMs: Math.round(queryFileMs * 1000) / 1000,
+    initialIndexMs: initialMs,
+    queryAllMs,
+    queryByTagMs: queryTagMs,
+    queryByListDateMs: queryListDateMs,
+    queryByCalendarDateMs: queryCalendarDateMs,
+    queryByFileMs: queryFileMs,
   };
+}
+
+function printMetrics(label: string, metrics: ScenarioMetrics): void {
+  console.log(`\n📊 ${label}`);
+  console.log(`   Total tasks:                ${metrics.totalTasks}`);
+  console.log(`   Initial index:              ${metrics.initialIndexMs.toFixed(3)} ms`);
+  console.log(`   getTasks() all:             ${metrics.queryAllMs.toFixed(3)} ms (30 avg)`);
+  console.log(`   getTasks() by tag:          ${metrics.queryByTagMs.toFixed(3)} ms (30 avg)`);
+  console.log(`   getTasks() list date:       ${metrics.queryByListDateMs.toFixed(3)} ms (30 avg)`);
+  console.log(
+    `   calendar date union:        ${metrics.queryByCalendarDateMs.toFixed(3)} ms (30 avg)`,
+  );
+  console.log(`   getTasks() filePath:        ${metrics.queryByFileMs.toFixed(3)} ms (30 avg)`);
+  console.log(`   JSON: ${JSON.stringify(metrics)}`);
+}
+
+function expectWithinBudget(metrics: ScenarioMetrics, budget: PerformanceBudget): void {
+  expect(metrics.initialIndexMs).toBeLessThan(budget.initialIndexMs);
+  expect(metrics.queryAllMs).toBeLessThan(budget.queryAllMs);
+  expect(metrics.queryByTagMs).toBeLessThan(budget.queryByTagMs);
+  expect(metrics.queryByListDateMs).toBeLessThan(budget.queryByListDateMs);
+  expect(metrics.queryByCalendarDateMs).toBeLessThan(budget.queryByCalendarDateMs);
+  expect(metrics.queryByFileMs).toBeLessThan(budget.queryByFileMs);
 }
 
 // ---------------------------------------------------------------------------
@@ -135,40 +247,16 @@ async function runScenario(
 // ---------------------------------------------------------------------------
 
 describe('TaskStore performance benchmark', () => {
-  for (const fileCount of [1000, 5000, 10000]) {
-    it(`${fileCount} files × ${DENSITY} tasks/file`, async () => {
-      const metrics = await runScenario(fileCount, DENSITY);
+  for (const scenario of SCENARIOS) {
+    it(
+      scenario.label,
+      async () => {
+        const metrics = await runScenario(scenario.fileCount, scenario.tasksPerFile);
 
-      console.log(`\n📊 ${fileCount} files × ${DENSITY} tasks/file`);
-      console.log(`   Total tasks:         ${metrics['totalTasks']}`);
-      console.log(`   Initial index:       ${metrics['initialIndexMs']} ms`);
-      console.log(`   getTasks() all:      ${metrics['queryAllMs']} ms (avg)`);
-      console.log(`   getTasks() by tag:   ${metrics['queryByTagMs']} ms (avg)`);
-      console.log(`   getTasks() dateRange:${metrics['queryByDateRangeMs']} ms (avg)`);
-      console.log(`   getTasks() filePath: ${metrics['queryByFileMs']} ms (avg)`);
-      console.log(`   JSON: ${JSON.stringify(metrics)}`);
-
-      // Loose sanity bounds — fail the test if indexing regresses catastrophically.
-      // Adjust thresholds if hardware or vault size changes.
-      const indexMs = metrics['initialIndexMs'] as number;
-      if (fileCount === 1000) {
-        // Expect initial indexing of 1k files to complete in < 10s
-        expect(indexMs).toBeLessThan(10_000);
-      } else if (fileCount === 5000) {
-        expect(indexMs).toBeLessThan(30_000);
-      } else {
-        expect(indexMs).toBeLessThan(60_000);
-      }
-    }, 120_000); // 2-min timeout per scenario
+        printMetrics(scenario.label, metrics);
+        expectWithinBudget(metrics, scenario.budget);
+      },
+      120_000,
+    );
   }
-
-  it('high-density: 100 files × 100 tasks each (dense file scenario)', async () => {
-    const metrics = await runScenario(100, 100);
-    console.log(`\n📊 Dense: 100 files × 100 tasks`);
-    console.log(`   Total tasks: ${metrics['totalTasks']}`);
-    console.log(`   Initial index: ${metrics['initialIndexMs']} ms`);
-    console.log(`   getTasks() all: ${metrics['queryAllMs']} ms`);
-    console.log(`   JSON: ${JSON.stringify(metrics)}`);
-    expect(metrics['initialIndexMs'] as number).toBeLessThan(5_000);
-  }, 30_000);
 });

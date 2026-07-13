@@ -3,8 +3,6 @@ export interface ProjectStats {
   done: number;
   cancelled: number;
   inProgress: number;
-  estimateMin?: number;
-  spentMin?: number;
 }
 
 export interface Project {
