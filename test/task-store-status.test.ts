@@ -1,5 +1,10 @@
 import { TFile } from 'obsidian';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { toStatusRules } from '../src/settings/statusCatalogAdapter';
+import { TaskStore } from '../src/store/TaskStore';
+import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
+import type { TaskRepository } from '../src/tasks/application/TaskRepository';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import { localDate } from '../src/tasks/domain/validation';
 import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
@@ -124,4 +129,149 @@ describe('status repository contract', () => {
       }),
     ).resolves.toMatchObject({ type: 'conflict', current: { statusSymbol: 't' } });
   });
+});
+
+async function liveCatalogHarness(mutableType: 'in-progress' | 'done' = 'in-progress') {
+  const app = await createAppWithFiles({ 'tasks.md': '- [w] task ✅ 2026-07-01' });
+  const settings = structuredClone(DEFAULT_SETTINGS);
+  settings.taskStatuses = [
+    { id: 'todo', symbol: 't', name: 'Todo', type: 'todo', icon: '', core: true },
+    {
+      id: 'mutable',
+      symbol: 'w',
+      name: 'Waiting',
+      type: mutableType,
+      icon: '',
+      core: false,
+    },
+    { id: 'done', symbol: 'd', name: 'Done', type: 'done', icon: '', core: true },
+    { id: 'done-alt', symbol: 'z', name: 'Done alt', type: 'done', icon: '', core: false },
+  ];
+  const liveCatalog = new StatusCatalog(toStatusRules(settings.taskStatuses));
+  const index = new TaskIndex(app, {
+    statusCatalog: liveCatalog,
+    dailyNoteFormat: settings.desktop.dailyNoteFormat,
+  });
+  await index.initialize();
+  const indexed = index.list()[0]!;
+  const clock = { today: vi.fn(() => localDate('2026-07-14')) };
+  const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+    type: 'committed',
+    outcome: { type: 'task', task: indexed },
+    changed: true,
+  });
+  const application = new TaskApplicationService(index, { edit }, liveCatalog, clock);
+  const store = new TaskStore(app, settings, index, application, liveCatalog);
+  const rebuildAsDone = () => {
+    settings.taskStatuses = settings.taskStatuses.map((status) =>
+      status.symbol === 'w' ? { ...status, type: 'done' as const } : status,
+    );
+    store.rebuildStatusRegistry();
+  };
+  const rebuildWithoutMutable = () => {
+    settings.taskStatuses = settings.taskStatuses.filter((status) => status.symbol !== 'w');
+    store.rebuildStatusRegistry();
+  };
+  return {
+    application,
+    clock,
+    edit,
+    index,
+    indexed,
+    rebuildAsDone,
+    rebuildWithoutMutable,
+  };
+}
+
+describe('live status catalog transitions', () => {
+  it.each([
+    ['toggle-completion', 't'],
+    ['set-status', 'z'],
+  ] as const)(
+    'uses the rebuilt semantic type for an indexed %s without waiting for a file event',
+    async (operation, expectedSymbol) => {
+      const h = await liveCatalogHarness();
+      expect(h.indexed.status).toBe('in-progress');
+      h.rebuildAsDone();
+      expect(h.index.resolve(h.indexed.ref)).toMatchObject({
+        type: 'exact',
+        task: { status: 'in-progress', statusSymbol: 'w' },
+      });
+      h.clock.today.mockClear();
+
+      await h.application.execute(
+        operation === 'toggle-completion'
+          ? { type: operation, target: { type: 'task', ref: h.indexed.ref } }
+          : { type: operation, target: { type: 'task', ref: h.indexed.ref }, symbol: 'z' },
+      );
+
+      expect(h.clock.today).not.toHaveBeenCalled();
+      expect(h.edit).toHaveBeenCalledWith({
+        type: 'set-status',
+        target: { type: 'task', ref: h.indexed.ref },
+        symbol: expectedSymbol,
+      });
+    },
+  );
+
+  it('uses the rebuilt semantic type for a recent outcome while the index still has the old ref', async () => {
+    const h = await liveCatalogHarness();
+    const fresh = { ...h.indexed, ref: { ...h.indexed.ref, revision: 'fresh-before-rebuild' } };
+    h.edit.mockResolvedValueOnce({
+      type: 'committed',
+      outcome: { type: 'task', task: fresh },
+      changed: true,
+    });
+    const first = await h.application.execute({
+      type: 'patch',
+      target: { type: 'task', ref: h.indexed.ref },
+      patch: { priority: { type: 'set', value: 'A' } },
+    });
+    if (first.type !== 'ok' || first.outcome.type !== 'task') throw new Error('missing outcome');
+    h.rebuildAsDone();
+    h.clock.today.mockClear();
+
+    await h.application.execute({
+      type: 'toggle-completion',
+      target: { type: 'task', ref: first.outcome.task.ref },
+    });
+
+    expect(h.clock.today).not.toHaveBeenCalled();
+    expect(h.edit).toHaveBeenLastCalledWith({
+      type: 'set-status',
+      target: { type: 'task', ref: fresh.ref },
+      symbol: 't',
+    });
+  });
+
+  it.each([
+    ['toggle-completion', 'd'],
+    ['set-status', 'z'],
+  ] as const)(
+    'uses the live open fallback for an indexed symbol removed before %s',
+    async (operation, expectedSymbol) => {
+      const h = await liveCatalogHarness('done');
+      expect(h.indexed).toMatchObject({ status: 'done', statusSymbol: 'w' });
+      h.rebuildWithoutMutable();
+      expect(h.index.resolve(h.indexed.ref)).toMatchObject({
+        type: 'exact',
+        task: { status: 'done', statusSymbol: 'w' },
+      });
+      h.clock.today.mockClear();
+
+      await h.application.execute(
+        operation === 'toggle-completion'
+          ? { type: operation, target: { type: 'task', ref: h.indexed.ref } }
+          : { type: operation, target: { type: 'task', ref: h.indexed.ref }, symbol: 'z' },
+      );
+
+      expect(h.clock.today).toHaveBeenCalledOnce();
+      expect(h.edit).toHaveBeenCalledWith({
+        type: 'set-status',
+        target: { type: 'task', ref: h.indexed.ref },
+        symbol: expectedSymbol,
+        stamp: localDate('2026-07-14'),
+      });
+    },
+  );
 });

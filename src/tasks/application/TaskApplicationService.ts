@@ -134,12 +134,16 @@ export class TaskApplicationService implements TaskApplicationApi {
     }
     const current = snapshotForTarget(resolution.task, command.target);
     if (!current) return { result: { type: 'conflict', current: resolution.task } };
+    const currentRule = this.statusCatalog.ruleForSymbol(current.statusSymbol);
+    const currentSemanticStatus = currentRule
+      ? statusForRuleType(currentRule.type)
+      : this.statusCatalog.statusForSymbol(current.statusSymbol);
 
     let rule;
     if (command.type === 'set-status') {
       rule = requestedRule!;
     } else {
-      const targetType = current.status === 'done' ? 'todo' : 'done';
+      const targetType = currentSemanticStatus === 'done' ? 'todo' : 'done';
       rule = this.statusCatalog.defaultForType(targetType);
       if (!rule) {
         return {
@@ -151,10 +155,9 @@ export class TaskApplicationService implements TaskApplicationApi {
       }
     }
 
-    const currentRule = this.statusCatalog.ruleForSymbol(current.statusSymbol);
     const sameConfiguredStatus = currentRule?.symbol === rule.symbol;
     const entersStampedState =
-      current.status !== statusForRuleType(rule.type) &&
+      currentSemanticStatus !== statusForRuleType(rule.type) &&
       (rule.type === 'done' || rule.type === 'cancelled');
     return {
       command: {
