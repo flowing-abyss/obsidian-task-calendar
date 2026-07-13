@@ -1,3 +1,4 @@
+import { inlineCodeRanges, type SourceRange } from '../../../parser/inlineCode';
 import { parseLinks } from '../../../parser/links';
 import { StatusCatalog } from '../../domain/StatusCatalog';
 import type { TaskPriority, TaskStatus } from '../../domain/types';
@@ -236,44 +237,6 @@ function pushPatternCandidates(
         : {}),
     });
   }
-}
-
-interface SourceRange {
-  readonly from: number;
-  readonly to: number;
-}
-
-function isEscaped(source: string, at: number): boolean {
-  let slashes = 0;
-  for (let index = at - 1; index >= 0 && source[index] === '\\'; index--) slashes++;
-  return slashes % 2 === 1;
-}
-
-function inlineCodeRanges(source: string): readonly SourceRange[] {
-  const ranges: SourceRange[] = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    const open = source.indexOf('`', cursor);
-    if (open < 0) break;
-    if (isEscaped(source, open)) {
-      cursor = open + 1;
-      continue;
-    }
-    let runLength = 1;
-    while (source[open + runLength] === '`') runLength++;
-    const delimiter = '`'.repeat(runLength);
-    let close = source.indexOf(delimiter, open + runLength);
-    while (close >= 0 && (source[close - 1] === '`' || source[close + runLength] === '`')) {
-      close = source.indexOf(delimiter, close + 1);
-    }
-    if (close < 0) {
-      cursor = open + runLength;
-      continue;
-    }
-    ranges.push({ from: open, to: close + runLength });
-    cursor = close + runLength;
-  }
-  return ranges;
 }
 
 function pushTagCandidates(candidates: Candidate[], body: string, bodyFrom: number): void {

@@ -1,3 +1,5 @@
+import { inlineCodeRanges, type SourceRange } from './inlineCode';
+
 // Link regexes shared across parsing and collapsing.
 const WIKILINK_ALIAS_RE = /\[\[([^|[\]]+)\|([^[\]]+)\]\]/gu;
 const WIKILINK_RE = /\[\[([^[\]]+)\]\]/gu;
@@ -27,14 +29,21 @@ function isEscaped(input: string, index: number): boolean {
   return slashCount % 2 === 1;
 }
 
+function insideAnyRange(at: number, ranges: readonly SourceRange[]): boolean {
+  return ranges.some((range) => at >= range.from && at < range.to);
+}
+
 /** Parse [[wiki]], [[wiki|alias]] and [md](url) links in document order. */
 export function parseLinks(input: string): LinkToken[] {
   const tokens: LinkToken[] = [];
+  const inlineCode = inlineCodeRanges(input);
   const wiki = /(?<!!)\[\[((?:\\.|[^|[\]])+)(?:\|((?:\\.|[^[\]])+))?\]\]/gu;
   const markdown = /(?<!!)\[((?:\\.|[^[\]])+)\]\(((?:\\.|[^)])+)\)/gu;
   let m: RegExpExecArray | null;
   while ((m = wiki.exec(input)) !== null) {
-    if (isEscaped(input, m.index)) continue;
+    if (isEscaped(input, m.index) || insideAnyRange(m.index, inlineCode)) {
+      continue;
+    }
     const target = m[1] ?? '';
     const alias = m[2];
     tokens.push({
@@ -46,7 +55,9 @@ export function parseLinks(input: string): LinkToken[] {
     });
   }
   while ((m = markdown.exec(input)) !== null) {
-    if (isEscaped(input, m.index)) continue;
+    if (isEscaped(input, m.index) || insideAnyRange(m.index, inlineCode)) {
+      continue;
+    }
     tokens.push({
       raw: m[0],
       type: 'md',

@@ -143,6 +143,65 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
       );
     });
 
+    it('ignores inline-code lookalikes when editing root and nested text targets', async () => {
+      const source =
+        '- [ ] `[[Same]]` [[Same]]\r\n' +
+        '  - > desc `[Same](Same)` [Same](Same)\r\n' +
+        '  - 2026-07-14: comment `[[Same]]` [[Same]]\r\n' +
+        '  - [ ] child `[[Same]]` [[Same]]\r\n';
+      const h = await makeHarness(adapter, source);
+
+      let root = h.snapshots(source)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: { type: 'title', target: { type: 'task', ref: root.ref } },
+          occurrence: 0,
+          replacement: '[[RootChanged]]',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      let content = await h.read();
+      root = h.snapshots(content)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: { type: 'description', target: { type: 'task', ref: root.ref } },
+          occurrence: 0,
+          replacement: '[DescriptionChanged](DescriptionChanged)',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      content = await h.read();
+      root = h.snapshots(content)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: { type: 'comment', ref: root.comments[0]!.ref },
+          occurrence: 0,
+          replacement: '[[CommentChanged]]',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      content = await h.read();
+      root = h.snapshots(content)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: { type: 'title', target: { type: 'subtask', ref: root.subtasks[0]!.ref } },
+          occurrence: 0,
+          replacement: '[[ChildChanged]]',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      expect(await h.read()).toBe(
+        '- [ ] `[[Same]]` [[RootChanged]]\r\n' +
+          '  - > desc `[Same](Same)` [DescriptionChanged](DescriptionChanged)\r\n' +
+          '  - 2026-07-14: comment `[[Same]]` [[CommentChanged]]\r\n' +
+          '  - [ ] child `[[Same]]` [[ChildChanged]]\r\n',
+      );
+    });
+
     it('rejects stale comments and absent target-scoped occurrences without changing bytes', async () => {
       const source = '- [ ] root [[Title]]\n  - 2026-07-14: comment [[Comment]]\n';
       const h = await makeHarness(adapter, source);

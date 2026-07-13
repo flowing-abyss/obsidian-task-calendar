@@ -73,6 +73,31 @@ describe('parseLinks', () => {
       },
     ]);
   });
+
+  it.each([
+    ['`[[Same]]` [[Same]]', '[[Same]]'],
+    ['`[Same](Same)` [Same](Same)', '[Same](Same)'],
+    ['``inside `[[Same]]` code`` [[Same]]', '[[Same]]'],
+    ['`[[Same]] \\` [[Same]]', '[[Same]]'],
+  ])('ignores links inside closed inline code in %j', (source, realRaw) => {
+    expect(parseLinks(source)).toEqual([
+      expect.objectContaining({ raw: realRaw, index: source.lastIndexOf(realRaw) }),
+    ]);
+  });
+
+  it.each([
+    ['\\`[[First]]` [[Second]]', ['[[First]]', '[[Second]]']],
+    ['`[[First]] [[Second]]', ['[[First]]', '[[Second]]']],
+  ])('does not hide links behind an escaped or unmatched code opener in %j', (source, raw) => {
+    expect(parseLinks(source).map((token) => token.raw)).toEqual(raw);
+  });
+
+  it.each([
+    ['[before `code` after](https://example.test)', 'md'],
+    ['[[Doc|before `code` after]]', 'wiki'],
+  ] as const)('keeps a %s link whose label contains inline code', (source, type) => {
+    expect(parseLinks(source)).toEqual([expect.objectContaining({ raw: source, type, index: 0 })]);
+  });
 });
 
 describe('buildLinkRaw', () => {
