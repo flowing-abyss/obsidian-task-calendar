@@ -53,6 +53,75 @@ function service(repository: TaskRepository, taskQueries: TaskQueryApi = queries
 }
 
 describe('TaskApplicationService planning commands', () => {
+  it('stamps add-comment with the injected local day before repository delegation', async () => {
+    const committed: TaskRepositoryResult = {
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
+    clock.today.mockClear();
+
+    await expect(
+      service({ edit }).execute({
+        type: 'add-comment',
+        parent: { type: 'task', ref },
+        text: 'from the injected clock',
+      }),
+    ).resolves.toEqual({ type: 'ok', outcome: committed.outcome, changed: true });
+
+    expect(clock.today).toHaveBeenCalledOnce();
+    expect(edit).toHaveBeenCalledWith({
+      type: 'add-comment',
+      parent: { type: 'task', ref },
+      text: 'from the injected clock',
+      stamp: localDate('2026-07-14'),
+    });
+  });
+
+  it('normalizes an empty description to the explicit clear command', async () => {
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue({
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    });
+
+    await service({ edit }).execute({
+      type: 'set-description',
+      target: { type: 'task', ref },
+      text: ' \t ',
+    });
+
+    expect(edit).toHaveBeenCalledWith({
+      type: 'set-description',
+      target: { type: 'task', ref },
+      text: null,
+    });
+  });
+
+  it.each([
+    { type: 'add-comment' as const, parent: { type: 'task' as const, ref }, text: '' },
+    {
+      type: 'update-comment' as const,
+      comment: {
+        parent: { type: 'task' as const, ref },
+        relativeLine: 1,
+        originalMarkdown: '  - old',
+      },
+      text: 'line one\nline two',
+    },
+  ])('rejects invalid $type text before the repository or Clock', async (command) => {
+    const edit = vi.fn<TaskRepository['edit']>();
+    clock.today.mockClear();
+
+    await expect(service({ edit }).execute(command)).resolves.toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-target', field: 'comment' }],
+    });
+    expect(edit).not.toHaveBeenCalled();
+    expect(clock.today).not.toHaveBeenCalled();
+  });
+
   it.each([
     {
       type: 'patch' as const,

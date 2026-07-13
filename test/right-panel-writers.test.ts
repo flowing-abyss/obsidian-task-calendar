@@ -43,7 +43,11 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
       method === 'addTag' ||
       method === 'removeTag' ||
       method === 'updateTaskTitle' ||
-      method === 'appendToTitle') &&
+      method === 'appendToTitle' ||
+      method === 'updateDescription' ||
+      method === 'addComment' ||
+      method === 'updateComment' ||
+      method === 'deleteComment') &&
     typeof candidate === 'object' &&
     candidate !== null &&
     !('ref' in candidate)
@@ -64,7 +68,20 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
       }
       queue.push(...(current.subtasks ?? []));
     }
-    if (found && 'ref' in found) Object.assign(candidate, { ref: found.ref });
+    if (found && 'ref' in found) {
+      Object.assign(candidate, { ref: found.ref });
+      if ((method === 'updateComment' || method === 'deleteComment') && args[1]) {
+        const staleComment = args[1] as TaskComment;
+        const currentComment = found.comments?.find(
+          (comment) => comment.line === staleComment.line && comment.text === staleComment.text,
+        );
+        if (currentComment && 'ref' in currentComment) {
+          Object.assign(staleComment, {
+            ref: (currentComment as TaskComment & { ref: unknown }).ref,
+          });
+        }
+      }
+    }
   }
   const fn = (panel as unknown as Record<string, (...a: unknown[]) => T>)[method]!;
   return fn.call(panel, ...args);
@@ -740,17 +757,13 @@ describe('RightPanel.updateDescription', () => {
     expect(after).toContain('- [ ] other');
   });
 
-  // CURRENT BEHAVIOR: when subtaskRange is absent, rangeStart = task.line+1 and
-  // rangeEnd = task.line (clamped empty range), so existing description lines below
-  // the task are NOT filtered out — they remain alongside the newly inserted desc.
-  it('without subtaskRange: existing desc lines are NOT filtered (CURRENT BEHAVIOR)', async () => {
+  it('uses the revisioned block to replace an existing description without legacy range data', async () => {
     const content = '- [ ] task\n  - > old desc\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
     const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
     await call<Promise<void>>(panel, 'updateDescription', t, 'new desc');
     const after = await readMd(app, 't.md');
-    // old desc remains because range is empty; new desc is inserted at task.line+1
-    expect(after).toContain('old desc');
+    expect(after).not.toContain('old desc');
     expect(after).toContain('new desc');
   });
 
@@ -766,9 +779,9 @@ describe('RightPanel.updateDescription', () => {
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(
-      call<Promise<void>>(panel, 'updateDescription', t, 'desc'),
-    ).resolves.toBeUndefined();
+    await expect(call<Promise<boolean>>(panel, 'updateDescription', t, 'desc')).resolves.toBe(
+      false,
+    );
   });
 });
 
@@ -925,11 +938,11 @@ describe('RightPanel.addComment', () => {
     await call<Promise<void>>(panel, 'addComment', t, 'hello', commentList, inputEl);
     const after = await readMd(app, 't.md');
     const lines = after.split('\n');
-    // CURRENT BEHAVIOR: optimistic DOM update creates a row in commentList before writing
-    expect(commentList.querySelectorAll('.tc-comment-row')).toHaveLength(1);
+    // The returned snapshot drives the real panel; this detached list is not optimistically edited.
+    expect(commentList.querySelectorAll('.tc-comment-row')).toHaveLength(0);
     expect(inputEl.value).toBe('');
     // Line 1 should be the comment (inserted at task.line + 1)
-    expect(lines[1]).toContain('2026-06-25: hello');
+    expect(lines[1]).toContain('2026-07-14: hello');
     expect(lines[0]).toBe('- [ ] task');
     expect(lines[2]).toBe('- [ ] other');
   });
@@ -950,14 +963,11 @@ describe('RightPanel.addComment', () => {
     await call<Promise<void>>(panel, 'addComment', t, 'c', commentList, inputEl);
     const after = await readMd(app, 't.md');
     const lines = after.split('\n');
-    expect(lines[2]).toContain('2026-06-25: c');
+    expect(lines[2]).toContain('2026-07-14: c');
     expect(lines[3]).toBe('- [ ] other');
   });
 
-  // CURRENT BEHAVIOR (follow-up: FU-27): addComment performs an optimistic DOM update
-  // (appends a row + clears input) BEFORE awaiting vault.process. If the vault write
-  // throws, the DOM is left in an inconsistent state with no rollback.
-  it('optimistic DOM update happens before vault write (CURRENT BEHAVIOR, FU-27)', async () => {
+  it('keeps the draft and DOM unchanged when no revisioned parent can be resolved', async () => {
     const { panel, state } = await makePanel({ 't.md': '- [ ] task' });
     freezeToday();
     const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
@@ -965,23 +975,23 @@ describe('RightPanel.addComment', () => {
     const commentList = freshContainer();
     const inputEl = freshContainer().createEl('textarea');
     inputEl.value = 'pre-existing';
-    // Use a task whose filePath doesn't exist → vault write returns early (no throw),
-    // but the DOM has already been mutated. This documents the no-rollback pattern.
     const missing = { ...t, filePath: 'missing.md' };
-    await call<Promise<void>>(panel, 'addComment', missing, 'ghost', commentList, inputEl);
-    expect(commentList.querySelectorAll('.tc-comment-row')).toHaveLength(1);
-    expect(inputEl.value).toBe('');
+    await expect(
+      call<Promise<boolean>>(panel, 'addComment', missing, 'ghost', commentList, inputEl),
+    ).resolves.toBe(false);
+    expect(commentList.querySelectorAll('.tc-comment-row')).toHaveLength(0);
+    expect(inputEl.value).toBe('pre-existing');
   });
 
-  it('file not found → no-op on vault, DOM still updated optimistically', async () => {
+  it('file not found → reports no commit', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] task' });
     freezeToday();
     const t = task({ filePath: 'missing.md', line: 0, text: 'task', rawText: '- [ ] task' });
     const commentList = freshContainer();
     const inputEl = freshContainer().createEl('textarea');
     await expect(
-      call<Promise<void>>(panel, 'addComment', t, 'x', commentList, inputEl),
-    ).resolves.toBeUndefined();
+      call<Promise<boolean>>(panel, 'addComment', t, 'x', commentList, inputEl),
+    ).resolves.toBe(false);
   });
 });
 
@@ -1008,11 +1018,7 @@ describe('RightPanel.updateComment', () => {
     expect(lines[1]).toBe('  - edited');
   });
 
-  // CURRENT BEHAVIOR (follow-up: FU-29): for a malformed comment line (no "- " prefix),
-  // updateComment falls back to barePrefix = /^(\s*- )/.exec(line)?.[1] ?? '' which yields
-  // '' when there's no "- " — so the leading whitespace is discarded and the line is
-  // replaced with just the new text (no indent, no dash).
-  it('malformed line (no "- " prefix) discards leading whitespace (CURRENT BEHAVIOR, FU-29)', async () => {
+  it('refuses to rewrite a malformed non-comment line', async () => {
     const content = '- [ ] task\n    not-a-comment\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
     const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
@@ -1020,17 +1026,16 @@ describe('RightPanel.updateComment', () => {
     await call<Promise<void>>(panel, 'updateComment', t, comment, 'replacement');
     const after = await readMd(app, 't.md');
     const lines = after.split('\n');
-    // FU-29: barePrefix is '' so the line becomes just "replacement" — no indent, no dash
-    expect(lines[1]).toBe('replacement');
+    expect(lines[1]).toBe('    not-a-comment');
   });
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
     const comment: TaskComment = { line: 1, text: 'x' };
-    await expect(
-      call<Promise<void>>(panel, 'updateComment', t, comment, 'y'),
-    ).resolves.toBeUndefined();
+    await expect(call<Promise<boolean>>(panel, 'updateComment', t, comment, 'y')).resolves.toBe(
+      false,
+    );
   });
 });
 
@@ -1064,7 +1069,7 @@ describe('RightPanel.deleteComment', () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
     const comment: TaskComment = { line: 0, text: 'x' };
-    await expect(call<Promise<void>>(panel, 'deleteComment', t, comment)).resolves.toBeUndefined();
+    await expect(call<Promise<boolean>>(panel, 'deleteComment', t, comment)).resolves.toBe(false);
   });
 });
 
@@ -1424,7 +1429,19 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
   });
 
   it('updateDescription writes a quoted description line', async () => {
-    const { panel, app } = await makePanel({ 't.md': '> - [ ] task\n> - [ ] other' });
+    const { panel, app } = await makePanel(
+      { 't.md': '> - [ ] task\n> - [ ] other' },
+      DEFAULT_SETTINGS,
+      [
+        {
+          path: 't.md',
+          items: [
+            { task: ' ', parent: -1, line: 0 },
+            { task: ' ', parent: -1, line: 1 },
+          ],
+        },
+      ],
+    );
     const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
     await call<Promise<void>>(panel, 'updateDescription', t, 'a desc');
     const after = await readMd(app, 't.md');
@@ -1433,19 +1450,35 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
   });
 
   it('addComment writes a quoted comment line under a blockquote task', async () => {
-    const today = window.moment().format('YYYY-MM-DD');
-    const { panel, app } = await makePanel({ 't.md': '> - [ ] task\n> - [ ] other' });
+    const { panel, app } = await makePanel(
+      { 't.md': '> - [ ] task\n> - [ ] other' },
+      DEFAULT_SETTINGS,
+      [
+        {
+          path: 't.md',
+          items: [
+            { task: ' ', parent: -1, line: 0 },
+            { task: ' ', parent: -1, line: 1 },
+          ],
+        },
+      ],
+    );
     const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
     const commentList = freshContainer();
     const inputEl = freshContainer().createEl('textarea');
     await call<Promise<void>>(panel, 'addComment', t, 'note', commentList, inputEl);
     const lines = (await readMd(app, 't.md')).split('\n');
-    expect(lines[1]).toBe(`>   - ${today}: note`);
+    expect(lines[1]).toBe('>   - 2026-07-14: note');
   });
 
   it('updateComment preserves the blockquote prefix on a quoted comment', async () => {
     const content = '> - [ ] task\n>   - 2026-06-20: old\n> - [ ] other';
-    const { panel, app } = await makePanel({ 't.md': content });
+    const { panel, app } = await makePanel({ 't.md': content }, DEFAULT_SETTINGS, [
+      {
+        path: 't.md',
+        items: [{ task: ' ', parent: -1, line: 0 }],
+      },
+    ]);
     const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
     const comment: TaskComment = { line: 1, date: '2026-06-20', text: 'old' };
     await call<Promise<void>>(panel, 'updateComment', t, comment, 'new');

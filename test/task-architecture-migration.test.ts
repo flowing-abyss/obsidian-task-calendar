@@ -37,7 +37,8 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
   },
   'src/panels/RightPanel.ts#RightPanel.constructor#new TaskMutationService#1': {
     families: ['description/comments/subtasks', 'creation/deletion/movement'],
-    reason: 'RightPanel still owns the remaining legacy editor command surface.',
+    reason:
+      'RightPanel still owns subtask/reorder and deletion paths; description/comment writes are migrated.',
   },
   'src/projects/ProjectManager.ts#ProjectManager.constructor#new TaskMutationService#1': {
     families: ['creation/deletion/movement'],
@@ -45,7 +46,8 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
     families: ['description/comments/subtasks', 'creation/deletion/movement'],
-    reason: 'Shared legacy task-line transaction boundary pending ObsidianTaskRepository.',
+    reason:
+      'Shared legacy boundary remains only for pending subtask/reorder and deletion operations.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.moveTaskToFile#vault.process#1': {
     families: ['creation/deletion/movement'],

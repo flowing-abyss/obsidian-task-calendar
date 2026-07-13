@@ -92,7 +92,34 @@ function multilineInputIssue(command: TaskCommand): TaskCommandResult | undefine
   if (command.type === 'edit-link' && !isSingleLineText(command.replacement)) {
     return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'link' }] };
   }
+  if (
+    (command.type === 'add-comment' || command.type === 'update-comment') &&
+    (!isSingleLineText(command.text) || command.text.trim().length === 0)
+  ) {
+    return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'comment' }] };
+  }
+  if (command.type === 'set-description' && command.text?.replace(/\r\n/gu, '').includes('\r')) {
+    return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'description' }] };
+  }
   return undefined;
+}
+
+type BlockCommand = Extract<TaskCommand, { readonly type: 'set-description' | 'add-comment' }>;
+
+function isBlockCommand(command: TaskCommand): command is BlockCommand {
+  return command.type === 'set-description' || command.type === 'add-comment';
+}
+
+function prepareBlockCommand(
+  command: BlockCommand,
+  clock: Clock,
+): { readonly command: TaskEditCommand } {
+  if (command.type === 'add-comment') {
+    return { command: { ...command, stamp: clock.today() } };
+  }
+  if (command.text === null) return { command };
+  const text = command.text.replace(/\r\n/gu, '\n');
+  return { command: { ...command, text: text.trim().length > 0 ? text : null } };
 }
 
 export class TaskApplicationService implements TaskApplicationApi {
@@ -127,6 +154,7 @@ export class TaskApplicationService implements TaskApplicationApi {
   ): { readonly command: TaskEditCommand } | { readonly result: TaskCommandResult } {
     const inputIssue = multilineInputIssue(command);
     if (inputIssue !== undefined) return { result: inputIssue };
+    if (isBlockCommand(command)) return prepareBlockCommand(command, this.clock);
 
     if (command.type === 'patch' && command.patch.tags !== undefined) {
       const add = uniqueInOrder((command.patch.tags.add ?? []).map(normalizeTag));

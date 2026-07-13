@@ -75,6 +75,28 @@ function patch(
 }
 
 describe('ObsidianTaskRepository planning contract', () => {
+  it('commits a validated structural candidate through one synchronous process callback', async () => {
+    const source = '- [ ] task\r\n  - > old\r\n- [ ] other\r\n';
+    const h = await harness({ 'tasks.md': source });
+    const process = vi.spyOn(h.app.vault, 'process');
+    const root = h.snapshotsFromContent('tasks.md', source)[0]!;
+
+    await expect(
+      h.repository.edit({
+        type: 'set-description',
+        target: { type: 'task', ref: root.ref },
+        text: 'new',
+      }),
+    ).resolves.toMatchObject({
+      type: 'committed',
+      changed: true,
+      outcome: { type: 'task', task: { description: 'new' } },
+    });
+    expect(process).toHaveBeenCalledOnce();
+    expect(process.mock.calls[0]?.[1].constructor.name).not.toBe('AsyncFunction');
+    expect(await read(h.app, 'tasks.md')).toBe('- [ ] task\r\n  - > new\r\n- [ ] other\r\n');
+  });
+
   it('sets and clears planning fields losslessly in one synchronous process callback', async () => {
     const source = '- [ ] task custom 🆔 keep-id ⛔ dep ^block\r\n';
     const h = await harness({ 'tasks.md': source });

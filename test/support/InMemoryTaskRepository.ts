@@ -15,7 +15,10 @@ import type {
   TaskSnapshot,
 } from '../../src/tasks/domain/types';
 import { applyTaskCommand } from '../../src/tasks/infrastructure/markdown/applyTaskCommand';
-import { TaskBlockEditor } from '../../src/tasks/infrastructure/markdown/TaskBlockEditor';
+import {
+  type TaskBlockEdit,
+  TaskBlockEditor,
+} from '../../src/tasks/infrastructure/markdown/TaskBlockEditor';
 import { TaskLocator } from '../../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
 
@@ -43,6 +46,11 @@ function nodeTarget(command: TaskEditCommand): PlanningTarget | undefined {
   }
   if (command.type === 'edit-link') {
     return command.target.type === 'comment' ? command.target.ref.parent : command.target.target;
+  }
+  if (command.type === 'set-description') return command.target;
+  if (command.type === 'add-comment') return command.parent;
+  if (command.type === 'update-comment' || command.type === 'delete-comment') {
+    return command.comment.parent;
   }
   return undefined;
 }
@@ -93,6 +101,11 @@ function targetOf(command: TaskEditCommand): TaskMutationTarget {
   if (command.type === 'edit-link') {
     return command.target.type === 'comment' ? command.target : command.target.target;
   }
+  if (command.type === 'set-description') return command.target;
+  if (command.type === 'add-comment') return command.parent;
+  if (command.type === 'update-comment' || command.type === 'delete-comment') {
+    return { type: 'comment', ref: command.comment };
+  }
   return { type: 'task', ref: command.ref };
 }
 
@@ -114,25 +127,73 @@ function snapshotNode(
   return current;
 }
 
-function descriptionLines(
-  lines: readonly string[],
-  rootRelativeLine: number,
+function blockTarget(
   node: TaskSnapshot | SubtaskSnapshot,
   rootBlockLength: number,
-): readonly number[] {
-  const blockLength =
+  relativeLine: number,
+) {
+  const lineCount =
     'source' in node ? rootBlockLength : node.ref.originalBlock.split(/\r?\n/u).length;
-  const childRanges = node.subtasks.map((child) => ({
-    from: child.ref.relativeLine,
-    to: child.ref.relativeLine + child.ref.originalBlock.split(/\r?\n/u).length - 1,
-  }));
-  const result: number[] = [];
-  for (let relative = 1; relative < blockLength; relative++) {
-    if (childRanges.some((range) => relative >= range.from && relative <= range.to)) continue;
-    const candidate = rootRelativeLine + relative;
-    if (/^[\s>]*- >(?:\s|$)/u.test(lines[candidate] ?? '')) result.push(candidate);
+  return {
+    relativeLine,
+    lineCount,
+    childRanges: node.subtasks.map((child) => ({
+      from: child.ref.relativeLine,
+      to: child.ref.relativeLine + child.ref.originalBlock.split(/\r?\n/u).length - 1,
+    })),
+    ...(node.description !== undefined && { description: node.description }),
+  };
+}
+
+function isStructuralCommand(command: TaskEditCommand): command is Extract<
+  TaskEditCommand,
+  {
+    readonly type: 'set-description' | 'add-comment' | 'update-comment' | 'delete-comment';
   }
-  return result;
+> {
+  return (
+    command.type === 'set-description' ||
+    command.type === 'add-comment' ||
+    command.type === 'update-comment' ||
+    command.type === 'delete-comment'
+  );
+}
+
+function ownsComment(node: TaskSnapshot | SubtaskSnapshot, comment: CommentRef): boolean {
+  return node.comments.some(
+    (candidate) =>
+      candidate.ref.relativeLine === comment.relativeLine &&
+      legacyLine(candidate.ref.originalMarkdown) === legacyLine(comment.originalMarkdown),
+  );
+}
+
+function structuralEdit(
+  command: Extract<
+    TaskEditCommand,
+    {
+      readonly type: 'set-description' | 'add-comment' | 'update-comment' | 'delete-comment';
+    }
+  >,
+): TaskBlockEdit {
+  switch (command.type) {
+    case 'set-description':
+      return { type: command.type, text: command.text };
+    case 'add-comment':
+      return { type: command.type, text: command.text, stamp: command.stamp };
+    case 'update-comment':
+      return {
+        type: command.type,
+        relativeLine: command.comment.relativeLine,
+        originalMarkdown: command.comment.originalMarkdown,
+        text: command.text,
+      };
+    case 'delete-comment':
+      return {
+        type: command.type,
+        relativeLine: command.comment.relativeLine,
+        originalMarkdown: command.comment.originalMarkdown,
+      };
+  }
 }
 
 function commentLine(
@@ -206,6 +267,39 @@ export class InMemoryTaskRepository implements TaskRepository {
         ? { type: 'conflict', current }
         : { type: 'not-found', target: targetOf(command) };
     }
+    if (isStructuralCommand(command)) {
+      const current = this.snapshot(ref.filePath, content, located.block.line);
+      const targetSnapshot = target ? current && snapshotNode(current, target) : undefined;
+      if (!current || !targetSnapshot) {
+        return current
+          ? { type: 'conflict', current }
+          : { type: 'not-found', target: targetOf(command) };
+      }
+      if (
+        (command.type === 'update-comment' || command.type === 'delete-comment') &&
+        !ownsComment(targetSnapshot, command.comment)
+      ) {
+        return { type: 'conflict', current };
+      }
+      const blockLength = located.block.toLine - located.block.line + 1;
+      const edited = this.editor.edit(
+        content,
+        located.block,
+        blockTarget(targetSnapshot, blockLength, relativeLine),
+        structuralEdit(command),
+      );
+      if (edited.type === 'conflict') return { type: 'conflict', current };
+      if (edited.type === 'invalid') {
+        return { type: 'invalid', issues: [{ code: 'invalid-target', field: edited.field }] };
+      }
+      if (edited.type === 'unchanged') {
+        return { type: 'committed', outcome: { type: 'task', task: current }, changed: false };
+      }
+      const root = this.snapshot(ref.filePath, edited.content, located.block.line);
+      if (!root) return { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+      this.files.set(ref.filePath, edited.content);
+      return { type: 'committed', outcome: { type: 'task', task: root }, changed: true };
+    }
     if (command.type === 'edit-link' && command.target.type !== 'title') {
       const current = this.snapshot(ref.filePath, content, located.block.line);
       const targetSnapshot = target ? current && snapshotNode(current, target) : undefined;
@@ -220,11 +314,10 @@ export class InMemoryTaskRepository implements TaskRepository {
       if (command.target.type === 'comment') {
         targetLine = commentLine(located.block.line + relativeLine, command.target.ref, lines);
       } else {
-        for (const candidate of descriptionLines(
-          lines.slice(located.block.line),
-          relativeLine,
-          targetSnapshot,
-          located.block.toLine - located.block.line + 1,
+        for (const candidate of this.editor.descriptionLines(
+          content,
+          located.block,
+          blockTarget(targetSnapshot, located.block.toLine - located.block.line + 1, relativeLine),
         )) {
           const count = parseLinks(lines[located.block.line + candidate] ?? '').length;
           if (occurrence < count) {

@@ -67,6 +67,254 @@ function rootRef(harness: ContractHarness, source: string): TaskRef {
 
 for (const adapter of ['in-memory', 'obsidian'] as const) {
   describe(`${adapter} TaskRepository shared contract`, () => {
+    it('edits descriptions and comments as one lossless revisioned block transaction', async () => {
+      const source =
+        '>\t- [ ] root #keep\r\n' +
+        '>\t  - > old description\r\n' +
+        '>\t  - 2026-07-13: duplicate\r\n' +
+        '>\t  - 2026-07-13: duplicate\r\n' +
+        '>\t  - [ ] child\r\n' +
+        '>\t    - > child description\r\n' +
+        '> - [ ] unrelated\r\n';
+      const h = await makeHarness(adapter, source);
+
+      let root = h.snapshots(source)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'set-description',
+          target: { type: 'task', ref: root.ref },
+          text: 'first line\n\nthird line',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      let content = await h.read();
+      expect(content).toBe(
+        '>\t- [ ] root #keep\r\n' +
+          '>\t  - > first line\r\n' +
+          '>\t  - > \r\n' +
+          '>\t  - > third line\r\n' +
+          '>\t  - 2026-07-13: duplicate\r\n' +
+          '>\t  - 2026-07-13: duplicate\r\n' +
+          '>\t  - [ ] child\r\n' +
+          '>\t    - > child description\r\n' +
+          '> - [ ] unrelated\r\n',
+      );
+
+      root = h.snapshots(content)[0]!;
+      const secondDuplicate = root.comments[1]!;
+      await expect(
+        h.repository.edit({
+          type: 'update-comment',
+          comment: secondDuplicate.ref,
+          text: 'updated second',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      content = await h.read();
+      root = h.snapshots(content)[0]!;
+      await expect(
+        h.repository.edit({ type: 'delete-comment', comment: root.comments[0]!.ref }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      content = await h.read();
+      root = h.snapshots(content)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'add-comment',
+          parent: { type: 'task', ref: root.ref },
+          text: 'new comment',
+          stamp: localDate('2026-07-14'),
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      expect(await h.read()).toBe(
+        '>\t- [ ] root #keep\r\n' +
+          '>\t  - > first line\r\n' +
+          '>\t  - > \r\n' +
+          '>\t  - > third line\r\n' +
+          '>\t  - 2026-07-13: updated second\r\n' +
+          '>\t  - [ ] child\r\n' +
+          '>\t    - > child description\r\n' +
+          '>\t  - 2026-07-14: new comment\r\n' +
+          '> - [ ] unrelated\r\n',
+      );
+    });
+
+    it('clears only direct descriptions and preserves no-op bytes, child descriptions, and list content', async () => {
+      const source =
+        '- [ ] root\n' +
+        '  - > same description\n' +
+        '  * ordinary list item\n' +
+        '  - [ ] child\n' +
+        '    - > child description\n' +
+        '- [ ] next';
+      const h = await makeHarness(adapter, source);
+      let root = h.snapshots(source)[0]!;
+
+      await expect(
+        h.repository.edit({
+          type: 'set-description',
+          target: { type: 'task', ref: root.ref },
+          text: 'same description',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: false });
+      expect(await h.read()).toBe(source);
+
+      root = h.snapshots(await h.read())[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'set-description',
+          target: { type: 'task', ref: root.ref },
+          text: null,
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toBe(
+        '- [ ] root\n' +
+          '  * ordinary list item\n' +
+          '  - [ ] child\n' +
+          '    - > child description\n' +
+          '- [ ] next',
+      );
+    });
+
+    it('replaces an existing description in place without reordering unrelated lines', async () => {
+      const source =
+        '- [ ] root\n' +
+        '  - 2026-07-13: comment before description\n' +
+        '  - > old first line\n' +
+        '  * ordinary list item\n' +
+        '  - > old second line\n' +
+        '- [ ] next\n';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+
+      await expect(
+        h.repository.edit({
+          type: 'set-description',
+          target: { type: 'task', ref: root.ref },
+          text: 'new first line\nnew second line',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toBe(
+        '- [ ] root\n' +
+          '  - 2026-07-13: comment before description\n' +
+          '  - > new first line\n' +
+          '  - > new second line\n' +
+          '  * ordinary list item\n' +
+          '- [ ] next\n',
+      );
+    });
+
+    it('does not consume a bare comment that only looks like a malformed description', async () => {
+      const source = '- [ ] root\n  - >\n- [ ] next\n';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+
+      await expect(
+        h.repository.edit({
+          type: 'set-description',
+          target: { type: 'task', ref: root.ref },
+          text: 'real description',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toBe('- [ ] root\n  - > real description\n  - >\n- [ ] next\n');
+    });
+
+    it('confirms nested parent and exact duplicate-comment evidence before changing one line', async () => {
+      const source =
+        '- [ ] root\n' +
+        '  - [ ] child\n' +
+        '    - 2026-07-13: duplicate\n' +
+        '    - 2026-07-13: duplicate\n' +
+        '- [ ] next\n';
+      const h = await makeHarness(adapter, source);
+      let root = h.snapshots(source)[0]!;
+      const child = root.subtasks[0]!;
+      const stale = {
+        ...child.comments[1]!.ref,
+        originalMarkdown: '    - 2026-07-13: stale duplicate',
+      };
+
+      await expect(
+        h.repository.edit({ type: 'update-comment', comment: stale, text: 'must not write' }),
+      ).resolves.toMatchObject({ type: 'conflict' });
+      expect(await h.read()).toBe(source);
+
+      await expect(
+        h.repository.edit({
+          type: 'update-comment',
+          comment: child.comments[1]!.ref,
+          text: 'second only',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toBe(
+        '- [ ] root\n' +
+          '  - [ ] child\n' +
+          '    - 2026-07-13: duplicate\n' +
+          '    - 2026-07-13: second only\n' +
+          '- [ ] next\n',
+      );
+
+      const changed = await h.read();
+      root = h.snapshots(changed)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'delete-comment',
+          comment: { ...root.subtasks[0]!.comments[0]!.ref, relativeLine: 99 },
+        }),
+      ).resolves.toMatchObject({ type: 'conflict' });
+      expect(await h.read()).toBe(changed);
+    });
+
+    it('rejects a forged comment ref that points at a description or subtask line', async () => {
+      const source = '- [ ] root\n  - > description\n  - [ ] child\n';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+
+      for (const [relativeLine, originalMarkdown] of [
+        [1, '  - > description'],
+        [2, '  - [ ] child'],
+      ] as const) {
+        await expect(
+          h.repository.edit({
+            type: 'delete-comment',
+            comment: {
+              parent: { type: 'task', ref: root.ref },
+              relativeLine,
+              originalMarkdown,
+            },
+          }),
+        ).resolves.toMatchObject({ type: 'conflict' });
+        expect(await h.read()).toBe(source);
+      }
+    });
+
+    it('returns rebased comment targets when an exact root revision is ambiguous', async () => {
+      const block = '- [ ] duplicate\n  - 2026-07-13: note';
+      const source = `${block}\n${block}\n`;
+      const h = await makeHarness(adapter, source);
+      const observed = h.snapshots(source)[0]!;
+      const result = await h.repository.edit({
+        type: 'delete-comment',
+        comment: {
+          ...observed.comments[0]!.ref,
+          parent: {
+            type: 'task',
+            ref: { ...observed.ref, line: 99 },
+          },
+        },
+      });
+
+      expect(result).toMatchObject({
+        type: 'ambiguous',
+        candidates: [
+          { root: { source: { line: 0 } }, target: { type: 'comment' } },
+          { root: { source: { line: 2 } }, target: { type: 'comment' } },
+        ],
+      });
+      expect(await h.read()).toBe(source);
+    });
+
     it('replaces and appends root and nested Markdown titles losslessly', async () => {
       const source =
         '> - [ ] Old [[Root]] #tag 🧭 opaque 🆔 keep-id ⛔ dep ^block\r\n>   - [ ] Old [[Child]] #child custom\r\n';

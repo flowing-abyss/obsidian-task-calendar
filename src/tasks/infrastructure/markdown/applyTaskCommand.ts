@@ -173,6 +173,11 @@ export function applyTaskCommand(
       ];
       break;
     }
+    case 'set-description':
+    case 'add-comment':
+    case 'update-comment':
+    case 'delete-comment':
+      return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'block' }] };
   }
   return codec.applyLineEdits(sourceLine, edits, requestedFields);
 }

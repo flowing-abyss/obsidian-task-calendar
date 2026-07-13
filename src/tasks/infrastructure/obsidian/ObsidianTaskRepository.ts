@@ -16,7 +16,7 @@ import type {
   TaskSnapshot,
 } from '../../domain/types';
 import { applyTaskCommand } from '../markdown/applyTaskCommand';
-import type { TaskRootBlock } from '../markdown/TaskBlockEditor';
+import type { TaskBlockEdit, TaskRootBlock } from '../markdown/TaskBlockEditor';
 import { TaskBlockEditor } from '../markdown/TaskBlockEditor';
 import { TaskLocator } from '../markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../markdown/TaskMarkdownCodec';
@@ -27,6 +27,13 @@ interface RepositoryOptions {
   readonly locator: TaskLocator;
   readonly snapshotsFromContent: (filePath: string, content: string) => readonly TaskSnapshot[];
 }
+
+type StructuralTaskEditCommand = Extract<
+  TaskEditCommand,
+  {
+    readonly type: 'set-description' | 'add-comment' | 'update-comment' | 'delete-comment';
+  }
+>;
 
 function rootRefOf(target: PlanningTarget): TaskRef {
   let node: TaskNodeRef = target;
@@ -44,6 +51,11 @@ function nodeTargetOf(command: TaskEditCommand): PlanningTarget | undefined {
   }
   if (command.type === 'edit-link') {
     return command.target.type === 'comment' ? command.target.ref.parent : command.target.target;
+  }
+  if (command.type === 'set-description') return command.target;
+  if (command.type === 'add-comment') return command.parent;
+  if (command.type === 'update-comment' || command.type === 'delete-comment') {
+    return command.comment.parent;
   }
   return undefined;
 }
@@ -145,6 +157,11 @@ function mutationTarget(command: TaskEditCommand): TaskMutationTarget {
   if (command.type === 'edit-link') {
     return command.target.type === 'comment' ? command.target : command.target.target;
   }
+  if (command.type === 'set-description') return command.target;
+  if (command.type === 'add-comment') return command.parent;
+  if (command.type === 'update-comment' || command.type === 'delete-comment') {
+    return { type: 'comment', ref: command.comment };
+  }
   return { type: 'task', ref: command.ref };
 }
 
@@ -166,29 +183,63 @@ function nodeSnapshot(
   return current;
 }
 
-function descriptionLines(
-  lines: readonly string[],
-  rootRelativeLine: number,
+function blockTarget(
   node: TaskSnapshot | SubtaskSnapshot,
   rootBlock: TaskRootBlock,
-): readonly number[] {
-  const blockLength =
+  relativeLine: number,
+) {
+  const lineCount =
     'source' in node
       ? rootBlock.toLine - rootBlock.line + 1
       : node.ref.originalBlock.split(/\r?\n/u).length;
-  const childRanges = node.subtasks.map((child) => ({
-    from: child.ref.relativeLine,
-    to: child.ref.relativeLine + child.ref.originalBlock.split(/\r?\n/u).length - 1,
-  }));
-  const result: number[] = [];
-  for (let relative = 1; relative < blockLength; relative++) {
-    if (childRanges.some((range) => relative >= range.from && relative <= range.to)) continue;
-    const rootRelative = rootRelativeLine + relative;
-    if (/^[\s>]*- >(?:\s|$)/u.test(lines[rootBlock.line + rootRelative] ?? '')) {
-      result.push(rootRelative);
-    }
+  return {
+    relativeLine,
+    lineCount,
+    childRanges: node.subtasks.map((child) => ({
+      from: child.ref.relativeLine,
+      to: child.ref.relativeLine + child.ref.originalBlock.split(/\r?\n/u).length - 1,
+    })),
+    ...(node.description !== undefined && { description: node.description }),
+  };
+}
+
+function isStructuralCommand(command: TaskEditCommand): command is StructuralTaskEditCommand {
+  return (
+    command.type === 'set-description' ||
+    command.type === 'add-comment' ||
+    command.type === 'update-comment' ||
+    command.type === 'delete-comment'
+  );
+}
+
+function ownsComment(node: TaskSnapshot | SubtaskSnapshot, comment: CommentRef): boolean {
+  return node.comments.some(
+    (candidate) =>
+      candidate.ref.relativeLine === comment.relativeLine &&
+      legacyLine(candidate.ref.originalMarkdown) === legacyLine(comment.originalMarkdown),
+  );
+}
+
+function structuralEdit(command: StructuralTaskEditCommand): TaskBlockEdit {
+  switch (command.type) {
+    case 'set-description':
+      return { type: command.type, text: command.text };
+    case 'add-comment':
+      return { type: command.type, text: command.text, stamp: command.stamp };
+    case 'update-comment':
+      return {
+        type: command.type,
+        relativeLine: command.comment.relativeLine,
+        originalMarkdown: command.comment.originalMarkdown,
+        text: command.text,
+      };
+    case 'delete-comment':
+      return {
+        type: command.type,
+        relativeLine: command.comment.relativeLine,
+        originalMarkdown: command.comment.originalMarkdown,
+      };
   }
-  return result;
 }
 
 function commentRelativeLine(
@@ -236,6 +287,19 @@ export class ObsidianTaskRepository implements TaskRepository {
             ? { type: 'conflict', current }
             : { type: 'not-found', target: mutationTarget(command) };
           return content;
+        }
+
+        if (isStructuralCommand(command)) {
+          const edit = this.editStructural(
+            command,
+            rootRef.filePath,
+            content,
+            located.block,
+            relativeLine,
+            nodeTarget,
+          );
+          result = edit.result;
+          return edit.content;
         }
 
         if (command.type === 'edit-link' && command.target.type !== 'title') {
@@ -305,6 +369,63 @@ export class ObsidianTaskRepository implements TaskRepository {
     );
   }
 
+  private editStructural(
+    command: StructuralTaskEditCommand,
+    path: string,
+    content: string,
+    block: TaskRootBlock,
+    relativeLine: number,
+    nodeTarget: PlanningTarget | undefined,
+  ): { readonly result: TaskRepositoryResult; readonly content: string } {
+    const current = this.snapshotFor(path, content, block);
+    const node = current && nodeTarget ? nodeSnapshot(current, nodeTarget) : undefined;
+    if (!current || !node) {
+      return {
+        result: current
+          ? { type: 'conflict', current }
+          : { type: 'not-found', target: mutationTarget(command) },
+        content,
+      };
+    }
+    if (
+      (command.type === 'update-comment' || command.type === 'delete-comment') &&
+      !ownsComment(node, command.comment)
+    ) {
+      return { result: { type: 'conflict', current }, content };
+    }
+    const edited = this.options.editor.edit(
+      content,
+      block,
+      blockTarget(node, block, relativeLine),
+      structuralEdit(command),
+    );
+    if (edited.type === 'conflict') {
+      return { result: { type: 'conflict', current }, content };
+    }
+    if (edited.type === 'invalid') {
+      return {
+        result: { type: 'invalid', issues: [{ code: 'invalid-target', field: edited.field }] },
+        content,
+      };
+    }
+    if (edited.type === 'unchanged') {
+      return {
+        result: { type: 'committed', outcome: { type: 'task', task: current }, changed: false },
+        content,
+      };
+    }
+    const task = this.snapshotFor(path, edited.content, edited.block);
+    return task
+      ? {
+          result: { type: 'committed', outcome: { type: 'task', task }, changed: true },
+          content: edited.content,
+        }
+      : {
+          result: { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] },
+          content,
+        };
+  }
+
   private editTextTarget(
     command: Extract<TaskEditCommand, { readonly type: 'edit-link' }>,
     rootRef: TaskRef,
@@ -332,7 +453,11 @@ export class ObsidianTaskRepository implements TaskRepository {
         return { result: { type: 'conflict', current }, content };
       }
     } else if (command.target.type === 'description') {
-      for (const candidate of descriptionLines(lines, relativeLine, targetNode, block)) {
+      for (const candidate of this.options.editor.descriptionLines(
+        content,
+        block,
+        blockTarget(targetNode, block, relativeLine),
+      )) {
         const linkCount = parseLinks(lines[block.line + candidate] ?? '').length;
         if (occurrence < linkCount) {
           targetRelativeLine = candidate;

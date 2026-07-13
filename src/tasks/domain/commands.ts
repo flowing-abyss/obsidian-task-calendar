@@ -1,4 +1,5 @@
 import type {
+  CommentRef,
   DurationMinutes,
   LocalDate,
   LocalTime,
@@ -72,6 +73,14 @@ export type TaskCommand =
       readonly date: LocalDate;
     }
   | { readonly type: 'extend-span'; readonly ref: TaskRef; readonly due: LocalDate }
+  | { readonly type: 'set-description'; readonly target: TaskNodeRef; readonly text: string | null }
+  | { readonly type: 'add-comment'; readonly parent: TaskNodeRef; readonly text: string }
+  | {
+      readonly type: 'update-comment';
+      readonly comment: CommentRef;
+      readonly text: string;
+    }
+  | { readonly type: 'delete-comment'; readonly comment: CommentRef }
   | {
       readonly type: 'edit-link';
       readonly target: TaskTextTarget;

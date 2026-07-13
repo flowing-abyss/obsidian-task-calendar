@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { localDate } from '../../src/tasks/domain/validation';
 import { TaskBlockEditor } from '../../src/tasks/infrastructure/markdown/TaskBlockEditor';
 import { TaskLocator } from '../../src/tasks/infrastructure/markdown/TaskLocator';
 
@@ -25,6 +26,55 @@ describe('TaskBlockEditor', () => {
       '- [ ] root\n  - [ ] child',
       '- [ ] next',
     ]);
+  });
+
+  it('applies structural edits synchronously while preserving the file newline boundary', () => {
+    const editor = new TaskBlockEditor();
+    const source = '- [ ] root\n  - > description';
+    const block = editor.rootBlocks(source)[0]!;
+    const target = {
+      relativeLine: 0,
+      lineCount: 2,
+      childRanges: [],
+      description: 'description',
+    };
+
+    const cleared = editor.edit(source, block, target, {
+      type: 'set-description',
+      text: null,
+    });
+    expect(cleared).toMatchObject({ type: 'changed', content: '- [ ] root' });
+
+    const changed = cleared.type === 'changed' ? cleared : undefined;
+    const added = editor.edit(
+      changed!.content,
+      changed!.block,
+      { relativeLine: 0, lineCount: 1, childRanges: [] },
+      { type: 'add-comment', text: 'note', stamp: localDate('2026-07-14') },
+    );
+    expect(added).toMatchObject({
+      type: 'changed',
+      content: '- [ ] root\n  - 2026-07-14: note',
+    });
+  });
+
+  it('refuses a comment edit when relative-line and original-Markdown evidence disagree', () => {
+    const editor = new TaskBlockEditor();
+    const source = '- [ ] root\r\n  - 2026-07-13: duplicate\r\n  - 2026-07-13: duplicate\r\n';
+    const block = editor.rootBlocks(source)[0]!;
+    const result = editor.edit(
+      source,
+      block,
+      { relativeLine: 0, lineCount: 3, childRanges: [] },
+      {
+        type: 'update-comment',
+        relativeLine: 2,
+        originalMarkdown: '  - 2026-07-13: stale\r',
+        text: 'replacement',
+      },
+    );
+
+    expect(result).toEqual({ type: 'conflict' });
   });
 });
 

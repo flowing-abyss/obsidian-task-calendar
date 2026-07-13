@@ -213,9 +213,8 @@ export class RightPanel {
       app: this.app,
       sourcePath: task.filePath,
       onLinks: (links) => {
-        // Reads the closure-captured description snapshot; updateDescription rewrites the
-        // whole block from it. Safe for normal single-drop use (the panel isn't re-rendered
-        // mid-drag); a concurrent external edit landing mid-drag is the only stale case.
+        // The closure carries the observed revision; a concurrent edit is surfaced as a
+        // structured conflict instead of overwriting the changed block.
         const cur = task.description ?? '';
         void this.updateDescription(task, cur.trim() ? `${cur} ${links}` : links);
       },
@@ -237,10 +236,14 @@ export class RightPanel {
         // Let any in-flight paste insert its link into the value before we save/remove.
         await whenPasteSettled(ta);
         if (done) return;
-        done = true;
         if (save && ta.value !== (task.description ?? '')) {
-          void this.updateDescription(task, ta.value);
+          const saved = await this.updateDescription(task, ta.value);
+          if (!saved) {
+            ta.focus();
+            return;
+          }
         }
+        done = true;
         ta.remove();
         view.show();
         showView();
@@ -691,16 +694,25 @@ export class RightPanel {
         // Let any in-flight paste insert its link into the value before we save/remove.
         await whenPasteSettled(textarea);
         if (saved) return;
-        saved = true;
         const val = textarea.value.trim();
-        textarea.remove();
-        if (val === '') {
-          this.deleteComment(task, comment).catch(() => showText());
-        } else if (val !== comment.text) {
-          this.updateComment(task, comment, val).catch(() => showText());
-        } else {
+        if (val === comment.text) {
+          saved = true;
+          textarea.remove();
           showText();
+          return;
         }
+        let committed: boolean;
+        if (val === '') {
+          committed = await this.deleteComment(task, comment);
+        } else {
+          committed = await this.updateComment(task, comment, val);
+        }
+        if (!committed) {
+          textarea.focus();
+          return;
+        }
+        saved = true;
+        textarea.remove();
       };
       textarea.addEventListener('blur', () => window.setTimeout(() => void finish(), 150));
       textarea.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -1050,31 +1062,17 @@ export class RightPanel {
     this.applyPlanningResult(result, target);
   }
 
-  private async updateDescription(task: TaskLike, newDesc: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const tl = lines[taskLine];
-      if (!tl) return;
-      // Leading prefix includes blockquote/callout markers so nested items stay
-      // inside the quote (e.g. "> - [ ]" → child ">   - [ ]").
-      const indent = (/^([\s>]*)/.exec(tl)?.[1] ?? '') + '  ';
-
-      const delta = taskLine - task.line;
-      const rangeStart = task.subtaskRange ? task.subtaskRange.from + delta : taskLine + 1;
-      const rangeEnd = task.subtaskRange ? task.subtaskRange.to + delta : taskLine;
-
-      const before = lines.slice(0, rangeStart);
-      const inside = lines.slice(rangeStart, rangeEnd + 1).filter((l) => !/^[\s>]*- > /.test(l));
-      const after = lines.slice(rangeEnd + 1);
-
-      const descLines = newDesc.trim()
-        ? newDesc
-            .split('\n')
-            .filter(Boolean)
-            .map((l) => `${indent}- > ${l}`)
-        : [];
-
-      lines.splice(0, lines.length, ...before, ...descLines, ...inside, ...after);
-    });
+  private async updateDescription(task: TaskLike, newDesc: string): Promise<boolean> {
+    const target = this.planningTarget(task);
+    if (!target) return false;
+    return this.executeBlockCommand(
+      {
+        type: 'set-description',
+        target,
+        text: newDesc.trim().length > 0 ? newDesc.replace(/\r\n/gu, '\n') : null,
+      },
+      target,
+    );
   }
 
   private async addSubTask(task: TaskLike, text: string): Promise<void> {
@@ -1101,57 +1099,56 @@ export class RightPanel {
   private async addComment(
     task: TaskLike,
     text: string,
-    commentList: HTMLElement,
+    _commentList: HTMLElement,
     inputEl: HTMLTextAreaElement,
-  ): Promise<void> {
-    // Optimistic DOM update: show the new comment immediately before writing to disk
-    const row = commentList.createDiv({ cls: 'tc-comment-row' });
-    row.createEl('span', { cls: 'tc-comment-date', text: 'Just now' });
-    row.createEl('p', { cls: 'tc-comment-text', text });
-    inputEl.value = '';
-    inputEl.focus();
-
-    const today = window.moment().format('YYYY-MM-DD');
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const tl = lines[taskLine];
-      if (!tl) return;
-      // Leading prefix includes blockquote/callout markers so nested items stay
-      // inside the quote (e.g. "> - [ ]" → child ">   - [ ]").
-      const indent = (/^([\s>]*)/.exec(tl)?.[1] ?? '') + '  ';
-      const commentLine = `${indent}- ${today}: ${text}`;
-      const delta = taskLine - task.line;
-      const insertAt =
-        'subtaskRange' in task && task.subtaskRange
-          ? (task.subtaskRange as { to: number }).to + delta + 1
-          : taskLine + 1;
-      lines.splice(insertAt, 0, commentLine);
-    });
+  ): Promise<boolean> {
+    const parent = this.planningTarget(task);
+    if (!parent) return false;
+    const committed = await this.executeBlockCommand({ type: 'add-comment', parent, text }, parent);
+    if (committed) {
+      inputEl.value = '';
+      inputEl.focus();
+    }
+    return committed;
   }
 
   private async updateComment(
-    task: TaskLike,
+    _task: TaskLike,
     comment: TaskComment,
     newText: string,
-  ): Promise<void> {
-    // Anchor on the task via rawText; adjust comment position by the same line drift.
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const delta = taskLine - task.line;
-      const commentIdx = comment.line + delta;
-      const line = lines[commentIdx];
-      if (!line) return;
-      const datePrefix = /^([\s>]*- \d{4}-\d{2}-\d{2}: )/.exec(line)?.[1];
-      const barePrefix = /^([\s>]*- )/.exec(line)?.[1] ?? '';
-      const prefix = datePrefix ?? barePrefix;
-      lines[commentIdx] = prefix + newText;
-    });
+  ): Promise<boolean> {
+    const ref = commentRefOf(comment);
+    if (!ref) return false;
+    return this.executeBlockCommand(
+      { type: 'update-comment', comment: ref, text: newText },
+      ref.parent,
+    );
   }
 
-  private async deleteComment(task: TaskLike, comment: TaskComment): Promise<void> {
-    // Anchor on the task via rawText; adjust comment position by the same line drift.
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const delta = taskLine - task.line;
-      lines.splice(comment.line + delta, 1);
-    });
+  private async deleteComment(_task: TaskLike, comment: TaskComment): Promise<boolean> {
+    const ref = commentRefOf(comment);
+    if (!ref) return false;
+    return this.executeBlockCommand({ type: 'delete-comment', comment: ref }, ref.parent);
+  }
+
+  private async executeBlockCommand(
+    command: Extract<
+      TaskCommand,
+      {
+        readonly type: 'set-description' | 'add-comment' | 'update-comment' | 'delete-comment';
+      }
+    >,
+    target: PlanningTarget,
+  ): Promise<boolean> {
+    if (!this.tasks) return false;
+    let result: TaskCommandResult;
+    try {
+      result = await this.tasks.execute(command);
+    } catch {
+      result = { type: 'io-error', cause: 'repository-error', contentState: 'unknown' };
+    }
+    this.applyPlanningResult(result, target);
+    return result.type === 'ok';
   }
 
   private async updateDue(task: TaskLike, date: string): Promise<void> {

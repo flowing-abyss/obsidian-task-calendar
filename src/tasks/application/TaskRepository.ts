@@ -8,12 +8,21 @@ import type { LocalDate, TaskMutationTarget, TaskSnapshot } from '../domain/type
 import type { TaskIssue } from '../domain/validation';
 
 export type TaskEditCommand =
-  | Exclude<TaskCommand, { readonly type: 'set-status' | 'toggle-completion' }>
+  | Exclude<
+      TaskCommand,
+      { readonly type: 'set-status' | 'toggle-completion' } | { readonly type: 'add-comment' }
+    >
   | {
       readonly type: 'set-status';
       readonly target: TaskStatusTarget;
       readonly symbol: string;
       readonly stamp?: LocalDate;
+    }
+  | {
+      readonly type: 'add-comment';
+      readonly parent: TaskStatusTarget;
+      readonly text: string;
+      readonly stamp: LocalDate;
     };
 
 export type TaskRepositoryResult =
