@@ -292,6 +292,32 @@ describe('TaskIndex lifecycle and events', () => {
     index.destroy();
   });
 
+  it('fallback creation keeps an indented task after a closed quoted fence as a root', async () => {
+    const content = [
+      '- [ ] parent',
+      '> ```md',
+      '> code example',
+      '> ```',
+      '  - [ ] after boundary',
+    ].join('\n');
+    const app = await createAppWithFiles({ 'created.md': content });
+    app.metadataCache.getFileCache = (): null => null;
+    const index = new TaskIndex(app, {
+      statusCatalog: canonicalStatusCatalog(),
+      dailyNoteFormat: 'YYYY-MM-DD',
+    });
+    const fireCreate = captureCreateCallback(app);
+    await index.initialize();
+
+    fireCreate(mdFile(app, 'created.md'));
+    await flushMicrotasks();
+
+    const tasks = index.list();
+    expect(tasks.map((task) => task.title)).toEqual(['parent', 'after boundary']);
+    expect(tasks[0]?.subtasks).toEqual([]);
+    index.destroy();
+  });
+
   it('keeps a metadata modification that arrives during a blocked initial read', async () => {
     const { app, index, fireChanged } = await setup({ 'blocked.md': '- [ ] stale' });
     const read = blockRead(app, 'blocked.md', '- [ ] stale');
@@ -497,6 +523,33 @@ describe('TaskIndex lifecycle and events', () => {
     await flushMicrotasks();
 
     expect(index.list().map((task) => task.title)).toEqual(['visible root']);
+    index.destroy();
+  });
+
+  it('fallback rename keeps an indented task after a closed quoted fence as a root', async () => {
+    const content = [
+      '- [ ] parent',
+      '> ~~~md',
+      '> callout code example',
+      '> ~~~',
+      '  - [ ] after boundary',
+    ].join('\n');
+    const app = await createAppWithFiles({ 'examples.txt': content });
+    app.metadataCache.getFileCache = (): null => null;
+    const index = new TaskIndex(app, {
+      statusCatalog: canonicalStatusCatalog(),
+      dailyNoteFormat: 'YYYY-MM-DD',
+    });
+    await index.initialize();
+    const file = app.vault.getAbstractFileByPath('examples.txt');
+    if (!(file instanceof TFile)) throw new Error('missing examples.txt');
+
+    await app.vault.rename(file, 'examples.md');
+    await flushMicrotasks();
+
+    const tasks = index.list();
+    expect(tasks.map((task) => task.title)).toEqual(['parent', 'after boundary']);
+    expect(tasks[0]?.subtasks).toEqual([]);
     index.destroy();
   });
 

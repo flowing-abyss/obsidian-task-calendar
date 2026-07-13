@@ -280,6 +280,17 @@ function fallbackFenceState(
     : { active: undefined, skip: false };
 }
 
+function transitionFallbackQuoteDepth(
+  quoteDepth: number,
+  previousQuoteDepth: number | undefined,
+  ancestorsByQuoteDepth: Map<number, FallbackListAncestor[]>,
+): number {
+  if (previousQuoteDepth !== undefined && previousQuoteDepth !== quoteDepth) {
+    ancestorsByQuoteDepth.clear();
+  }
+  return quoteDepth;
+}
+
 function fallbackListItems(data: string): FallbackListItem[] {
   const lines = data.split('\n');
   const items: FallbackListItem[] = [];
@@ -299,9 +310,17 @@ function fallbackListItems(data: string): FallbackListItem[] {
 
     const leadingPrefix = FALLBACK_PREFIX_RE.exec(line)?.[1] ?? '';
     const quoteDepth = [...leadingPrefix].filter((character) => character === '>').length;
+    const activeFence = fence;
     const nextFence = fallbackFenceState(line, quoteDepth, fence);
     fence = nextFence.active;
     if (nextFence.skip) {
+      if (activeFence === undefined || quoteDepth <= activeFence.quoteDepth) {
+        previousQuoteDepth = transitionFallbackQuoteDepth(
+          quoteDepth,
+          previousQuoteDepth,
+          ancestorsByQuoteDepth,
+        );
+      }
       offset += line.length + 1;
       continue;
     }
@@ -310,10 +329,11 @@ function fallbackListItems(data: string): FallbackListItem[] {
       continue;
     }
 
-    if (previousQuoteDepth !== undefined && previousQuoteDepth !== quoteDepth) {
-      ancestorsByQuoteDepth.clear();
-    }
-    previousQuoteDepth = quoteDepth;
+    previousQuoteDepth = transitionFallbackQuoteDepth(
+      quoteDepth,
+      previousQuoteDepth,
+      ancestorsByQuoteDepth,
+    );
 
     const listMatch = FALLBACK_LIST_ITEM_RE.exec(line);
     if (!listMatch) {
