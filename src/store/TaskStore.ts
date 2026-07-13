@@ -1,68 +1,115 @@
-import {
-  Notice,
-  TFile,
-  type App,
-  type CachedMetadata,
-  type EventRef,
-  type TAbstractFile,
-} from 'obsidian';
+import { Notice, TFile, type App } from 'obsidian';
 import { locatorOf, TaskMutationService } from '../mutation';
-import { countLinksIn } from '../parser/links';
-import { parseSubItems } from '../parser/SubItemParser';
-import { parseTask } from '../parser/TaskParser';
-import type { Task, TaskFilter } from '../parser/types';
+import type { SubTask, Task, TaskComment, TaskFilter } from '../parser/types';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
+import type {
+  LocalDate,
+  SubtaskSnapshot,
+  TaskCommentSnapshot,
+  TaskIndexEvent,
+  TaskPriority,
+  TaskQuery,
+  TaskQueryApi,
+  TaskSnapshot,
+} from '../tasks';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import type { TaskPriority } from '../tasks/domain/types';
-import { TaskDateIndex } from './TaskDateIndex';
+import { legacyBlockRangeOf, TaskIndex } from '../tasks/infrastructure/TaskIndex';
 
 interface StoreUpdateEvent {
-  changedFiles: string[]; // empty = bulk init complete, no specific file
+  changedFiles: string[];
 }
 
 type UpdateCallback = (event: StoreUpdateEvent) => void;
 
-function momentToRegex(fmt: string): RegExp {
-  const escaped = fmt
-    .replace(/\./g, '\\.')
-    .replace(/,/g, '\\,')
-    .replace(/-/g, '\\-')
-    .replace(/:/g, '\\:')
-    .replace(/ /g, '\\s')
-    .replace('dddd', '\\w{4,}')
-    .replace('ddd', '\\w{1,3}')
-    .replace('dd', '\\w{2}')
-    .replace('YYYY', '\\d{4}')
-    .replace('YY', '\\d{2}')
-    .replace('MMMM', '\\w{4,}')
-    .replace('MMM', '\\w{3}')
-    .replace('MM', '\\d{2}')
-    .replace('DD', '\\d{2}')
-    .replace('D', '\\d{1,2}')
-    .replace('ww', '\\d{1,2}');
-  return new RegExp(`^(${escaped})$`);
+function legacyComment(comment: TaskCommentSnapshot, parentLine: number): TaskComment {
+  return {
+    line: parentLine + comment.ref.relativeLine,
+    date: comment.date,
+    text: comment.text,
+  };
+}
+
+function legacySubtask(task: SubtaskSnapshot, parentLine: number, filePath: string): SubTask {
+  const line = parentLine + task.ref.relativeLine;
+  const lineCount = task.ref.originalBlock.split('\n').length;
+  const subtaskRange = lineCount > 1 ? { from: line + 1, to: line + lineCount - 1 } : undefined;
+  const subtasks = task.subtasks.map((child) => legacySubtask(child, line, filePath));
+  const comments = task.comments.map((comment) => legacyComment(comment, line));
+  return {
+    filePath,
+    line,
+    rawText: task.ref.originalBlock.split('\n')[0] ?? '',
+    text: task.title,
+    markdownText: task.markdownTitle,
+    status: task.status,
+    statusSymbol: task.statusSymbol,
+    due: task.planning.due,
+    scheduled: task.planning.scheduled,
+    start: task.planning.start,
+    time: task.planning.time,
+    priority: task.priority,
+    recurrence: task.recurrence,
+    ...(subtasks.length > 0 && { subtasks }),
+    ...(comments.length > 0 && { comments }),
+    ...(task.description && { description: task.description }),
+    ...(subtaskRange && { subtaskRange }),
+  };
+}
+
+function legacyTask(task: TaskSnapshot): Task {
+  const subtasks = task.subtasks.map((subtask) =>
+    legacySubtask(subtask, task.source.line, task.source.filePath),
+  );
+  const comments = task.comments.map((comment) => legacyComment(comment, task.source.line));
+  const subtaskRange = legacyBlockRangeOf(task);
+  return {
+    filePath: task.source.filePath,
+    line: task.source.line,
+    rawText: task.source.originalMarkdown,
+    text: task.title,
+    markdownText: task.markdownTitle,
+    status: task.status,
+    statusSymbol: task.statusSymbol,
+    due: task.planning.due,
+    scheduled: task.planning.scheduled,
+    start: task.planning.start,
+    completion: task.planning.completion,
+    cancelledDate: task.planning.cancelled,
+    time: task.planning.time,
+    duration: task.planning.duration,
+    recurrence: task.recurrence,
+    priority: task.priority,
+    ...(subtasks.length > 0 && { subtasks }),
+    ...(comments.length > 0 && { comments }),
+    ...(task.description && { description: task.description }),
+    ...(subtaskRange && { subtaskRange }),
+    linkCount: task.presentation.linkCount,
+    dailyNoteDate: task.presentation.dailyNoteDate,
+    noteColor: task.presentation.noteColor,
+    noteTextColor: task.presentation.noteTextColor,
+    noteIcon: task.presentation.noteIcon,
+  };
 }
 
 export class TaskStore {
-  private taskMap = new Map<string, Task[]>();
-  private dateIndex = new TaskDateIndex();
-  private frontmatterMap = new Map<string, { color?: string; textColor?: string; icon?: string }>();
   private listeners: UpdateCallback[] = [];
   private pendingFiles = new Set<string>();
   private flushScheduled = false;
-  private metadataCacheRefs: EventRef[] = [];
-  private vaultRefs: EventRef[] = [];
   private resolver: DailyNoteResolver;
   private mutations: TaskMutationService;
   private statusCatalog: StatusCatalog;
+  private readonly taskIndex: TaskIndex;
+  private readonly queries: TaskQueryApi;
+  private readonly unsubscribeIndex: () => void;
   statusRegistry: StatusRegistry;
 
   constructor(
     private app: App,
     private settings: CalendarSettings,
+    taskIndex?: TaskIndex,
   ) {
     this.resolver = new DailyNoteResolver(app, settings);
     this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
@@ -72,219 +119,60 @@ export class TaskStore {
       () => this.statusRegistry,
       () => this.statusCatalog,
     );
+    this.taskIndex =
+      taskIndex ??
+      new TaskIndex(app, {
+        statusCatalog: this.statusCatalog,
+        dailyNoteFormat: settings.desktop.dailyNoteFormat,
+        ...(settings.desktop.globalTaskFilter && {
+          globalTaskFilter: settings.desktop.globalTaskFilter,
+        }),
+      });
+    this.queries = this.taskIndex;
+    this.unsubscribeIndex = this.queries.subscribe((event: TaskIndexEvent) => {
+      if (event.type === 'initialized') this.notify({ changedFile: undefined });
+      else if (event.type === 'changed') {
+        for (const file of event.files) this.pendingFiles.add(file);
+        this.notify({ changedFile: undefined });
+      } else if (event.type === 'renamed') this.notify({ changedFile: event.newPath });
+      else this.notify({ changedFile: event.path });
+    });
   }
 
-  /** Rebuild the status registry from current settings. Call after settings edits. */
   rebuildStatusRegistry(): void {
     this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
     this.statusCatalog = new StatusCatalog(toStatusRules(this.settings.taskStatuses));
+    this.taskIndex.setStatusCatalog(this.statusCatalog);
   }
 
   async initialize(): Promise<void> {
-    const files = this.app.vault.getMarkdownFiles();
-    const CHUNK_SIZE = 50;
-    for (let i = 0; i < files.length; i += CHUNK_SIZE) {
-      const chunk = files.slice(i, i + CHUNK_SIZE);
-      await Promise.all(chunk.map((f) => this.loadFile(f)));
-      // Yield to event loop between chunks
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 0);
-      });
-    }
-    this.notify({ changedFile: undefined });
-    this.registerEvents();
-  }
-
-  private async loadFile(file: TFile): Promise<void> {
-    try {
-      const cache = this.app.metadataCache.getFileCache(file);
-      if (!cache?.listItems?.some((item) => item.task !== undefined)) return;
-      const content = await this.app.vault.cachedRead(file);
-      const fm = cache.frontmatter;
-      if (fm) {
-        this.frontmatterMap.set(file.path, {
-          color: typeof fm['color'] === 'string' ? fm['color'] : undefined,
-          textColor: typeof fm['textColor'] === 'string' ? fm['textColor'] : undefined,
-          icon: typeof fm['icon'] === 'string' ? fm['icon'] : undefined,
-        });
-      }
-      this.parseFileTasks(file.path, content, cache);
-    } catch {
-      // File may have been deleted; skip silently
-    }
-  }
-
-  private parseFileTasks(filePath: string, content: string, cache: CachedMetadata): void {
-    if (!cache.listItems) {
-      this.taskMap.delete(filePath);
-      this.dateIndex.removeFile(filePath);
-      return;
-    }
-    const lines = content.split('\n');
-    const dailyNoteFormat = this.settings.desktop.dailyNoteFormat;
-    const dailyNoteRegex = momentToRegex(dailyNoteFormat);
-    const filename = filePath.replace(/^.*\//, '').replace(/\.[^.]*$/, '');
-    const dailyNoteDate = dailyNoteRegex.test(filename)
-      ? window.moment(filename, dailyNoteFormat).format('YYYY-MM-DD')
-      : undefined;
-
-    const tasks: Task[] = [];
-    const fm = this.frontmatterMap.get(filePath);
-    // Index list items by their start line so we can walk the parent chain.
-    // Obsidian's `parent` is the line of the parent list item (≥ 0), or a negative
-    // value for root-level items.
-    const itemByLine = new Map<number, (typeof cache.listItems)[number]>();
-    for (const item of cache.listItems) itemByLine.set(item.position.start.line, item);
-    const hasTaskAncestor = (item: (typeof cache.listItems)[number]): boolean => {
-      let parentLine = item.parent;
-      // `seen` guards against malformed/cyclic cache data (e.g. a self- or
-      // mutually-referential `parent`), which would otherwise spin forever.
-      const seen = new Set<number>();
-      while (parentLine >= 0 && !seen.has(parentLine)) {
-        seen.add(parentLine);
-        const parent = itemByLine.get(parentLine);
-        if (!parent) break;
-        if (parent.task !== undefined) return true;
-        parentLine = parent.parent;
-      }
-      return false;
-    };
-    for (const item of cache.listItems) {
-      if (item.task === undefined) continue;
-      // Skip child items only when they descend from an actual task — those are
-      // parsed as sub-tasks by parseSubItems. A checkbox nested under a plain
-      // (non-task) bullet has no task ancestor, so it is an independent task.
-      if (hasTaskAncestor(item)) continue;
-      const lineIdx = item.position.start.line;
-      const rawText = lines[lineIdx] ?? '';
-      const task = parseTask(rawText, {
-        filePath,
-        line: lineIdx,
-        dailyNoteDate,
-        globalTaskFilter: this.settings.desktop.globalTaskFilter || undefined,
-        statusCatalog: this.statusCatalog,
-      });
-      if (task) {
-        task.noteColor = fm?.color;
-        task.noteTextColor = fm?.textColor;
-        task.noteIcon = fm?.icon;
-        // Parse sub-items (sub-tasks, comments, description)
-        const sub = parseSubItems(lines, lineIdx, filePath, this.statusCatalog);
-        if (sub.subtasks.length) task.subtasks = sub.subtasks;
-        if (sub.comments.length) task.comments = sub.comments;
-        if (sub.description) task.description = sub.description;
-        if (sub.subtaskRange) task.subtaskRange = sub.subtaskRange;
-        // Precompute the attached-materials link count once (not per render).
-        task.linkCount = countLinksIn([
-          task.markdownText,
-          sub.description,
-          ...sub.comments.map((c) => c.text),
-        ]);
-        tasks.push(task);
-      }
-    }
-    if (tasks.length > 0) {
-      this.taskMap.set(filePath, tasks);
-    } else {
-      this.taskMap.delete(filePath);
-    }
-    this.dateIndex.updateFile(filePath, tasks);
-  }
-
-  private registerEvents(): void {
-    const onChanged = this.app.metadataCache.on(
-      'changed',
-      (file: TFile, data: string, cache: CachedMetadata) => {
-        if (file.extension !== 'md') return;
-        // Guard against stale events fired after a rename: if the vault no longer
-        // has this file at this path, clear any ghost entry and skip reindexing.
-        if (!this.app.vault.getAbstractFileByPath(file.path)) {
-          this.taskMap.delete(file.path);
-          return;
-        }
-        const fm = cache.frontmatter;
-        if (fm) {
-          this.frontmatterMap.set(file.path, {
-            color: typeof fm['color'] === 'string' ? fm['color'] : undefined,
-            textColor: typeof fm['textColor'] === 'string' ? fm['textColor'] : undefined,
-            icon: typeof fm['icon'] === 'string' ? fm['icon'] : undefined,
-          });
-        }
-        this.parseFileTasks(file.path, data, cache);
-        this.notify({ changedFile: file.path });
-      },
-    );
-    this.metadataCacheRefs.push(onChanged);
-
-    const onRename = this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-      if (!(file instanceof TFile) || file.extension !== 'md') return;
-      const tasks = this.taskMap.get(oldPath);
-      if (tasks) {
-        const updated = tasks.map((t) => ({ ...t, filePath: file.path }));
-        this.taskMap.delete(oldPath);
-        this.taskMap.set(file.path, updated);
-        this.dateIndex.removeFile(oldPath);
-        this.dateIndex.updateFile(file.path, updated);
-      }
-      const fm = this.frontmatterMap.get(oldPath);
-      if (fm) {
-        this.frontmatterMap.delete(oldPath);
-        this.frontmatterMap.set(file.path, fm);
-      }
-      this.notify({ changedFile: file.path });
-    });
-    this.vaultRefs.push(onRename);
-
-    const onDelete = this.app.vault.on('delete', (file: TAbstractFile) => {
-      if (!(file instanceof TFile) || file.extension !== 'md') return;
-      if (this.taskMap.delete(file.path)) {
-        this.dateIndex.removeFile(file.path);
-        this.frontmatterMap.delete(file.path);
-        this.notify({ changedFile: file.path });
-      }
-    });
-    this.vaultRefs.push(onDelete);
+    await this.taskIndex.initialize();
   }
 
   getTasks(filter?: TaskFilter): Task[] {
-    // Fast path: file-only filter avoids flattening the entire index.
-    if (
-      filter?.filePath &&
-      !filter.folder &&
-      !filter.tag &&
-      !filter.status?.length &&
-      !filter.dateRange
-    ) {
-      return [...(this.taskMap.get(filter.filePath) ?? [])];
-    }
-    let all = Array.from(this.taskMap.values()).flat();
-    if (!filter) return all;
-    if (filter.filePath) all = all.filter((t) => t.filePath === filter.filePath);
-    if (filter.folder) all = all.filter((t) => t.filePath.startsWith(filter.folder!));
-    if (filter.tag) all = all.filter((t) => t.rawText.includes(filter.tag!));
-    if (filter.status?.length) all = all.filter((t) => filter.status!.includes(t.status));
-    if (filter.dateRange) {
-      const { from, to } = filter.dateRange;
-      all = all.filter((t) => {
-        const date = t.due ?? t.scheduled ?? t.start ?? t.dailyNoteDate;
-        return date ? date >= from && date <= to : false;
-      });
-    }
-    return all;
+    const query: TaskQuery | undefined = filter
+      ? {
+          ...(filter.filePath !== undefined && { filePath: filter.filePath }),
+          ...(filter.folder !== undefined && { folder: filter.folder }),
+          ...(filter.tag !== undefined && { tag: filter.tag }),
+          ...(filter.status !== undefined && { statuses: filter.status }),
+          ...(filter.dateRange !== undefined && {
+            dateRange: {
+              from: filter.dateRange.from as LocalDate,
+              to: filter.dateRange.to as LocalDate,
+            },
+          }),
+        }
+      : undefined;
+    return this.queries.list(query).map(legacyTask);
   }
 
-  /** O(1) lookup of tasks anchored on `date` (scheduled ?? due for plain tasks; every day in a start->due span). */
   getTasksForDate(date: string): Task[] {
-    return this.dateIndex.getTasksForDate(date);
+    return this.queries.forCalendarDates([date as LocalDate]).map(legacyTask);
   }
 
-  /** Dedup union of getTasksForDate across `dates` — for scoping a render to a visible date range (e.g. a month grid). */
   getTasksForDateRange(dates: string[]): Task[] {
-    const seen = new Set<Task>();
-    for (const date of dates) {
-      for (const task of this.dateIndex.getTasksForDate(date)) seen.add(task);
-    }
-    return [...seen];
+    return this.queries.forCalendarDates(dates as LocalDate[]).map(legacyTask);
   }
 
   async toggleTask(task: Task): Promise<void> {
@@ -296,7 +184,6 @@ export class TaskStore {
     }
   }
 
-  /** Rewrite the task's status marker character, stamping/stripping ✅/❌ as needed. */
   async setTaskStatus(task: Task, char: string): Promise<void> {
     const today = window.moment().format('YYYY-MM-DD');
     try {
@@ -306,7 +193,6 @@ export class TaskStore {
     }
   }
 
-  /** Rewrite the task's priority emoji. */
   async setPriority(task: Task, priority: TaskPriority): Promise<void> {
     try {
       await this.mutations.setPriority(locatorOf(task), priority);
@@ -320,14 +206,12 @@ export class TaskStore {
       await this.resolver.addTask(text, date);
       return;
     }
-
     if (this.settings.customFilePath) {
       const filePath = this.settings.customFilePath;
       let file: TFile | null = null;
       const existing = this.app.vault.getAbstractFileByPath(filePath);
-      if (existing instanceof TFile) {
-        file = existing;
-      } else {
+      if (existing instanceof TFile) file = existing;
+      else {
         await this.app.vault.create(filePath, '');
         const found = this.app.vault.getAbstractFileByPath(filePath);
         if (found instanceof TFile) file = found;
@@ -342,7 +226,6 @@ export class TaskStore {
       new Notice('Task added to ' + file.name);
       return;
     }
-
     new Notice('No target file found for task.');
   }
 
@@ -353,8 +236,15 @@ export class TaskStore {
   onUpdate(callback: UpdateCallback): () => void {
     this.listeners.push(callback);
     return () => {
-      this.listeners = this.listeners.filter((l) => l !== callback);
+      this.listeners = this.listeners.filter((listener) => listener !== callback);
     };
+  }
+
+  destroy(): void {
+    this.unsubscribeIndex();
+    this.taskIndex.destroy();
+    this.listeners = [];
+    this.pendingFiles.clear();
   }
 
   private notify(event: { changedFile?: string }): void {
@@ -365,26 +255,7 @@ export class TaskStore {
       this.flushScheduled = false;
       const changedFiles = [...this.pendingFiles];
       this.pendingFiles.clear();
-      // Task 31: snapshot before iterating. Standard defensive hygiene for the general
-      // mutate-during-iterate hazard: a listener's callback may itself register a new listener
-      // as a side effect (e.g. CenterPanel re-subscribing on every calendar-mode render). In this
-      // codebase's actual call sites that's always preceded by an unsubscribe, and onUpdate's
-      // unsubscribe reassigns `this.listeners` (filter, not in-place mutation) rather than
-      // pushing onto the array a live `for...of` would still be iterating — so no double-fire is
-      // currently reachable this way. Snapshotting still guards any future listener that pushes
-      // without first unsubscribing, and costs nothing.
-      for (const cb of [...this.listeners]) cb({ changedFiles });
+      for (const listener of [...this.listeners]) listener({ changedFiles });
     });
-  }
-
-  destroy(): void {
-    for (const ref of this.metadataCacheRefs) this.app.metadataCache.offref(ref);
-    for (const ref of this.vaultRefs) this.app.vault.offref(ref);
-    this.metadataCacheRefs = [];
-    this.vaultRefs = [];
-    this.listeners = [];
-    this.taskMap.clear();
-    this.dateIndex.clear();
-    this.frontmatterMap.clear();
   }
 }

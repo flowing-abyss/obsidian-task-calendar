@@ -3,9 +3,12 @@ import { registerCodeBlock, resolveConfig } from './code-block/registerCodeBlock
 import { DEFAULT_SETTINGS } from './settings/defaults';
 import { migrateSettings } from './settings/migration';
 import { CalendarSettingsTab } from './settings/SettingsTab';
+import { toStatusRules } from './settings/statusCatalogAdapter';
 import type { CalendarSettings, CodeBlockParams } from './settings/types';
 import { TaskStore } from './store/TaskStore';
 import { TagManager } from './tags/TagManager';
+import { StatusCatalog } from './tasks/domain/StatusCatalog';
+import { TaskIndex } from './tasks/infrastructure/TaskIndex';
 import { CalendarRenderer } from './ui/CalendarRenderer';
 import { PANEL_VIEW_TYPE, PanelView } from './views/PanelView';
 
@@ -16,7 +19,14 @@ export default class TaskCalendarPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
-    this.store = new TaskStore(this.app, this.settings);
+    const taskIndex = new TaskIndex(this.app, {
+      statusCatalog: new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
+      dailyNoteFormat: this.settings.desktop.dailyNoteFormat,
+      ...(this.settings.desktop.globalTaskFilter && {
+        globalTaskFilter: this.settings.desktop.globalTaskFilter,
+      }),
+    });
+    this.store = new TaskStore(this.app, this.settings, taskIndex);
     this.tagManager = new TagManager(this.app, this.settings, () => this.saveSettings());
 
     this.registerView(

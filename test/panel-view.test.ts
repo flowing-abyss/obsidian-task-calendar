@@ -158,19 +158,15 @@ describe('PanelView', () => {
       expect(state.get('taskStack')).toBe(before);
     });
 
-    it('store.onUpdate when root task deleted → taskStack reset to []', () => {
+    it('store.onUpdate when root task deleted → taskStack reset to []', async () => {
       const state = (view as unknown as { state: AppState }).state;
       const root = store.getTasks()[0]!;
       state.set('taskStack', [root]);
-      // simulate deletion: temporarily empty the store, emit
-      const origTasks = (store as unknown as { taskMap: Map<string, unknown> }).taskMap;
-      (store as unknown as { taskMap: Map<string, unknown> }).taskMap = new Map();
-      (
-        store as unknown as { listeners: Array<(e: { changedFiles: string[] }) => void> }
-      ).listeners.forEach((l) => l({ changedFiles: [root.filePath] }));
+      const file = app.vault.getAbstractFileByPath(root.filePath);
+      if (!file) throw new Error('root task file missing');
+      await app.vault.delete(file);
+      await flushMicrotasks();
       expect(state.get('taskStack')).toHaveLength(0);
-      // restore for cleanup
-      (store as unknown as { taskMap: Map<string, unknown> }).taskMap = origTasks;
     });
 
     it('refresh updates left panel count badges after store change (DOM assertion)', async () => {
