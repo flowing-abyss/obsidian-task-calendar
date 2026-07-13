@@ -1,7 +1,9 @@
+import { parseLinks } from '../../../parser/links';
 import { StatusCatalog } from '../../domain/StatusCatalog';
 import type { TaskPriority, TaskStatus } from '../../domain/types';
 import {
   formatDurationMinutes,
+  isSingleLineText,
   localDate,
   localTime,
   type TaskIssue,
@@ -14,6 +16,7 @@ import {
 export type LineEdit =
   | { readonly type: 'set-title'; readonly markdownTitle: string }
   | { readonly type: 'append-title'; readonly markdown: string }
+  | { readonly type: 'edit-link'; readonly occurrence: number; readonly replacement: string }
   | { readonly type: 'set-status'; readonly symbol: string; readonly today?: string }
   | { readonly type: 'set-priority'; readonly priority: TaskPriority }
   | {
@@ -456,6 +459,17 @@ export class TaskMarkdownCodec {
     return this.statusCatalog.statusForSymbol(symbol);
   }
 
+  editTextLink(source: string, occurrence: number, replacement: string): LineEditResult {
+    if (!isSingleLineText(replacement)) return invalid('invalid-target', 'link');
+    if (!Number.isInteger(occurrence) || occurrence < 0) return invalid('invalid-target', 'link');
+    const link = parseLinks(source)[occurrence];
+    if (!link) return invalid('invalid-target', 'link');
+    const content = spliceSource(source, link.index, link.index + link.raw.length, replacement);
+    return content === source
+      ? { type: 'unchanged', content: source }
+      : { type: 'changed', content };
+  }
+
   private malformedFields(parsed: ParsedTaskLine): ReadonlySet<TaskValidationField> {
     const malformed = new Set<TaskValidationField>();
     for (const [field, kind] of Object.entries(SPAN_KIND_BY_FIELD) as Array<
@@ -558,6 +572,33 @@ export class TaskMarkdownCodec {
     return fragments;
   }
 
+  private linkTitleFragments(parsed: ParsedTaskLine): readonly SourceSpan[] {
+    const contentEnd = parsed.original.length - parsed.lineEnding.length;
+    const bodySpans = parsed.spans.filter(
+      (span) => span.kind !== 'prefix' && !(span.kind === 'separator' && span.from === contentEnd),
+    );
+    const fragments: SourceSpan[] = [];
+    let fragmentFrom: number | undefined;
+    let fragmentTo: number | undefined;
+    for (const span of bodySpans) {
+      if (span.kind === 'title') {
+        fragmentFrom ??= span.from;
+        fragmentTo = span.to;
+        continue;
+      }
+      if (span.kind === 'separator' && fragmentFrom !== undefined) continue;
+      if (fragmentFrom !== undefined && fragmentTo !== undefined) {
+        fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
+        fragmentFrom = undefined;
+        fragmentTo = undefined;
+      }
+    }
+    if (fragmentFrom !== undefined && fragmentTo !== undefined) {
+      fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
+    }
+    return fragments;
+  }
+
   private replaceTitle(parsed: ParsedTaskLine, markdownTitle: string): string {
     const fragments = this.editableTitleFragments(parsed);
     const first = fragments[0];
@@ -584,6 +625,36 @@ export class TaskMarkdownCodec {
     const last = fragments[fragments.length - 1];
     if (!last) return this.replaceTitle(parsed, markdown);
     return spliceSource(parsed.original, last.to, last.to, ` ${markdown}`);
+  }
+
+  private editTitleLink(
+    parsed: ParsedTaskLine,
+    occurrence: number,
+    replacement: string,
+  ): PreparedLineEdit {
+    if (!Number.isInteger(occurrence) || occurrence < 0) return invalid('invalid-target', 'link');
+    let remaining = occurrence;
+    for (const fragment of this.linkTitleFragments(parsed)) {
+      const source = parsed.original.slice(fragment.from, fragment.to);
+      const links = parseLinks(source);
+      if (remaining >= links.length) {
+        remaining -= links.length;
+        continue;
+      }
+      const link = links[remaining];
+      if (!link) return invalid('invalid-target', 'link');
+      return {
+        type: 'prepared',
+        content: spliceSource(
+          parsed.original,
+          fragment.from + link.index,
+          fragment.from + link.index + link.raw.length,
+          replacement,
+        ),
+        fields: ['title'],
+      };
+    }
+    return invalid('invalid-target', 'link');
   }
 
   private introducedTitleIssues(
@@ -810,6 +881,7 @@ export class TaskMarkdownCodec {
   private prepareLineEdit(parsed: ParsedTaskLine, edit: LineEdit): PreparedLineEdit {
     switch (edit.type) {
       case 'set-title':
+        if (!isSingleLineText(edit.markdownTitle)) return invalid('invalid-target', 'title');
         return parsed.markdownTitle === edit.markdownTitle
           ? { type: 'unchanged', content: parsed.original }
           : {
@@ -818,6 +890,7 @@ export class TaskMarkdownCodec {
               fields: ['title'],
             };
       case 'append-title':
+        if (!isSingleLineText(edit.markdown)) return invalid('invalid-target', 'title');
         return edit.markdown.length === 0
           ? { type: 'unchanged', content: parsed.original }
           : {
@@ -825,6 +898,9 @@ export class TaskMarkdownCodec {
               content: this.appendTitle(parsed, edit.markdown),
               fields: ['title'],
             };
+      case 'edit-link':
+        if (!isSingleLineText(edit.replacement)) return invalid('invalid-target', 'link');
+        return this.editTitleLink(parsed, edit.occurrence, edit.replacement);
       case 'set-status':
         return this.prepareStatusEdit(parsed, edit);
       case 'set-priority':
@@ -848,7 +924,7 @@ export class TaskMarkdownCodec {
     if (prepared.content === original) return { type: 'unchanged', content: original };
     const reparsed = this.parseLine(prepared.content, { filePath: '', line: 0 });
     if (!reparsed) return invalid('invalid-task-syntax');
-    if (edit.type === 'set-title' || edit.type === 'append-title') {
+    if (edit.type === 'set-title' || edit.type === 'append-title' || edit.type === 'edit-link') {
       const titleIssues = this.introducedTitleIssues(parsed, reparsed);
       if (titleIssues.length > 0) return { type: 'invalid', issues: titleIssues };
     }
@@ -877,7 +953,7 @@ export class TaskMarkdownCodec {
       for (const field of prepared.fields) changedFields.add(field);
       const reparsed = this.parseLine(content, { filePath: '', line: 0 });
       if (!reparsed) return invalid('invalid-task-syntax');
-      if (edit.type === 'set-title' || edit.type === 'append-title') {
+      if (edit.type === 'set-title' || edit.type === 'append-title' || edit.type === 'edit-link') {
         const titleIssues = this.introducedTitleIssues(current, reparsed);
         if (titleIssues.length > 0) return { type: 'invalid', issues: titleIssues };
       }
@@ -904,6 +980,10 @@ export class TaskMarkdownCodec {
       from: prefixEnd + range.from,
       to: prefixEnd + range.to,
     }));
+    const linkRanges = parseLinks(body).map((link) => ({
+      from: prefixEnd + link.index,
+      to: prefixEnd + link.index + link.raw.length,
+    }));
     let candidates: Candidate[] = [];
 
     for (const pattern of DATE_PATTERNS) {
@@ -928,11 +1008,18 @@ export class TaskMarkdownCodec {
       });
     }
 
-    candidates = candidates.filter((candidate) => outsideRanges(candidate, inlineCode));
+    candidates = candidates.filter(
+      (candidate) => outsideRanges(candidate, inlineCode) && outsideRanges(candidate, linkRanges),
+    );
+    candidates.push(...linkRanges.map((range) => ({ kind: 'title' as const, ...range })));
 
     const recurrenceMarkers = matches(RECURRENCE_MARKER_RE, body)
       .map((match) => prefixEnd + match.index)
-      .filter((from) => outsideRanges({ from, to: from + '🔁'.length }, inlineCode));
+      .filter(
+        (from) =>
+          outsideRanges({ from, to: from + '🔁'.length }, inlineCode) &&
+          outsideRanges({ from, to: from + '🔁'.length }, linkRanges),
+      );
     for (let i = recurrenceMarkers.length - 1; i >= 0; i--) {
       const from = recurrenceMarkers[i];
       if (from === undefined) continue;

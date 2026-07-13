@@ -53,6 +53,78 @@ function service(repository: TaskRepository, taskQueries: TaskQueryApi = queries
 }
 
 describe('TaskApplicationService planning commands', () => {
+  it.each([
+    {
+      type: 'patch' as const,
+      target: { type: 'task' as const, ref },
+      patch: { markdownTitle: { type: 'set' as const, value: 'New [[Title]]' } },
+    },
+    {
+      type: 'append-title' as const,
+      target: { type: 'task' as const, ref },
+      markdown: '[[Attachment.png|image]]',
+    },
+    {
+      type: 'edit-link' as const,
+      target: { type: 'title' as const, target: { type: 'task' as const, ref } },
+      occurrence: 0,
+      replacement: '[[Changed]]',
+    },
+  ])('delegates the source-aware $type command unchanged', async (command) => {
+    const committed: TaskRepositoryResult = {
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
+
+    await expect(service({ edit }).execute(command)).resolves.toEqual({
+      type: 'ok',
+      outcome: committed.outcome,
+      changed: true,
+    });
+    expect(edit).toHaveBeenCalledWith(command);
+  });
+
+  it.each([
+    {
+      command: {
+        type: 'patch' as const,
+        target: { type: 'task' as const, ref },
+        patch: { markdownTitle: { type: 'set' as const, value: 'changed\n- [ ] injected' } },
+      },
+      field: 'title',
+    },
+    {
+      command: {
+        type: 'append-title' as const,
+        target: { type: 'task' as const, ref },
+        markdown: 'later\rinjected',
+      },
+      field: 'title',
+    },
+    {
+      command: {
+        type: 'edit-link' as const,
+        target: { type: 'title' as const, target: { type: 'task' as const, ref } },
+        occurrence: 0,
+        replacement: '[[Changed]]\n- [ ] injected',
+      },
+      field: 'link',
+    },
+  ])(
+    'rejects multiline $command.type input before touching the repository',
+    async ({ command, field }) => {
+      const edit = vi.fn<TaskRepository['edit']>();
+
+      await expect(service({ edit }).execute(command)).resolves.toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field }],
+      });
+      expect(edit).not.toHaveBeenCalled();
+    },
+  );
+
   it('normalizes task tag patches once at the application boundary with removal winning', async () => {
     const committed: TaskRepositoryResult = {
       type: 'committed',

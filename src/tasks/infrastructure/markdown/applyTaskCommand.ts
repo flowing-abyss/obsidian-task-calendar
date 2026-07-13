@@ -19,6 +19,12 @@ function fieldEdit(field: SchedulingDateField, update: FieldUpdate<string>): Lin
 
 function orderedPatchEdits(parsed: ParsedTaskLine, patch: TaskPatch): readonly LineEdit[] {
   const edits: LineEdit[] = [];
+  if (patch.markdownTitle) {
+    edits.push({
+      type: 'set-title',
+      markdownTitle: patch.markdownTitle.type === 'set' ? patch.markdownTitle.value : '',
+    });
+  }
   if (patch.priority) {
     edits.push({
       type: 'set-priority',
@@ -97,6 +103,21 @@ export function applyTaskCommand(
       edits = orderedPatchEdits(parsed, command.patch);
       break;
     }
+    case 'append-title':
+      edits = [{ type: 'append-title', markdown: command.markdown }];
+      break;
+    case 'edit-link':
+      if (command.target.type !== 'title') {
+        return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'link' }] };
+      }
+      edits = [
+        {
+          type: 'edit-link',
+          occurrence: command.occurrence,
+          replacement: command.replacement,
+        },
+      ];
+      break;
     case 'set-status':
       edits = [
         {

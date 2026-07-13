@@ -27,6 +27,11 @@ export type TaskValidationField =
   | 'time'
   | 'duration';
 
+/** Source-line edits must never be able to introduce another Markdown line. */
+export function isSingleLineText(value: string): boolean {
+  return !/[\r\n]/u.test(value);
+}
+
 export interface TaskValidationState {
   readonly markdownTitle: string;
   readonly statusSymbol: string;

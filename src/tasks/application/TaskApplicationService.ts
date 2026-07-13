@@ -9,6 +9,7 @@ import type {
   TaskSnapshot,
   TaskStatus,
 } from '../domain/types';
+import { isSingleLineText } from '../domain/validation';
 import type { TaskApplicationApi, TaskQueryApi } from './TaskApplicationApi';
 import type { TaskEditCommand, TaskRepository } from './TaskRepository';
 
@@ -77,6 +78,23 @@ function refKey(ref: TaskRef): string {
 
 const RECENT_OUTCOME_LIMIT = 64;
 
+function multilineInputIssue(command: TaskCommand): TaskCommandResult | undefined {
+  if (
+    command.type === 'patch' &&
+    command.patch.markdownTitle?.type === 'set' &&
+    !isSingleLineText(command.patch.markdownTitle.value)
+  ) {
+    return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'title' }] };
+  }
+  if (command.type === 'append-title' && !isSingleLineText(command.markdown)) {
+    return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'title' }] };
+  }
+  if (command.type === 'edit-link' && !isSingleLineText(command.replacement)) {
+    return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'link' }] };
+  }
+  return undefined;
+}
+
 export class TaskApplicationService implements TaskApplicationApi {
   // Bridges the index-event lag only for exact refs returned by this service. The cache shares the
   // service lifetime and is bounded so revision churn cannot retain an unbounded snapshot history.
@@ -107,6 +125,9 @@ export class TaskApplicationService implements TaskApplicationApi {
   private prepare(
     command: TaskCommand,
   ): { readonly command: TaskEditCommand } | { readonly result: TaskCommandResult } {
+    const inputIssue = multilineInputIssue(command);
+    if (inputIssue !== undefined) return { result: inputIssue };
+
     if (command.type === 'patch' && command.patch.tags !== undefined) {
       const add = uniqueInOrder((command.patch.tags.add ?? []).map(normalizeTag));
       const remove = uniqueInOrder((command.patch.tags.remove ?? []).map(normalizeTag));

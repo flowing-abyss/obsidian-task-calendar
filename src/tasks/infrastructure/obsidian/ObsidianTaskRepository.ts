@@ -1,4 +1,5 @@
 import { TFile, type App } from 'obsidian';
+import { parseLinks } from '../../../parser/links';
 import type {
   TaskEditCommand,
   TaskRepository,
@@ -6,6 +7,7 @@ import type {
 } from '../../application/TaskRepository';
 import type { PlanningTarget, TaskResolutionCandidate } from '../../domain/commands';
 import type {
+  CommentRef,
   SubtaskRef,
   SubtaskSnapshot,
   TaskMutationTarget,
@@ -32,6 +34,27 @@ function rootRefOf(target: PlanningTarget): TaskRef {
   return node.ref;
 }
 
+function nodeTargetOf(command: TaskEditCommand): PlanningTarget | undefined {
+  if (
+    command.type === 'patch' ||
+    command.type === 'set-status' ||
+    command.type === 'append-title'
+  ) {
+    return command.target;
+  }
+  if (command.type === 'edit-link') {
+    return command.target.type === 'comment' ? command.target.ref.parent : command.target.target;
+  }
+  return undefined;
+}
+
+function rootRefForCommand(command: TaskEditCommand): TaskRef {
+  const target = nodeTargetOf(command);
+  if (target) return rootRefOf(target);
+  if ('ref' in command) return command.ref;
+  throw new Error('Task edit command has no root reference');
+}
+
 function childChain(target: PlanningTarget): readonly SubtaskRef[] {
   const chain: SubtaskRef[] = [];
   let node: TaskNodeRef = target;
@@ -40,6 +63,10 @@ function childChain(target: PlanningTarget): readonly SubtaskRef[] {
     node = node.ref.parent;
   }
   return chain;
+}
+
+function legacyLine(line: string): string {
+  return line.endsWith('\r') ? line.slice(0, -1) : line;
 }
 
 function confirmedTargetRelativeLine(
@@ -51,7 +78,7 @@ function confirmedTargetRelativeLine(
   let line = 0;
   for (const child of childChain(target)) {
     line += child.relativeLine;
-    const expected = child.originalBlock.split(/\r?\n/u);
+    const expected = child.originalBlock.split(/\r?\n/u).map(legacyLine);
     const current = rootLines.slice(line, line + expected.length);
     if (
       current.length !== expected.length ||
@@ -108,9 +135,72 @@ function rebaseSnapshot(task: TaskSnapshot, root: TaskRef): TaskSnapshot {
 }
 
 function mutationTarget(command: TaskEditCommand): TaskMutationTarget {
-  return command.type === 'patch' || command.type === 'set-status'
-    ? command.target
-    : { type: 'task', ref: command.ref };
+  if (
+    command.type === 'patch' ||
+    command.type === 'set-status' ||
+    command.type === 'append-title'
+  ) {
+    return command.target;
+  }
+  if (command.type === 'edit-link') {
+    return command.target.type === 'comment' ? command.target : command.target.target;
+  }
+  return { type: 'task', ref: command.ref };
+}
+
+function nodeSnapshot(
+  root: TaskSnapshot,
+  target: PlanningTarget,
+): TaskSnapshot | SubtaskSnapshot | undefined {
+  if (target.type === 'task') return root;
+  let current: TaskSnapshot | SubtaskSnapshot = root;
+  for (const child of childChain(target)) {
+    const next: SubtaskSnapshot | undefined = current.subtasks.find(
+      (candidate) =>
+        candidate.ref.relativeLine === child.relativeLine &&
+        candidate.ref.originalBlock === child.originalBlock,
+    );
+    if (!next) return undefined;
+    current = next;
+  }
+  return current;
+}
+
+function descriptionLines(
+  lines: readonly string[],
+  rootRelativeLine: number,
+  node: TaskSnapshot | SubtaskSnapshot,
+  rootBlock: TaskRootBlock,
+): readonly number[] {
+  const blockLength =
+    'source' in node
+      ? rootBlock.toLine - rootBlock.line + 1
+      : node.ref.originalBlock.split(/\r?\n/u).length;
+  const childRanges = node.subtasks.map((child) => ({
+    from: child.ref.relativeLine,
+    to: child.ref.relativeLine + child.ref.originalBlock.split(/\r?\n/u).length - 1,
+  }));
+  const result: number[] = [];
+  for (let relative = 1; relative < blockLength; relative++) {
+    if (childRanges.some((range) => relative >= range.from && relative <= range.to)) continue;
+    const rootRelative = rootRelativeLine + relative;
+    if (/^[\s>]*- >(?:\s|$)/u.test(lines[rootBlock.line + rootRelative] ?? '')) {
+      result.push(rootRelative);
+    }
+  }
+  return result;
+}
+
+function commentRelativeLine(
+  parentRelativeLine: number,
+  comment: CommentRef,
+  lines: readonly string[],
+  rootLine: number,
+): number | undefined {
+  const relativeLine = parentRelativeLine + comment.relativeLine;
+  return lines[rootLine + relativeLine] === legacyLine(comment.originalMarkdown)
+    ? relativeLine
+    : undefined;
 }
 
 export class ObsidianTaskRepository implements TaskRepository {
@@ -120,10 +210,7 @@ export class ObsidianTaskRepository implements TaskRepository {
   ) {}
 
   async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
-    const rootRef =
-      command.type === 'patch' || command.type === 'set-status'
-        ? rootRefOf(command.target)
-        : command.ref;
+    const rootRef = rootRefForCommand(command);
     const file = this.app.vault.getAbstractFileByPath(rootRef.filePath);
     if (!(file instanceof TFile)) {
       return { type: 'not-found', target: mutationTarget(command) };
@@ -139,16 +226,29 @@ export class ObsidianTaskRepository implements TaskRepository {
           return content;
         }
 
-        const relativeLine =
-          command.type === 'patch' || command.type === 'set-status'
-            ? confirmedTargetRelativeLine(command.target, located.block)
-            : 0;
+        const nodeTarget = nodeTargetOf(command);
+        const relativeLine = nodeTarget
+          ? confirmedTargetRelativeLine(nodeTarget, located.block)
+          : 0;
         if (relativeLine === undefined) {
           const current = this.snapshotFor(rootRef.filePath, content, located.block);
           result = current
             ? { type: 'conflict', current }
             : { type: 'not-found', target: mutationTarget(command) };
           return content;
+        }
+
+        if (command.type === 'edit-link' && command.target.type !== 'title') {
+          const edit = this.editTextTarget(
+            command,
+            rootRef,
+            content,
+            located.block,
+            relativeLine,
+            nodeTarget,
+          );
+          result = edit.result;
+          return edit.content;
         }
         const lines = content.split(/\r?\n/u);
         const sourceLine = lines[located.block.line + relativeLine];
@@ -205,6 +305,75 @@ export class ObsidianTaskRepository implements TaskRepository {
     );
   }
 
+  private editTextTarget(
+    command: Extract<TaskEditCommand, { readonly type: 'edit-link' }>,
+    rootRef: TaskRef,
+    content: string,
+    block: TaskRootBlock,
+    relativeLine: number,
+    nodeTarget: PlanningTarget | undefined,
+  ): { readonly result: TaskRepositoryResult; readonly content: string } {
+    const current = this.snapshotFor(rootRef.filePath, content, block);
+    const targetNode = nodeTarget ? current && nodeSnapshot(current, nodeTarget) : undefined;
+    if (!current || !targetNode) {
+      return {
+        result: current
+          ? { type: 'conflict', current }
+          : { type: 'not-found', target: mutationTarget(command) },
+        content,
+      };
+    }
+    const lines = content.split(/\r?\n/u);
+    let targetRelativeLine: number | undefined;
+    let occurrence = command.occurrence;
+    if (command.target.type === 'comment') {
+      targetRelativeLine = commentRelativeLine(relativeLine, command.target.ref, lines, block.line);
+      if (targetRelativeLine === undefined) {
+        return { result: { type: 'conflict', current }, content };
+      }
+    } else if (command.target.type === 'description') {
+      for (const candidate of descriptionLines(lines, relativeLine, targetNode, block)) {
+        const linkCount = parseLinks(lines[block.line + candidate] ?? '').length;
+        if (occurrence < linkCount) {
+          targetRelativeLine = candidate;
+          break;
+        }
+        occurrence -= linkCount;
+      }
+    }
+    if (targetRelativeLine === undefined) {
+      return {
+        result: { type: 'invalid', issues: [{ code: 'invalid-target', field: 'link' }] },
+        content,
+      };
+    }
+    const source = lines[block.line + targetRelativeLine] ?? '';
+    const editResult = this.options.codec.editTextLink(source, occurrence, command.replacement);
+    if (editResult.type === 'invalid') return { result: editResult, content };
+    if (editResult.type === 'unchanged') {
+      return {
+        result: { type: 'committed', outcome: { type: 'task', task: current }, changed: false },
+        content,
+      };
+    }
+    const replaced = this.options.editor.replaceLine(
+      content,
+      block,
+      targetRelativeLine,
+      editResult.content,
+    );
+    const task = this.snapshotFor(rootRef.filePath, replaced.content, replaced.block);
+    return task
+      ? {
+          result: { type: 'committed', outcome: { type: 'task', task }, changed: true },
+          content: replaced.content,
+        }
+      : {
+          result: { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] },
+          content,
+        };
+  }
+
   private snapshotFor(
     path: string,
     content: string,
@@ -231,7 +400,13 @@ export class ObsidianTaskRepository implements TaskRepository {
     const root = this.snapshotFor(path, content, block);
     if (!root) return undefined;
     const original = mutationTarget(command);
-    const target = original.type === 'comment' ? original : rebaseNode(original, root.ref);
+    const target =
+      original.type === 'comment'
+        ? {
+            type: 'comment' as const,
+            ref: { ...original.ref, parent: rebaseNode(original.ref.parent, root.ref) },
+          }
+        : rebaseNode(original, root.ref);
     return { root, target };
   }
 

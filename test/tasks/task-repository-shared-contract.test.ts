@@ -67,6 +67,195 @@ function rootRef(harness: ContractHarness, source: string): TaskRef {
 
 for (const adapter of ['in-memory', 'obsidian'] as const) {
   describe(`${adapter} TaskRepository shared contract`, () => {
+    it('replaces and appends root and nested Markdown titles losslessly', async () => {
+      const source =
+        '> - [ ] Old [[Root]] #tag 🧭 opaque 🆔 keep-id ⛔ dep ^block\r\n>   - [ ] Old [[Child]] #child custom\r\n';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'patch',
+          target: { type: 'task', ref: root.ref },
+          patch: { markdownTitle: { type: 'set', value: 'New [root](https://root.test)' } },
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toBe(
+        '> - [ ] New [root](https://root.test) #tag 🧭 opaque 🆔 keep-id ⛔ dep ^block\r\n>   - [ ] Old [[Child]] #child custom\r\n',
+      );
+
+      const changed = await h.read();
+      const child = h.snapshots(changed)[0]!.subtasks[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'append-title',
+          target: { type: 'subtask', ref: child.ref },
+          markdown: '[[attachment.png|image]]',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toContain(
+        '>   - [ ] Old [[Child]] #child custom [[attachment.png|image]]\r\n',
+      );
+    });
+
+    it('edits links only inside the confirmed title, description, or revisioned comment target', async () => {
+      const source =
+        '- [ ] [[TitleA|same]] and [[TitleB|same]] #tag 🆔 keep ⛔ dep ^block\r\n' +
+        '  - > desc [[DescA|same]] and [[DescB|same]]\r\n' +
+        '  - 2026-07-14: comment [[CommentA|same]] and [[CommentB|same]]\r\n';
+      const h = await makeHarness(adapter, source);
+
+      let root = h.snapshots(source)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: { type: 'title', target: { type: 'task', ref: root.ref } },
+          occurrence: 1,
+          replacement: '[[TitleChanged|updated]]',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      let content = await h.read();
+      root = h.snapshots(content)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: { type: 'description', target: { type: 'task', ref: root.ref } },
+          occurrence: 1,
+          replacement: '[updated](https://description.test)',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      content = await h.read();
+      root = h.snapshots(content)[0]!;
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: { type: 'comment', ref: root.comments[0]!.ref },
+          occurrence: 1,
+          replacement: '[[CommentChanged]]',
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+
+      expect(await h.read()).toBe(
+        '- [ ] [[TitleA|same]] and [[TitleChanged|updated]] #tag 🆔 keep ⛔ dep ^block\r\n' +
+          '  - > desc [[DescA|same]] and [updated](https://description.test)\r\n' +
+          '  - 2026-07-14: comment [[CommentA|same]] and [[CommentChanged]]\r\n',
+      );
+    });
+
+    it('rejects stale comments and absent target-scoped occurrences without changing bytes', async () => {
+      const source = '- [ ] root [[Title]]\n  - 2026-07-14: comment [[Comment]]\n';
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: {
+            type: 'comment',
+            ref: { ...root.comments[0]!.ref, originalMarkdown: '  - stale [[Comment]]' },
+          },
+          occurrence: 0,
+          replacement: '[[Changed]]',
+        }),
+      ).resolves.toMatchObject({ type: 'conflict' });
+      await expect(
+        h.repository.edit({
+          type: 'edit-link',
+          target: { type: 'title', target: { type: 'task', ref: root.ref } },
+          occurrence: 1,
+          replacement: '[[Changed]]',
+        }),
+      ).resolves.toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'link' }],
+      });
+      expect(await h.read()).toBe(source);
+    });
+
+    it('rejects multiline title and link inputs without changing bytes', async () => {
+      const source =
+        '- [ ] root [[Title]]\r\n' +
+        '  - > desc [[Description]]\r\n' +
+        '  - 2026-07-14: comment [[Comment]]\r\n';
+      const h = await makeHarness(adapter, source);
+
+      const commands = () => {
+        const root = h.snapshots(source)[0]!;
+        return [
+          {
+            type: 'patch' as const,
+            target: { type: 'task' as const, ref: root.ref },
+            patch: { markdownTitle: { type: 'set' as const, value: 'changed\n- [ ] injected' } },
+          },
+          {
+            type: 'append-title' as const,
+            target: { type: 'task' as const, ref: root.ref },
+            markdown: 'later\rinjected',
+          },
+          {
+            type: 'edit-link' as const,
+            target: { type: 'title' as const, target: { type: 'task' as const, ref: root.ref } },
+            occurrence: 0,
+            replacement: '[[Changed]]\n- [ ] injected',
+          },
+          {
+            type: 'edit-link' as const,
+            target: {
+              type: 'description' as const,
+              target: { type: 'task' as const, ref: root.ref },
+            },
+            occurrence: 0,
+            replacement: '[[Changed]]\rinjected',
+          },
+          {
+            type: 'edit-link' as const,
+            target: { type: 'comment' as const, ref: root.comments[0]!.ref },
+            occurrence: 0,
+            replacement: '[[Changed]]\n- injected',
+          },
+        ];
+      };
+
+      for (const command of commands()) {
+        await expect(h.repository.edit(command)).resolves.toMatchObject({
+          type: 'invalid',
+          issues: [{ code: 'invalid-target' }],
+        });
+        expect(await h.read()).toBe(source);
+      }
+    });
+
+    it('rebases an ambiguous revisioned comment target onto every candidate root', async () => {
+      const block = '- [ ] duplicate\n  - comment [[Link]]';
+      const source = `${block}\n${block}\n`;
+      const h = await makeHarness(adapter, source);
+      const revision = h.snapshots(source)[0]!.ref.revision;
+      const parentRef = { filePath: 'tasks.md', line: 9, revision };
+      const result = await h.repository.edit({
+        type: 'edit-link',
+        target: {
+          type: 'comment',
+          ref: {
+            parent: { type: 'task', ref: parentRef },
+            relativeLine: 1,
+            originalMarkdown: '  - comment [[Link]]',
+          },
+        },
+        occurrence: 0,
+        replacement: '[[Changed]]',
+      });
+
+      expect(result).toMatchObject({
+        type: 'ambiguous',
+        candidates: [
+          { target: { type: 'comment', ref: { parent: { ref: { line: 0 } } } } },
+          { target: { type: 'comment', ref: { parent: { ref: { line: 2 } } } } },
+        ],
+      });
+      expect(await h.read()).toBe(source);
+    });
+
     it('applies status stamps and reopening losslessly', async () => {
       const source = '- [ ] task 🆔 keep-id ⛔ dep ^block\r\n';
       const h = await makeHarness(adapter, source);

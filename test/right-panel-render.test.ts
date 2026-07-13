@@ -151,8 +151,10 @@ describe('RightPanel.renderTask', () => {
 
   it('editing the title and blurring writes back via updateTaskTitle', async () => {
     const fileContent = '- [ ] My task\n';
-    const { state, el, app } = await makePanel({ 'f.md': fileContent });
-    state.set('taskStack', [task({ text: 'My task', rawText: '- [ ] My task' })]);
+    const { panel, state, el, app } = await makePanel({ 'f.md': fileContent });
+    const current = task({ text: 'My task', rawText: '- [ ] My task' });
+    attachCurrentRef(panel, current);
+    state.set('taskStack', [current]);
     const view = el.querySelector<HTMLElement>('.tc-right-title-view')!;
     click(view);
     const ta = el.querySelector<HTMLTextAreaElement>('.tc-right-title-edit')!;

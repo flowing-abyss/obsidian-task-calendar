@@ -1,15 +1,10 @@
 import type { App } from 'obsidian';
 import { Component, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
-import { locatorOf, rewriteLinkInTask, TaskMutationService } from '../mutation';
-import { rewriteNthLink, type LinkToken } from '../parser/links';
+import { locatorOf, TaskMutationService } from '../mutation';
+import type { LinkToken } from '../parser/links';
 import { applySubtaskReorder } from '../parser/subtask-reorder';
-import {
-  formatDurationFromMinutes,
-  formatTaskLine,
-  insertIntoTitleBody,
-  parseDurationToMinutes,
-} from '../parser/TaskParser';
+import { formatDurationFromMinutes, parseDurationToMinutes } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
 import { toStatusRules } from '../settings/statusCatalogAdapter';
@@ -25,10 +20,18 @@ import {
   type TaskApplicationApi,
   type TaskCommandResult,
   type TaskPatch,
+  type TaskTextTarget,
 } from '../tasks';
 import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
+import type { TaskCommand } from '../tasks/domain/commands';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
-import type { SubtaskRef, TaskNodeRef, TaskPriority, TaskRef } from '../tasks/domain/types';
+import type {
+  CommentRef,
+  SubtaskRef,
+  TaskNodeRef,
+  TaskPriority,
+  TaskRef,
+} from '../tasks/domain/types';
 import {
   enableAttachmentDrop,
   enableAttachmentPaste,
@@ -83,6 +86,12 @@ function rebuildPlanningTargetStack(
     current = child;
   }
   return stack;
+}
+
+function commentRefOf(comment: TaskComment): CommentRef | undefined {
+  if (!('ref' in comment)) return undefined;
+  const ref = (comment as TaskComment & { readonly ref?: CommentRef }).ref;
+  return ref && typeof ref === 'object' ? ref : undefined;
 }
 
 export class RightPanel {
@@ -159,33 +168,42 @@ export class RightPanel {
   }
 
   private editLink(task: TaskLike, occ: number, token: LinkToken): void {
+    const target = this.planningTarget(task);
+    if (!target) return;
     new LinkEditModal(
       this.app,
       token,
       (newRaw) => {
-        void rewriteLinkInTask(this.mutations, task, occ, newRaw);
+        void this.executeLinkEdit({ type: 'title', target }, occ, newRaw);
       },
       task.filePath,
     ).open();
   }
 
-  /**
-   * Edit a link that lives inside a free-form string (a description or a comment),
-   * rewriting the Nth occurrence within that string and persisting via `save`.
-   */
+  /** Edit a target-scoped link through the same revision-confirming task API as title edits. */
   private editLinkInString(
-    source: string,
+    target: TaskTextTarget,
     occ: number,
     token: LinkToken,
     sourcePath: string,
-    save: (newText: string) => void,
   ): void {
     new LinkEditModal(
       this.app,
       token,
-      (newRaw) => save(rewriteNthLink(source, occ, newRaw)),
+      (newRaw) => void this.executeLinkEdit(target, occ, newRaw),
       sourcePath,
     ).open();
+  }
+
+  private async executeLinkEdit(
+    target: TaskTextTarget,
+    occurrence: number,
+    replacement: string,
+  ): Promise<void> {
+    if (!this.tasks) return;
+    const result = await this.tasks.execute({ type: 'edit-link', target, occurrence, replacement });
+    const node = target.type === 'comment' ? target.ref.parent : target.target;
+    this.applyPlanningResult(result, node);
   }
 
   /** Description block: rendered markdown (clickable links) that becomes a textarea on click. */
@@ -244,14 +262,12 @@ export class RightPanel {
           app: this.app,
           sourcePath: task.filePath,
           component: this.md,
-          onEditLink: (occ, token) =>
-            this.editLinkInString(
-              desc,
-              occ,
-              token,
-              task.filePath,
-              (t) => void this.updateDescription(task, t),
-            ),
+          onEditLink: (occ, token) => {
+            const target = this.planningTarget(task);
+            if (target) {
+              this.editLinkInString({ type: 'description', target }, occ, token, task.filePath);
+            }
+          },
         });
       } else {
         view.empty();
@@ -706,14 +722,10 @@ export class RightPanel {
         app: this.app,
         sourcePath: task.filePath,
         component: this.md,
-        onEditLink: (occ, token) =>
-          this.editLinkInString(
-            comment.text,
-            occ,
-            token,
-            task.filePath,
-            (t) => void this.updateComment(task, comment, t),
-          ),
+        onEditLink: (occ, token) => {
+          const ref = commentRefOf(comment);
+          if (ref) this.editLinkInString({ type: 'comment', ref }, occ, token, task.filePath);
+        },
       });
       textEl.addEventListener('click', (e) => {
         if ((e.target as HTMLElement).closest('a')) return; // let links navigate
@@ -1023,25 +1035,19 @@ export class RightPanel {
   // ---- Write-back helpers ----
 
   private async updateTaskTitle(task: TaskLike, newText: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const prefixMatch = /^([\s>]*- \[[ xX/]\] )/.exec(line);
-      if (!prefixMatch) return;
-      const prefix = prefixMatch[1] ?? '';
-      const rawAfterPrefix = line.slice(prefix.length);
-      const spaceIdx = rawAfterPrefix.search(/\s[📅⏳🛫✅❌⏰🔁🔺⏫🔼🔽⏬#➕]/u);
-      const suffix = spaceIdx >= 0 ? rawAfterPrefix.slice(spaceIdx) : '';
-      lines[taskLine] = formatTaskLine(prefix + newText + suffix);
-    });
+    const target = this.planningTarget(task);
+    if (!target || !this.tasks) return;
+    const patch = { markdownTitle: { type: 'set' as const, value: newText } };
+    const command = { type: 'patch', target, patch } as TaskCommand;
+    const result = await this.tasks.execute(command);
+    this.applyPlanningResult(result, target);
   }
 
   private async appendToTitle(task: TaskLike, text: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      lines[taskLine] = insertIntoTitleBody(line, text);
-    });
+    const target = this.planningTarget(task);
+    if (!target || !this.tasks) return;
+    const result = await this.tasks.execute({ type: 'append-title', target, markdown: text });
+    this.applyPlanningResult(result, target);
   }
 
   private async updateDescription(task: TaskLike, newDesc: string): Promise<void> {
@@ -1221,7 +1227,7 @@ export class RightPanel {
           : rebuildLegacyTaskStack(root, stack),
       );
     }
-    if (result.changed) this.onSuccessfulMutation?.(initiatingRoot);
+    if (result.changed) this.onSuccessfulMutation?.(result.outcome.task.ref);
   }
 
   private async updateDuration(task: Task, minutes: number): Promise<void> {

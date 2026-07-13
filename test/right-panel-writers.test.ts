@@ -41,7 +41,9 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
       method === 'updatePriority' ||
       method === 'setStatus' ||
       method === 'addTag' ||
-      method === 'removeTag') &&
+      method === 'removeTag' ||
+      method === 'updateTaskTitle' ||
+      method === 'appendToTitle') &&
     typeof candidate === 'object' &&
     candidate !== null &&
     !('ref' in candidate)
@@ -497,7 +499,7 @@ describe('RightPanel planning API delegation', () => {
       await pending;
 
       expect(state.get('taskStack')).toEqual([other]);
-      expect(acknowledge).toHaveBeenCalledWith(rootRef);
+      expect(acknowledge).toHaveBeenCalledWith(freshRootRef);
     },
   );
 });
@@ -537,6 +539,51 @@ describe('RightPanel.formatDate', () => {
 });
 
 describe('RightPanel.updateTaskTitle', () => {
+  it('routes root replacement and nested attachment append through TaskApplicationApi', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] root\n  - [ ] child\n' });
+    const state = new AppState();
+    const rootRef: TaskRef = { filePath: 't.md', line: 0, revision: 'root' };
+    const childRef = {
+      parent: { type: 'task' as const, ref: rootRef },
+      relativeLine: 1,
+      originalBlock: '  - [ ] child',
+    };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'not-found',
+      target: { type: 'task', ref: rootRef },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
+    const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
+    const process = vi.spyOn(app.vault, 'process');
+
+    await call<Promise<void>>(panel, 'updateTaskTitle', root, 'New [[Title]]');
+    await call<Promise<void>>(panel, 'appendToTitle', child, '[[attachment.png|image]]');
+
+    expect(execute.mock.calls.map(([command]) => command)).toEqual([
+      {
+        type: 'patch',
+        target: { type: 'task', ref: rootRef },
+        patch: { markdownTitle: { type: 'set', value: 'New [[Title]]' } },
+      },
+      {
+        type: 'append-title',
+        target: { type: 'subtask', ref: childRef },
+        markdown: '[[attachment.png|image]]',
+      },
+    ]);
+    expect(process).not.toHaveBeenCalled();
+  });
+
   it('acknowledges the initiating root when selection changes during an async write', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -554,9 +601,9 @@ describe('RightPanel.updateTaskTitle', () => {
       await gate;
       return originalProcess(file, transform);
     });
-    const first = Object.assign(task({ filePath: 't.md', line: 0, rawText: '- [ ] old title' }), {
-      ref: { filePath: 't.md', line: 0, revision: 'first' },
-    });
+    const first = legacyTaskViews(
+      (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list(),
+    )[0]!;
     const second = Object.assign(task({ filePath: 'other.md', line: 0 }), {
       ref: { filePath: 'other.md', line: 0, revision: 'second' },
     });
@@ -565,7 +612,10 @@ describe('RightPanel.updateTaskTitle', () => {
     state.set('taskStack', [second]);
     release();
     await pending;
-    expect(acknowledge).toHaveBeenCalledWith(first.ref);
+    expect(acknowledge).toHaveBeenCalledWith(
+      expect.objectContaining({ filePath: 't.md', line: 0 }),
+    );
+    expect(acknowledge.mock.calls[0]?.[0]?.revision).not.toBe(first.ref.revision);
   });
 
   it('acknowledges a successful local write for revision reanchoring', async () => {
@@ -1342,7 +1392,11 @@ describe('openInFile (used by RightPanel)', () => {
 
 describe('RightPanel — blockquote write-path preserves "> " formatting', () => {
   it('updateTaskTitle preserves the blockquote prefix and metadata', async () => {
-    const { panel, app } = await makePanel({ 't.md': '> - [ ] old 📅 2026-06-20' });
+    const { panel, app } = await makePanel(
+      { 't.md': '> - [ ] old 📅 2026-06-20' },
+      DEFAULT_SETTINGS,
+      [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
+    );
     const t = task({
       filePath: 't.md',
       line: 0,
@@ -1350,6 +1404,11 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
       rawText: '> - [ ] old 📅 2026-06-20',
       due: '2026-06-20',
     });
+    const indexed = (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list({
+      filePath: 't.md',
+    })[0];
+    expect(indexed).toBeDefined();
+    Object.assign(t, { ref: indexed!.ref });
     await call<Promise<void>>(panel, 'updateTaskTitle', t, 'new');
     const after = await readMd(app, 't.md');
     expect(after).toBe('> - [ ] new 📅 2026-06-20');

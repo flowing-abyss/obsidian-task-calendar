@@ -6,12 +6,7 @@ import {
   normalizeStatusGroups,
   statusGroupsEqual,
 } from '../app/listViewState';
-import {
-  insertTaskBlockIntoContent,
-  locatorOf,
-  rewriteLinkInTask,
-  TaskMutationService,
-} from '../mutation';
+import { insertTaskBlockIntoContent, locatorOf, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
@@ -2244,11 +2239,18 @@ export class CenterPanel {
   }
 
   private editTaskLink(task: Task, occ: number, token: LinkToken): void {
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
     new LinkEditModal(
       this.app,
       token,
       (newRaw) => {
-        void rewriteLinkInTask(this.mutations, task, occ, newRaw);
+        void this.tasks!.execute({
+          type: 'edit-link',
+          target: { type: 'title', target: { type: 'task', ref } },
+          occurrence: occ,
+          replacement: newRaw,
+        }).then(presentTaskCommandResult);
       },
       task.filePath,
     ).open();

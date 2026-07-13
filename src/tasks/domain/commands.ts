@@ -8,6 +8,7 @@ import type {
   TaskPriority,
   TaskRef,
   TaskSnapshot,
+  TaskTextTarget,
 } from './types';
 import type { TaskIssue } from './validation';
 
@@ -16,6 +17,7 @@ export type FieldUpdate<T> =
   | { readonly type: 'clear' };
 
 export interface TaskPatch {
+  readonly markdownTitle?: FieldUpdate<string>;
   readonly priority?: FieldUpdate<TaskPriority>;
   readonly due?: FieldUpdate<LocalDate>;
   readonly scheduled?: FieldUpdate<LocalDate>;
@@ -51,6 +53,7 @@ export type TaskCommand =
       readonly target: { readonly type: 'subtask'; readonly ref: SubtaskRef };
       readonly patch: SubtaskPatch;
     }
+  | { readonly type: 'append-title'; readonly target: TaskNodeRef; readonly markdown: string }
   | { readonly type: 'set-status'; readonly target: TaskStatusTarget; readonly symbol: string }
   | { readonly type: 'toggle-completion'; readonly target: TaskStatusTarget }
   | { readonly type: 'reschedule'; readonly ref: TaskRef; readonly date: LocalDate }
@@ -68,7 +71,13 @@ export type TaskCommand =
       readonly boundary: 'start' | 'due';
       readonly date: LocalDate;
     }
-  | { readonly type: 'extend-span'; readonly ref: TaskRef; readonly due: LocalDate };
+  | { readonly type: 'extend-span'; readonly ref: TaskRef; readonly due: LocalDate }
+  | {
+      readonly type: 'edit-link';
+      readonly target: TaskTextTarget;
+      readonly occurrence: number;
+      readonly replacement: string;
+    };
 
 export type TaskCommandOutcome = { readonly type: 'task'; readonly task: TaskSnapshot };
 

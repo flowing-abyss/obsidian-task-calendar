@@ -36,7 +36,7 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     reason: 'CenterPanel still performs task deletion directly.',
   },
   'src/panels/RightPanel.ts#RightPanel.constructor#new TaskMutationService#1': {
-    families: ['title/links', 'description/comments/subtasks', 'creation/deletion/movement'],
+    families: ['description/comments/subtasks', 'creation/deletion/movement'],
     reason: 'RightPanel still owns the remaining legacy editor command surface.',
   },
   'src/projects/ProjectManager.ts#ProjectManager.constructor#new TaskMutationService#1': {
@@ -44,7 +44,7 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     reason: 'Project assignment still moves task blocks through the legacy service.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
-    families: ['title/links', 'description/comments/subtasks', 'creation/deletion/movement'],
+    families: ['description/comments/subtasks', 'creation/deletion/movement'],
     reason: 'Shared legacy task-line transaction boundary pending ObsidianTaskRepository.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.moveTaskToFile#vault.process#1': {

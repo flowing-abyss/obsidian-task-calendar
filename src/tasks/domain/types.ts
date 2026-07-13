@@ -47,6 +47,11 @@ export type TaskMutationTarget =
   | TaskNodeRef
   | { readonly type: 'comment'; readonly ref: CommentRef };
 
+export type TaskTextTarget =
+  | { readonly type: 'title'; readonly target: TaskNodeRef }
+  | { readonly type: 'description'; readonly target: TaskNodeRef }
+  | { readonly type: 'comment'; readonly ref: CommentRef };
+
 export interface TaskPlanning {
   readonly due?: LocalDate;
   readonly scheduled?: LocalDate;

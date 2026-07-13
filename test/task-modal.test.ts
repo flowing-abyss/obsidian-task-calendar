@@ -1,6 +1,7 @@
 import type { App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppState } from '../src/app/AppState';
+import type { TaskApplicationApi } from '../src/tasks';
 import { task } from './helpers';
 
 // vi.hoisted runs BEFORE vi.mock factory execution, avoiding TDZ.
@@ -12,11 +13,20 @@ const mockState = vi.hoisted(() => ({
   // Captures the AppState instance TaskModal constructs for RightPanel, so tests can
   // inspect taskStack after simulating a store update (RightPanel itself is mocked out).
   capturedState: null as AppState | null,
+  capturedTasks: undefined as TaskApplicationApi | undefined,
 }));
 
 vi.mock('../src/panels/RightPanel', () => ({
-  RightPanel: vi.fn().mockImplementation(function (this: unknown, state: AppState) {
+  RightPanel: vi.fn().mockImplementation(function (
+    this: unknown,
+    state: AppState,
+    _app: App,
+    _settings: unknown,
+    _onSuccessfulMutation: unknown,
+    tasks: TaskApplicationApi | undefined,
+  ) {
     mockState.capturedState = state;
+    mockState.capturedTasks = tasks;
     return {
       mount: (el: HTMLElement) => {
         mockState.mountImpl(el);
@@ -45,6 +55,7 @@ describe('TaskModal', () => {
     mockState.destroyImpl.mockClear();
     mockState.includeHeaderActions.value = true;
     mockState.capturedState = null;
+    mockState.capturedTasks = undefined;
     modal = new TaskModal(app);
   });
 
@@ -68,6 +79,26 @@ describe('TaskModal', () => {
     it('RightPanel constructed and mount called on panelEl', () => {
       modal.open(task());
       expect(mockState.mountImpl).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes the shared task API into the modal RightPanel', () => {
+      const tasks = {
+        queries: {
+          list: () => [],
+          forCalendarDates: () => [],
+          resolve: (ref: import('../src/tasks/domain/types').TaskRef) => ({
+            type: 'not-found' as const,
+            ref,
+          }),
+          subscribe: () => () => {},
+        },
+        execute: vi.fn(),
+      } satisfies TaskApplicationApi;
+      modal = new TaskModal(app, undefined, undefined, tasks.queries, tasks);
+
+      modal.open(task());
+
+      expect(mockState.capturedTasks).toBe(tasks);
     });
 
     it('close button has tc-right-action-btn tc-modal-close-btn class', () => {

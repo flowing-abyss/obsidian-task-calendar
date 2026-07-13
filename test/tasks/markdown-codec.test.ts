@@ -35,6 +35,34 @@ function expectLosslessPartition(parsed: ParsedTaskLine): void {
 describe('TaskMarkdownCodec', () => {
   describe('lossless line edits', () => {
     it.each([
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed\n- [ ] injected' }, 'title'],
+      ['append-title', { type: 'append-title', markdown: 'later\rinjected' }, 'title'],
+      [
+        'title edit-link',
+        { type: 'edit-link', occurrence: 0, replacement: '[[Changed]]\n- [ ] injected' },
+        'link',
+      ],
+    ] as const)(
+      'rejects multiline input through %s without changing the task line',
+      (_type, edit, field) => {
+        expect(codec.applyLineEdit('- [ ] Task [[Link]]', edit)).toEqual({
+          type: 'invalid',
+          issues: [{ code: 'invalid-target', field }],
+        });
+      },
+    );
+
+    it.each(['[[Changed]]\n- [ ] injected', '[[Changed]]\rinjected'])(
+      'rejects multiline text-link replacement %j without changing the source',
+      (replacement) => {
+        expect(codec.editTextLink('before [[Link]] after', 0, replacement)).toEqual({
+          type: 'invalid',
+          issues: [{ code: 'invalid-target', field: 'link' }],
+        });
+      },
+    );
+
+    it.each([
       ['set-title', { type: 'set-title', markdownTitle: 'Changed 📅 nope' }, 'due', 'invalid-date'],
       ['append-title', { type: 'append-title', markdown: '📅 nope' }, 'due', 'invalid-date'],
       [
@@ -211,6 +239,74 @@ describe('TaskMarkdownCodec', () => {
         type: 'changed',
         content:
           '- [ ] New [title](https://example.test) #work 🆔 keep-me ⛔ a,b ⏰ 08:00 📅 2026-07-20 ^block',
+      });
+    });
+
+    it('replaces only the selected title link occurrence without reconstructing the line', () => {
+      const source =
+        '> - [ ] [[Doc#Heading|same]]#tag [[Doc^block|same]] 🧭 opaque 🆔 keep-id ⛔ dep [[After|same]] ^block\r\n';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'edit-link',
+          occurrence: 1,
+          replacement: '[[Changed^anchor|updated]]',
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '> - [ ] [[Doc#Heading|same]]#tag [[Changed^anchor|updated]] 🧭 opaque 🆔 keep-id ⛔ dep [[After|same]] ^block\r\n',
+      });
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'edit-link',
+          occurrence: 2,
+          replacement: '[[AfterChanged]]',
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '> - [ ] [[Doc#Heading|same]]#tag [[Doc^block|same]] 🧭 opaque 🆔 keep-id ⛔ dep [[AfterChanged]] ^block\r\n',
+      });
+    });
+
+    it.each([
+      ['- [ ] [[Calendar 📅 2026-07-20|date]] 📅 2026-08-01', '- [ ] [[Changed]] 📅 2026-08-01'],
+      ['- [ ] [[Doc|time ⏰ 09:00]] ⏰ 10:00', '- [ ] [[Changed]] ⏰ 10:00'],
+      ['- [ ] [[Doc|ID 🆔 keep]] 🆔 real-id', '- [ ] [[Changed]] 🆔 real-id'],
+    ])(
+      'treats metadata-looking text inside a title link as atomic while preserving real metadata',
+      (source, expected) => {
+        expect(
+          codec.applyLineEdit(source, {
+            type: 'edit-link',
+            occurrence: 0,
+            replacement: '[[Changed]]',
+          }),
+        ).toEqual({ type: 'changed', content: expected });
+      },
+    );
+
+    it('rejects an absent title-link occurrence and keeps embeds and escaped lookalikes uncounted', () => {
+      const source = '- [ ] ![[embed.png]] \\[[escaped]] [[Real]]';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'edit-link',
+          occurrence: 0,
+          replacement: '[[Changed]]',
+        }),
+      ).toEqual({ type: 'changed', content: '- [ ] ![[embed.png]] \\[[escaped]] [[Changed]]' });
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'edit-link',
+          occurrence: 1,
+          replacement: '[[Changed]]',
+        }),
+      ).toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'link' }],
       });
     });
 

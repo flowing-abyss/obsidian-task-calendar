@@ -4,7 +4,6 @@ import {
   countLinksIn,
   pairAnchorsToTokens,
   parseLinks,
-  rewriteNthLink,
   type LinkToken,
 } from '../src/parser/links';
 
@@ -53,17 +52,26 @@ describe('parseLinks', () => {
     expect(toks).toHaveLength(1);
     expect(toks[0]).toMatchObject({ type: 'md', target: 'http://y', display: 'real' });
   });
-});
 
-describe('rewriteNthLink', () => {
-  it('replaces the Nth link occurrence only', () => {
-    const line = '- [ ] see [[A]] and [[B]] 📅 2026-07-01';
-    expect(rewriteNthLink(line, 1, '[[B|beta]]')).toBe(
-      '- [ ] see [[A]] and [[B|beta]] 📅 2026-07-01',
+  it('ignores escaped link lookalikes while retaining headings, block refs, and aliases', () => {
+    const toks = parseLinks(
+      String.raw`\[[escaped]] \[escaped](https://x) [[Doc#Heading|same]] [[Doc^block|same]]`,
     );
-    expect(rewriteNthLink(line, 0, '[[A|alpha]]')).toBe(
-      '- [ ] see [[A|alpha]] and [[B]] 📅 2026-07-01',
-    );
+    expect(toks).toHaveLength(2);
+    expect(toks[0]).toMatchObject({ target: 'Doc#Heading', display: 'same' });
+    expect(toks[1]).toMatchObject({ target: 'Doc^block', display: 'same' });
+  });
+
+  it('keeps escaped closing delimiters inside Markdown link labels and destinations', () => {
+    expect(parseLinks(String.raw`[la\]bel](https://example.test/a\)b)`)).toEqual([
+      {
+        raw: String.raw`[la\]bel](https://example.test/a\)b)`,
+        type: 'md',
+        target: String.raw`https://example.test/a\)b`,
+        display: String.raw`la\]bel`,
+        index: 0,
+      },
+    ]);
   });
 });
 
