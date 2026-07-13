@@ -11,7 +11,6 @@ import {
 import { collapseLinks } from './links';
 import type { ParseContext, Task } from './types';
 
-const TAGS_RE = /#[\w/-]+/gu;
 const PRIORITY_MARKER: Readonly<Record<TaskPriority, string>> = {
   A: '🔺',
   B: '⏫',
@@ -30,19 +29,16 @@ const FIRST_ONLY_KINDS = new Set<TaskSpanKind>([
   'duration',
 ]);
 
-function compatibilityMarkdownTitle(
-  parsed: ParsedTaskLine,
-  globalTaskFilter: string | undefined,
-): string {
+function compatibilityMarkdownTitle(parsed: ParsedTaskLine): string {
   const firstByKind = new Map<TaskSpanKind, SourceSpan>();
   for (const span of parsed.spans) {
     if (!firstByKind.has(span.kind)) firstByKind.set(span.kind, span);
   }
 
-  let markdown = parsed.spans
+  return parsed.spans
     .map((span) => {
       if (span.kind === 'prefix') return '';
-      if (span.kind === 'tag') return parsed.original.slice(span.from, span.to);
+      if (span.kind === 'tag') return '';
       if (isLegacyTaskRecurrenceSpanConsumed(parsed, span)) return '';
       if (FIRST_ONLY_KINDS.has(span.kind)) {
         return firstByKind.get(span.kind) === span ? '' : parsed.original.slice(span.from, span.to);
@@ -53,11 +49,7 @@ function compatibilityMarkdownTitle(
       }
       return parsed.original.slice(span.from, span.to);
     })
-    .join('');
-
-  if (globalTaskFilter) markdown = markdown.split(globalTaskFilter).join('');
-  return markdown
-    .replace(TAGS_RE, '')
+    .join('')
     .replace(/\s{2,}/gu, ' ')
     .trim();
 }
@@ -68,7 +60,7 @@ export function legacyTaskFromParsed(
   ctx: ParseContext,
   statusForSymbol: (symbol: string) => Task['status'],
 ): Task {
-  const markdownText = compatibilityMarkdownTitle(parsed, ctx.globalTaskFilter);
+  const markdownText = compatibilityMarkdownTitle(parsed);
   let status = statusForSymbol(parsed.statusSymbol);
   if (parsed.planning.cancelled !== undefined) status = 'cancelled';
 

@@ -325,14 +325,14 @@ describe('parseTask', () => {
     expect(t?.text).toBe('Tabbed task');
   });
 
-  it('corrupts a partial-overlap tag when stripping global filter (CURRENT BEHAVIOR, follow-up FU-2)', () => {
+  it('removes a canonical longer tag without partial global-filter corruption', () => {
     const t = parseTask('- [ ] #task/x Buy', {
       filePath: 'f.md',
       line: 0,
       globalTaskFilter: '#task',
     });
-    // split('#task').join('') removes the '#task' prefix of '#task/x', leaving '/x Buy'
-    expect(t?.text).toBe('/x Buy');
+    expect(t?.text).toBe('Buy');
+    expect(t?.markdownText).toBe('Buy');
   });
 
   it('cancelled emoji overrides a done checkbox to cancelled', () => {
@@ -482,5 +482,15 @@ describe('markdownText preserves link markup', () => {
   it('markdownText has no leftover tags or metadata emoji', () => {
     const t = parseTask('- [ ] Plain task #task 📅 2026-07-01', ctx)!;
     expect(t.markdownText).toBe('Plain task');
+  });
+
+  it('preserves inline-code tag lookalikes while removing only canonical tag spans', () => {
+    const t = parseTask('- [ ] Task `#task` #real #real', {
+      ...ctx,
+      globalTaskFilter: '#task',
+    })!;
+
+    expect(t.markdownText).toBe('Task `#task`');
+    expect(t.text).toBe('Task `#task`');
   });
 });

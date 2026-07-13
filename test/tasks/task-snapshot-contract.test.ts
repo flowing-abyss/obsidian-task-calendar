@@ -40,6 +40,28 @@ async function snapshotIndex(content: string): Promise<{
 }
 
 describe('TaskSnapshot contract', () => {
+  it('keeps inline-code tag lookalikes in root and nested titles while exposing only real tags', async () => {
+    const content = [
+      '- [ ] root `#inline` #real #real',
+      '  - [ ] child ``code ` #nested`` #child #child',
+    ].join('\n');
+    const { index } = await snapshotIndex(content);
+
+    expect(index.list()[0]).toMatchObject({
+      markdownTitle: 'root `#inline`',
+      title: 'root `#inline`',
+      tags: ['#real', '#real'],
+      subtasks: [
+        {
+          markdownTitle: 'child ``code ` #nested``',
+          title: 'child ``code ` #nested``',
+          tags: ['#child', '#child'],
+        },
+      ],
+    });
+    index.destroy();
+  });
+
   it('returns detached arrays, task objects, nested values, and calendar buckets', async () => {
     const content = [
       '- [ ] root #tag 📅 2026-07-13',
