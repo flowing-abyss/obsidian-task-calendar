@@ -214,6 +214,66 @@ describe('TaskMarkdownCodec', () => {
       });
     });
 
+    it('sets the title fragment after a repository-leading tag without retaining the old title', () => {
+      const source = '- [ ] #task/one-off Buy milk 📅 2026-06-24';
+      const result = codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' });
+
+      expect(result).toEqual({
+        type: 'changed',
+        content: '- [ ] #task/one-off New 📅 2026-06-24',
+      });
+      expect(parse((result as Extract<typeof result, { type: 'changed' }>).content)).toMatchObject({
+        markdownTitle: 'New',
+        tags: ['#task/one-off'],
+        planning: { due: '2026-06-24' },
+      });
+    });
+
+    it('appends after the last title fragment following a repository-leading tag', () => {
+      const source = '- [ ] #task/one-off Buy milk 📅 2026-06-24';
+      const result = codec.applyLineEdit(source, { type: 'append-title', markdown: 'later' });
+
+      expect(result).toEqual({
+        type: 'changed',
+        content: '- [ ] #task/one-off Buy milk later 📅 2026-06-24',
+      });
+      expect(parse((result as Extract<typeof result, { type: 'changed' }>).content)).toMatchObject({
+        markdownTitle: 'Buy milk later',
+        tags: ['#task/one-off'],
+        planning: { due: '2026-06-24' },
+      });
+    });
+
+    it('sets an interleaved-tag title by replacing the first fragment and removing later fragments', () => {
+      const source = '- [ ] Buy #shop milk 📅 2026-06-24';
+      const result = codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' });
+
+      expect(result).toEqual({
+        type: 'changed',
+        content: '- [ ] New #shop 📅 2026-06-24',
+      });
+      expect(parse((result as Extract<typeof result, { type: 'changed' }>).content)).toMatchObject({
+        markdownTitle: 'New',
+        tags: ['#shop'],
+        planning: { due: '2026-06-24' },
+      });
+    });
+
+    it('appends after the last interleaved-tag title fragment', () => {
+      const source = '- [ ] Buy #shop milk 📅 2026-06-24';
+      const result = codec.applyLineEdit(source, { type: 'append-title', markdown: 'later' });
+
+      expect(result).toEqual({
+        type: 'changed',
+        content: '- [ ] Buy #shop milk later 📅 2026-06-24',
+      });
+      expect(parse((result as Extract<typeof result, { type: 'changed' }>).content)).toMatchObject({
+        markdownTitle: 'Buy milk later',
+        tags: ['#shop'],
+        planning: { due: '2026-06-24' },
+      });
+    });
+
     it('replaces only the editable title and preserves unrelated malformed and unknown spans', () => {
       const source =
         '- [ ] Old title 🧭 north 🆔 bad.id ⛔ one,,two 📅 nope ⏰ 9:5 ⏱️ nope #work 🆔 keep-id ⛔ dep-1 ^block';

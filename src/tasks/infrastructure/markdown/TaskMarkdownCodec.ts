@@ -476,40 +476,60 @@ export class TaskMarkdownCodec {
     return token === null ? parsed.original : insertToken(parsed, kind, token);
   }
 
-  private editableTitleRange(parsed: ParsedTaskLine): SourceSpan {
+  private editableTitleFragments(parsed: ParsedTaskLine): readonly SourceSpan[] {
     const contentEnd = parsed.original.length - parsed.lineEnding.length;
     const bodySpans = parsed.spans.filter(
       (span) => span.kind !== 'prefix' && !(span.kind === 'separator' && span.from === contentEnd),
     );
-    const protectedAt = bodySpans.findIndex(
-      (span) => span.kind !== 'title' && span.kind !== 'separator',
-    );
-    const editableSpans = bodySpans
-      .slice(0, protectedAt < 0 ? bodySpans.length : protectedAt)
-      .filter((span) => span.kind === 'title');
-    const first = editableSpans[0];
-    const last = editableSpans[editableSpans.length - 1];
-    if (first && last) return { kind: 'title', from: first.from, to: last.to };
-    const at = protectedAt < 0 ? contentEnd : bodySpans[protectedAt]!.from;
-    return { kind: 'title', from: at, to: at };
+    const fragments: SourceSpan[] = [];
+    let fragmentFrom: number | undefined;
+    let fragmentTo: number | undefined;
+    for (const span of bodySpans) {
+      if (span.kind === 'title') {
+        fragmentFrom ??= span.from;
+        fragmentTo = span.to;
+        continue;
+      }
+      if (span.kind === 'separator') continue;
+      if (fragmentFrom !== undefined && fragmentTo !== undefined) {
+        fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
+        fragmentFrom = undefined;
+        fragmentTo = undefined;
+      }
+      if (span.kind === 'unknown') break;
+    }
+    if (fragmentFrom !== undefined && fragmentTo !== undefined) {
+      fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
+    }
+    return fragments;
   }
 
   private replaceTitle(parsed: ParsedTaskLine, markdownTitle: string): string {
-    const range = this.editableTitleRange(parsed);
-    if (range.from !== range.to) {
-      return spliceSource(parsed.original, range.from, range.to, markdownTitle);
+    const fragments = this.editableTitleFragments(parsed);
+    const first = fragments[0];
+    if (first) {
+      let content = parsed.original;
+      for (const fragment of fragments.slice(1).reverse()) {
+        content = removeSpan(content, fragment);
+      }
+      return spliceSource(content, first.from, first.to, markdownTitle);
     }
+
     const contentEnd = parsed.original.length - parsed.lineEnding.length;
-    const left = /\s/u.test(parsed.original[range.from - 1] ?? '') ? '' : ' ';
-    const right =
-      /\s/u.test(parsed.original[range.from] ?? '') || range.from === contentEnd ? '' : ' ';
-    return spliceSource(parsed.original, range.from, range.to, `${left}${markdownTitle}${right}`);
+    const firstProtected = parsed.spans.find(
+      (span) => span.kind !== 'prefix' && span.kind !== 'separator',
+    );
+    const at = firstProtected?.from ?? contentEnd;
+    const left = /\s/u.test(parsed.original[at - 1] ?? '') ? '' : ' ';
+    const right = /\s/u.test(parsed.original[at] ?? '') || at === contentEnd ? '' : ' ';
+    return spliceSource(parsed.original, at, at, `${left}${markdownTitle}${right}`);
   }
 
   private appendTitle(parsed: ParsedTaskLine, markdown: string): string {
-    const range = this.editableTitleRange(parsed);
-    if (range.from === range.to) return this.replaceTitle(parsed, markdown);
-    return spliceSource(parsed.original, range.to, range.to, ` ${markdown}`);
+    const fragments = this.editableTitleFragments(parsed);
+    const last = fragments[fragments.length - 1];
+    if (!last) return this.replaceTitle(parsed, markdown);
+    return spliceSource(parsed.original, last.to, last.to, ` ${markdown}`);
   }
 
   private introducedTitleIssues(
