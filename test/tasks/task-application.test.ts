@@ -6,7 +6,7 @@ import type {
   TaskRepositoryResult,
 } from '../../src/tasks/application/TaskRepository';
 import type { TaskRef, TaskSnapshot } from '../../src/tasks/domain/types';
-import { localDate } from '../../src/tasks/domain/validation';
+import { durationMinutes, localDate, localTime } from '../../src/tasks/domain/validation';
 
 const ref: TaskRef = { filePath: 'tasks.md', line: 0, revision: 'block:test' };
 
@@ -92,5 +92,39 @@ describe('TaskApplicationService planning commands', () => {
       cause: 'repository-error',
       contentState: 'unknown',
     });
+  });
+
+  it.each([
+    {
+      type: 'set-time-slot' as const,
+      ref,
+      date: localDate('2026-07-21'),
+      time: localTime('09:30'),
+      duration: durationMinutes(90),
+    },
+    { type: 'convert-to-all-day' as const, ref, date: localDate('2026-07-21') },
+    {
+      type: 'set-span-boundary' as const,
+      ref,
+      boundary: 'start' as const,
+      date: localDate('2026-07-19'),
+    },
+    { type: 'extend-span' as const, ref, due: localDate('2026-07-22') },
+  ])('delegates the semantic $type command unchanged', async (command) => {
+    const committed: TaskRepositoryResult = {
+      type: 'committed',
+      outcome: { type: 'task', task: snapshot() },
+      changed: true,
+    };
+    const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
+    const service = new TaskApplicationService(queries(), { edit });
+
+    await expect(service.execute(command)).resolves.toEqual({
+      type: 'ok',
+      outcome: committed.outcome,
+      changed: true,
+    });
+    expect(edit).toHaveBeenCalledOnce();
+    expect(edit).toHaveBeenCalledWith(command);
   });
 });

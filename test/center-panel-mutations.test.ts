@@ -6,17 +6,19 @@ import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
 import type { TaskApplicationApi } from '../src/tasks';
+import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
+import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskRef } from '../src/tasks/domain/types';
-import {
-  createAppWithFiles,
-  makeCenterPanelForTest,
-  makeStubStore,
-  task,
-  useRealMoment,
-} from './helpers';
+import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
+import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
+import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
+import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
+import { createAppWithFiles, makeStubStore, task, useRealMoment } from './helpers';
 
 useRealMoment();
 
@@ -36,11 +38,57 @@ async function makePanel(
   extraTasks: Task[] = [],
 ): Promise<{ panel: CenterPanel; app: App }> {
   const app = await createAppWithFiles(files);
+  const statusCatalog = new StatusCatalog(toStatusRules(DEFAULT_SETTINGS.taskStatuses));
+  const index = new TaskIndex(app, {
+    statusCatalog,
+    dailyNoteFormat: DEFAULT_SETTINGS.desktop.dailyNoteFormat,
+  });
+  for (const current of extraTasks) {
+    const snapshot = index
+      .snapshotsFromContent(current.filePath, files[current.filePath] ?? '')
+      .find((candidate) => candidate.source.line === current.line);
+    if (snapshot) Object.assign(current, { ref: snapshot.ref });
+  }
   const state = new AppState();
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
   const store = makeStubStore(extraTasks, app) as unknown as TaskStore;
-  const panel = makeCenterPanelForTest(state, store, app, DEFAULT_SETTINGS, tm);
+  const snapshots = Object.entries(files).flatMap(([path, content]) =>
+    index.snapshotsFromContent(path, content),
+  );
+  const queries: TaskApplicationApi['queries'] = {
+    list: (query) =>
+      snapshots.filter(
+        (snapshot) => query?.filePath === undefined || snapshot.ref.filePath === query.filePath,
+      ),
+    forCalendarDates: () => snapshots,
+    resolve: (ref) => {
+      const found = snapshots.find(
+        (snapshot) => snapshot.ref.filePath === ref.filePath && snapshot.ref.line === ref.line,
+      );
+      return found ? { type: 'exact', task: found } : { type: 'not-found', ref };
+    },
+    subscribe: () => () => {},
+  };
+  const repository = new ObsidianTaskRepository(app, {
+    codec: new TaskMarkdownCodec(statusCatalog),
+    editor: new TaskBlockEditor(),
+    locator: new TaskLocator(),
+    snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
+  });
+  const tasks = new TaskApplicationService(queries, repository);
+  const panel = new CenterPanel(
+    state,
+    store,
+    app,
+    DEFAULT_SETTINGS,
+    tm,
+    queries,
+    undefined,
+    null,
+    null,
+    tasks,
+  );
   return { panel, app };
 }
 
@@ -104,15 +152,119 @@ describe('CenterPanel planning API delegation', () => {
       patch: { due: { type: 'set', value: moment().format('YYYY-MM-DD') } },
     });
     expect(execute).toHaveBeenNthCalledWith(3, {
-      type: 'patch',
-      target: { type: 'task', ref },
-      patch: { start: { type: 'set', value: '2026-07-18' } },
+      type: 'set-span-boundary',
+      ref,
+      boundary: 'start',
+      date: '2026-07-18',
     });
     expect(execute).toHaveBeenNthCalledWith(4, {
-      type: 'patch',
-      target: { type: 'task', ref },
-      patch: { due: { type: 'set', value: '2026-07-22' } },
+      type: 'set-span-boundary',
+      ref,
+      boundary: 'due',
+      date: '2026-07-22',
     });
+    expect(process).not.toHaveBeenCalled();
+  });
+
+  it('routes every time/span gesture through one typed command without touching the vault', async () => {
+    const app = await createAppWithFiles({
+      'f.md': '- [ ] task 📅 2026-07-20 ⏰ 09:00 ⏱️ 1h\n',
+    });
+    const state = new AppState();
+    const ref: TaskRef = { filePath: 'f.md', line: 0, revision: 'r' };
+    const current = Object.assign(
+      task({
+        filePath: 'f.md',
+        line: 0,
+        rawText: '- [ ] task 📅 2026-07-20 ⏰ 09:00 ⏱️ 1h',
+        due: '2026-07-20',
+        time: '09:00',
+        duration: 60,
+      }),
+      { ref },
+    );
+    const store = makeStubStore([current], app) as unknown as TaskStore;
+    const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
+      .taskQueries;
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'not-found',
+      target: { type: 'task', ref },
+    });
+    const panel = new CenterPanel(
+      state,
+      store,
+      app,
+      DEFAULT_SETTINGS,
+      new TagManager(null as never, DEFAULT_SETTINGS, vi.fn()),
+      queries,
+      undefined,
+      null,
+      null,
+      { queries, execute },
+    );
+    vi.spyOn(queries, 'list').mockReturnValue([
+      {
+        ref,
+        title: 'task',
+        markdownTitle: 'task',
+        status: 'open',
+        statusSymbol: ' ',
+        priority: 'D',
+        planning: { due: '2026-07-20', time: '09:00', duration: 60 } as never,
+        tags: [],
+        subtasks: [],
+        comments: [],
+        source: {
+          filePath: 'f.md',
+          line: 0,
+          originalMarkdown: '- [ ] task 📅 2026-07-20 ⏰ 09:00 ⏱️ 1h',
+        },
+        presentation: { linkCount: 0 },
+      },
+    ]);
+    const process = vi.spyOn(app.vault, 'process');
+
+    await callPrivate(panel, 'setTaskTimeFromDrop', 'f.md:::0', '2026-07-21', '10:15');
+    await callPrivate(panel, 'updateTaskTime', current, 11 * 60 + 30);
+    await callPrivate(panel, 'updateTaskDuration', current, 90);
+    await callPrivate(panel, 'updateTaskStart', current, '2026-07-19');
+    await callPrivate(panel, 'rescheduleTaskDue', current, '2026-07-22');
+    await callPrivate(panel, 'extendTaskToSpan', current, '2026-07-23');
+    await callPrivate(panel, 'rescheduleTask', 'f.md:::0', '2026-07-24');
+
+    expect(execute.mock.calls.map(([command]) => command)).toEqual([
+      {
+        type: 'set-time-slot',
+        ref,
+        date: '2026-07-21',
+        time: '10:15',
+      },
+      {
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { time: { type: 'set', value: '11:30' } },
+      },
+      {
+        type: 'patch',
+        target: { type: 'task', ref },
+        patch: { duration: { type: 'set', value: 90 } },
+      },
+      {
+        type: 'set-span-boundary',
+        ref,
+        boundary: 'start',
+        date: '2026-07-19',
+      },
+      {
+        type: 'set-span-boundary',
+        ref,
+        boundary: 'due',
+        date: '2026-07-22',
+      },
+      { type: 'extend-span', ref, due: '2026-07-23' },
+      { type: 'convert-to-all-day', ref, date: '2026-07-24' },
+    ]);
+    expect(execute).toHaveBeenCalledTimes(7);
     expect(process).not.toHaveBeenCalled();
   });
 });

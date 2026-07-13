@@ -16,7 +16,13 @@ import type { CalendarSettings, ResolvedConfig } from '../src/settings/types';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskStore } from '../src/store/TaskStore';
 import type { TagManager } from '../src/tags/TagManager';
-import type { LocalDate, TaskIndexEvent, TaskQueryApi, TaskSnapshot } from '../src/tasks';
+import type {
+  LocalDate,
+  TaskApplicationApi,
+  TaskIndexEvent,
+  TaskQueryApi,
+  TaskSnapshot,
+} from '../src/tasks';
 import type { TaskQuery } from '../src/tasks/application/TaskApplicationApi';
 import { legacyTaskViews } from '../src/tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
@@ -149,6 +155,7 @@ export function makeCenterPanelForTest(
   onSaveSettings: () => Promise<void> = async () => {},
   projectStore: ProjectStore | null = null,
   projectManager: ProjectManager | null = null,
+  tasks?: TaskApplicationApi,
 ): CenterPanel {
   return new CenterPanel(
     state,
@@ -160,6 +167,7 @@ export function makeCenterPanelForTest(
     onSaveSettings,
     projectStore,
     projectManager,
+    tasks,
   );
 }
 

@@ -6,7 +6,9 @@ import {
   type ParsedTaskLine,
 } from './TaskMarkdownCodec';
 
-function fieldEdit(field: 'due' | 'scheduled' | 'start', update: FieldUpdate<string>): LineEdit {
+type SchedulingDateField = 'due' | 'scheduled' | 'start';
+
+function fieldEdit(field: SchedulingDateField, update: FieldUpdate<string>): LineEdit {
   return {
     type: 'set-date',
     field,
@@ -29,7 +31,32 @@ function orderedPatchEdits(parsed: ParsedTaskLine, patch: TaskPatch): readonly L
     if (start) edits.push(fieldEdit('start', start));
     if (due) edits.push(fieldEdit('due', due));
   }
+  if (patch.time) {
+    edits.push({
+      type: 'set-time',
+      value: patch.time.type === 'set' ? patch.time.value : null,
+    });
+  }
+  if (patch.duration) {
+    edits.push({
+      type: 'set-duration',
+      value: patch.duration.type === 'set' ? patch.duration.value : null,
+    });
+  }
   return edits;
+}
+
+function anchorDateField(parsed: ParsedTaskLine): 'scheduled' | 'due' {
+  return parsed.planning.scheduled ? 'scheduled' : 'due';
+}
+
+function semanticSchedulingFields(
+  parsed: ParsedTaskLine,
+  anchor: 'scheduled' | 'due',
+): readonly SchedulingDateField[] {
+  return parsed.planning.start !== undefined && parsed.planning.due !== undefined
+    ? [anchor, 'start', 'due']
+    : [anchor];
 }
 
 /** Applies one planning command to a task line without exposing transient intermediate states. */
@@ -42,34 +69,66 @@ export function applyPlanningCommand(
   if (!parsed) return { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
 
   let edits: readonly LineEdit[];
-  if (command.type === 'reschedule') {
-    edits = [
-      {
-        type: 'set-date',
-        field: parsed.planning.scheduled ? 'scheduled' : 'due',
-        value: command.date,
-      },
-    ];
-  } else {
-    const start = command.patch.start?.type === 'set' ? command.patch.start.value : undefined;
-    const due = command.patch.due?.type === 'set' ? command.patch.due.value : undefined;
-    if (start !== undefined && due !== undefined && start > due) {
-      return { type: 'invalid', issues: [{ code: 'inverted-span', field: 'start,due' }] };
+  let requestedFields: readonly SchedulingDateField[] = [];
+  switch (command.type) {
+    case 'patch': {
+      const start = command.patch.start?.type === 'set' ? command.patch.start.value : undefined;
+      const due = command.patch.due?.type === 'set' ? command.patch.due.value : undefined;
+      if (start !== undefined && due !== undefined && start > due) {
+        return { type: 'invalid', issues: [{ code: 'inverted-span', field: 'start,due' }] };
+      }
+      if (command.target.type === 'subtask' && 'duration' in command.patch) {
+        return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'duration' }] };
+      }
+      edits = orderedPatchEdits(parsed, command.patch);
+      break;
     }
-    edits = orderedPatchEdits(parsed, command.patch);
-  }
-
-  let current = sourceLine;
-  let changed = false;
-  for (const edit of edits) {
-    const result = codec.applyLineEdit(current, edit);
-    if (result.type === 'invalid') return result;
-    if (result.type === 'changed') {
-      current = result.content;
-      changed = true;
+    case 'reschedule': {
+      const field = anchorDateField(parsed);
+      requestedFields = semanticSchedulingFields(parsed, field);
+      edits = [{ type: 'set-date', field, value: command.date }];
+      break;
+    }
+    case 'set-time-slot': {
+      const field = anchorDateField(parsed);
+      requestedFields = semanticSchedulingFields(parsed, field);
+      edits = [
+        { type: 'set-date', field, value: command.date },
+        { type: 'set-time', value: command.time },
+        ...(command.duration === undefined
+          ? []
+          : ([{ type: 'set-duration', value: command.duration }] as const)),
+      ];
+      break;
+    }
+    case 'convert-to-all-day': {
+      const field = anchorDateField(parsed);
+      requestedFields = semanticSchedulingFields(parsed, field);
+      edits = [
+        { type: 'set-date', field, value: command.date },
+        { type: 'set-time', value: null },
+        { type: 'set-duration', value: null },
+      ];
+      break;
+    }
+    case 'set-span-boundary':
+      requestedFields = [command.boundary];
+      edits = [{ type: 'set-date', field: command.boundary, value: command.date }];
+      break;
+    case 'extend-span': {
+      const anchor = parsed.planning.start ?? parsed.planning.scheduled ?? parsed.planning.due;
+      if (!anchor) {
+        return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'span-anchor' }] };
+      }
+      requestedFields = ['start', 'due'];
+      edits = [
+        ...(parsed.planning.start
+          ? []
+          : ([{ type: 'set-date', field: 'start', value: anchor }] as const)),
+        { type: 'set-date', field: 'due', value: command.due },
+      ];
+      break;
     }
   }
-  return changed
-    ? { type: 'changed', content: current }
-    : { type: 'unchanged', content: sourceLine };
+  return codec.applyLineEdits(sourceLine, edits, requestedFields);
 }

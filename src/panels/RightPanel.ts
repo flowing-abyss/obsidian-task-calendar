@@ -17,8 +17,11 @@ import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
 import { colorForTag } from '../tags/tagColor';
 import {
+  durationMinutes,
   localDate,
+  localTime,
   type PlanningTarget,
+  type SubtaskPatch,
   type TaskApplicationApi,
   type TaskCommandResult,
   type TaskPatch,
@@ -1194,7 +1197,13 @@ export class RightPanel {
     if (!target || !this.tasks) return;
     let result: TaskCommandResult;
     try {
-      result = await this.tasks.execute({ type: 'patch', target, patch });
+      if (target.type === 'task') {
+        result = await this.tasks.execute({ type: 'patch', target, patch });
+      } else {
+        if (patch.duration !== undefined) return;
+        const subtaskPatch: SubtaskPatch = patch;
+        result = await this.tasks.execute({ type: 'patch', target, patch: subtaskPatch });
+      }
     } catch {
       return;
     }
@@ -1220,27 +1229,17 @@ export class RightPanel {
   }
 
   private async updateDuration(task: Task, minutes: number): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const token = `⏱️ ${formatDurationFromMinutes(minutes)}`;
-      const withDuration = task.duration
-        ? line.replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/u, token)
-        : line.trimEnd() + ` ${token}`;
-      lines[taskLine] = formatTaskLine(withDuration);
-    });
+    try {
+      await this.executePlanningPatch(task, {
+        duration: { type: 'set', value: durationMinutes(minutes) },
+      });
+    } catch {
+      // Invalid input leaves the existing duration unchanged.
+    }
   }
 
   private async clearDuration(task: Task): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const stripped = line
-        .replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/u, '')
-        .replace(/\s{2,}/gu, ' ')
-        .trimEnd();
-      lines[taskLine] = formatTaskLine(stripped);
-    });
+    await this.executePlanningPatch(task, { duration: { type: 'clear' } });
   }
 
   private async updatePriority(task: TaskLike, priority: string): Promise<void> {
@@ -1342,13 +1341,13 @@ export class RightPanel {
   }
 
   private async updateTime(task: TaskLike, time: string): Promise<void> {
-    await this.mutations.applyToLines(locatorOf(task), (lines, taskLine) => {
-      const line = lines[taskLine];
-      if (!line) return;
-      const withoutTime = line.replace(/⏰\s*\d{1,2}:\d{2}/gu, '').replace(/\s{2,}/gu, ' ');
-      const withTime = time ? `${withoutTime.trimEnd()} ⏰ ${time}` : withoutTime.trim();
-      lines[taskLine] = formatTaskLine(withTime);
-    });
+    try {
+      await this.executePlanningPatch(task, {
+        time: time ? { type: 'set', value: localTime(time) } : { type: 'clear' },
+      });
+    } catch {
+      // Invalid input leaves the existing time unchanged.
+    }
   }
 
   private renderContextMenu(task: TaskLike, anchor: HTMLElement): void {

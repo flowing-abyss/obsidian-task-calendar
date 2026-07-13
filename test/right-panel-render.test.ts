@@ -379,21 +379,38 @@ describe('RightPanel popovers', () => {
     expect(durationInput.value).toBe('1h30m');
   });
 
-  it('editing the duration input writes ⏱️ to the file via updateDuration', async () => {
+  it('editing the duration input sends one validated duration patch', async () => {
     const app = await createAppWithFiles({ 'f.md': '- [ ] T ⏰ 15:00' });
     const state = new AppState();
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS);
+    const ref: TaskRef = { filePath: 'f.md', line: 0, revision: 'r' };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'not-found',
+      target: { type: 'task', ref },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
     const el = freshContainer();
     panel.mount(el);
     state.set('taskStack', [
-      task({
-        filePath: 'f.md',
-        line: 0,
-        text: 'T',
-        time: '15:00',
-        duration: undefined, // real parseTask output always has this key, even when unset
-        rawText: '- [ ] T ⏰ 15:00',
-      }),
+      Object.assign(
+        task({
+          filePath: 'f.md',
+          line: 0,
+          text: 'T',
+          time: '15:00',
+          duration: undefined, // real parseTask output always has this key, even when unset
+          rawText: '- [ ] T ⏰ 15:00',
+        }),
+        { ref },
+      ),
     ]);
     const chip = el.querySelector<HTMLElement>('.tc-chip-time')!;
     click(chip);
@@ -401,8 +418,12 @@ describe('RightPanel popovers', () => {
     durationInput.value = '2h';
     durationInput.dispatchEvent(new Event('change', { bubbles: true }));
     await flushMicrotasks();
-    const content = await readMd(app, 'f.md');
-    expect(content).toContain('⏱️ 2h');
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith({
+      type: 'patch',
+      target: { type: 'task', ref },
+      patch: { duration: { type: 'set', value: 120 } },
+    });
   });
 
   it('the duration input does not render for a SubTask (no duration field)', async () => {

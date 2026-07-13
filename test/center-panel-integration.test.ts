@@ -5,8 +5,16 @@ import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
+import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../src/settings/types';
 import { TaskStore } from '../src/store/TaskStore';
+import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
+import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
+import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
+import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
+import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
+import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 import { TodayView } from '../src/views/TodayView';
 import { WeekTimeGridView } from '../src/views/WeekTimeGridView';
 import {
@@ -19,6 +27,7 @@ import {
   readStoreTasks,
   seedTaskCache,
   task,
+  taskQueriesOf,
   useRealMoment,
 } from './helpers';
 
@@ -60,7 +69,31 @@ async function makePanel(
   const store = new TaskStore(app, settings);
   await store.initialize();
   const state = new AppState();
-  const panel = makeCenterPanelForTest(state, store, app, settings, null as never);
+  const statusCatalog = new StatusCatalog(toStatusRules(settings.taskStatuses));
+  const index = new TaskIndex(app, {
+    statusCatalog,
+    dailyNoteFormat: settings.desktop.dailyNoteFormat,
+  });
+  const tasks = new TaskApplicationService(
+    taskQueriesOf(store),
+    new ObsidianTaskRepository(app, {
+      codec: new TaskMarkdownCodec(statusCatalog),
+      editor: new TaskBlockEditor(),
+      locator: new TaskLocator(),
+      snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
+    }),
+  );
+  const panel = makeCenterPanelForTest(
+    state,
+    store,
+    app,
+    settings,
+    null as never,
+    undefined,
+    null,
+    null,
+    tasks,
+  );
   return { panel, state, store, app };
 }
 

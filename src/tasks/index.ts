@@ -4,6 +4,6 @@ export type {
   TaskQueryApi,
   TaskResolution,
 } from './application/TaskApplicationApi';
-export type { PlanningTarget, TaskCommandResult, TaskPatch } from './domain/commands';
+export type { PlanningTarget, SubtaskPatch, TaskCommandResult, TaskPatch } from './domain/commands';
 export type { LocalDate, TaskPriority, TaskSnapshot } from './domain/types';
-export { localDate } from './domain/validation';
+export { durationMinutes, localDate, localTime } from './domain/validation';

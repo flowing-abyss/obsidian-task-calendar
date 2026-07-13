@@ -795,6 +795,39 @@ export class TaskMarkdownCodec {
     return { type: 'changed', content: prepared.content };
   }
 
+  /** Applies correlated field edits as one candidate and validates only the final state. */
+  applyLineEdits(
+    original: string,
+    edits: readonly LineEdit[],
+    requestedFields: readonly TaskValidationField[] = [],
+  ): LineEditResult {
+    const before = this.parseLine(original, { filePath: '', line: 0 });
+    if (!before) return invalid('invalid-task-syntax');
+
+    let current = before;
+    let content = original;
+    const changedFields = new Set<TaskValidationField>(requestedFields);
+    for (const edit of edits) {
+      const prepared = this.prepareLineEdit(current, edit);
+      if (prepared.type === 'invalid') return prepared;
+      if (prepared.type === 'unchanged') continue;
+      content = prepared.content;
+      for (const field of prepared.fields) changedFields.add(field);
+      const reparsed = this.parseLine(content, { filePath: '', line: 0 });
+      if (!reparsed) return invalid('invalid-task-syntax');
+      if (edit.type === 'set-title' || edit.type === 'append-title') {
+        const titleIssues = this.introducedTitleIssues(current, reparsed);
+        if (titleIssues.length > 0) return { type: 'invalid', issues: titleIssues };
+      }
+      current = reparsed;
+    }
+    const issues = validateTaskChange(this.validationState(current), changedFields);
+    if (issues.length > 0) return { type: 'invalid', issues };
+    return content === original
+      ? { type: 'unchanged', content: original }
+      : { type: 'changed', content };
+  }
+
   parseLine(original: string, source: ParseSource): ParsedTaskLine | null {
     const lineEnding = lineEndingOf(original);
     const contentEnd = original.length - lineEnding.length;

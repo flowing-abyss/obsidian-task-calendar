@@ -4,7 +4,6 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 type OperationFamily =
-  | 'time/spans'
   | 'status/priority'
   | 'per-task tags'
   | 'title/links'
@@ -37,19 +36,18 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     reason: 'TaskStore owns the legacy calendar/list status and priority command facade.',
   },
   'src/panels/CenterPanel.ts#CenterPanel.constructor#new TaskMutationService#1': {
-    families: ['time/spans', 'creation/deletion/movement'],
-    reason: 'CenterPanel still performs time/span gestures and task deletion directly.',
+    families: ['creation/deletion/movement'],
+    reason: 'CenterPanel still performs task deletion directly.',
   },
   'src/panels/RightPanel.ts#RightPanel.constructor#new TaskMutationService#1': {
     families: [
-      'time/spans',
       'status/priority',
       'per-task tags',
       'title/links',
       'description/comments/subtasks',
       'creation/deletion/movement',
     ],
-    reason: 'RightPanel still owns time/span and the remaining legacy editor command surface.',
+    reason: 'RightPanel still owns the remaining legacy editor command surface.',
   },
   'src/tags/TagManager.ts#TagManager.constructor#new TaskMutationService#1': {
     families: ['per-task tags'],
@@ -61,7 +59,6 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
     families: [
-      'time/spans',
       'status/priority',
       'per-task tags',
       'title/links',

@@ -4,7 +4,7 @@ import { TFile, type App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
-import type { SubTask, Task, TaskComment } from '../src/parser/types';
+import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
 import type { TaskApplicationApi, TaskCommandResult, TaskSnapshot } from '../src/tasks';
@@ -211,6 +211,70 @@ describe('RightPanel planning API delegation', () => {
       target: { type: 'task', ref },
       patch: { due: { type: 'clear' } },
     });
+  });
+
+  it('routes root duration and root/subtask time edits through one typed patch each', async () => {
+    const app = await createAppWithFiles({ 't.md': '- [ ] task\n  - [ ] child\n' });
+    const state = new AppState();
+    const rootRef: TaskRef = { filePath: 't.md', line: 0, revision: 'r' };
+    const childRef = {
+      parent: { type: 'task' as const, ref: rootRef },
+      relativeLine: 1,
+      originalBlock: '  - [ ] child',
+    };
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'not-found',
+      target: { type: 'task', ref: rootRef },
+    });
+    const tasks: TaskApplicationApi = {
+      queries: {
+        list: () => [],
+        forCalendarDates: () => [],
+        resolve: (target) => ({ type: 'not-found', ref: target }),
+        subscribe: () => () => {},
+      },
+      execute,
+    };
+    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
+    const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
+    const process = vi.spyOn(app.vault, 'process');
+
+    await call(panel, 'updateTime', root, '14:30');
+    await call(panel, 'updateTime', child, '15:45');
+    await call(panel, 'updateTime', child, '');
+    await call(panel, 'updateDuration', root, 90);
+    await call(panel, 'clearDuration', root);
+
+    expect(execute.mock.calls.map(([command]) => command)).toEqual([
+      {
+        type: 'patch',
+        target: { type: 'task', ref: rootRef },
+        patch: { time: { type: 'set', value: '14:30' } },
+      },
+      {
+        type: 'patch',
+        target: { type: 'subtask', ref: childRef },
+        patch: { time: { type: 'set', value: '15:45' } },
+      },
+      {
+        type: 'patch',
+        target: { type: 'subtask', ref: childRef },
+        patch: { time: { type: 'clear' } },
+      },
+      {
+        type: 'patch',
+        target: { type: 'task', ref: rootRef },
+        patch: { duration: { type: 'set', value: 90 } },
+      },
+      {
+        type: 'patch',
+        target: { type: 'task', ref: rootRef },
+        patch: { duration: { type: 'clear' } },
+      },
+    ]);
+    expect(execute).toHaveBeenCalledTimes(5);
+    expect(process).not.toHaveBeenCalled();
   });
 
   it('keeps the edited nested task selected from the returned fresh aggregate', async () => {
@@ -899,45 +963,6 @@ describe('RightPanel.deleteComment', () => {
   });
 });
 
-describe('RightPanel duration writers', () => {
-  it('updateDuration writes ⏱️ in shortest form', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] t ⏰ 15:00' });
-    const t: Task = task({
-      filePath: 't.md',
-      line: 0,
-      text: 't',
-      rawText: '- [ ] t ⏰ 15:00',
-      time: '15:00',
-    });
-    await call<Promise<void>>(panel, 'updateDuration', t, 90);
-    const content = await readMd(app, 't.md');
-    expect(content).toContain('⏱️ 1h30m');
-  });
-
-  it('clearDuration strips ⏱️', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] t ⏰ 15:00 ⏱️ 1h30m' });
-    const t: Task = task({
-      filePath: 't.md',
-      line: 0,
-      text: 't',
-      rawText: '- [ ] t ⏰ 15:00 ⏱️ 1h30m',
-      time: '15:00',
-      duration: 90,
-    });
-    await call<Promise<void>>(panel, 'clearDuration', t);
-    const content = await readMd(app, 't.md');
-    expect(content).not.toContain('⏱️');
-    expect(content).toContain('⏰ 15:00');
-  });
-
-  it('file not found → no-op for updateDuration/clearDuration', async () => {
-    const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t: Task = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'updateDuration', t, 30)).resolves.toBeUndefined();
-    await expect(call<Promise<void>>(panel, 'clearDuration', t)).resolves.toBeUndefined();
-  });
-});
-
 describe('RightPanel.updatePriority', () => {
   it('A → appends 🔺 (highest)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
@@ -1126,52 +1151,6 @@ describe('RightPanel.addTag', () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
     const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
     await expect(call<Promise<void>>(panel, 'addTag', t, 'work')).resolves.toBeUndefined();
-  });
-});
-
-describe('RightPanel.updateTime', () => {
-  it('set time on a line with no existing time', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
-    await call<Promise<void>>(panel, 'updateTime', t, '14:30');
-    const after = await readMd(app, 't.md');
-    expect(after).toContain('⏰ 14:30');
-  });
-
-  it('replace existing time', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] task ⏰ 09:00' });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task ⏰ 09:00',
-      time: '09:00',
-    });
-    await call<Promise<void>>(panel, 'updateTime', t, '14:30');
-    const after = await readMd(app, 't.md');
-    expect(after).toContain('⏰ 14:30');
-    expect(after).not.toContain('09:00');
-  });
-
-  it('clear time (empty string) removes ⏰', async () => {
-    const { panel, app } = await makePanel({ 't.md': '- [ ] task ⏰ 09:00' });
-    const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task ⏰ 09:00',
-      time: '09:00',
-    });
-    await call<Promise<void>>(panel, 'updateTime', t, '');
-    const after = await readMd(app, 't.md');
-    expect(after).not.toContain('⏰');
-    expect(after).not.toContain('09:00');
-  });
-
-  it('file not found → no-op', async () => {
-    const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    await expect(call<Promise<void>>(panel, 'updateTime', t, '14:30')).resolves.toBeUndefined();
   });
 });
 

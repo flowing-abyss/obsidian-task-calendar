@@ -1,24 +1,59 @@
-import type { LocalDate, SubtaskRef, TaskMutationTarget, TaskRef, TaskSnapshot } from './types';
+import type {
+  DurationMinutes,
+  LocalDate,
+  LocalTime,
+  SubtaskRef,
+  TaskMutationTarget,
+  TaskRef,
+  TaskSnapshot,
+} from './types';
 import type { TaskIssue } from './validation';
 
 export type FieldUpdate<T> =
   | { readonly type: 'set'; readonly value: T }
   | { readonly type: 'clear' };
 
-/** The planning fields with current production consumers in Task 5A. */
 export interface TaskPatch {
   readonly due?: FieldUpdate<LocalDate>;
   readonly scheduled?: FieldUpdate<LocalDate>;
   readonly start?: FieldUpdate<LocalDate>;
+  readonly time?: FieldUpdate<LocalTime>;
+  readonly duration?: FieldUpdate<DurationMinutes>;
 }
+
+export type SubtaskPatch = Omit<TaskPatch, 'duration'>;
 
 export type PlanningTarget =
   | { readonly type: 'task'; readonly ref: TaskRef }
   | { readonly type: 'subtask'; readonly ref: SubtaskRef };
 
 export type TaskCommand =
-  | { readonly type: 'patch'; readonly target: PlanningTarget; readonly patch: TaskPatch }
-  | { readonly type: 'reschedule'; readonly ref: TaskRef; readonly date: LocalDate };
+  | {
+      readonly type: 'patch';
+      readonly target: { readonly type: 'task'; readonly ref: TaskRef };
+      readonly patch: TaskPatch;
+    }
+  | {
+      readonly type: 'patch';
+      readonly target: { readonly type: 'subtask'; readonly ref: SubtaskRef };
+      readonly patch: SubtaskPatch;
+    }
+  | { readonly type: 'reschedule'; readonly ref: TaskRef; readonly date: LocalDate }
+  | {
+      readonly type: 'set-time-slot';
+      readonly ref: TaskRef;
+      readonly date: LocalDate;
+      readonly time: LocalTime;
+      readonly duration?: DurationMinutes;
+    }
+  | { readonly type: 'convert-to-all-day'; readonly ref: TaskRef; readonly date: LocalDate }
+  | {
+      readonly type: 'set-span-boundary';
+      readonly ref: TaskRef;
+      readonly boundary: 'start' | 'due';
+      readonly date: LocalDate;
+    }
+  | { readonly type: 'extend-span'; readonly ref: TaskRef; readonly due: LocalDate };
 
 export type TaskCommandOutcome = { readonly type: 'task'; readonly task: TaskSnapshot };
 

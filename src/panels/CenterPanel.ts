@@ -12,7 +12,6 @@ import {
   rewriteLinkInTask,
   TaskMutationService,
 } from '../mutation';
-import { formatDurationFromMinutes, formatTaskLine } from '../parser/TaskParser';
 import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
@@ -30,7 +29,14 @@ import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/
 import type { TaskStore } from '../store/TaskStore';
 import type { TagManager } from '../tags/TagManager';
 import { searchTaskList, selectTaskList } from '../task-lists/TaskListSelector';
-import { localDate, type LocalDate, type TaskApplicationApi, type TaskQueryApi } from '../tasks';
+import {
+  durationMinutes,
+  localDate,
+  localTime,
+  type LocalDate,
+  type TaskApplicationApi,
+  type TaskQueryApi,
+} from '../tasks';
 import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
@@ -2095,40 +2101,17 @@ export class CenterPanel {
     if (!task) return;
 
     const ref = taskRefOf(task);
-    if (ref && this.tasks && !task.time) {
-      try {
-        presentTaskCommandResult(
-          await this.tasks.execute({ type: 'reschedule', ref, date: localDate(targetDate) }),
-        );
-      } catch {
-        // The date comes from calendar controls; an invalid value is ignored like the legacy path.
-      }
-      return;
+    if (!ref || !this.tasks) return;
+    try {
+      const date = localDate(targetDate);
+      presentTaskCommandResult(
+        await this.tasks.execute(
+          task.time ? { type: 'convert-to-all-day', ref, date } : { type: 'reschedule', ref, date },
+        ),
+      );
+    } catch {
+      // Calendar controls supply the date; malformed gesture input remains a no-op.
     }
-
-    await this.mutations.applyValidatedLineMutation(locatorOf(task), (tl) => {
-      let updated: string;
-      if (task.scheduled) {
-        updated = tl.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${targetDate}`);
-      } else if (task.due) {
-        updated = tl.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${targetDate}`);
-      } else {
-        updated = tl.trimEnd() + ` 📅 ${targetDate}`;
-      }
-      // Task 26: this same generic onDrop path now also receives drops of previously-timed
-      // hour-grid blocks onto the all-day/"No-time" row (see renderTimedBlocks.ts's new
-      // draggable="true" + dragstart). Landing on the all-day row means "no longer timed" —
-      // the inverse of Round 2 Task 8's setTaskTimeFromDrop — so strip ⏰/⏱️ here rather than
-      // leaving a stale time on a task that now renders as an all-day item.
-      if (task.time) {
-        updated = updated
-          .replace(/⏰\s*\d{1,2}:\d{2}/u, '')
-          .replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/u, '')
-          .replace(/\s{2,}/gu, ' ')
-          .trimEnd();
-      }
-      return formatTaskLine(updated);
-    });
   }
 
   private async setTaskTimeFromDrop(dragData: string, date: string, time: string): Promise<void> {
@@ -2141,101 +2124,103 @@ export class CenterPanel {
     const task = legacyTaskViews(this.queries.list({ filePath })).find((t) => t.line === line);
     if (!task) return;
 
-    await this.mutations.applyValidatedLineMutation(locatorOf(task), (tl) => {
-      let updated: string;
-      if (task.scheduled) {
-        updated = tl.replace(/⏳\s*\d{4}-\d{2}-\d{2}/u, `⏳ ${date}`);
-      } else if (task.due) {
-        updated = tl.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${date}`);
-      } else {
-        updated = tl.trimEnd() + ` 📅 ${date}`;
-      }
-      updated = task.time
-        ? updated.replace(/⏰\s*\d{1,2}:\d{2}/u, `⏰ ${time}`)
-        : updated.trimEnd() + ` ⏰ ${time}`;
-      return formatTaskLine(updated);
-    });
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    try {
+      presentTaskCommandResult(
+        await this.tasks.execute({
+          type: 'set-time-slot',
+          ref,
+          date: localDate(date),
+          time: localTime(time),
+        }),
+      );
+    } catch {
+      // A malformed drag payload is ignored without touching the task.
+    }
   }
 
   private async updateTaskTime(task: Task, newStartMinutes: number): Promise<void> {
-    const newTime = minutesToTimeString(newStartMinutes);
-    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
-      const withTime = task.time
-        ? line.replace(/⏰\s*\d{1,2}:\d{2}/u, `⏰ ${newTime}`)
-        : line.trimEnd() + ` ⏰ ${newTime}`;
-      return formatTaskLine(withTime);
-    });
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    try {
+      presentTaskCommandResult(
+        await this.tasks.execute({
+          type: 'patch',
+          target: { type: 'task', ref },
+          patch: { time: { type: 'set', value: localTime(minutesToTimeString(newStartMinutes)) } },
+        }),
+      );
+    } catch {
+      // Keep the previous valid time when gesture arithmetic is out of range.
+    }
   }
 
   private async updateTaskDuration(task: Task, newDurationMinutes: number): Promise<void> {
-    const token = `⏱️ ${formatDurationFromMinutes(newDurationMinutes)}`;
-    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
-      const withDuration = task.duration
-        ? line.replace(/⏱️\s*(?:\d+h)?(?:\d+m)?/u, token)
-        : line.trimEnd() + ` ${token}`;
-      return formatTaskLine(withDuration);
-    });
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    try {
+      presentTaskCommandResult(
+        await this.tasks.execute({
+          type: 'patch',
+          target: { type: 'task', ref },
+          patch: {
+            duration: { type: 'set', value: durationMinutes(newDurationMinutes) },
+          },
+        }),
+      );
+    } catch {
+      // Keep the previous valid duration when gesture arithmetic is invalid.
+    }
   }
 
   private async updateTaskStart(task: Task, newStart: string): Promise<void> {
     const ref = taskRefOf(task);
     if (!ref || !this.tasks) return;
-    presentTaskCommandResult(
-      await this.tasks.execute({
-        type: 'patch',
-        target: { type: 'task', ref },
-        patch: { start: { type: 'set', value: localDate(newStart) } },
-      }),
-    );
+    try {
+      presentTaskCommandResult(
+        await this.tasks.execute({
+          type: 'set-span-boundary',
+          ref,
+          boundary: 'start',
+          date: localDate(newStart),
+        }),
+      );
+    } catch {
+      // Calendar controls supply the boundary; malformed input remains a no-op.
+    }
   }
 
   private async rescheduleTaskDue(task: Task, newDue: string): Promise<void> {
     const ref = taskRefOf(task);
     if (!ref || !this.tasks) return;
-    presentTaskCommandResult(
-      await this.tasks.execute({
-        type: 'patch',
-        target: { type: 'task', ref },
-        patch: { due: { type: 'set', value: localDate(newDue) } },
-      }),
-    );
+    try {
+      presentTaskCommandResult(
+        await this.tasks.execute({
+          type: 'set-span-boundary',
+          ref,
+          boundary: 'due',
+          date: localDate(newDue),
+        }),
+      );
+    } catch {
+      // Calendar controls supply the boundary; malformed input remains a no-op.
+    }
   }
 
-  // A plain task has no `start` yet, so extending it into a span needs both ends
-  // written in one mutation: the task's own current anchor is frozen as the new
-  // `start`, and `due` moves to the dragged-to date.
-  //
-  // Bug fix (review): this used to require `task.due` unconditionally, silently no-opping (no
-  // mutation, no feedback) for a scheduled-only task — a completely normal, fully-interactive
-  // timed block per TodayView.ts's `bucketTasksForDate` own anchor rule (`t.scheduled ?? t.due`
-  // for a non-span task), reachable via both the keyboard ArrowRight handler's fallback chain
-  // AND the mouse-driven right-edge drag (same callback). The anchor to freeze as `start` must
-  // follow that SAME `scheduled ?? due` priority (matching bucketTasksForDate exactly — its anchor
-  // computation for a non-span task is unconditional on `scheduled ?? due`, it does not fall back
-  // to `due` first just because `due` happens to be set too). Verified by hand via the Obsidian
-  // CLI: an earlier version of this fix used `due ?? scheduled` (due wins) here, which combined
-  // with the keyboard handler's OWN (correct) `scheduled`-first date computation to produce an
-  // invalid, reversed span for a task with distinct `scheduled`+`due` (e.g. froze `due` 2026-07-17
-  // as `start` while writing 2026-07-13 as the new `due` — a span that ends before it starts).
-  // `scheduled ?? due` here keeps the frozen anchor consistent with whichever date the keyboard/
-  // mouse gesture actually computed the new `due` from. Since a scheduled-only task's line has no
-  // pre-existing 📅 token to `.replace()`, the new due must be *appended* rather than replaced when
-  // `task.due` is absent, mirroring `updateTaskStart`'s/`rescheduleTaskDue`'s own append-vs-replace
-  // convention above. The result (both `start` and `due` set) is exactly the shape
-  // `bucketTasksForDate` classifies as a span, so it renders correctly as one on the next read.
+  // The semantic command freezes the effective scheduled/due anchor when start is absent and
+  // validates the final span atomically; presentation supplies only the dragged-to edge.
   private async extendTaskToSpan(task: Task, newDue: string): Promise<void> {
-    const originalAnchor = task.scheduled ?? task.due;
-    if (!originalAnchor) return;
-    await this.mutations.applyValidatedLineMutation(locatorOf(task), (line) => {
-      // A task that already spans (has a start) is being re-extended, not extended for the
-      // first time — only append a fresh 🛫 when one isn't already present, so re-dragging an
-      // already-spanning block's anchor never appends a second, extraneous 🛫 token.
-      const withStart = task.start ? line : line.trimEnd() + ` 🛫 ${originalAnchor}`;
-      const withDue = task.due
-        ? withStart.replace(/📅\s*\d{4}-\d{2}-\d{2}/u, `📅 ${newDue}`)
-        : withStart.trimEnd() + ` 📅 ${newDue}`;
-      return formatTaskLine(withDue);
-    });
+    if (!(task.start ?? task.scheduled ?? task.due)) return;
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    try {
+      presentTaskCommandResult(
+        await this.tasks.execute({ type: 'extend-span', ref, due: localDate(newDue) }),
+      );
+    } catch {
+      // Calendar controls supply the boundary; malformed input remains a no-op.
+    }
   }
 
   private editTaskLink(task: Task, occ: number, token: LinkToken): void {

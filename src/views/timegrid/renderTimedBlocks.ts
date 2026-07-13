@@ -58,9 +58,8 @@ const SNAP_MINUTES = 15;
 // comes back `undefined`, and the task drops out of every time-based view while the garbage text
 // leaks into the visible title. Clamping here keeps every value this module ever *computes*
 // inside a single real calendar day, so it can never produce that class of value in the first
-// place — the safety net in `TaskMutationService.applyValidatedLineMutation` is the last line of
-// defense for anything that still slips through (a different future bug, manual data corruption,
-// etc.), not the first one.
+// place — the validated TaskApplicationApi command is the last line of defense for anything that
+// still slips through, not the first one.
 const MAX_START_MINUTES = 24 * 60 - SNAP_MINUTES; // 23:45 — the last valid quarter-hour slot.
 const MAX_DURATION_MINUTES = 24 * 60; // A full day is already a generous, unambiguous cap.
 
@@ -308,9 +307,8 @@ export function renderTimedBlocksForDay(
     // give the block `tabindex="0"` and nudge its time by one snap increment (the same
     // SNAP_MINUTES the pointer-drag/live-preview above already use) while it has focus, up =
     // earlier, down = later. Routes through the SAME `onTimeChange` callback pointer-drag
-    // commits through (Task 33's `applyValidatedLineMutation` safety net lives one layer up, in
-    // whatever wires `onTimeChange` — see CenterPanel.ts's `handleTimeChange` — so this
-    // inherits it automatically rather than needing its own mutation path).
+    // commits through (the validated TaskApplicationApi command lives one layer up in whatever
+    // wires `onTimeChange`, so this inherits it rather than needing its own mutation path).
     // Task 49: ArrowLeft/ArrowRight extended onto the same handler — see
     // attachKeyboardNudge's own doc comment for the day-resolution/mutation-routing details.
     attachKeyboardNudge(block, p.startMinutes, callbacks, p.task);
@@ -427,16 +425,14 @@ export function renderTimedSpanContinuation(
  *
  * Reuses `callbacks.onTimeChange` — the SAME callback the vertical pointer-drag commits
  * through — so this automatically inherits whatever mutation path that's wired to (in practice,
- * CenterPanel.ts's `handleTimeChange` -> `updateTaskTime` -> `TaskMutationService`'s
- * `applyValidatedLineMutation`, Task 33's validate-before-write safety net) without needing its
- * own mutation call here.
+ * CenterPanel.ts's `handleTimeChange` -> `updateTaskTime` -> TaskApplicationApi) without needing
+ * its own mutation call here.
  *
  * Task 49: ArrowLeft/ArrowRight extend the same handler onto the horizontal (day-crossing)
  * resize the mouse-driven edge handles below already perform — reusing `callbacks.onStartChange`/
  * `callbacks.onExtendToSpan` (the EXACT same callback references `attachHorizontalResize` commits
- * through) rather than adding a parallel mutation path, so this inherits the identical
- * `applyValidatedLineMutation` safety net one layer up (CenterPanel.ts's `handleStartChange`/
- * `handleExtendToSpan` -> `updateTaskStart`/`extendTaskToSpan`).
+ * through) rather than adding a parallel mutation path, so this inherits the identical validated
+ * command boundary one layer up.
  *
  * The mouse-driven edges resolve "which day" from the pointer's on-release position
  * (`elementFromPoint`) — there is no equivalent pointer position for a keypress, so the day is
