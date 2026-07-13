@@ -23,6 +23,13 @@ describe('duration parsing', () => {
     });
   });
 
+  it('rejects clearing a recognized malformed zero-minute duration instead of returning unchanged', () => {
+    expect(codec.applyLineEdit('- [ ] gym ⏱️ 0m', { type: 'set-duration', value: null })).toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-duration', field: 'duration' }],
+    });
+  });
+
   it('parses hours+minutes combined', () => {
     expect(parseDurationToMinutes('1h30m')).toBe(90);
   });

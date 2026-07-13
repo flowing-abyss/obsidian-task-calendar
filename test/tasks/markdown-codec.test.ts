@@ -34,6 +34,104 @@ function expectLosslessPartition(parsed: ParsedTaskLine): void {
 
 describe('TaskMarkdownCodec', () => {
   describe('lossless line edits', () => {
+    it.each([
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed 📅 nope' }, 'due', 'invalid-date'],
+      ['append-title', { type: 'append-title', markdown: '📅 nope' }, 'due', 'invalid-date'],
+      [
+        'set-title',
+        { type: 'set-title', markdownTitle: 'Changed ⏰ 2093:15' },
+        'time',
+        'invalid-time',
+      ],
+      ['append-title', { type: 'append-title', markdown: '⏰ 2093:15' }, 'time', 'invalid-time'],
+      [
+        'set-title',
+        { type: 'set-title', markdownTitle: 'Changed ⏱️ nope' },
+        'duration',
+        'invalid-duration',
+      ],
+      [
+        'append-title',
+        { type: 'append-title', markdown: '⏱️ nope' },
+        'duration',
+        'invalid-duration',
+      ],
+    ] as const)('rejects invalid metadata introduced through %s', (_type, edit, field, code) => {
+      expect(codec.applyLineEdit('- [ ] Task', edit)).toEqual({
+        type: 'invalid',
+        issues: [{ code, field }],
+      });
+    });
+
+    it.each([
+      [
+        'set-title',
+        '- [ ] Task 📅 2026-07-20',
+        { type: 'set-title', markdownTitle: 'Changed 📅 2026-07-21' },
+        'due',
+      ],
+      [
+        'append-title',
+        '- [ ] Task 📅 2026-07-20',
+        { type: 'append-title', markdown: '📅 2026-07-21' },
+        'due',
+      ],
+      [
+        'set-title',
+        '- [ ] Task ⏰ 08:00',
+        { type: 'set-title', markdownTitle: 'Changed ⏰ 09:00' },
+        'time',
+      ],
+      [
+        'append-title',
+        '- [ ] Task ⏰ 08:00',
+        { type: 'append-title', markdown: '⏰ 09:00' },
+        'time',
+      ],
+      [
+        'set-title',
+        '- [ ] Task ⏱️ 30m',
+        { type: 'set-title', markdownTitle: 'Changed ⏱️ 45m' },
+        'duration',
+      ],
+      [
+        'append-title',
+        '- [ ] Task ⏱️ 30m',
+        { type: 'append-title', markdown: '⏱️ 45m' },
+        'duration',
+      ],
+    ] as const)(
+      'rejects duplicate metadata introduced through %s',
+      (_type, source, edit, field) => {
+        expect(codec.applyLineEdit(source, edit)).toEqual({
+          type: 'invalid',
+          issues: [{ code: 'duplicate-field', field }],
+        });
+      },
+    );
+
+    it.each([
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed 📅 2026-07-21' }],
+      ['append-title', { type: 'append-title', markdown: '📅 2026-07-21' }],
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed #added' }],
+      ['append-title', { type: 'append-title', markdown: '#added' }],
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed 🆔 introduced' }],
+      ['append-title', { type: 'append-title', markdown: '🆔 introduced' }],
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed 🆔 bad.id' }],
+      ['append-title', { type: 'append-title', markdown: '🆔 bad.id' }],
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed ⛔ introduced' }],
+      ['append-title', { type: 'append-title', markdown: '⛔ introduced' }],
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed ⛔ one,,two' }],
+      ['append-title', { type: 'append-title', markdown: '⛔ one,,two' }],
+      ['set-title', { type: 'set-title', markdownTitle: 'Changed ^introduced' }],
+      ['append-title', { type: 'append-title', markdown: '^introduced' }],
+    ] as const)('rejects semantic spans introduced through %s', (_type, edit) => {
+      expect(codec.applyLineEdit('- [ ] Task', edit)).toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'title' }],
+      });
+    });
+
     it('preserves unrelated malformed and opaque source spans when setting time', () => {
       const source = '- [?] Old [[Title]] #work 🆔 keep-me ⛔ a,b 📅 2026-02-30 ⏱️ nope ^block';
 
@@ -113,6 +211,19 @@ describe('TaskMarkdownCodec', () => {
         type: 'changed',
         content:
           '- [ ] New [title](https://example.test) #work 🆔 keep-me ⛔ a,b ⏰ 08:00 📅 2026-07-20 ^block',
+      });
+    });
+
+    it('replaces only the editable title and preserves unrelated malformed and unknown spans', () => {
+      const source =
+        '- [ ] Old title 🧭 north 🆔 bad.id ⛔ one,,two 📅 nope ⏰ 9:5 ⏱️ nope #work 🆔 keep-id ⛔ dep-1 ^block';
+
+      expect(
+        codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New title' }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '- [ ] New title 🧭 north 🆔 bad.id ⛔ one,,two 📅 nope ⏰ 9:5 ⏱️ nope #work 🆔 keep-id ⛔ dep-1 ^block',
       });
     });
 

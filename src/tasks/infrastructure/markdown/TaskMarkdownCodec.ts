@@ -135,6 +135,16 @@ const MARKER_BY_FIELD: Readonly<Record<TaskValidationField, string>> = {
   duration: '⏱️',
 };
 
+const SPAN_KIND_BY_FIELD: Readonly<Partial<Record<TaskValidationField, TaskSpanKind>>> = {
+  due: 'due',
+  scheduled: 'scheduled',
+  start: 'start',
+  completion: 'completion',
+  cancelled: 'cancelled',
+  time: 'time',
+  duration: 'duration',
+};
+
 const TOKEN_BY_PRIORITY: Readonly<Record<TaskPriority, string>> = {
   A: '🔺',
   B: '⏫',
@@ -177,6 +187,9 @@ const METADATA_KINDS = new Set<TaskSpanKind>([
   'depends-on',
   'block-id',
 ]);
+
+const TITLE_SEMANTIC_KINDS = new Set<TaskSpanKind>([...METADATA_KINDS, 'tag']);
+const TITLE_RESERVED_MARKERS = ['🆔', '⛔', '🔁', '➕', '🔺', '⏫', '🔼', '🔽', '⏬'] as const;
 
 const PRIORITY_BY_MARKER: Readonly<Record<string, TaskPriority>> = {
   '🔺': 'A',
@@ -389,38 +402,32 @@ export class TaskMarkdownCodec {
     return this.statusCatalog.statusForSymbol(symbol);
   }
 
-  private validationState(parsed: ParsedTaskLine): TaskValidationState {
-    const malformedFields: TaskValidationField[] = [];
-    const kindByField: Readonly<Partial<Record<TaskValidationField, TaskSpanKind>>> = {
-      due: 'due',
-      scheduled: 'scheduled',
-      start: 'start',
-      completion: 'completion',
-      cancelled: 'cancelled',
-      time: 'time',
-      duration: 'duration',
-    };
-    for (const [field, kind] of Object.entries(kindByField) as Array<
+  private malformedFields(parsed: ParsedTaskLine): ReadonlySet<TaskValidationField> {
+    const malformed = new Set<TaskValidationField>();
+    for (const [field, kind] of Object.entries(SPAN_KIND_BY_FIELD) as Array<
       [TaskValidationField, TaskSpanKind]
     >) {
       const occurrences = parsed.occurrences.get(kind)?.length ?? 0;
       if (markerCount(parsed.original, MARKER_BY_FIELD[field]) > occurrences) {
-        malformedFields.push(field);
+        malformed.add(field);
       }
     }
     if (
       (parsed.occurrences.get('duration')?.length ?? 0) > 0 &&
-      parsed.planning.duration === undefined &&
-      !malformedFields.includes('duration')
+      parsed.planning.duration === undefined
     ) {
-      malformedFields.push('duration');
+      malformed.add('duration');
     }
+    return malformed;
+  }
+
+  private validationState(parsed: ParsedTaskLine): TaskValidationState {
     return {
       markdownTitle: parsed.markdownTitle,
       statusSymbol: parsed.statusSymbol,
       statusConfigured: this.statusCatalog.ruleForSymbol(parsed.statusSymbol) !== undefined,
       planning: parsed.planning,
-      malformedFields,
+      malformedFields: [...this.malformedFields(parsed)],
     };
   }
 
@@ -448,13 +455,8 @@ export class TaskMarkdownCodec {
       : [];
   }
 
-  private malformedTargetIssue(
-    parsed: ParsedTaskLine,
-    kind: TaskSpanKind,
-    field: TaskValidationField,
-  ): TaskIssue[] {
-    const recognized = parsed.occurrences.get(kind)?.length ?? 0;
-    if (markerCount(parsed.original, MARKER_BY_FIELD[field]) <= recognized) return [];
+  private malformedTargetIssue(parsed: ParsedTaskLine, field: TaskValidationField): TaskIssue[] {
+    if (!this.malformedFields(parsed).has(field)) return [];
     if (field === 'time') return [{ code: 'invalid-time', field }];
     if (field === 'duration') return [{ code: 'invalid-duration', field }];
     return [{ code: 'invalid-date', field }];
@@ -474,66 +476,76 @@ export class TaskMarkdownCodec {
     return token === null ? parsed.original : insertToken(parsed, kind, token);
   }
 
-  private replaceTitle(parsed: ParsedTaskLine, markdownTitle: string): string {
+  private editableTitleRange(parsed: ParsedTaskLine): SourceSpan {
     const contentEnd = parsed.original.length - parsed.lineEnding.length;
     const bodySpans = parsed.spans.filter(
       (span) => span.kind !== 'prefix' && !(span.kind === 'separator' && span.from === contentEnd),
     );
-    const mutable = (span: SourceSpan): boolean =>
-      span.kind === 'title' || span.kind === 'unknown' || span.kind === 'separator';
-    const runs: SourceSpan[][] = [];
-    let run: SourceSpan[] = [];
-    for (const span of bodySpans) {
-      if (mutable(span)) {
-        run.push(span);
-      } else if (run.length > 0) {
-        runs.push(run);
-        run = [];
-      }
-    }
-    if (run.length > 0) runs.push(run);
-    const titleRuns = runs.filter((candidate) =>
-      candidate.some((span) => span.kind === 'title' || span.kind === 'unknown'),
+    const protectedAt = bodySpans.findIndex(
+      (span) => span.kind !== 'title' && span.kind !== 'separator',
     );
-    if (titleRuns.length === 0) {
-      const firstProtected = bodySpans.find((span) => !mutable(span));
-      const at = firstProtected?.from ?? contentEnd;
-      const left = /\s/u.test(parsed.original[at - 1] ?? '') ? '' : ' ';
-      const right = /\s/u.test(parsed.original[at] ?? '') || at === contentEnd ? '' : ' ';
-      return spliceSource(parsed.original, at, at, `${left}${markdownTitle}${right}`);
-    }
+    const editableSpans = bodySpans
+      .slice(0, protectedAt < 0 ? bodySpans.length : protectedAt)
+      .filter((span) => span.kind === 'title');
+    const first = editableSpans[0];
+    const last = editableSpans[editableSpans.length - 1];
+    if (first && last) return { kind: 'title', from: first.from, to: last.to };
+    const at = protectedAt < 0 ? contentEnd : bodySpans[protectedAt]!.from;
+    return { kind: 'title', from: at, to: at };
+  }
 
-    const patches = titleRuns.map((candidate, index) => {
-      const first = candidate[0]!;
-      const last = candidate[candidate.length - 1]!;
-      const raw = parsed.original.slice(first.from, last.to);
-      const separators = candidate
-        .filter((span) => span.kind === 'separator')
-        .map((span) => parsed.original.slice(span.from, span.to))
-        .join('');
-      const leading = raw.slice(0, raw.length - raw.trimStart().length);
-      const trailing = raw.slice(raw.trimEnd().length);
-      return {
-        from: first.from,
-        to: last.to,
-        replacement: index === 0 ? `${leading}${markdownTitle}${trailing}` : separators,
-      };
-    });
-    let content = parsed.original;
-    patches.sort((left, right) => right.from - left.from);
-    for (const candidate of patches) {
-      content = spliceSource(content, candidate.from, candidate.to, candidate.replacement);
+  private replaceTitle(parsed: ParsedTaskLine, markdownTitle: string): string {
+    const range = this.editableTitleRange(parsed);
+    if (range.from !== range.to) {
+      return spliceSource(parsed.original, range.from, range.to, markdownTitle);
     }
-    return content;
+    const contentEnd = parsed.original.length - parsed.lineEnding.length;
+    const left = /\s/u.test(parsed.original[range.from - 1] ?? '') ? '' : ' ';
+    const right =
+      /\s/u.test(parsed.original[range.from] ?? '') || range.from === contentEnd ? '' : ' ';
+    return spliceSource(parsed.original, range.from, range.to, `${left}${markdownTitle}${right}`);
   }
 
   private appendTitle(parsed: ParsedTaskLine, markdown: string): string {
-    const semantic = parsed.spans.filter(
-      (span) => span.kind === 'title' || span.kind === 'unknown',
+    const range = this.editableTitleRange(parsed);
+    if (range.from === range.to) return this.replaceTitle(parsed, markdown);
+    return spliceSource(parsed.original, range.to, range.to, ` ${markdown}`);
+  }
+
+  private introducedTitleIssues(
+    before: ParsedTaskLine,
+    after: ParsedTaskLine,
+  ): readonly TaskIssue[] {
+    const introducedFields = new Set<TaskValidationField>();
+    const duplicateIssues: TaskIssue[] = [];
+    for (const [field, kind] of Object.entries(SPAN_KIND_BY_FIELD) as Array<
+      [TaskValidationField, TaskSpanKind]
+    >) {
+      const beforeOccurrences = before.occurrences.get(kind)?.length ?? 0;
+      const afterOccurrences = after.occurrences.get(kind)?.length ?? 0;
+      const introducedMarker =
+        markerCount(after.original, MARKER_BY_FIELD[field]) >
+        markerCount(before.original, MARKER_BY_FIELD[field]);
+      if (afterOccurrences > beforeOccurrences || introducedMarker) introducedFields.add(field);
+      if (afterOccurrences > beforeOccurrences && afterOccurrences > 1) {
+        duplicateIssues.push({ code: 'duplicate-field', field });
+      }
+    }
+    if (duplicateIssues.length > 0) return duplicateIssues;
+
+    const introducedSemanticSpan = [...TITLE_SEMANTIC_KINDS].some(
+      (kind) =>
+        (after.occurrences.get(kind)?.length ?? 0) > (before.occurrences.get(kind)?.length ?? 0),
     );
-    const last = semantic[semantic.length - 1];
-    if (!last) return this.replaceTitle(parsed, markdown);
-    return spliceSource(parsed.original, last.to, last.to, ` ${markdown}`);
+    const introducedReservedMarker = TITLE_RESERVED_MARKERS.some(
+      (marker) => markerCount(after.original, marker) > markerCount(before.original, marker),
+    );
+    if (introducedFields.size === 0 && !introducedSemanticSpan && !introducedReservedMarker) {
+      return [];
+    }
+
+    const valueIssues = validateTaskChange(this.validationState(after), introducedFields);
+    return valueIssues.length > 0 ? valueIssues : [{ code: 'invalid-target', field: 'title' }];
   }
 
   private prepareTagChange(
@@ -593,7 +605,7 @@ export class TaskMarkdownCodec {
     const issues: TaskIssue[] = [];
     for (const field of ['completion', 'cancelled'] as const) {
       issues.push(...this.duplicateIssue(parsed, field, field));
-      issues.push(...this.malformedTargetIssue(parsed, field, field));
+      issues.push(...this.malformedTargetIssue(parsed, field));
     }
     if (issues.length > 0) return { type: 'invalid', issues };
 
@@ -636,7 +648,7 @@ export class TaskMarkdownCodec {
   ): PreparedLineEdit {
     const issues = [
       ...this.duplicateIssue(parsed, edit.field, edit.field),
-      ...this.malformedTargetIssue(parsed, edit.field, edit.field),
+      ...this.malformedTargetIssue(parsed, edit.field),
     ];
     if (issues.length > 0) return { type: 'invalid', issues };
     const current = parsed.planning[edit.field];
@@ -661,7 +673,7 @@ export class TaskMarkdownCodec {
   ): PreparedLineEdit {
     const issues = [
       ...this.duplicateIssue(parsed, 'time', 'time'),
-      ...this.malformedTargetIssue(parsed, 'time', 'time'),
+      ...this.malformedTargetIssue(parsed, 'time'),
     ];
     if (issues.length > 0) return { type: 'invalid', issues };
     const current = parsed.planning.time;
@@ -688,7 +700,7 @@ export class TaskMarkdownCodec {
   ): PreparedLineEdit {
     const issues = [
       ...this.duplicateIssue(parsed, 'duration', 'duration'),
-      ...this.malformedTargetIssue(parsed, 'duration', 'duration'),
+      ...this.malformedTargetIssue(parsed, 'duration'),
     ];
     if (issues.length > 0) return { type: 'invalid', issues };
     const current = parsed.planning.duration;
@@ -754,6 +766,10 @@ export class TaskMarkdownCodec {
     if (prepared.content === original) return { type: 'unchanged', content: original };
     const reparsed = this.parseLine(prepared.content, { filePath: '', line: 0 });
     if (!reparsed) return invalid('invalid-task-syntax');
+    if (edit.type === 'set-title' || edit.type === 'append-title') {
+      const titleIssues = this.introducedTitleIssues(parsed, reparsed);
+      if (titleIssues.length > 0) return { type: 'invalid', issues: titleIssues };
+    }
     const issues = validateTaskChange(this.validationState(reparsed), new Set(prepared.fields));
     if (issues.length > 0) return { type: 'invalid', issues };
     return { type: 'changed', content: prepared.content };

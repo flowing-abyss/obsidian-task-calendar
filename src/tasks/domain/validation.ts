@@ -9,9 +9,7 @@ type TaskIssueCode =
   | 'inverted-span'
   | 'duplicate-field'
   | 'invalid-task-syntax'
-  | 'invalid-block-structure'
-  | 'invalid-target'
-  | 'destination-unavailable';
+  | 'invalid-target';
 
 export interface TaskIssue {
   readonly code: TaskIssueCode;
@@ -145,21 +143,13 @@ export function validateTaskChange(
 
   if (fields.has('time')) {
     const value = state.planning.time;
-    if (
-      malformed.has('time') ||
-      (value !== undefined && !isValidTime(value)) ||
-      (value === undefined && malformed.has('time'))
-    ) {
+    if (malformed.has('time') || (value !== undefined && !isValidTime(value))) {
       issues.push({ code: 'invalid-time', field: 'time' });
     }
   }
   if (fields.has('duration')) {
     const value = state.planning.duration;
-    if (
-      malformed.has('duration') ||
-      (value !== undefined && !isValidDuration(value)) ||
-      (value === undefined && malformed.has('duration'))
-    ) {
+    if (malformed.has('duration') || (value !== undefined && !isValidDuration(value))) {
       issues.push({ code: 'invalid-duration', field: 'duration' });
     }
   }
