@@ -2,14 +2,14 @@ import { Modal, type App } from 'obsidian';
 import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import type { TaskStore } from '../store/TaskStore';
-import type { TaskApplicationApi, TaskQueryApi } from '../tasks';
+import { localDate, type TaskApplicationApi, type TaskQueryApi } from '../tasks';
 import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
 import { BaseView } from '../views/BaseView';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
 import { WeekView } from '../views/WeekView';
 import { showStatusMenuAt } from './statusMenu';
-import { presentTaskCommandResult } from './taskCommandResult';
+import { presentTaskCommandResult, presentTaskCreationResult } from './taskCommandResult';
 import { openInFile } from './taskNavigation';
 import { Toolbar, type ViewEntry } from './Toolbar';
 
@@ -39,6 +39,7 @@ export class CalendarRenderer {
     private app: App,
     private queries: TaskQueryApi,
     private tasks: TaskApplicationApi,
+    private taskPrefix = '',
   ) {
     this.activeViewType = config.defaultView;
     this.selectedDate = window.moment().date(1);
@@ -301,7 +302,17 @@ export class CalendarRenderer {
 
   private openAddTaskModal(date: string): void {
     new TaskInputModal(this.app, async (text) => {
-      if (text.trim()) await this.store.addTask(date, text.trim());
+      const body = text.trim();
+      if (!body) return;
+      const prefix = this.taskPrefix.trim();
+      presentTaskCreationResult(
+        await this.tasks.execute({
+          type: 'create',
+          destination: { type: 'configured-default' },
+          markdownBody: prefix ? `${prefix} ${body}` : body,
+          initial: { due: { type: 'set', value: localDate(date) } },
+        }),
+      );
     }).open();
   }
 

@@ -56,7 +56,7 @@ describe('DailyNoteResolver deep — createNoteWithTemplate', () => {
 
     const settings = { ...manualSettings, dailyNoteProvider: 'core' as const };
     const resolver = new DailyNoteResolver(realApp, settings);
-    await resolver.addTask('test task', '2026-06-25');
+    await resolver.resolveDailyNoteDestination();
     expect(writeSpy.called).toBe(true);
     expect(writeSpy.templateFile).toBeInstanceOf(TFile);
   });
@@ -71,7 +71,7 @@ describe('DailyNoteResolver deep — createNoteWithTemplate', () => {
     };
     const resolver = new DailyNoteResolver(app, settings);
     // We need to trigger createNoteWithTemplate with a template path
-    // Use addTask which calls ensureNote → createNoteWithTemplate
+    // Destination resolution calls ensureNote → createNoteWithTemplate.
     // But manualDailyNotePath doesn't set template. Let's use a custom approach:
     // Access createNoteWithTemplate via bracket access
     const today = window.moment().format('YYYY-MM-DD');
@@ -121,12 +121,12 @@ describe('DailyNoteResolver deep — createNoteWithTemplate', () => {
     const app = await createAppWithFiles({});
     const resolver = new DailyNoteResolver(app, manualSettings);
     // ManualAdapter has template: '' → createNoteWithTemplate receives '' as templatePath
-    await resolver.addTask('no template task', window.moment().format('YYYY-MM-DD'));
+    await resolver.resolveDailyNoteDestination();
     const today = window.moment().format('YYYY-MM-DD');
     const file = app.vault.getAbstractFileByPath(`${today}.md`);
     if (!(file instanceof TFile)) throw new Error('expected TFile');
     const content = await app.vault.cachedRead(file);
-    expect(content).toContain('- [ ] no template task');
+    expect(content).toBe('');
   });
 });
 
@@ -138,7 +138,7 @@ describe('DailyNoteResolver deep — ensureNote folder creation', () => {
       manualDailyNotePath: 'daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
-    await resolver.addTask('folder test', TODAY);
+    await resolver.resolveDailyNoteDestination();
     const file = app.vault.getAbstractFileByPath(`daily/${TODAY}.md`);
     expect(file).toBeInstanceOf(TFile);
   });
@@ -150,7 +150,7 @@ describe('DailyNoteResolver deep — ensureNote folder creation', () => {
       manualDailyNotePath: 'daily/YYYY-MM-DD',
     };
     const resolver = new DailyNoteResolver(app, settings);
-    await resolver.addTask('existing folder test', TODAY);
+    await resolver.resolveDailyNoteDestination();
     const file = app.vault.getAbstractFileByPath(`daily/${TODAY}.md`);
     expect(file).toBeInstanceOf(TFile);
   });

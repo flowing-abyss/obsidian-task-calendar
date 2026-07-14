@@ -1,6 +1,6 @@
-import { Notice, TFile, normalizePath, type App } from 'obsidian';
-import { insertTaskBlockIntoContent } from '../mutation/insertTaskBlock';
+import { TFile, normalizePath, type App } from 'obsidian';
 import type { CalendarSettings } from '../settings/types';
+import type { TaskDestination } from '../tasks/domain/types';
 import { CoreDailyNotesAdapter } from './adapters/CoreDailyNotesAdapter';
 import { JournalAdapter } from './adapters/JournalAdapter';
 import { ManualAdapter } from './adapters/ManualAdapter';
@@ -51,32 +51,17 @@ export class DailyNoteResolver {
     return result;
   }
 
-  buildTaskLine(text: string, date: string): string {
-    const prefix = this.settings.taskPrefix.trim();
-    return `- [ ] ${prefix ? prefix + ' ' : ''}${text} 📅 ${date}`;
-  }
-
-  async addTask(text: string, date: string): Promise<void> {
-    return this.appendLine(this.buildTaskLine(text, date));
-  }
-
-  async appendLine(rawLine: string): Promise<void> {
+  async resolveDailyNoteDestination(): Promise<TaskDestination> {
     const adapter = this.getActiveAdapter();
-    const ps = adapter.getSettings(this.app, this.settings);
-    let file: TFile;
-    try {
-      file = await this.ensureNote(ps);
-    } catch (e) {
-      new Notice('Failed to get or create daily note: ' + String(e));
-      return;
-    }
-    try {
-      await this.insertTask(file, rawLine);
-    } catch (e) {
-      new Notice('Failed to insert task: ' + String(e));
-      return;
-    }
-    new Notice('Task added to ' + file.name);
+    const file = await this.ensureNote(adapter.getSettings(this.app, this.settings));
+    return {
+      filePath: file.path,
+      insertion:
+        this.settings.taskInsertionMode === 'section' &&
+        this.settings.taskInsertionSection.trim().length > 0
+          ? { type: 'section', heading: this.settings.taskInsertionSection }
+          : { type: 'append' },
+    };
   }
 
   private async ensureNote(ps: DailyNoteProviderSettings): Promise<TFile> {
@@ -151,13 +136,6 @@ export class DailyNoteResolver {
     } catch {
       return null;
     }
-  }
-
-  private async insertTask(file: TFile, line: string): Promise<void> {
-    const { taskInsertionMode: mode, taskInsertionSection: section } = this.settings;
-    await this.app.vault.process(file, (content) =>
-      insertTaskBlockIntoContent(content, line, mode, section),
-    );
   }
 
   private autoLabel(): string {

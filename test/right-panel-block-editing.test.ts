@@ -130,6 +130,31 @@ async function panelWith(
 }
 
 describe('RightPanel block editing', () => {
+  it('deletes a root through the API and preserves newer navigation on a late result', async () => {
+    const initial = snapshot('old');
+    let resolve!: (result: TaskCommandResult) => void;
+    const execute = vi
+      .fn<TaskApplicationApi['execute']>()
+      .mockImplementation(() => new Promise<TaskCommandResult>((done) => (resolve = done)));
+    const { panel, state, app } = await panelWith(initial, execute);
+    const root = state.get('taskStack')[0]!;
+    const process = vi.spyOn(app.vault, 'process');
+
+    const pending = call<Promise<void>>(panel, 'deleteTask', root);
+    expect(execute).toHaveBeenCalledWith({ type: 'delete', ref: initial.ref });
+    const newer = legacyTaskView(snapshot('newer'));
+    state.set('taskStack', [newer]);
+    resolve({
+      type: 'ok',
+      changed: true,
+      outcome: { type: 'deleted', ref: initial.ref },
+    });
+    await pending;
+
+    expect(state.get('taskStack')).toEqual([newer]);
+    expect(process).not.toHaveBeenCalled();
+  });
+
   it('delegates all description/comment intents with their exact revisioned targets', async () => {
     const initial = snapshot('old');
     const fresh = snapshot('fresh', 'new description');

@@ -1,12 +1,10 @@
 import type { App } from 'obsidian';
 import { Component, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
-import { locatorOf, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import { formatDurationFromMinutes, parseDurationToMinutes } from '../parser/TaskParser';
 import type { SubTask, Task, TaskComment } from '../parser/types';
 import { buildDefaultTaskStatuses } from '../settings/defaults';
-import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
 import { colorForTag } from '../tags/tagColor';
@@ -23,7 +21,6 @@ import {
 } from '../tasks';
 import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
 import type { TaskCommand } from '../tasks/domain/commands';
-import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type {
   CommentRef,
   SubtaskRef,
@@ -97,7 +94,6 @@ export class RightPanel {
   private el!: HTMLElement;
   private off?: () => void;
   private draggingSub: SubTask | null = null;
-  private mutations: TaskMutationService;
   private statusRegistry: StatusRegistry;
   private md = new Component();
   private onSuccessfulMutation?: (ref?: TaskRef) => void;
@@ -112,17 +108,6 @@ export class RightPanel {
     this.onSuccessfulMutation = onSuccessfulMutation;
     this.statusRegistry = new StatusRegistry(
       this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
-    );
-    this.mutations = new TaskMutationService(
-      app,
-      () =>
-        new StatusCatalog(toStatusRules(this.settings?.taskStatuses ?? buildDefaultTaskStatuses())),
-      onSuccessfulMutation,
-      () => {
-        const root = this.state.get('taskStack')[0];
-        const ref = root ? taskRefOf(root) : undefined;
-        return ref ? { ...ref } : undefined;
-      },
     );
   }
 
@@ -1412,9 +1397,24 @@ export class RightPanel {
       );
       return;
     }
-    const rangeEnd = 'subtaskRange' in task && task.subtaskRange ? task.subtaskRange.to : task.line;
-    const result = await this.mutations.deleteTaskBlock(locatorOf(task), rangeEnd);
-    if (result.type === 'ok') {
+    if (target?.type !== 'task' || !this.tasks) return;
+    const initiatingStack = this.state.get('taskStack');
+    let result: TaskCommandResult;
+    try {
+      result = await this.tasks.execute({ type: 'delete', ref: target.ref });
+    } catch {
+      result = { type: 'io-error', cause: 'repository-error', contentState: 'unknown' };
+    }
+    presentTaskCommandResult(result);
+    const selectedRoot = this.state.get('taskStack')[0];
+    const selectedRef = selectedRoot ? taskRefOf(selectedRoot) : undefined;
+    if (
+      result.type === 'ok' &&
+      result.outcome.type === 'deleted' &&
+      this.state.get('taskStack') === initiatingStack &&
+      selectedRef &&
+      sameTaskRef(selectedRef, target.ref)
+    ) {
       this.state.set('taskStack', []);
     }
   }

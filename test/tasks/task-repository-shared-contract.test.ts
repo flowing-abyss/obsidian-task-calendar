@@ -177,7 +177,7 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
           '>\t    - [ ] new [[child]]\r\n' +
           '> - [ ] unrelated',
       );
-      if (result.type === 'committed') {
+      if (result.type === 'committed' && result.outcome.type === 'task') {
         const freshRoot = result.outcome.task;
         const freshParent = freshRoot.subtasks[0]!;
         expect(freshParent.ref.parent).toEqual({ type: 'task', ref: freshRoot.ref });

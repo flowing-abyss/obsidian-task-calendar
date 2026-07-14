@@ -1,4 +1,4 @@
-import type { LocalDate } from '../../domain/types';
+import type { LocalDate, TaskInsertionPolicy } from '../../domain/types';
 
 const TASK_RE = /^[\s>]*- \[(.)\]/u;
 const PREFIX_RE = /^([\s>]*)/u;
@@ -221,6 +221,50 @@ export class TaskBlockEditor {
       index = Math.max(index + 1, cursor);
     }
     return roots;
+  }
+
+  insertRoot(
+    content: string,
+    taskLine: string,
+    insertion: TaskInsertionPolicy,
+  ): { readonly content: string; readonly block: TaskRootBlock } | undefined {
+    if (/[\r\n]/u.test(taskLine)) return undefined;
+    const lines = sourceLines(content);
+    const ending = lines.find((line) => line.ending !== '')?.ending || '\n';
+    const hadFinalEnding = content.endsWith('\n');
+    let at = lines.length;
+
+    if (insertion.type === 'section' && insertion.heading.trim().length > 0) {
+      const heading = insertion.heading.trim();
+      const found = lines.findIndex((line) => line.text.trim() === heading);
+      if (found >= 0) {
+        at = found + 1;
+      } else {
+        if (lines.length > 0 && lines[lines.length - 1]?.text.trim().length !== 0) {
+          insertAt(lines, lines.length, insertedLines([''], ending), ending);
+        }
+        insertAt(lines, lines.length, insertedLines([insertion.heading], ending), ending);
+        at = lines.length;
+      }
+    }
+
+    insertAt(lines, at, insertedLines([taskLine], ending), ending);
+    const next = serializeLines(lines, hadFinalEnding, ending);
+    const block = this.rootBlocks(next).find((candidate) => candidate.line === at);
+    return block ? { content: next, block } : undefined;
+  }
+
+  deleteRoot(content: string, block: TaskRootBlock): string | undefined {
+    const lines = sourceLines(content);
+    const first = lines[block.line];
+    const last = lines[block.toLine];
+    if (!first || !last) return undefined;
+    let from = first.from;
+    if (last.ending === '' && from > 0) {
+      const previous = lines[block.line - 1];
+      if (previous) from -= previous.ending.length;
+    }
+    return content.slice(0, from) + content.slice(last.to);
   }
 
   replaceLine(

@@ -1,4 +1,3 @@
-import { TFile } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import {
@@ -77,64 +76,6 @@ describe('TaskStore toggleTask', () => {
     await store.toggleTask({ ...task, line: 999 });
     const content = await app.vault.cachedRead(app.vault.getMarkdownFiles()[0]!);
     expect(content).toContain('- [x] task');
-  });
-});
-
-describe('TaskStore addTask', () => {
-  it('customFilePath path appends to existing file', async () => {
-    const settings = { ...DEFAULT_SETTINGS, addToToday: false, customFilePath: 'inbox.md' };
-    const app = await createAppWithFiles({ 'inbox.md': '- [ ] existing' });
-    const store = configuredTaskStore(app, settings);
-    await store.addTask('2026-06-24', 'new task');
-    const file = app.vault.getAbstractFileByPath('inbox.md');
-    if (!(file instanceof TFile)) throw new Error('inbox.md not a TFile');
-    const content = await app.vault.cachedRead(file);
-    expect(content).toBe('- [ ] existing\n- [ ] #task/one-off new task 📅 2026-06-24');
-  });
-
-  it('customFilePath path creates file then appends (leading newline, CURRENT BEHAVIOR, follow-up FU-14)', async () => {
-    const settings = { ...DEFAULT_SETTINGS, addToToday: false, customFilePath: 'inbox.md' };
-    const app = await createAppWithFiles({});
-    const store = configuredTaskStore(app, settings);
-    await store.addTask('2026-06-24', 'first task');
-    const file = app.vault.getAbstractFileByPath('inbox.md');
-    if (!(file instanceof TFile)) throw new Error('inbox.md not a TFile');
-    const content = await app.vault.cachedRead(file);
-    expect(content).toBe('\n- [ ] #task/one-off first task 📅 2026-06-24');
-  });
-
-  it('empty taskPrefix yields no prefix in the task line', async () => {
-    const settings = {
-      ...DEFAULT_SETTINGS,
-      addToToday: false,
-      customFilePath: 'inbox.md',
-      taskPrefix: '',
-    };
-    const app = await createAppWithFiles({ 'inbox.md': '' });
-    const store = configuredTaskStore(app, settings);
-    await store.addTask('2026-06-24', 'no prefix');
-    const file = app.vault.getAbstractFileByPath('inbox.md');
-    if (!(file instanceof TFile)) throw new Error('inbox.md not a TFile');
-    const content = await app.vault.cachedRead(file);
-    expect(content).toContain('- [ ] no prefix 📅 2026-06-24');
-  });
-
-  it('addToToday with existing daily-note file appends', async () => {
-    const today = window.moment().format('YYYY-MM-DD');
-    const settings = {
-      ...DEFAULT_SETTINGS,
-      addToToday: true,
-      manualDailyNotePath: `periodic/daily/YYYY-MM-DD`,
-    };
-    const app = await createAppWithFiles({ [`periodic/daily/${today}.md`]: '- [ ] existing' });
-    (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
-    (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };
-    const store = configuredTaskStore(app, settings);
-    await store.addTask(today, 'today task');
-    const file = app.vault.getAbstractFileByPath(`periodic/daily/${today}.md`);
-    if (!(file instanceof TFile)) throw new Error('daily note not a TFile');
-    const content = await app.vault.cachedRead(file);
-    expect(content).toContain(`- [ ] #task/one-off today task 📅 ${today}`);
   });
 });
 

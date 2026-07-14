@@ -160,7 +160,12 @@ async function liveCatalogHarness(mutableType: 'in-progress' | 'done' = 'in-prog
     outcome: { type: 'task', task: indexed },
     changed: true,
   });
-  const application = new TaskApplicationService(index, { edit }, liveCatalog, clock);
+  const application = new TaskApplicationService(
+    index,
+    { edit, create: vi.fn() },
+    liveCatalog,
+    clock,
+  );
   const store = new TaskStore(app, settings, index, application, liveCatalog);
   const rebuildAsDone = () => {
     settings.taskStatuses = settings.taskStatuses.map((status) =>

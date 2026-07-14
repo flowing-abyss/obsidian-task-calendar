@@ -76,35 +76,4 @@ describe('TaskStore error paths (Notice spy via vi.mock)', () => {
     expect(noticeCalls().length).toBeGreaterThan(0);
     expect(String(noticeCalls()[0]?.[0])).toContain('Failed to update');
   });
-
-  it('addTask with addToToday true delegates to resolver and adds task', async () => {
-    const today = window.moment().format('YYYY-MM-DD');
-    const app = await createAppWithFiles({ [`periodic/daily/${today}.md`]: '# Today\n' });
-    (app as unknown as Record<string, unknown>).plugins = { getPlugin: () => null };
-    (app as unknown as Record<string, unknown>).internalPlugins = { getPluginById: () => null };
-    const settings = {
-      ...DEFAULT_SETTINGS,
-      addToToday: true,
-      taskPrefix: '',
-      dailyNoteProvider: 'manual' as const,
-      taskInsertionMode: 'append' as const,
-      desktop: {
-        ...DEFAULT_SETTINGS.desktop,
-        dailyNoteFolder: 'periodic/daily',
-        dailyNoteFormat: 'YYYY-MM-DD',
-      },
-    };
-    const store = new TaskStore(app, settings);
-    await store.addTask(today, 'test task');
-    expect(noticeCalls().some((c) => String(c[0]).includes('Task added to'))).toBe(true);
-  });
-
-  it('addTask no config shows Notice', async () => {
-    const settings = { ...DEFAULT_SETTINGS, addToToday: false, customFilePath: '' };
-    const app = await createAppWithFiles({});
-    const store = new TaskStore(app, settings);
-    await store.addTask('2026-06-24', 'orphan task');
-    expect(noticeCalls().length).toBeGreaterThan(0);
-    expect(String(noticeCalls()[0]?.[0])).toContain('No target file');
-  });
 });

@@ -4,6 +4,7 @@ import { StatusCatalog } from '../domain/StatusCatalog';
 import type {
   SubtaskRef,
   SubtaskSnapshot,
+  TaskDestination,
   TaskNodeRef,
   TaskRef,
   TaskSnapshot,
@@ -11,6 +12,7 @@ import type {
 } from '../domain/types';
 import { isSingleLineText } from '../domain/validation';
 import type { TaskApplicationApi, TaskQueryApi } from './TaskApplicationApi';
+import type { TaskDestinationProvider } from './TaskDestinationProvider';
 import type { TaskEditCommand, TaskRepository } from './TaskRepository';
 
 const TAG_RE = /^#[\w/-]+$/u;
@@ -21,6 +23,17 @@ function normalizeTag(tag: string): string {
 
 function uniqueInOrder(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function normalizeTagChange(tags: NonNullable<import('../domain/commands').TaskPatch['tags']>) {
+  const add = uniqueInOrder((tags.add ?? []).map(normalizeTag));
+  const remove = uniqueInOrder((tags.remove ?? []).map(normalizeTag));
+  if ([...add, ...remove].some((tag) => !TAG_RE.test(tag))) return undefined;
+  const removed = new Set(remove);
+  return {
+    ...(tags.add !== undefined && { add: add.filter((tag) => !removed.has(tag)) }),
+    ...(tags.remove !== undefined && { remove }),
+  };
 }
 
 function rootRefOf(target: TaskStatusTarget): TaskRef {
@@ -77,8 +90,15 @@ function refKey(ref: TaskRef): string {
 }
 
 const RECENT_OUTCOME_LIMIT = 64;
+type NonCreateTaskCommand = Exclude<TaskCommand, { readonly type: 'create' }>;
 
 function multilineInputIssue(command: TaskCommand): TaskCommandResult | undefined {
+  if (
+    command.type === 'create' &&
+    (!isSingleLineText(command.markdownBody) || command.markdownBody.trim().length === 0)
+  ) {
+    return { type: 'invalid', issues: [{ code: 'invalid-title', field: 'title' }] };
+  }
   if (
     command.type === 'patch' &&
     command.patch.markdownTitle?.type === 'set' &&
@@ -138,15 +158,17 @@ export class TaskApplicationService implements TaskApplicationApi {
     private readonly repository: TaskRepository,
     private readonly statusCatalog: StatusCatalog,
     private readonly clock: Clock,
+    private readonly destinationProvider?: TaskDestinationProvider,
   ) {}
 
   async execute(command: TaskCommand): Promise<TaskCommandResult> {
     try {
+      if (command.type === 'create') return await this.create(command);
       const prepared = this.prepare(command);
       if ('result' in prepared) return prepared.result;
       const result = await this.repository.edit(prepared.command);
       if (result.type === 'committed') {
-        this.remember(result.outcome.task);
+        if (result.outcome.type === 'task') this.remember(result.outcome.task);
         return { type: 'ok', outcome: result.outcome, changed: result.changed };
       }
       return result;
@@ -155,17 +177,62 @@ export class TaskApplicationService implements TaskApplicationApi {
     }
   }
 
+  private async create(
+    command: Extract<TaskCommand, { readonly type: 'create' }>,
+  ): Promise<TaskCommandResult> {
+    const inputIssue = multilineInputIssue(command);
+    if (inputIssue) return inputIssue;
+    let destination: TaskDestination;
+    if (command.destination.type === 'explicit') {
+      if (command.destination.provision === undefined) {
+        destination = command.destination.destination;
+      } else {
+        const resolution = await this.destinationProvider?.prepare(command.destination.destination);
+        if (resolution === undefined || resolution.type === 'unavailable') {
+          return {
+            type: 'invalid',
+            issues: [{ code: 'destination-unavailable', field: 'destination' }],
+          };
+        }
+        destination = resolution.destination;
+      }
+    } else {
+      const resolution = await this.destinationProvider?.resolveConfiguredDefault();
+      if (resolution === undefined || resolution.type === 'unavailable') {
+        return {
+          type: 'invalid',
+          issues: [{ code: 'destination-unavailable', field: 'destination' }],
+        };
+      }
+      destination = resolution.destination;
+    }
+    const tags = command.initial?.tags && normalizeTagChange(command.initial.tags);
+    if (command.initial?.tags !== undefined && tags === undefined) {
+      return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'tags' }] };
+    }
+    const initial =
+      command.initial === undefined
+        ? undefined
+        : { ...command.initial, ...(tags !== undefined && { tags }) };
+    const result = await this.repository.create(destination, {
+      markdownBody: command.markdownBody,
+      ...(initial !== undefined && { initial }),
+    });
+    if (result.type !== 'committed') return result;
+    if (result.outcome.type === 'task') this.remember(result.outcome.task);
+    return { type: 'ok', outcome: result.outcome, changed: result.changed };
+  }
+
   private prepare(
-    command: TaskCommand,
+    command: NonCreateTaskCommand,
   ): { readonly command: TaskEditCommand } | { readonly result: TaskCommandResult } {
     const inputIssue = multilineInputIssue(command);
     if (inputIssue !== undefined) return { result: inputIssue };
     if (isBlockCommand(command)) return prepareBlockCommand(command, this.clock);
 
     if (command.type === 'patch' && command.patch.tags !== undefined) {
-      const add = uniqueInOrder((command.patch.tags.add ?? []).map(normalizeTag));
-      const remove = uniqueInOrder((command.patch.tags.remove ?? []).map(normalizeTag));
-      if ([...add, ...remove].some((tag) => !TAG_RE.test(tag))) {
+      const tags = normalizeTagChange(command.patch.tags);
+      if (tags === undefined) {
         return {
           result: {
             type: 'invalid',
@@ -173,18 +240,12 @@ export class TaskApplicationService implements TaskApplicationApi {
           },
         };
       }
-      const removed = new Set(remove);
       return {
         command: {
           ...command,
           patch: {
             ...command.patch,
-            tags: {
-              ...(command.patch.tags.add !== undefined && {
-                add: add.filter((tag) => !removed.has(tag)),
-              }),
-              ...(command.patch.tags.remove !== undefined && { remove }),
-            },
+            tags,
           },
         },
       };

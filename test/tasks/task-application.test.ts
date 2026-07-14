@@ -48,8 +48,16 @@ const statuses = new StatusCatalog([
 
 const clock = { today: vi.fn(() => localDate('2026-07-14')) };
 
-function service(repository: TaskRepository, taskQueries: TaskQueryApi = queries()) {
-  return new TaskApplicationService(taskQueries, repository, statuses, clock);
+function service(
+  repository: Pick<TaskRepository, 'edit'> & Partial<Pick<TaskRepository, 'create'>>,
+  taskQueries: TaskQueryApi = queries(),
+) {
+  return new TaskApplicationService(
+    taskQueries,
+    { create: vi.fn(), ...repository },
+    statuses,
+    clock,
+  );
 }
 
 describe('TaskApplicationService planning commands', () => {
@@ -323,7 +331,12 @@ describe('TaskApplicationService planning commands', () => {
       changed: true,
     };
     const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
-    const service = new TaskApplicationService(queries(), { edit }, statuses, clock);
+    const service = new TaskApplicationService(
+      queries(),
+      { edit, create: vi.fn() },
+      statuses,
+      clock,
+    );
     const command = {
       type: 'patch' as const,
       target: { type: 'task' as const, ref },
@@ -350,7 +363,10 @@ describe('TaskApplicationService planning commands', () => {
       contentState: 'unknown',
     },
   ])('preserves the structured repository result $type', async (result) => {
-    const repository: TaskRepository = { edit: vi.fn().mockResolvedValue(result) };
+    const repository: TaskRepository = {
+      edit: vi.fn().mockResolvedValue(result),
+      create: vi.fn(),
+    };
     const service = new TaskApplicationService(queries(), repository, statuses, clock);
 
     await expect(
@@ -361,6 +377,7 @@ describe('TaskApplicationService planning commands', () => {
   it('maps an unexpected adapter rejection without leaking task Markdown', async () => {
     const repository: TaskRepository = {
       edit: vi.fn().mockRejectedValue(new Error('- [ ] secret task')),
+      create: vi.fn(),
     };
     const service = new TaskApplicationService(queries(), repository, statuses, clock);
 
@@ -396,7 +413,12 @@ describe('TaskApplicationService planning commands', () => {
       changed: true,
     };
     const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
-    const service = new TaskApplicationService(queries(), { edit }, statuses, clock);
+    const service = new TaskApplicationService(
+      queries(),
+      { edit, create: vi.fn() },
+      statuses,
+      clock,
+    );
 
     await expect(service.execute(command)).resolves.toEqual({
       type: 'ok',
@@ -820,7 +842,12 @@ describe('TaskApplicationService planning commands', () => {
       resolve: () => ({ type: 'exact', task: unknown }),
     };
     clock.today.mockClear();
-    const application = new TaskApplicationService(exactQueries, { edit }, custom, clock);
+    const application = new TaskApplicationService(
+      exactQueries,
+      { edit, create: vi.fn() },
+      custom,
+      clock,
+    );
 
     await application.execute({
       type: 'toggle-completion',

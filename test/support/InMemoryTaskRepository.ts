@@ -1,5 +1,6 @@
 import { parseLinks } from '../../src/parser/links';
 import type {
+  TaskDraft,
   TaskEditCommand,
   TaskRepository,
   TaskRepositoryResult,
@@ -9,6 +10,7 @@ import type {
   CommentRef,
   SubtaskRef,
   SubtaskSnapshot,
+  TaskDestination,
   TaskMutationTarget,
   TaskNodeRef,
   TaskRef,
@@ -16,6 +18,7 @@ import type {
 } from '../../src/tasks/domain/types';
 import { sameTaskNodeRef } from '../../src/tasks/domain/types';
 import { applyTaskCommand } from '../../src/tasks/infrastructure/markdown/applyTaskCommand';
+import { createTaskLine } from '../../src/tasks/infrastructure/markdown/createTaskLine';
 import {
   type TaskBlockEdit,
   TaskBlockEditor,
@@ -283,6 +286,24 @@ export class InMemoryTaskRepository implements TaskRepository {
     return this.files.get(path);
   }
 
+  async create(destination: TaskDestination, draft: TaskDraft): Promise<TaskRepositoryResult> {
+    const content = this.files.get(destination.filePath);
+    if (content === undefined) {
+      return {
+        type: 'invalid',
+        issues: [{ code: 'destination-unavailable', field: 'destination' }],
+      };
+    }
+    const line = createTaskLine(this.options.codec, draft);
+    if (line.type === 'invalid') return line;
+    const inserted = this.editor.insertRoot(content, line.content, destination.insertion);
+    if (!inserted) return { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+    const task = this.snapshot(destination.filePath, inserted.content, inserted.block.line);
+    if (!task) return { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+    this.files.set(destination.filePath, inserted.content);
+    return { type: 'committed', outcome: { type: 'task', task }, changed: true };
+  }
+
   async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
     if (
       command.type === 'reorder-subtask' &&
@@ -321,6 +342,18 @@ export class InMemoryTaskRepository implements TaskRepository {
               : rebaseNode(original, root.ref);
           return [{ root, target }];
         }),
+      };
+    }
+
+    if (command.type === 'delete') {
+      const current = this.snapshot(ref.filePath, content, located.block.line);
+      const next = this.editor.deleteRoot(content, located.block);
+      if (!current || next === undefined) return { type: 'not-found', target: targetOf(command) };
+      this.files.set(ref.filePath, next);
+      return {
+        type: 'committed',
+        outcome: { type: 'deleted', ref: current.ref },
+        changed: true,
       };
     }
 

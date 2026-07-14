@@ -1,6 +1,5 @@
-import { Notice, TFile, type App } from 'obsidian';
+import { Notice, type App } from 'obsidian';
 import type { Task } from '../parser/types';
-import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
@@ -11,19 +10,17 @@ import { TaskIndex } from '../tasks/infrastructure/TaskIndex';
 import { presentTaskCommandResult } from '../ui/taskCommandResult';
 
 export class TaskStore {
-  private resolver: DailyNoteResolver;
   private statusCatalog: StatusCatalog;
   private readonly taskIndex: TaskIndex;
   statusRegistry: StatusRegistry;
 
   constructor(
-    private app: App,
+    app: App,
     private settings: CalendarSettings,
     taskIndex?: TaskIndex,
     private readonly tasks?: TaskApplicationApi,
     statusCatalog?: StatusCatalog,
   ) {
-    this.resolver = new DailyNoteResolver(app, settings);
     this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
     this.statusCatalog =
       statusCatalog ?? new StatusCatalog(toStatusRules(this.settings.taskStatuses));
@@ -93,38 +90,6 @@ export class TaskStore {
     } catch {
       new Notice('Failed to update task. Please try again.');
     }
-  }
-
-  async addTask(date: string, text: string): Promise<void> {
-    if (this.settings.addToToday) {
-      await this.resolver.addTask(text, date);
-      return;
-    }
-    if (this.settings.customFilePath) {
-      const filePath = this.settings.customFilePath;
-      let file: TFile | null = null;
-      const existing = this.app.vault.getAbstractFileByPath(filePath);
-      if (existing instanceof TFile) file = existing;
-      else {
-        await this.app.vault.create(filePath, '');
-        const found = this.app.vault.getAbstractFileByPath(filePath);
-        if (found instanceof TFile) file = found;
-      }
-      if (!file) {
-        new Notice('No target file found for task.');
-        return;
-      }
-      const prefix = this.settings.taskPrefix.trim();
-      const taskLine = `- [ ] ${prefix ? prefix + ' ' : ''}${text} 📅 ${date}`;
-      await this.app.vault.process(file, (data) => data + '\n' + taskLine);
-      new Notice('Task added to ' + file.name);
-      return;
-    }
-    new Notice('No target file found for task.');
-  }
-
-  async addRawLine(rawLine: string): Promise<void> {
-    await this.resolver.appendLine(rawLine);
   }
 
   destroy(): void {

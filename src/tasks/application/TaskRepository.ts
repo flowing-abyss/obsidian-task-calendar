@@ -4,13 +4,15 @@ import type {
   TaskResolutionCandidate,
   TaskStatusTarget,
 } from '../domain/commands';
-import type { LocalDate, TaskMutationTarget, TaskSnapshot } from '../domain/types';
+import type { LocalDate, TaskDestination, TaskMutationTarget, TaskSnapshot } from '../domain/types';
 import type { TaskIssue } from '../domain/validation';
 
 export type TaskEditCommand =
   | Exclude<
       TaskCommand,
-      { readonly type: 'set-status' | 'toggle-completion' } | { readonly type: 'add-comment' }
+      | { readonly type: 'create' }
+      | { readonly type: 'set-status' | 'toggle-completion' }
+      | { readonly type: 'add-comment' }
     >
   | {
       readonly type: 'set-status';
@@ -24,6 +26,11 @@ export type TaskEditCommand =
       readonly text: string;
       readonly stamp: LocalDate;
     };
+
+export interface TaskDraft {
+  readonly markdownBody: string;
+  readonly initial?: NonNullable<Extract<TaskCommand, { readonly type: 'create' }>['initial']>;
+}
 
 export type TaskRepositoryResult =
   | { readonly type: 'committed'; readonly outcome: TaskCommandOutcome; readonly changed: boolean }
@@ -40,4 +47,5 @@ export type TaskRepositoryResult =
 
 export interface TaskRepository {
   edit(command: TaskEditCommand): Promise<TaskRepositoryResult>;
+  create(destination: TaskDestination, draft: TaskDraft): Promise<TaskRepositoryResult>;
 }

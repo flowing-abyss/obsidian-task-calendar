@@ -1,6 +1,7 @@
 import { TFile, type App } from 'obsidian';
 import { parseLinks } from '../../../parser/links';
 import type {
+  TaskDraft,
   TaskEditCommand,
   TaskRepository,
   TaskRepositoryResult,
@@ -10,6 +11,7 @@ import type {
   CommentRef,
   SubtaskRef,
   SubtaskSnapshot,
+  TaskDestination,
   TaskMutationTarget,
   TaskNodeRef,
   TaskRef,
@@ -17,6 +19,7 @@ import type {
 } from '../../domain/types';
 import { sameTaskNodeRef } from '../../domain/types';
 import { applyTaskCommand } from '../markdown/applyTaskCommand';
+import { createTaskLine } from '../markdown/createTaskLine';
 import type { TaskBlockEdit, TaskRootBlock } from '../markdown/TaskBlockEditor';
 import { TaskBlockEditor } from '../markdown/TaskBlockEditor';
 import { TaskLocator } from '../markdown/TaskLocator';
@@ -308,6 +311,54 @@ export class ObsidianTaskRepository implements TaskRepository {
     private readonly options: RepositoryOptions,
   ) {}
 
+  async create(destination: TaskDestination, draft: TaskDraft): Promise<TaskRepositoryResult> {
+    const file = this.app.vault.getAbstractFileByPath(destination.filePath);
+    if (!(file instanceof TFile)) {
+      return {
+        type: 'invalid',
+        issues: [{ code: 'destination-unavailable', field: 'destination' }],
+      };
+    }
+    const line = createTaskLine(this.options.codec, draft);
+    if (line.type === 'invalid') return line;
+    let result: TaskRepositoryResult | undefined;
+    try {
+      await this.processFile(file, (content) => {
+        const inserted = this.options.editor.insertRoot(
+          content,
+          line.content,
+          destination.insertion,
+        );
+        if (!inserted) {
+          result = { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+          return content;
+        }
+        const task = this.snapshotFor(destination.filePath, inserted.content, inserted.block);
+        if (!task) {
+          result = { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+          return content;
+        }
+        result = { type: 'committed', outcome: { type: 'task', task }, changed: true };
+        return inserted.content;
+      });
+    } catch {
+      return {
+        type: 'io-error',
+        cause: 'process-error',
+        path: destination.filePath,
+        contentState: 'unknown',
+      };
+    }
+    return (
+      result ?? {
+        type: 'io-error',
+        cause: 'process-error',
+        path: destination.filePath,
+        contentState: 'unknown',
+      }
+    );
+  }
+
   async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
     if (
       command.type === 'reorder-subtask' &&
@@ -326,12 +377,27 @@ export class ObsidianTaskRepository implements TaskRepository {
 
     let result: TaskRepositoryResult | undefined;
     try {
-      await this.app.vault.process(file, (content) => {
+      await this.processFile(file, (content) => {
         const blocks = this.options.editor.rootBlocks(content);
         const located = this.options.locator.locate(blocks, rootRef);
         if (located.type !== 'exact') {
           result = this.resolutionResult(located, command, rootRef.filePath, content);
           return content;
+        }
+
+        if (command.type === 'delete') {
+          const current = this.snapshotFor(rootRef.filePath, content, located.block);
+          const next = this.options.editor.deleteRoot(content, located.block);
+          if (!current || next === undefined) {
+            result = { type: 'not-found', target: mutationTarget(command) };
+            return content;
+          }
+          result = {
+            type: 'committed',
+            outcome: { type: 'deleted', ref: current.ref },
+            changed: true,
+          };
+          return next;
         }
 
         const nodeTarget = nodeTargetOf(command);
@@ -490,6 +556,10 @@ export class ObsidianTaskRepository implements TaskRepository {
           result: { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] },
           content,
         };
+  }
+
+  private async processFile(file: TFile, transform: (content: string) => string): Promise<void> {
+    await this.app.vault.process(file, transform);
   }
 
   private editTextTarget(

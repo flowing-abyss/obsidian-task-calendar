@@ -1,5 +1,6 @@
 import { Plugin } from 'obsidian';
 import { registerCodeBlock, resolveConfig } from './code-block/registerCodeBlock';
+import { DailyNoteResolver } from './resolvers/DailyNoteResolver';
 import { DEFAULT_SETTINGS } from './settings/defaults';
 import { migrateSettings } from './settings/migration';
 import { CalendarSettingsTab } from './settings/SettingsTab';
@@ -13,6 +14,7 @@ import { StatusCatalog } from './tasks/domain/StatusCatalog';
 import { TaskBlockEditor } from './tasks/infrastructure/markdown/TaskBlockEditor';
 import { TaskLocator } from './tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from './tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskDestinationProvider } from './tasks/infrastructure/obsidian/ObsidianTaskDestinationProvider';
 import { ObsidianTaskRepository } from './tasks/infrastructure/obsidian/ObsidianTaskRepository';
 import { TaskIndex } from './tasks/infrastructure/TaskIndex';
 import { CalendarRenderer } from './ui/CalendarRenderer';
@@ -42,9 +44,18 @@ export default class TaskCalendarPlugin extends Plugin {
       locator: new TaskLocator(),
       snapshotsFromContent: (path, content) => taskIndex.snapshotsFromContent(path, content),
     });
-    this.tasks = new TaskApplicationService(taskIndex, repository, statusCatalog, {
-      today: () => localDate(window.moment().format('YYYY-MM-DD')),
-    });
+    const destinationProvider = new ObsidianTaskDestinationProvider(
+      this.app,
+      this.settings,
+      new DailyNoteResolver(this.app, this.settings),
+    );
+    this.tasks = new TaskApplicationService(
+      taskIndex,
+      repository,
+      statusCatalog,
+      { today: () => localDate(window.moment().format('YYYY-MM-DD')) },
+      destinationProvider,
+    );
     this.store = new TaskStore(this.app, this.settings, taskIndex, this.tasks, statusCatalog);
     this.queries = this.tasks.queries;
     this.tagManager = new TagManager(this.app, this.settings, () => this.saveSettings());
@@ -96,6 +107,7 @@ export default class TaskCalendarPlugin extends Plugin {
         this.app,
         this.queries,
         this.tasks,
+        this.settings.taskPrefix,
       );
       renderer.mount();
     };

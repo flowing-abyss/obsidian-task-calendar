@@ -112,17 +112,22 @@ describe('CalendarRenderer TaskInputModal submit', () => {
     expect(addBtn).not.toBeNull();
   });
 
-  it('Enter with text → store.addTask(date, trimmedText)', () => {
+  it('Enter with text sends one configured create command with a due date', () => {
     const cell = root.querySelector('.cell.currentMonth') as HTMLElement;
     cell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const input = activeDocument.body.querySelector('input[type="text"]') as HTMLInputElement;
     input.value = '  Buy milk  ';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(store.addTask).toHaveBeenCalledTimes(1);
-    expect(store.addTask.mock.calls[0]![1]).toBe('Buy milk');
+    expect(store.execute).toHaveBeenCalledWith({
+      type: 'create',
+      destination: { type: 'configured-default' },
+      markdownBody: 'Buy milk',
+      initial: { due: { type: 'set', value: expect.any(String) } },
+    });
+    expect(store.addTask).not.toHaveBeenCalled();
   });
 
-  it('Add button click with text → store.addTask', () => {
+  it('Add button click sends a configured create command', () => {
     const cell = root.querySelector('.cell.currentMonth') as HTMLElement;
     cell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const input = activeDocument.body.querySelector('input[type="text"]') as HTMLInputElement;
@@ -131,19 +136,24 @@ describe('CalendarRenderer TaskInputModal submit', () => {
       (b) => b.textContent === 'Add',
     )!;
     addBtn.click();
-    expect(store.addTask).toHaveBeenCalledWith(expect.any(String), 'Task via button');
+    expect(store.execute).toHaveBeenCalledWith({
+      type: 'create',
+      destination: { type: 'configured-default' },
+      markdownBody: 'Task via button',
+      initial: { due: { type: 'set', value: expect.any(String) } },
+    });
   });
 
-  it('empty/whitespace input → store.addTask NOT called', () => {
+  it('empty/whitespace input sends no create command', () => {
     const cell = root.querySelector('.cell.currentMonth') as HTMLElement;
     cell.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const input = activeDocument.body.querySelector('input[type="text"]') as HTMLInputElement;
     input.value = '   ';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(store.addTask).not.toHaveBeenCalled();
+    expect(store.execute).not.toHaveBeenCalled();
   });
 
-  it('addTask receives the cell date as first arg', () => {
+  it('create receives the clicked cell date as its initial due date', () => {
     const cell = root.querySelector('.cell.currentMonth') as HTMLElement;
     const expectedDate =
       cell.querySelector('.cellName')?.getAttribute('href')?.split('/').pop() ??
@@ -152,6 +162,10 @@ describe('CalendarRenderer TaskInputModal submit', () => {
     const input = activeDocument.body.querySelector('input[type="text"]') as HTMLInputElement;
     input.value = 'test';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(store.addTask.mock.calls[0]![0]).toBe(expectedDate);
+    expect(store.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initial: { due: { type: 'set', value: expectedDate } },
+      }),
+    );
   });
 });

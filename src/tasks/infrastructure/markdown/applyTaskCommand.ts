@@ -180,6 +180,7 @@ export function applyTaskCommand(
     case 'add-comment':
     case 'update-comment':
     case 'delete-comment':
+    case 'delete':
       return { type: 'invalid', issues: [{ code: 'invalid-target', field: 'block' }] };
   }
   return codec.applyLineEdits(sourceLine, edits, requestedFields);

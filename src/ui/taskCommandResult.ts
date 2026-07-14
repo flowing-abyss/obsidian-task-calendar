@@ -23,3 +23,29 @@ export function presentTaskCommandResult(result: TaskCommandResult): void {
   }
   new Notice(message);
 }
+
+export function presentTaskCreationResult(
+  result: TaskCommandResult,
+  options: { readonly announceSuccess: boolean } = { announceSuccess: true },
+): void {
+  if (result.type === 'ok') {
+    if (!options.announceSuccess || result.outcome.type !== 'task') return;
+    const path = result.outcome.task.source.filePath;
+    new Notice(`Task added to ${path.split('/').pop() ?? path}`);
+    return;
+  }
+  if (result.type === 'invalid') {
+    const unavailable = result.issues.some((issue) => issue.code === 'destination-unavailable');
+    new Notice(
+      unavailable
+        ? 'No target file found for task.'
+        : 'The new task is invalid and was not created.',
+    );
+    return;
+  }
+  if (result.type === 'io-error') {
+    new Notice('Failed to create task. Please try again.');
+    return;
+  }
+  presentTaskCommandResult(result);
+}

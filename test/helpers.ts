@@ -8,6 +8,7 @@ import { LeftPanel } from '../src/panels/LeftPanel';
 import type { Task } from '../src/parser/types';
 import type { ProjectManager } from '../src/projects/ProjectManager';
 import type { ProjectStore } from '../src/projects/ProjectStore';
+import { DailyNoteResolver } from '../src/resolvers/DailyNoteResolver';
 import { buildDefaultTaskStatuses, DEFAULT_VIEW_CONFIG } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings, ResolvedConfig } from '../src/settings/types';
@@ -31,6 +32,7 @@ import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
 import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
 import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskDestinationProvider } from '../src/tasks/infrastructure/obsidian/ObsidianTaskDestinationProvider';
 import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 
 export function taskSnapshotOf(value: Task): TaskSnapshot {
@@ -432,9 +434,13 @@ export function configuredTaskStore(
     locator: new TaskLocator(),
     snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
   });
-  const tasks = new TaskApplicationService(index, repository, statusCatalog, {
-    today: () => localDate(moment().format('YYYY-MM-DD')),
-  });
+  const tasks = new TaskApplicationService(
+    index,
+    repository,
+    statusCatalog,
+    { today: () => localDate(moment().format('YYYY-MM-DD')) },
+    new ObsidianTaskDestinationProvider(app, settings, new DailyNoteResolver(app, settings)),
+  );
   return new ConcreteTaskStore(app, settings, index, tasks, statusCatalog);
 }
 

@@ -75,7 +75,15 @@ export function registerCodeBlock(
       },
     });
 
-    const renderer = new CalendarRenderer(rootEl, store, config, plugin.app, queries, tasks);
+    const renderer = new CalendarRenderer(
+      rootEl,
+      store,
+      config,
+      plugin.app,
+      queries,
+      tasks,
+      settings.taskPrefix,
+    );
 
     // MarkdownRenderChild ensures cleanup when the block leaves the DOM
     const child = new MarkdownRenderChild(el);

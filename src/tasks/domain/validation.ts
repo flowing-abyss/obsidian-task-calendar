@@ -9,7 +9,8 @@ type TaskIssueCode =
   | 'inverted-span'
   | 'duplicate-field'
   | 'invalid-task-syntax'
-  | 'invalid-target';
+  | 'invalid-target'
+  | 'destination-unavailable';
 
 export interface TaskIssue {
   readonly code: TaskIssueCode;

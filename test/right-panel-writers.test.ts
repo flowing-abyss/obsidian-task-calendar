@@ -48,7 +48,8 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
       method === 'addSubTask' ||
       method === 'addComment' ||
       method === 'updateComment' ||
-      method === 'deleteComment') &&
+      method === 'deleteComment' ||
+      method === 'deleteTask') &&
     typeof candidate === 'object' &&
     candidate !== null &&
     !('ref' in candidate)

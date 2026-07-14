@@ -27,6 +27,15 @@ export interface TaskRef {
   readonly revision: string;
 }
 
+export type TaskInsertionPolicy =
+  | { readonly type: 'append' }
+  | { readonly type: 'section'; readonly heading: string };
+
+export interface TaskDestination {
+  readonly filePath: string;
+  readonly insertion: TaskInsertionPolicy;
+}
+
 export interface SubtaskRef {
   readonly parent: TaskNodeRef;
   readonly relativeLine: number;

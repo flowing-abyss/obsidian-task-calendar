@@ -16,7 +16,7 @@ interface LegacyWriterReason {
 }
 
 interface NonTaskWriterReason {
-  scope: 'project-note metadata' | 'vault-wide tag rename';
+  scope: 'project-note metadata' | 'vault-wide tag rename' | 'destination-note provisioning';
   reason: string;
 }
 
@@ -31,21 +31,13 @@ const SRC_ROOT = resolve(import.meta.dirname, '..', 'src');
 // ObsidianTaskRepository boundary; every later vertical operation-family task must shrink this
 // list in the same commit. Do not add sites or blanket-ignore source paths.
 const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
-  'src/panels/CenterPanel.ts#CenterPanel.constructor#new TaskMutationService#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'CenterPanel still performs task deletion directly.',
-  },
-  'src/panels/RightPanel.ts#RightPanel.constructor#new TaskMutationService#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'RightPanel retains only root-task deletion until the root lifecycle migration.',
-  },
   'src/projects/ProjectManager.ts#ProjectManager.constructor#new TaskMutationService#1': {
     families: ['creation/deletion/movement'],
     reason: 'Project assignment still moves task blocks through the legacy service.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
     families: ['creation/deletion/movement'],
-    reason: 'Shared legacy boundary remains only for pending root deletion operations.',
+    reason: 'Legacy mutation module remains until ProjectManager move migration in Task 10B.',
   },
   'src/mutation/TaskMutationService.ts#TaskMutationService.moveTaskToFile#vault.process#1': {
     families: ['creation/deletion/movement'],
@@ -55,46 +47,10 @@ const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
     families: ['creation/deletion/movement'],
     reason: 'Legacy move removes the relocated task block from the source second.',
   },
-  'src/store/TaskStore.ts#TaskStore.addTask#vault.create#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Custom-file task creation still creates a destination note in TaskStore.',
-  },
-  'src/store/TaskStore.ts#TaskStore.addTask#vault.process#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Custom-file task creation still appends the new task in TaskStore.',
-  },
-  'src/resolvers/DailyNoteResolver.ts#DailyNoteResolver.createNoteWithTemplate#vault.create#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Templater-backed daily destination creation is part of task creation.',
-  },
-  'src/resolvers/DailyNoteResolver.ts#DailyNoteResolver.createNoteWithTemplate#vault.create#2': {
-    families: ['creation/deletion/movement'],
-    reason: 'Raw-template daily destination creation is part of task creation.',
-  },
-  'src/resolvers/DailyNoteResolver.ts#DailyNoteResolver.createNoteWithTemplate#vault.create#3': {
-    families: ['creation/deletion/movement'],
-    reason: 'Empty daily destination creation is part of task creation.',
-  },
-  'src/resolvers/DailyNoteResolver.ts#DailyNoteResolver.insertTask#vault.process#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Daily-note task creation still inserts the task block directly.',
-  },
-  'src/panels/CenterPanel.ts#CenterPanel.appendTaskToNote#vault.process#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Project-context creation still appends a task from CenterPanel.',
-  },
-  'src/panels/CenterPanel.ts#CenterPanel.createTask#vault.create#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Dateless fallback creation still creates the destination from CenterPanel.',
-  },
-  'src/panels/CenterPanel.ts#CenterPanel.createTask#vault.process#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Dateless fallback creation still appends the task from CenterPanel.',
-  },
 };
 
 const CANONICAL_TASK_WRITERS: Record<string, CanonicalTaskWriterReason> = {
-  'src/tasks/infrastructure/obsidian/ObsidianTaskRepository.ts#ObsidianTaskRepository.edit#vault.process#1':
+  'src/tasks/infrastructure/obsidian/ObsidianTaskRepository.ts#ObsidianTaskRepository.processFile#vault.process#1':
     {
       scope: 'single-task transaction',
       reason:
@@ -105,6 +61,24 @@ const CANONICAL_TASK_WRITERS: Record<string, CanonicalTaskWriterReason> = {
 // Project frontmatter/status writes are deliberately outside the task-write migration. Keeping
 // them explicit still makes any new direct vault writer fail this fitness test.
 const PERMITTED_NON_TASK_WRITERS: Record<string, NonTaskWriterReason> = {
+  'src/resolvers/DailyNoteResolver.ts#DailyNoteResolver.createNoteWithTemplate#vault.create#1': {
+    scope: 'destination-note provisioning',
+    reason: 'Creates the empty Templater destination note before template expansion.',
+  },
+  'src/resolvers/DailyNoteResolver.ts#DailyNoteResolver.createNoteWithTemplate#vault.create#2': {
+    scope: 'destination-note provisioning',
+    reason: 'Creates a daily or project note from a raw template.',
+  },
+  'src/resolvers/DailyNoteResolver.ts#DailyNoteResolver.createNoteWithTemplate#vault.create#3': {
+    scope: 'destination-note provisioning',
+    reason: 'Creates an empty daily or project destination note.',
+  },
+  'src/tasks/infrastructure/obsidian/ObsidianTaskDestinationProvider.ts#ObsidianTaskDestinationProvider.prepare#vault.create#1':
+    {
+      scope: 'destination-note provisioning',
+      reason:
+        'Creates an explicitly provisionable or configured custom note without inserting task Markdown.',
+    },
   'src/tags/TagManager.ts#TagManager.renameTag#vault.process#1': {
     scope: 'vault-wide tag rename',
     reason: 'Global tag rename intentionally updates tag text in every note, including non-tasks.',
@@ -246,12 +220,12 @@ describe('task architecture migration writer guardrail', () => {
     expect(writerSites()).toEqual(allowlisted);
   });
 
-  it('keeps exactly the three remaining TaskMutationService construction sites', () => {
+  it('keeps only the ProjectManager move bridge until Task 10B', () => {
     const constructionSites = Object.keys(LEGACY_TASK_WRITERS).filter((site) =>
       site.includes('#new TaskMutationService#'),
     );
 
-    expect(constructionSites).toHaveLength(3);
+    expect(constructionSites).toHaveLength(1);
   });
 
   it('has no remaining legacy description, comment, or subtask writer family', () => {
@@ -264,7 +238,7 @@ describe('task architecture migration writer guardrail', () => {
 
   it('keeps exactly one canonical single-task transaction boundary', () => {
     expect(Object.keys(CANONICAL_TASK_WRITERS)).toEqual([
-      'src/tasks/infrastructure/obsidian/ObsidianTaskRepository.ts#ObsidianTaskRepository.edit#vault.process#1',
+      'src/tasks/infrastructure/obsidian/ObsidianTaskRepository.ts#ObsidianTaskRepository.processFile#vault.process#1',
     ]);
   });
 

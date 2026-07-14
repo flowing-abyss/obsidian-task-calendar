@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
+import { DailyNoteResolver } from '../src/resolvers/DailyNoteResolver';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../src/settings/types';
@@ -14,6 +15,7 @@ import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
 import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
 import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
+import { ObsidianTaskDestinationProvider } from '../src/tasks/infrastructure/obsidian/ObsidianTaskDestinationProvider';
 import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 import { TodayView } from '../src/views/TodayView';
 import { WeekTimeGridView } from '../src/views/WeekTimeGridView';
@@ -81,6 +83,7 @@ async function makePanel(
     }),
     statusCatalog,
     { today: () => '2026-07-14' as never },
+    new ObsidianTaskDestinationProvider(app, settings, new DailyNoteResolver(app, settings)),
   );
   const store = new TaskStore(app, settings, index, tasks, statusCatalog);
   await store.initialize();

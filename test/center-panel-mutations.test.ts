@@ -265,6 +265,135 @@ describe('CenterPanel planning API delegation', () => {
   });
 });
 
+describe('CenterPanel root lifecycle API delegation', () => {
+  it('creates configured and project tasks through typed commands without direct vault writes', async () => {
+    const app = await createAppWithFiles({ 'Projects/A.md': '# Project\n' });
+    const state = new AppState();
+    const store = makeStubStore([], app) as unknown as TaskStore;
+    const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
+      .taskQueries;
+    const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+      type: 'invalid',
+      issues: [{ code: 'invalid-target' }],
+    });
+    const panel = new CenterPanel(
+      state,
+      store,
+      app,
+      DEFAULT_SETTINGS,
+      queries,
+      undefined,
+      null,
+      null,
+      { queries, execute },
+    );
+    const process = vi.spyOn(app.vault, 'process');
+
+    state.set('selectedList', 'today');
+    await callPrivate(panel, 'createTask', 'buy milk');
+    expect(execute).toHaveBeenLastCalledWith({
+      type: 'create',
+      destination: { type: 'configured-default' },
+      markdownBody: '#task/one-off buy milk',
+      initial: { due: { type: 'set', value: expect.any(String) } },
+    });
+
+    state.set('selectedList', { type: 'project', path: 'Projects/A.md' });
+    await callPrivate(panel, 'createTask', 'project task');
+    expect(execute).toHaveBeenLastCalledWith({
+      type: 'create',
+      destination: {
+        type: 'explicit',
+        destination: { filePath: 'Projects/A.md', insertion: { type: 'append' } },
+      },
+      markdownBody: 'project task',
+    });
+    expect(process).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing custom path', {}, 'Capture', 'Capture.md'],
+    ['custom path with extension', {}, 'Capture.md', 'Capture.md'],
+    ['existing extensionless custom file', { Capture: '' }, 'Capture', 'Capture'],
+    ['existing custom Markdown file', { 'Capture.md': '' }, 'Capture', 'Capture.md'],
+    ['missing default inbox', {}, '', 'Inbox.md'],
+  ])(
+    'requests provider preparation for $name using legacy path resolution',
+    async (_name, files, customFilePath, filePath) => {
+      const app = await createAppWithFiles(files);
+      const state = new AppState();
+      state.set('selectedList', 'inbox');
+      const store = makeStubStore([], app) as unknown as TaskStore;
+      const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
+        .taskQueries;
+      const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
+        type: 'invalid',
+        issues: [{ code: 'destination-unavailable', field: 'destination' }],
+      });
+      const panel = new CenterPanel(
+        state,
+        store,
+        app,
+        { ...DEFAULT_SETTINGS, addToToday: false, customFilePath },
+        queries,
+        undefined,
+        null,
+        null,
+        { queries, execute },
+      );
+
+      await callPrivate(panel, 'createTask', 'captured');
+
+      expect(execute).toHaveBeenCalledWith({
+        type: 'create',
+        destination: {
+          type: 'explicit',
+          destination: { filePath, insertion: { type: 'append' } },
+          provision: 'if-missing',
+        },
+        markdownBody: `captured ${DEFAULT_SETTINGS.inbox.tag}`,
+      });
+    },
+  );
+
+  it('does not clear a newly selected task when an earlier deletion resolves late', async () => {
+    const app = await createAppWithFiles({ 'f.md': '- [ ] old\n- [ ] new\n' });
+    const oldRef: TaskRef = { filePath: 'f.md', line: 0, revision: 'old' };
+    const oldTask = Object.assign(task({ filePath: 'f.md', line: 0, text: 'old' }), {
+      ref: oldRef,
+    });
+    const newTask = task({ filePath: 'f.md', line: 1, text: 'new' });
+    const state = new AppState();
+    state.set('taskStack', [oldTask]);
+    const store = makeStubStore([oldTask, newTask], app) as unknown as TaskStore;
+    const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
+      .taskQueries;
+    let finish!: (result: Awaited<ReturnType<TaskApplicationApi['execute']>>) => void;
+    const execute = vi
+      .fn<TaskApplicationApi['execute']>()
+      .mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const panel = new CenterPanel(
+      state,
+      store,
+      app,
+      DEFAULT_SETTINGS,
+      queries,
+      undefined,
+      null,
+      null,
+      { queries, execute },
+    );
+
+    const pending = callPrivate<Promise<void>>(panel, 'deleteTask', oldTask);
+    expect(execute).toHaveBeenCalledWith({ type: 'delete', ref: oldRef });
+    state.set('taskStack', [newTask]);
+    finish({ type: 'ok', outcome: { type: 'deleted', ref: oldRef }, changed: true });
+    await pending;
+
+    expect(state.get('taskStack')).toEqual([newTask]);
+  });
+});
+
 describe('CenterPanel.setPriority', () => {
   it('adds priority emoji when task has none', async () => {
     const t = task({ filePath: 'n.md', line: 0, rawText: '- [ ] Task', priority: 'D' });

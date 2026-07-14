@@ -4,6 +4,7 @@ import type {
   LocalDate,
   LocalTime,
   SubtaskRef,
+  TaskDestination,
   TaskMutationTarget,
   TaskNodeRef,
   TaskPriority,
@@ -33,6 +34,16 @@ export interface TaskPatch {
 
 export type SubtaskPatch = Omit<TaskPatch, 'duration'>;
 
+type TaskInitialFields = Omit<TaskPatch, 'markdownTitle'>;
+
+type TaskCreationDestination =
+  | { readonly type: 'configured-default' }
+  | {
+      readonly type: 'explicit';
+      readonly destination: TaskDestination;
+      readonly provision?: 'if-missing';
+    };
+
 export type PlanningTarget =
   | { readonly type: 'task'; readonly ref: TaskRef }
   | { readonly type: 'subtask'; readonly ref: SubtaskRef };
@@ -44,6 +55,12 @@ export interface Clock {
 }
 
 export type TaskCommand =
+  | {
+      readonly type: 'create';
+      readonly markdownBody: string;
+      readonly destination: TaskCreationDestination;
+      readonly initial?: TaskInitialFields;
+    }
   | {
       readonly type: 'patch';
       readonly target: { readonly type: 'task'; readonly ref: TaskRef };
@@ -94,9 +111,12 @@ export type TaskCommand =
       readonly target: TaskTextTarget;
       readonly occurrence: number;
       readonly replacement: string;
-    };
+    }
+  | { readonly type: 'delete'; readonly ref: TaskRef };
 
-export type TaskCommandOutcome = { readonly type: 'task'; readonly task: TaskSnapshot };
+export type TaskCommandOutcome =
+  | { readonly type: 'task'; readonly task: TaskSnapshot }
+  | { readonly type: 'deleted'; readonly ref: TaskRef };
 
 export interface TaskResolutionCandidate {
   readonly root: TaskSnapshot;

@@ -1,4 +1,4 @@
-import { Component, Menu, Notice, setIcon, TFile, type App, type MenuItem } from 'obsidian';
+import { Component, Menu, setIcon, TFile, type App, type MenuItem } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import {
   isListViewCustomized,
@@ -6,14 +6,12 @@ import {
   normalizeStatusGroups,
   statusGroupsEqual,
 } from '../app/listViewState';
-import { insertTaskBlockIntoContent, locatorOf, TaskMutationService } from '../mutation';
 import type { LinkToken } from '../parser/links';
 import type { Task } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
 import { DEFAULT_VIEW_CONFIG, getListViewDefaults } from '../settings/defaults';
-import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type {
   CalendarSettings,
   ListViewState,
@@ -29,10 +27,10 @@ import {
   localTime,
   type LocalDate,
   type TaskApplicationApi,
+  type TaskCommandResult,
   type TaskQueryApi,
 } from '../tasks';
 import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
-import { StatusCatalog } from '../tasks/domain/StatusCatalog';
 import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderStatusMarker } from '../ui/StatusMarker';
@@ -41,7 +39,7 @@ import { TaskModal } from '../ui/TaskModal';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { buildStatusSubmenu, showStatusMenuAt } from '../ui/statusMenu';
-import { presentTaskCommandResult } from '../ui/taskCommandResult';
+import { presentTaskCommandResult, presentTaskCreationResult } from '../ui/taskCommandResult';
 import { openInFile } from '../ui/taskNavigation';
 import { MonthGridView } from '../views/MonthGridView';
 import { TodayView } from '../views/TodayView';
@@ -59,6 +57,11 @@ import {
 } from '../views/timegrid/layout';
 import { ProjectsPanel } from './projects/ProjectsPanel';
 import { visibleCalendarDates, type CalViewType } from './visibleCalendarDates';
+
+type CreateTaskCommand = Extract<
+  Parameters<TaskApplicationApi['execute']>[0],
+  { readonly type: 'create' }
+>;
 
 function projectNameFromPath(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/, '');
@@ -113,7 +116,6 @@ export class CenterPanel {
   // the "Status group" row still expanded (multi-select shouldn't close on pick).
   private reopenStatusGroupPopover = false;
   private onSaveSettings: () => Promise<void>;
-  private mutations: TaskMutationService;
   private md = new Component();
 
   private projectsPanel: ProjectsPanel | null = null;
@@ -130,10 +132,6 @@ export class CenterPanel {
     private tasks?: TaskApplicationApi,
   ) {
     this.onSaveSettings = onSaveSettings;
-    this.mutations = new TaskMutationService(
-      app,
-      () => new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
-    );
   }
 
   mount(container: HTMLElement): void {
@@ -263,10 +261,7 @@ export class CenterPanel {
         if (committed) return;
         committed = true;
         const text = input.value.trim();
-        const file = this.app.vault.getAbstractFileByPath(path);
-        if (text && file instanceof TFile) {
-          void this.appendTaskToNote(file, `- [ ] ${text}`);
-        }
+        if (text) void this.createInProject(path, text);
       };
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -1821,7 +1816,16 @@ export class CenterPanel {
       committed = true;
       const text = input.value.trim();
       pop.remove();
-      if (text) void this.store.addTask(date, `${text} ⏰ ${time}`).then(() => onDone());
+      if (text) {
+        void this.executeCreate(
+          this.withDefaultTaskPrefix(text),
+          { type: 'configured-default' },
+          {
+            due: { type: 'set', value: localDate(date) },
+            time: { type: 'set', value: localTime(time) },
+          },
+        ).then(() => onDone());
+      }
     };
     const cancel = (): void => {
       committed = true;
@@ -1874,7 +1878,15 @@ export class CenterPanel {
       committed = true;
       const text = input.value.trim();
       pop.remove();
-      if (text) void this.store.addTask(date, text).then(() => onDone());
+      if (text) {
+        void this.executeCreate(
+          this.withDefaultTaskPrefix(text),
+          { type: 'configured-default' },
+          {
+            due: { type: 'set', value: localDate(date) },
+          },
+        ).then(() => onDone());
+      }
     };
     const cancel = (): void => {
       committed = true;
@@ -1942,102 +1954,139 @@ export class CenterPanel {
     window.setTimeout(() => input.focus(), 0);
   }
 
-  /** Append a task line into a specific note, honoring the section-insertion
-   *  setting. Callers pass the mode/section to use (global for most notes, the
-   *  project-specific one for project notes). */
-  private async appendTaskToNote(
-    file: TFile,
-    line: string,
-    mode: 'append' | 'section' = this.settings.taskInsertionMode,
-    section: string = this.settings.taskInsertionSection,
-  ): Promise<void> {
-    await this.app.vault.process(file, (content) =>
-      insertTaskBlockIntoContent(content, line, mode, section),
-    );
-  }
-
   private async createTask(text: string): Promise<void> {
     const sel = this.state.get('selectedList');
     const today = window.moment().format('YYYY-MM-DD');
 
-    // Today view: delegate fully to store (resolver handles file + prefix + date)
+    // Today and upcoming use the configured destination and typed scheduling fields.
     if (sel === 'today' || sel === 'upcoming') {
-      await this.store.addTask(today, text);
+      await this.executeCreate(
+        this.withDefaultTaskPrefix(text),
+        {
+          type: 'configured-default',
+        },
+        {
+          due: { type: 'set', value: localDate(today) },
+        },
+      );
       return;
     }
 
-    // Project context: write the task directly into the project note, using the
-    // project-specific insertion setting.
+    // Project context keeps its project-specific destination and insertion policy.
     if (typeof sel === 'object' && sel.type === 'project') {
-      const file = this.app.vault.getAbstractFileByPath(sel.path);
-      if (file instanceof TFile) {
-        const { taskInsertionMode: mode, taskInsertionSection: section } = this.settings.projects;
-        await this.appendTaskToNote(file, `- [ ] ${text}`, mode, section);
-      }
+      await this.createInProject(sel.path, text);
       return;
     }
 
-    // Dateless contexts: build raw line, then route via resolver or fallback file
-    let taskLine: string;
+    // Dateless contexts preserve their tag rules while sharing the same create command.
+    let markdownBody: string;
     let fallbackPath: string;
 
     if (sel === 'inbox') {
-      taskLine =
-        this.settings.inbox.mode !== 'untagged'
-          ? `- [ ] ${text} ${this.settings.inbox.tag}`
-          : `- [ ] ${text}`;
+      markdownBody =
+        this.settings.inbox.mode !== 'untagged' ? `${text} ${this.settings.inbox.tag}` : text;
       fallbackPath = this.settings.customFilePath || 'Inbox.md';
     } else if (typeof sel === 'object' && sel.type === 'tag') {
-      taskLine = `- [ ] ${text} ${sel.tag}`;
+      markdownBody = `${text} ${sel.tag}`;
       fallbackPath = this.settings.customFilePath || 'Inbox.md';
     } else if (typeof sel === 'object' && sel.type === 'group') {
       const group = this.settings.tagGroups.find((g) => g.id === sel.groupId);
       const tag = group?.mode === 'prefix' ? `#${group.prefix ?? ''}` : (group?.tags?.[0] ?? '');
-      taskLine = tag ? `- [ ] ${text} ${tag}` : `- [ ] ${text}`;
+      markdownBody = tag ? `${text} ${tag}` : text;
       fallbackPath = this.settings.customFilePath || 'Inbox.md';
     } else {
-      await this.store.addTask(today, text);
+      await this.executeCreate(
+        this.withDefaultTaskPrefix(text),
+        {
+          type: 'configured-default',
+        },
+        {
+          due: { type: 'set', value: localDate(today) },
+        },
+      );
       return;
     }
 
     if (this.settings.addToToday) {
-      await this.store.addRawLine(taskLine);
+      await this.executeCreate(markdownBody, { type: 'configured-default' });
       return;
     }
 
-    // addToToday off: write to fallback file
-    let file = this.app.vault.getAbstractFileByPath(fallbackPath);
-    if (!(file instanceof TFile)) {
-      const withMd = fallbackPath.endsWith('.md') ? fallbackPath : `${fallbackPath}.md`;
-      file = this.app.vault.getAbstractFileByPath(withMd);
-    }
-    if (!(file instanceof TFile)) {
-      try {
-        const path = fallbackPath.endsWith('.md') ? fallbackPath : `${fallbackPath}.md`;
-        await this.app.vault.create(path, taskLine + '\n');
-        new Notice(`Created ${fallbackPath}`);
-        return;
-      } catch {
-        new Notice(`Could not find task file: ${fallbackPath}`);
-        return;
-      }
-    }
-    await this.app.vault.process(file, (data) => data.trimEnd() + '\n' + taskLine + '\n');
+    const path = this.resolveFallbackTaskPath(fallbackPath);
+    await this.executeCreate(markdownBody, {
+      type: 'explicit',
+      destination: { filePath: path, insertion: { type: 'append' } },
+      provision: 'if-missing',
+    });
   }
 
   private async deleteTask(task: Task): Promise<void> {
-    const rangeEnd = task.subtaskRange ? task.subtaskRange.to : task.line;
-    await this.mutations.deleteTaskBlock(locatorOf(task), rangeEnd);
+    const ref = taskRefOf(task);
+    if (!ref || !this.tasks) return;
+    const result = await this.tasks.execute({ type: 'delete', ref });
+    presentTaskCommandResult(result);
+    if (result.type !== 'ok' || result.outcome.type !== 'deleted') return;
     const stack = this.state.get('taskStack');
-    const current = stack[stack.length - 1];
-    if (
-      current !== undefined &&
-      'line' in current &&
-      current.line === task.line &&
-      current.filePath === task.filePath
-    ) {
+    const current = stack[0] ? taskRefOf(stack[0]) : undefined;
+    if (current && this.sameTaskRef(current, ref)) {
       this.state.set('taskStack', []);
     }
+  }
+
+  private async createInProject(path: string, markdownBody: string): Promise<void> {
+    const { taskInsertionMode, taskInsertionSection } = this.settings.projects;
+    await this.executeCreate(markdownBody, {
+      type: 'explicit',
+      destination: {
+        filePath: path,
+        insertion:
+          taskInsertionMode === 'section' && taskInsertionSection.trim().length > 0
+            ? { type: 'section', heading: taskInsertionSection }
+            : { type: 'append' },
+      },
+    });
+  }
+
+  private withDefaultTaskPrefix(markdownBody: string): string {
+    const prefix = this.settings.taskPrefix.trim();
+    return prefix ? `${prefix} ${markdownBody}` : markdownBody;
+  }
+
+  private async executeCreate(
+    markdownBody: string,
+    destination: CreateTaskCommand['destination'],
+    initial?: CreateTaskCommand['initial'],
+  ): Promise<TaskCommandResult | undefined> {
+    if (!this.tasks) return undefined;
+    const result = await this.tasks.execute({
+      type: 'create',
+      destination,
+      markdownBody,
+      ...(initial !== undefined && { initial }),
+    });
+    presentTaskCreationResult(result, {
+      announceSuccess: destination.type === 'configured-default',
+    });
+    return result;
+  }
+
+  private resolveFallbackTaskPath(configuredPath: string): string {
+    const existing = this.app.vault.getAbstractFileByPath(configuredPath);
+    if (existing instanceof TFile) return existing.path;
+    const withExtension = configuredPath.endsWith('.md') ? configuredPath : `${configuredPath}.md`;
+    const markdownFile = this.app.vault.getAbstractFileByPath(withExtension);
+    return markdownFile instanceof TFile ? markdownFile.path : withExtension;
+  }
+
+  private sameTaskRef(
+    left: import('../tasks/domain/types').TaskRef,
+    right: import('../tasks/domain/types').TaskRef,
+  ): boolean {
+    return (
+      left.filePath === right.filePath &&
+      left.line === right.line &&
+      left.revision === right.revision
+    );
   }
 
   private getFilteredTasks(): Task[] {
