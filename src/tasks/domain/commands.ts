@@ -112,7 +112,8 @@ export type TaskCommand =
       readonly occurrence: number;
       readonly replacement: string;
     }
-  | { readonly type: 'delete'; readonly ref: TaskRef };
+  | { readonly type: 'delete'; readonly ref: TaskRef }
+  | { readonly type: 'move'; readonly ref: TaskRef; readonly destination: TaskDestination };
 
 export type TaskCommandOutcome =
   | { readonly type: 'task'; readonly task: TaskSnapshot }
@@ -123,12 +124,21 @@ export interface TaskResolutionCandidate {
   readonly target: TaskMutationTarget;
 }
 
+export interface MoveRecovery {
+  readonly source: TaskRef;
+  readonly targetPath: string;
+  readonly copiedTask: TaskSnapshot;
+  readonly state: 'target-copied-source-remains';
+  readonly cause: 'conflict' | 'not-found' | 'ambiguous' | 'io-error';
+}
+
 export type TaskCommandResult =
   | { readonly type: 'ok'; readonly outcome: TaskCommandOutcome; readonly changed: boolean }
   | { readonly type: 'conflict'; readonly current: TaskSnapshot }
   | { readonly type: 'not-found'; readonly target: TaskMutationTarget }
   | { readonly type: 'ambiguous'; readonly candidates: readonly TaskResolutionCandidate[] }
   | { readonly type: 'invalid'; readonly issues: readonly TaskIssue[] }
+  | { readonly type: 'partial'; readonly operation: 'move'; readonly recovery: MoveRecovery }
   | {
       readonly type: 'io-error';
       readonly cause: string;

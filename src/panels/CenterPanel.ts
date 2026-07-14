@@ -36,6 +36,7 @@ import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { TagPickerModal } from '../ui/TagPickerModal';
 import { TaskModal } from '../ui/TaskModal';
+import { moveTaskToProjectWithRecovery } from '../ui/moveTaskToProject';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
 import { buildStatusSubmenu, showStatusMenuAt } from '../ui/statusMenu';
@@ -1093,7 +1094,8 @@ export class CenterPanel {
     // onto a task to move that task into the project note).
     card.addEventListener('dragover', (e) => {
       const project = this.state.get('draggingProject');
-      const canDropProject = !!project && project !== task.filePath && !!this.projectManager;
+      const canDropProject =
+        !!project && project !== task.filePath && !!this.projectManager && !!this.tasks;
       if (!this.state.get('draggingTag') && !canDropProject) return;
       e.preventDefault();
       card.classList.add('tc-drop-target');
@@ -1108,9 +1110,18 @@ export class CenterPanel {
       if (tag) {
         e.preventDefault();
         void this.assignTagFromInbox(task, tag);
-      } else if (project && project !== task.filePath && this.projectManager) {
+      } else if (project && project !== task.filePath && this.projectManager && this.tasks) {
         e.preventDefault();
-        void this.projectManager.moveTaskToProject(task, project);
+        const ref = taskRefOf(task);
+        if (ref) {
+          void moveTaskToProjectWithRecovery(
+            this.app,
+            this.tasks,
+            this.projectManager,
+            ref,
+            project,
+          );
+        }
       }
     });
 

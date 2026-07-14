@@ -120,6 +120,20 @@ describe('TaskSnapshot contract', () => {
     index.destroy();
   });
 
+  it('exposes the complete exact root block for safe conflict inspection', async () => {
+    const block = [
+      '- [ ] root',
+      '  - > description',
+      '  - 2026-07-14: comment',
+      '  - [ ] child',
+      '    - [ ] nested',
+    ].join('\r\n');
+    const { index } = await snapshotIndex(`${block}\r\n- [ ] sibling`);
+
+    expect(index.list()[0]!.source.originalBlock).toBe(block);
+    index.destroy();
+  });
+
   it('resolves exact, unique drift, conflict, not-found, and ambiguous references safely', async () => {
     const { index, fireChanged, file } = await snapshotIndex('- [ ] same');
     const observed = index.list()[0]!;

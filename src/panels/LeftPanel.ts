@@ -10,6 +10,7 @@ import { RenameTagModal } from '../tags/RenameTagModal';
 import type { TagManager } from '../tags/TagManager';
 import type { TaskApplicationApi, TaskQueryApi } from '../tasks';
 import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
+import { moveTaskToProjectWithRecovery } from '../ui/moveTaskToProject';
 import { presentTaskCommandResult } from '../ui/taskCommandResult';
 
 const PROJECTS_CAP = 10;
@@ -678,7 +679,7 @@ export class LeftPanel {
   private attachProjectDropZone(el: HTMLElement, projectPath: string): void {
     el.addEventListener('dragover', (e) => {
       const task = this.state.get('draggingTask');
-      if (!this.projectManager || !task || task.filePath === projectPath) return;
+      if (!this.projectManager || !this.tasks || !task || task.filePath === projectPath) return;
       e.preventDefault();
       el.classList.add('tc-drop-target');
     });
@@ -688,9 +689,18 @@ export class LeftPanel {
     el.addEventListener('drop', (e) => {
       el.classList.remove('tc-drop-target');
       const task = this.state.get('draggingTask');
-      if (!task || task.filePath === projectPath || !this.projectManager) return;
+      if (!task || task.filePath === projectPath || !this.projectManager || !this.tasks) return;
       e.preventDefault();
-      void this.projectManager.moveTaskToProject(task, projectPath);
+      const ref = taskRefOf(task);
+      if (ref) {
+        void moveTaskToProjectWithRecovery(
+          this.app,
+          this.tasks,
+          this.projectManager,
+          ref,
+          projectPath,
+        );
+      }
     });
   }
 

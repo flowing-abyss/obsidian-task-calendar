@@ -730,7 +730,7 @@ export class TaskIndex implements TaskQueryApi {
         ),
         comments: subitems.comments.map((comment) => commentSnapshot(comment, node, line, lines)),
         ...(subitems.description && { description: subitems.description }),
-        source: { filePath, line, originalMarkdown },
+        source: { filePath, line, originalMarkdown, originalBlock: exactBlock },
         presentation,
       });
     }

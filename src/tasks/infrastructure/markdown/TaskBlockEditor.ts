@@ -229,6 +229,25 @@ export class TaskBlockEditor {
     insertion: TaskInsertionPolicy,
   ): { readonly content: string; readonly block: TaskRootBlock } | undefined {
     if (/[\r\n]/u.test(taskLine)) return undefined;
+    return this.insertRootBlock(content, taskLine, insertion);
+  }
+
+  insertRootBlock(
+    content: string,
+    blockSource: string,
+    insertion: TaskInsertionPolicy,
+  ): { readonly content: string; readonly block: TaskRootBlock } | undefined {
+    const capturedLines = sourceLines(blockSource);
+    const capturedBlocks = this.rootBlocks(blockSource);
+    if (
+      capturedLines.length === 0 ||
+      capturedBlocks.length !== 1 ||
+      capturedBlocks[0]?.line !== 0 ||
+      capturedBlocks[0].toLine !== capturedLines.length - 1 ||
+      capturedBlocks[0].source !== blockSource
+    ) {
+      return undefined;
+    }
     const lines = sourceLines(content);
     const ending = lines.find((line) => line.ending !== '')?.ending || '\n';
     const hadFinalEnding = content.endsWith('\n');
@@ -248,7 +267,12 @@ export class TaskBlockEditor {
       }
     }
 
-    insertAt(lines, at, insertedLines([taskLine], ending), ending);
+    insertAt(
+      lines,
+      at,
+      capturedLines.map((line) => ({ ...line })),
+      ending,
+    );
     const next = serializeLines(lines, hadFinalEnding, ending);
     const block = this.rootBlocks(next).find((candidate) => candidate.line === at);
     return block ? { content: next, block } : undefined;

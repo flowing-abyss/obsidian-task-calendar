@@ -1,5 +1,6 @@
-import { Notice } from 'obsidian';
-import type { TaskCommandResult } from '../tasks';
+import { Notice, type App } from 'obsidian';
+import type { TaskApplicationApi, TaskCommandResult } from '../tasks';
+import { TaskMoveRecoveryModal } from './TaskMoveRecoveryModal';
 
 export function presentTaskCommandResult(result: TaskCommandResult): void {
   if (result.type === 'ok') return;
@@ -20,8 +21,23 @@ export function presentTaskCommandResult(result: TaskCommandResult): void {
     case 'io-error':
       message = 'Failed to update task. Please try again.';
       break;
+    case 'partial':
+      message = 'The task was copied, but the original could not be removed.';
+      break;
   }
   new Notice(message);
+}
+
+export function presentTaskMoveResult(
+  app: App,
+  tasks: TaskApplicationApi,
+  result: TaskCommandResult,
+): void {
+  if (result.type === 'partial') {
+    new TaskMoveRecoveryModal(app, tasks, result.recovery).open();
+    return;
+  }
+  presentTaskCommandResult(result);
 }
 
 export function presentTaskCreationResult(

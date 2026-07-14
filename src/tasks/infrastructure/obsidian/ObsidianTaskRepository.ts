@@ -6,7 +6,7 @@ import type {
   TaskRepository,
   TaskRepositoryResult,
 } from '../../application/TaskRepository';
-import type { PlanningTarget, TaskResolutionCandidate } from '../../domain/commands';
+import type { MoveRecovery, PlanningTarget, TaskResolutionCandidate } from '../../domain/commands';
 import type {
   CommentRef,
   SubtaskRef,
@@ -359,6 +359,138 @@ export class ObsidianTaskRepository implements TaskRepository {
     );
   }
 
+  async move(ref: TaskRef, destination: TaskDestination): Promise<TaskRepositoryResult> {
+    const sourceFile = this.app.vault.getAbstractFileByPath(ref.filePath);
+    if (!(sourceFile instanceof TFile)) {
+      return { type: 'not-found', target: { type: 'task', ref } };
+    }
+
+    let sourceContent: string;
+    try {
+      sourceContent = await this.app.vault.read(sourceFile);
+    } catch {
+      return {
+        type: 'io-error',
+        cause: 'read-error',
+        path: ref.filePath,
+        contentState: 'unchanged',
+      };
+    }
+    const sourceLocated = this.options.locator.locate(
+      this.options.editor.rootBlocks(sourceContent),
+      ref,
+    );
+    if (sourceLocated.type !== 'exact') {
+      return this.resolutionResultForRef(sourceLocated, ref, sourceContent);
+    }
+    const sourceTask = this.snapshotFor(ref.filePath, sourceContent, sourceLocated.block);
+    if (!sourceTask) return { type: 'not-found', target: { type: 'task', ref } };
+    if (ref.filePath === destination.filePath) {
+      return {
+        type: 'committed',
+        outcome: { type: 'task', task: sourceTask },
+        changed: false,
+      };
+    }
+
+    const targetFile = this.app.vault.getAbstractFileByPath(destination.filePath);
+    if (!(targetFile instanceof TFile)) {
+      return {
+        type: 'invalid',
+        issues: [{ code: 'destination-unavailable', field: 'destination' }],
+      };
+    }
+
+    let targetResult: TaskRepositoryResult | undefined;
+    try {
+      await this.processFile(targetFile, (content) => {
+        const inserted = this.options.editor.insertRootBlock(
+          content,
+          sourceLocated.block.source,
+          destination.insertion,
+        );
+        if (!inserted) {
+          targetResult = { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+          return content;
+        }
+        const copiedTask = this.snapshotFor(destination.filePath, inserted.content, inserted.block);
+        if (!copiedTask) {
+          targetResult = { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+          return content;
+        }
+        targetResult = {
+          type: 'committed',
+          outcome: { type: 'task', task: copiedTask },
+          changed: true,
+        };
+        return inserted.content;
+      });
+    } catch {
+      return {
+        type: 'io-error',
+        cause: 'process-error',
+        path: destination.filePath,
+        contentState: 'unknown',
+      };
+    }
+    if (!targetResult) {
+      return {
+        type: 'io-error',
+        cause: 'process-error',
+        path: destination.filePath,
+        contentState: 'unknown',
+      };
+    }
+    if (targetResult.type !== 'committed' || targetResult.outcome.type !== 'task') {
+      return targetResult;
+    }
+
+    const copiedTask = targetResult.outcome.task;
+    const removalFile = this.app.vault.getAbstractFileByPath(sourceTask.ref.filePath);
+    if (!(removalFile instanceof TFile)) {
+      return this.partialMove(sourceTask.ref, destination.filePath, copiedTask, 'not-found');
+    }
+    let removalPrepared = false;
+    let removalCommitted = false;
+    let sourceFailure: MoveRecovery['cause'] | undefined;
+    try {
+      await this.processFile(removalFile, (content) => {
+        const located = this.options.locator.locate(
+          this.options.editor.rootBlocks(content),
+          sourceTask.ref,
+        );
+        if (located.type !== 'exact') {
+          sourceFailure = located.type;
+          return content;
+        }
+        const current = this.snapshotFor(sourceTask.ref.filePath, content, located.block);
+        if (!current) {
+          sourceFailure = 'not-found';
+          return content;
+        }
+        const next = this.options.editor.deleteRoot(content, located.block);
+        if (next === undefined) {
+          sourceFailure = 'not-found';
+          return content;
+        }
+        removalPrepared = true;
+        return next;
+      });
+      removalCommitted = removalPrepared && sourceFailure === undefined;
+    } catch {
+      sourceFailure = 'io-error';
+    }
+    if (!removalCommitted) {
+      return this.partialMove(
+        sourceTask.ref,
+        destination.filePath,
+        copiedTask,
+        sourceFailure ?? 'io-error',
+      );
+    }
+    return targetResult;
+  }
+
   async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
     if (
       command.type === 'reorder-subtask' &&
@@ -693,5 +825,47 @@ export class ObsidianTaskRepository implements TaskRepository {
     return candidates.length > 0
       ? { type: 'ambiguous', candidates }
       : { type: 'not-found', target: mutationTarget(command) };
+  }
+
+  private resolutionResultForRef(
+    located: Exclude<ReturnType<TaskLocator['locate']>, { readonly type: 'exact' }>,
+    ref: TaskRef,
+    content: string,
+  ): TaskRepositoryResult {
+    if (located.type === 'not-found') {
+      return { type: 'not-found', target: { type: 'task', ref } };
+    }
+    if (located.type === 'conflict') {
+      const current = this.snapshotFor(ref.filePath, content, located.block);
+      return current
+        ? { type: 'conflict', current }
+        : { type: 'not-found', target: { type: 'task', ref } };
+    }
+    return {
+      type: 'ambiguous',
+      candidates: located.blocks.flatMap((block) => {
+        const root = this.snapshotFor(ref.filePath, content, block);
+        return root ? [{ root, target: { type: 'task' as const, ref: root.ref } }] : [];
+      }),
+    };
+  }
+
+  private partialMove(
+    source: TaskRef,
+    targetPath: string,
+    copiedTask: TaskSnapshot,
+    cause: MoveRecovery['cause'],
+  ): TaskRepositoryResult {
+    return {
+      type: 'partial',
+      operation: 'move',
+      recovery: {
+        source,
+        targetPath,
+        copiedTask,
+        state: 'target-copied-source-remains',
+        cause,
+      },
+    };
   }
 }

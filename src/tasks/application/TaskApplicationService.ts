@@ -90,7 +90,7 @@ function refKey(ref: TaskRef): string {
 }
 
 const RECENT_OUTCOME_LIMIT = 64;
-type NonCreateTaskCommand = Exclude<TaskCommand, { readonly type: 'create' }>;
+type EditableTaskCommand = Exclude<TaskCommand, { readonly type: 'create' | 'move' }>;
 
 function multilineInputIssue(command: TaskCommand): TaskCommandResult | undefined {
   if (
@@ -164,6 +164,7 @@ export class TaskApplicationService implements TaskApplicationApi {
   async execute(command: TaskCommand): Promise<TaskCommandResult> {
     try {
       if (command.type === 'create') return await this.create(command);
+      if (command.type === 'move') return await this.move(command);
       const prepared = this.prepare(command);
       if ('result' in prepared) return prepared.result;
       const result = await this.repository.edit(prepared.command);
@@ -175,6 +176,15 @@ export class TaskApplicationService implements TaskApplicationApi {
     } catch {
       return { type: 'io-error', cause: 'repository-error', contentState: 'unknown' };
     }
+  }
+
+  private async move(
+    command: Extract<TaskCommand, { readonly type: 'move' }>,
+  ): Promise<TaskCommandResult> {
+    const result = await this.repository.move(command.ref, command.destination);
+    if (result.type !== 'committed') return result;
+    if (result.outcome.type === 'task') this.remember(result.outcome.task);
+    return { type: 'ok', outcome: result.outcome, changed: result.changed };
   }
 
   private async create(
@@ -224,7 +234,7 @@ export class TaskApplicationService implements TaskApplicationApi {
   }
 
   private prepare(
-    command: NonCreateTaskCommand,
+    command: EditableTaskCommand,
   ): { readonly command: TaskEditCommand } | { readonly result: TaskCommandResult } {
     const inputIssue = multilineInputIssue(command);
     if (inputIssue !== undefined) return { result: inputIssue };

@@ -69,7 +69,9 @@ export class PanelView extends ItemView {
     const projectStore = new ProjectStore(this.app, this.queries, this.settings);
     projectStore.initialize();
     this.projectStore = projectStore;
-    const projectManager = new ProjectManager(this.app, this.settings, resolver);
+    const projectManager = this.tasks
+      ? new ProjectManager(this.app, this.settings, resolver, this.tasks)
+      : undefined;
 
     this.rail = new RailPanel(this.state, this.app as never);
     this.left = new LeftPanel(
@@ -81,7 +83,7 @@ export class PanelView extends ItemView {
       this.queries,
       this.onSaveSettings,
       projectStore,
-      projectManager,
+      projectManager ?? null,
       this.tasks,
     );
     this.center = new CenterPanel(
@@ -92,7 +94,7 @@ export class PanelView extends ItemView {
       this.queries,
       this.onSaveSettings,
       projectStore,
-      projectManager,
+      projectManager ?? null,
       this.tasks,
     );
     this.right = new RightPanel(

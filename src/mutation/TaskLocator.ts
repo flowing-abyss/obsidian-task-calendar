@@ -44,8 +44,3 @@ export function findTaskLine(lines: string[], locator: TaskLocator): FindResult 
   if (matches.length === 0) return { type: 'not-found' };
   return { type: 'ambiguous', candidates: matches };
 }
-
-/** Build a locator from a Task or SubTask (both carry filePath, line, rawText). */
-export function locatorOf(task: { filePath: string; line: number; rawText: string }): TaskLocator {
-  return { filePath: task.filePath, rawText: task.rawText, line: task.line };
-}

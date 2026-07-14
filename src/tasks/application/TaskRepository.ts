@@ -1,16 +1,24 @@
 import type {
+  MoveRecovery,
   TaskCommand,
   TaskCommandOutcome,
   TaskResolutionCandidate,
   TaskStatusTarget,
 } from '../domain/commands';
-import type { LocalDate, TaskDestination, TaskMutationTarget, TaskSnapshot } from '../domain/types';
+import type {
+  LocalDate,
+  TaskDestination,
+  TaskMutationTarget,
+  TaskRef,
+  TaskSnapshot,
+} from '../domain/types';
 import type { TaskIssue } from '../domain/validation';
 
 export type TaskEditCommand =
   | Exclude<
       TaskCommand,
       | { readonly type: 'create' }
+      | { readonly type: 'move' }
       | { readonly type: 'set-status' | 'toggle-completion' }
       | { readonly type: 'add-comment' }
     >
@@ -38,6 +46,7 @@ export type TaskRepositoryResult =
   | { readonly type: 'not-found'; readonly target: TaskMutationTarget }
   | { readonly type: 'ambiguous'; readonly candidates: readonly TaskResolutionCandidate[] }
   | { readonly type: 'invalid'; readonly issues: readonly TaskIssue[] }
+  | { readonly type: 'partial'; readonly operation: 'move'; readonly recovery: MoveRecovery }
   | {
       readonly type: 'io-error';
       readonly cause: string;
@@ -48,4 +57,5 @@ export type TaskRepositoryResult =
 export interface TaskRepository {
   edit(command: TaskEditCommand): Promise<TaskRepositoryResult>;
   create(destination: TaskDestination, draft: TaskDraft): Promise<TaskRepositoryResult>;
+  move(ref: TaskRef, destination: TaskDestination): Promise<TaskRepositoryResult>;
 }

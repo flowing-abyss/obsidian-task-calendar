@@ -1,9 +1,11 @@
 import { TFile } from 'obsidian';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ProjectManager } from '../src/projects/ProjectManager';
 import { DailyNoteResolver } from '../src/resolvers/DailyNoteResolver';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
+import type { TaskApplicationApi, TaskCommandResult } from '../src/tasks';
+import type { TaskRef } from '../src/tasks/domain/types';
 import { createAppWithFiles, flushMicrotasks, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -37,7 +39,7 @@ describe('ProjectManager.setStatus', () => {
     });
     const settings = clone();
     const doneId = settings.projects.statuses[2]!.id; // Done → status=done
-    const pm = new ProjectManager(app as never, settings, {} as never);
+    const pm = new ProjectManager(app as never, settings, {} as never, {} as never);
     await pm.setStatus('P.md', doneId);
     await flushMicrotasks();
     const fm = await readFm(app, 'P.md');
@@ -54,7 +56,7 @@ describe('ProjectManager.setStatus', () => {
       { id: 'todo', label: 'Todo', onLeftPanel: true, match: { kind: 'tag', tag: 'todo' } },
       { id: 'done', label: 'Done', onLeftPanel: false, match: { kind: 'tag', tag: 'done' } },
     ];
-    const pm = new ProjectManager(app as never, settings, {} as never);
+    const pm = new ProjectManager(app as never, settings, {} as never, {} as never);
     await pm.setStatus('P.md', 'done');
     await flushMicrotasks();
     const file = (
@@ -77,7 +79,7 @@ describe('ProjectManager.setStatus', () => {
       { id: 'todo', label: 'Todo', onLeftPanel: true, match: { kind: 'tag', tag: 'todo' } },
       { id: 'wip', label: 'WIP', onLeftPanel: true, match: { kind: 'tag', tag: 'wip' } },
     ];
-    const pm = new ProjectManager(app as never, settings, {} as never);
+    const pm = new ProjectManager(app as never, settings, {} as never, {} as never);
     await pm.setStatus('P.md', 'wip');
     await flushMicrotasks();
     const file = (
@@ -92,73 +94,81 @@ describe('ProjectManager.setStatus', () => {
   });
 });
 
-async function readContent(app: unknown, path: string): Promise<string> {
-  const a = app as {
-    vault: { getAbstractFileByPath(p: string): unknown; read(f: TFile): Promise<string> };
-  };
-  const file = a.vault.getAbstractFileByPath(path);
-  if (!(file instanceof TFile)) throw new Error(`${path} is not a TFile`);
-  return a.vault.read(file);
-}
-
-// Minimal Task shape — moveTaskToProject only reads filePath / rawText / line.
-function taskLike(filePath: string, line: number, rawText: string): never {
-  return { filePath, line, rawText } as never;
+function taskApi(
+  result: TaskCommandResult,
+): TaskApplicationApi & { execute: ReturnType<typeof vi.fn> } {
+  return {
+    queries: {} as never,
+    execute: vi.fn().mockResolvedValue(result),
+  } as never;
 }
 
 describe('ProjectManager.moveTaskToProject', () => {
-  it('physically relocates the task block into the project note (append mode)', async () => {
-    const app = await createAppWithFiles({
-      'Daily/2026-07-01.md': '- [ ] Ship it 📅 2026-07-04\n- [ ] keep me',
-      'Projects/Redesign.md': '# Redesign\nbody',
-    });
+  const ref: TaskRef = { filePath: 'Daily/2026-07-01.md', line: 0, revision: 'revision' };
+  const ok: TaskCommandResult = {
+    type: 'ok',
+    changed: true,
+    outcome: { type: 'task', task: {} as never },
+  };
+
+  it('delegates append-mode relocation to the shared semantic API', async () => {
+    const app = await createAppWithFiles({});
     const settings = clone();
     settings.projects.taskInsertionMode = 'append';
-    const pm = new ProjectManager(app as never, settings, {} as never);
+    const tasks = taskApi(ok);
+    const pm = new ProjectManager(app as never, settings, {} as never, tasks);
 
-    const moved = await pm.moveTaskToProject(
-      taskLike('Daily/2026-07-01.md', 0, '- [ ] Ship it 📅 2026-07-04'),
-      'Projects/Redesign.md',
-    );
+    const result = await pm.moveTaskToProject(ref, 'Projects/Redesign.md');
 
-    expect(moved).toBe(true);
-    expect(await readContent(app, 'Daily/2026-07-01.md')).toBe('- [ ] keep me');
-    expect(await readContent(app, 'Projects/Redesign.md')).toBe(
-      '# Redesign\nbody\n- [ ] Ship it 📅 2026-07-04\n',
-    );
+    expect(result).toBe(ok);
+    expect(tasks.execute).toHaveBeenCalledOnce();
+    expect(tasks.execute).toHaveBeenCalledWith({
+      type: 'move',
+      ref,
+      destination: { filePath: 'Projects/Redesign.md', insertion: { type: 'append' } },
+    });
   });
 
-  it('honors the section insertion setting when moving', async () => {
-    const app = await createAppWithFiles({
-      'Daily/2026-07-01.md': '- [ ] Ship it',
-      'Projects/P.md': '# P\n## Tasks\n- [ ] existing\n',
-    });
+  it('translates the section insertion setting without writing Markdown itself', async () => {
+    const app = await createAppWithFiles({});
     const settings = clone();
     settings.projects.taskInsertionMode = 'section';
     settings.projects.taskInsertionSection = '## Tasks';
-    const pm = new ProjectManager(app as never, settings, {} as never);
+    const tasks = taskApi(ok);
+    const pm = new ProjectManager(app as never, settings, {} as never, tasks);
 
-    await pm.moveTaskToProject(
-      taskLike('Daily/2026-07-01.md', 0, '- [ ] Ship it'),
-      'Projects/P.md',
-    );
+    await pm.moveTaskToProject(ref, 'Projects/P.md');
 
-    expect(await readContent(app, 'Projects/P.md')).toBe(
-      '# P\n## Tasks\n- [ ] Ship it\n- [ ] existing\n',
-    );
+    expect(tasks.execute).toHaveBeenCalledWith({
+      type: 'move',
+      ref,
+      destination: {
+        filePath: 'Projects/P.md',
+        insertion: { type: 'section', heading: '## Tasks' },
+      },
+    });
   });
 
-  it('is a no-op when the task already lives in the project note', async () => {
-    const app = await createAppWithFiles({ 'Projects/P.md': '- [ ] here' });
-    const pm = new ProjectManager(app as never, clone(), {} as never);
+  it('returns partial unchanged so presentation can offer recovery without retrying', async () => {
+    const app = await createAppWithFiles({});
+    const partial: TaskCommandResult = {
+      type: 'partial',
+      operation: 'move',
+      recovery: {
+        source: ref,
+        targetPath: 'Projects/P.md',
+        copiedTask: {} as never,
+        state: 'target-copied-source-remains',
+        cause: 'io-error',
+      },
+    };
+    const tasks = taskApi(partial);
+    const pm = new ProjectManager(app as never, clone(), {} as never, tasks);
 
-    const moved = await pm.moveTaskToProject(
-      taskLike('Projects/P.md', 0, '- [ ] here'),
-      'Projects/P.md',
-    );
+    const result = await pm.moveTaskToProject(ref, 'Projects/P.md');
 
-    expect(moved).toBe(false);
-    expect(await readContent(app, 'Projects/P.md')).toBe('- [ ] here');
+    expect(result).toBe(partial);
+    expect(tasks.execute).toHaveBeenCalledOnce();
   });
 });
 
@@ -167,7 +177,7 @@ describe('ProjectManager.create', () => {
     const app = await createAppWithFiles({});
     const settings = clone();
     const resolver = new DailyNoteResolver(app as never, settings);
-    const pm = new ProjectManager(app as never, settings, resolver);
+    const pm = new ProjectManager(app as never, settings, resolver, {} as never);
     const file = await pm.create('My Project');
     await flushMicrotasks();
     expect(file).not.toBeNull();
@@ -180,14 +190,14 @@ describe('ProjectManager.create', () => {
     const app = await createAppWithFiles({ 'Projects/Dup.md': '# existing\n' });
     const settings = clone();
     const resolver = new DailyNoteResolver(app as never, settings);
-    const pm = new ProjectManager(app as never, settings, resolver);
+    const pm = new ProjectManager(app as never, settings, resolver, {} as never);
     const file = await pm.create('Dup');
     expect(file!.path).toBe('Projects/Dup 2.md');
   });
 
   it('returns null for an empty name', async () => {
     const app = await createAppWithFiles({});
-    const pm = new ProjectManager(app as never, clone(), {} as never);
+    const pm = new ProjectManager(app as never, clone(), {} as never, {} as never);
     expect(await pm.create('   ')).toBeNull();
   });
 });

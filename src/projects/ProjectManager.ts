@@ -1,10 +1,7 @@
 import { normalizePath, TFile, type App } from 'obsidian';
-import { locatorOf, TaskMutationService } from '../mutation';
-import type { Task } from '../parser/types';
 import type { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
-import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings, ProjectStatus } from '../settings/types';
-import { StatusCatalog } from '../tasks/domain/StatusCatalog';
+import type { TaskApplicationApi, TaskCommandResult, TaskRef } from '../tasks';
 
 function toStringArray(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw.map((t) => String(t));
@@ -19,31 +16,31 @@ function toStringArray(raw: unknown): string[] {
  * statuses so a note carries at most one plugin-managed status.
  */
 export class ProjectManager {
-  private mutations: TaskMutationService;
-
   constructor(
     private app: App,
     private settings: CalendarSettings,
     private resolver: DailyNoteResolver,
-  ) {
-    this.mutations = new TaskMutationService(
-      app,
-      () => new StatusCatalog(toStatusRules(this.settings.taskStatuses)),
-    );
-  }
+    private tasks: TaskApplicationApi,
+  ) {}
 
   /**
    * Move a task into a project by physically relocating its markdown block into
    * the project note (membership == file location). No-op when the task already
    * lives in that note. Honors the plugin's task-insertion setting.
    */
-  async moveTaskToProject(task: Task, projectPath: string): Promise<boolean> {
-    if (task.filePath === projectPath) return false;
-    const result = await this.mutations.moveTaskToFile(locatorOf(task), projectPath, {
-      mode: this.settings.projects.taskInsertionMode,
-      section: this.settings.projects.taskInsertionSection,
+  async moveTaskToProject(ref: TaskRef, projectPath: string): Promise<TaskCommandResult> {
+    const insertion =
+      this.settings.projects.taskInsertionMode === 'section'
+        ? {
+            type: 'section' as const,
+            heading: this.settings.projects.taskInsertionSection,
+          }
+        : { type: 'append' as const };
+    return this.tasks.execute({
+      type: 'move',
+      ref,
+      destination: { filePath: projectPath, insertion },
     });
-    return result.type === 'ok';
   }
 
   async setStatus(path: string, statusId: string): Promise<void> {

@@ -31,21 +31,9 @@ const SRC_ROOT = resolve(import.meta.dirname, '..', 'src');
 // ObsidianTaskRepository boundary; every later vertical operation-family task must shrink this
 // list in the same commit. Do not add sites or blanket-ignore source paths.
 const LEGACY_TASK_WRITERS: Record<string, LegacyWriterReason> = {
-  'src/projects/ProjectManager.ts#ProjectManager.constructor#new TaskMutationService#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Project assignment still moves task blocks through the legacy service.',
-  },
   'src/mutation/TaskMutationService.ts#TaskMutationService.applyToLines#vault.process#1': {
     families: ['creation/deletion/movement'],
-    reason: 'Legacy mutation module remains until ProjectManager move migration in Task 10B.',
-  },
-  'src/mutation/TaskMutationService.ts#TaskMutationService.moveTaskToFile#vault.process#1': {
-    families: ['creation/deletion/movement'],
-    reason: 'Legacy move appends the captured task block to the destination first.',
-  },
-  'src/mutation/TaskMutationService.ts#TaskMutationService.moveTaskToFile#vault.process#2': {
-    families: ['creation/deletion/movement'],
-    reason: 'Legacy move removes the relocated task block from the source second.',
+    reason: 'Unconstructed compatibility mutation module remains until final bridge removal.',
   },
 };
 
@@ -220,12 +208,12 @@ describe('task architecture migration writer guardrail', () => {
     expect(writerSites()).toEqual(allowlisted);
   });
 
-  it('keeps only the ProjectManager move bridge until Task 10B', () => {
+  it('has no production construction of the legacy mutation service after move migration', () => {
     const constructionSites = Object.keys(LEGACY_TASK_WRITERS).filter((site) =>
       site.includes('#new TaskMutationService#'),
     );
 
-    expect(constructionSites).toHaveLength(1);
+    expect(constructionSites).toHaveLength(0);
   });
 
   it('has no remaining legacy description, comment, or subtask writer family', () => {

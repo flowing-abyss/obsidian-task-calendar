@@ -54,7 +54,7 @@ function service(
 ) {
   return new TaskApplicationService(
     taskQueries,
-    { create: vi.fn(), ...repository },
+    { create: vi.fn(), move: vi.fn(), ...repository },
     statuses,
     clock,
   );
@@ -333,7 +333,7 @@ describe('TaskApplicationService planning commands', () => {
     const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
     const service = new TaskApplicationService(
       queries(),
-      { edit, create: vi.fn() },
+      { edit, create: vi.fn(), move: vi.fn() },
       statuses,
       clock,
     );
@@ -366,6 +366,7 @@ describe('TaskApplicationService planning commands', () => {
     const repository: TaskRepository = {
       edit: vi.fn().mockResolvedValue(result),
       create: vi.fn(),
+      move: vi.fn(),
     };
     const service = new TaskApplicationService(queries(), repository, statuses, clock);
 
@@ -378,6 +379,7 @@ describe('TaskApplicationService planning commands', () => {
     const repository: TaskRepository = {
       edit: vi.fn().mockRejectedValue(new Error('- [ ] secret task')),
       create: vi.fn(),
+      move: vi.fn(),
     };
     const service = new TaskApplicationService(queries(), repository, statuses, clock);
 
@@ -415,7 +417,7 @@ describe('TaskApplicationService planning commands', () => {
     const edit = vi.fn<TaskRepository['edit']>().mockResolvedValue(committed);
     const service = new TaskApplicationService(
       queries(),
-      { edit, create: vi.fn() },
+      { edit, create: vi.fn(), move: vi.fn() },
       statuses,
       clock,
     );
@@ -844,7 +846,7 @@ describe('TaskApplicationService planning commands', () => {
     clock.today.mockClear();
     const application = new TaskApplicationService(
       exactQueries,
-      { edit, create: vi.fn() },
+      { edit, create: vi.fn(), move: vi.fn() },
       custom,
       clock,
     );

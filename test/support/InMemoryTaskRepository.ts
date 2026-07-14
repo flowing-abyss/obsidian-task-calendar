@@ -304,6 +304,63 @@ export class InMemoryTaskRepository implements TaskRepository {
     return { type: 'committed', outcome: { type: 'task', task }, changed: true };
   }
 
+  async move(ref: TaskRef, destination: TaskDestination): Promise<TaskRepositoryResult> {
+    const sourceContent = this.files.get(ref.filePath);
+    if (sourceContent === undefined) {
+      return { type: 'not-found', target: { type: 'task', ref } };
+    }
+    const located = this.locator.locate(this.editor.rootBlocks(sourceContent), ref);
+    if (located.type === 'not-found') {
+      return { type: 'not-found', target: { type: 'task', ref } };
+    }
+    if (located.type === 'conflict') {
+      const current = this.snapshot(ref.filePath, sourceContent, located.block.line);
+      return current
+        ? { type: 'conflict', current }
+        : { type: 'not-found', target: { type: 'task', ref } };
+    }
+    if (located.type === 'ambiguous') {
+      return {
+        type: 'ambiguous',
+        candidates: located.blocks.flatMap((block) => {
+          const root = this.snapshot(ref.filePath, sourceContent, block.line);
+          return root ? [{ root, target: { type: 'task' as const, ref: root.ref } }] : [];
+        }),
+      };
+    }
+    const current = this.snapshot(ref.filePath, sourceContent, located.block.line);
+    if (!current) return { type: 'not-found', target: { type: 'task', ref } };
+    if (ref.filePath === destination.filePath) {
+      return { type: 'committed', outcome: { type: 'task', task: current }, changed: false };
+    }
+    const targetContent = this.files.get(destination.filePath);
+    if (targetContent === undefined) {
+      return {
+        type: 'invalid',
+        issues: [{ code: 'destination-unavailable', field: 'destination' }],
+      };
+    }
+    const inserted = this.editor.insertRootBlock(
+      targetContent,
+      located.block.source,
+      destination.insertion,
+    );
+    if (!inserted) return { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+    const copiedTask = this.snapshot(destination.filePath, inserted.content, inserted.block.line);
+    if (!copiedTask) return { type: 'invalid', issues: [{ code: 'invalid-task-syntax' }] };
+    const sourceWithoutTask = this.editor.deleteRoot(sourceContent, located.block);
+    if (sourceWithoutTask === undefined) {
+      return { type: 'not-found', target: { type: 'task', ref: current.ref } };
+    }
+    this.files.set(destination.filePath, inserted.content);
+    this.files.set(ref.filePath, sourceWithoutTask);
+    return {
+      type: 'committed',
+      outcome: { type: 'task', task: copiedTask },
+      changed: true,
+    };
+  }
+
   async edit(command: TaskEditCommand): Promise<TaskRepositoryResult> {
     if (
       command.type === 'reorder-subtask' &&
