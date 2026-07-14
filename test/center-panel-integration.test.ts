@@ -35,9 +35,6 @@ import {
 const TODAY = moment().format('YYYY-MM-DD');
 type TaskStoreType = TaskStore;
 
-const hasAddRawLine =
-  typeof (TaskStore.prototype as unknown as Record<string, unknown>).addRawLine === 'function';
-
 useRealMoment();
 
 /**
@@ -102,7 +99,7 @@ async function makePanel(
 }
 
 describe('CenterPanel.createTask', () => {
-  it("sel='today' delegates to store.addTask (writes to customFilePath when addToToday=false)", async () => {
+  it("sel='today' creates through TaskApplicationApi in customFilePath when addToToday=false", async () => {
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       addToToday: false,
@@ -117,7 +114,7 @@ describe('CenterPanel.createTask', () => {
     expect(content).toContain(`- [ ] buy milk 📅 ${TODAY}`);
   });
 
-  it("sel='upcoming' delegates to store.addTask (same path as today — CURRENT BEHAVIOR)", async () => {
+  it("sel='upcoming' uses the same configured TaskApplicationApi route as today", async () => {
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       addToToday: false,
@@ -175,27 +172,24 @@ describe('CenterPanel.createTask', () => {
     expect(content).toContain('- [ ] tagged task #work');
   });
 
-  (hasAddRawLine ? it : it.skip)(
-    'addToToday=true routes inbox task line through store.addRawLine (resolver)',
-    async () => {
-      const settings: CalendarSettings = {
-        ...DEFAULT_SETTINGS,
-        addToToday: true,
-        inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
-        dailyNoteProvider: 'manual',
-        manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
-      };
-      const { panel, state, app } = await makePanel(
-        { [`periodic/daily/${TODAY}.md`]: '# Today\n' },
-        settings,
-      );
-      state.set('selectedList', 'inbox');
-      fixedToday(TODAY);
-      await call<void>(panel, 'createTask', 'today inbox task');
-      const content = await readMd(app, `periodic/daily/${TODAY}.md`);
-      expect(content).toContain('- [ ] today inbox task #inbox');
-    },
-  );
+  it('routes the inbox body/tag rule through TaskApplicationApi to the configured daily note', async () => {
+    const settings: CalendarSettings = {
+      ...DEFAULT_SETTINGS,
+      addToToday: true,
+      inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
+      dailyNoteProvider: 'manual',
+      manualDailyNotePath: 'periodic/daily/YYYY-MM-DD',
+    };
+    const { panel, state, app } = await makePanel(
+      { [`periodic/daily/${TODAY}.md`]: '# Today\n' },
+      settings,
+    );
+    state.set('selectedList', 'inbox');
+    fixedToday(TODAY);
+    await call<void>(panel, 'createTask', 'today inbox task');
+    const content = await readMd(app, `periodic/daily/${TODAY}.md`);
+    expect(content).toContain('- [ ] today inbox task #inbox');
+  });
 });
 
 describe('CenterPanel.deleteTask', () => {

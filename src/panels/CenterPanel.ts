@@ -1794,7 +1794,8 @@ export class CenterPanel {
    * (mirrors renderTimedBlocksForDay's own `block.style.top` positioning — the technique Task 1
    * fixed for the month/year pickers: an absolutely-positioned child anchored via inline
    * top/left inside a `position: relative`/`position: absolute` container, not one that shoves
-   * surrounding layout). On Enter, appends `⏰ {time}` to the text and writes via store.addTask.
+   * surrounding layout). On Enter, sends the body plus typed due/time initial fields through
+   * TaskApplicationApi; the shared task pipeline owns Markdown encoding and persistence.
    */
   private showTimeGridQuickAdd(
     hourColumnEl: HTMLElement,
