@@ -22,7 +22,12 @@ function snapshot(
     tags: [],
     subtasks: [],
     comments: [],
-    source: { filePath, line, originalMarkdown: `- [ ] ${title}` },
+    source: {
+      filePath,
+      line,
+      originalMarkdown: `- [ ] ${title}`,
+      originalBlock: `- [ ] ${title}`,
+    },
     presentation: { linkCount: 0 },
     ...over,
   };
@@ -55,6 +60,7 @@ describe('selectTaskList', () => {
         filePath: 'tasks.md',
         line: 0,
         originalMarkdown: '- [ ] inbox #task/inbox',
+        originalBlock: '- [ ] inbox #task/inbox',
       },
     }),
     snapshot('untagged', { line: 1 }),
@@ -64,7 +70,12 @@ describe('selectTaskList', () => {
     snapshot('tagged', {
       line: 5,
       tags: ['#work'],
-      source: { filePath: 'tasks.md', line: 5, originalMarkdown: '- [ ] tagged #work' },
+      source: {
+        filePath: 'tasks.md',
+        line: 5,
+        originalMarkdown: '- [ ] tagged #work',
+        originalBlock: '- [ ] tagged #work',
+      },
     }),
     snapshot('project', { filePath: 'Projects/A.md', line: 0 }),
   ];
@@ -131,6 +142,7 @@ describe('selectTaskList', () => {
         filePath: 'tasks.md',
         line: 0,
         originalMarkdown: '- [ ] inline only `#work`',
+        originalBlock: '- [ ] inline only `#work`',
       },
       tags: [],
     });

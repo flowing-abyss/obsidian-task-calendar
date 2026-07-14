@@ -23,7 +23,12 @@ function snapshot(): TaskSnapshot {
     tags: [],
     subtasks: [],
     comments: [],
-    source: { filePath: 'tasks.md', line: 0, originalMarkdown: '- [ ] task 📅 2026-07-20' },
+    source: {
+      filePath: 'tasks.md',
+      line: 0,
+      originalMarkdown: '- [ ] task 📅 2026-07-20',
+      originalBlock: '- [ ] task 📅 2026-07-20',
+    },
     presentation: { linkCount: 0 },
   };
 }

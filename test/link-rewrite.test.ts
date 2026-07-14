@@ -167,7 +167,12 @@ describe('task link rewrite delegation', () => {
       tags: [],
       subtasks: [],
       comments: [],
-      source: { filePath: 't.md', line: 0, originalMarkdown: '- [ ] New' },
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] New',
+        originalBlock: '- [ ] New',
+      },
       presentation: { linkCount: 0 },
     };
     const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({

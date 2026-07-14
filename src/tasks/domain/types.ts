@@ -102,7 +102,7 @@ interface TaskSource {
   readonly line: number;
   readonly originalMarkdown: string;
   /** Complete root block as observed, for safe review of revision conflicts. */
-  readonly originalBlock?: string;
+  readonly originalBlock: string;
 }
 
 interface TaskPresentationMetadata {

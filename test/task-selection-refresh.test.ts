@@ -41,7 +41,12 @@ function snapshot(revision: string, title = revision): TaskSnapshot {
     tags: [],
     subtasks: [],
     comments: [],
-    source: { filePath: 'tasks.md', line: 4, originalMarkdown: `- [ ] ${title}` },
+    source: {
+      filePath: 'tasks.md',
+      line: 4,
+      originalMarkdown: `- [ ] ${title}`,
+      originalBlock: `- [ ] ${title}`,
+    },
     presentation: { linkCount: 0 },
   };
 }

@@ -287,7 +287,12 @@ describe('TaskApplicationService lifecycle routing', () => {
     tags: [],
     subtasks: [],
     comments: [],
-    source: { filePath: path, line: 0, originalMarkdown: '- [ ] created' },
+    source: {
+      filePath: path,
+      line: 0,
+      originalMarkdown: '- [ ] created',
+      originalBlock: '- [ ] created',
+    },
     presentation: { linkCount: 0 },
   } satisfies TaskSnapshot;
 

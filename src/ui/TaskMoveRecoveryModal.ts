@@ -59,7 +59,7 @@ export class TaskMoveRecoveryModal extends Modal {
       text: 'The original changed since the move. Review the current Markdown before removing this newer revision.',
     });
     this.contentEl.createEl('pre', {
-      text: current.source.originalBlock ?? current.source.originalMarkdown,
+      text: current.source.originalBlock,
     });
     const actions = this.contentEl.createDiv({ cls: 'tc-task-move-recovery-actions' });
     const keep = actions.createEl('button', { text: 'Keep both' });
@@ -74,6 +74,16 @@ export class TaskMoveRecoveryModal extends Modal {
     this.contentEl.empty();
     this.contentEl.createEl('h3', { text: 'Original was not removed' });
     this.contentEl.createEl('p', { text: message });
+    const close = this.contentEl.createEl('button', { text: 'Close' });
+    close.addEventListener('click', () => this.close());
+  }
+
+  private renderRemovalUnknown(path: string): void {
+    this.contentEl.empty();
+    this.contentEl.createEl('h3', { text: 'Original removal state is unknown' });
+    this.contentEl.createEl('p', {
+      text: `Could not confirm whether the original in ${path} was removed. Rescan and inspect ${path} and ${this.recovery.targetPath} before taking any action. Do not repeat removal until the vault state is confirmed.`,
+    });
     const close = this.contentEl.createEl('button', { text: 'Close' });
     close.addEventListener('click', () => this.close());
   }
@@ -95,6 +105,10 @@ export class TaskMoveRecoveryModal extends Modal {
     }
     if (result.type === 'ambiguous') {
       this.renderStopped('Multiple possible originals were found. Nothing was removed.');
+      return;
+    }
+    if (result.type === 'io-error' && result.contentState === 'unknown') {
+      this.renderRemovalUnknown(result.path ?? this.recovery.source.filePath);
       return;
     }
     this.renderStopped('The original could not be removed safely. Both copies were kept.');

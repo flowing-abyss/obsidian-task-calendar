@@ -127,7 +127,12 @@ describe('CenterPanel planning API delegation', () => {
         tags: [],
         subtasks: [],
         comments: [],
-        source: { filePath: 'f.md', line: 0, originalMarkdown: '- [ ] task' },
+        source: {
+          filePath: 'f.md',
+          line: 0,
+          originalMarkdown: '- [ ] task',
+          originalBlock: '- [ ] task',
+        },
         presentation: { linkCount: 0 },
       },
     ]);
@@ -214,6 +219,7 @@ describe('CenterPanel planning API delegation', () => {
           filePath: 'f.md',
           line: 0,
           originalMarkdown: '- [ ] task 📅 2026-07-20 ⏰ 09:00 ⏱️ 1h',
+          originalBlock: '- [ ] task 📅 2026-07-20 ⏰ 09:00 ⏱️ 1h',
         },
         presentation: { linkCount: 0 },
       },

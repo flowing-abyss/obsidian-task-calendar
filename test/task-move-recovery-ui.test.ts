@@ -43,16 +43,19 @@ function partial(): TaskCommandResult {
   return { type: 'partial', operation: 'move', recovery };
 }
 
-function taskApi(resolveResult: TaskResolution): TaskApplicationApi & {
+function taskApi(
+  resolveResult: TaskResolution,
+  executeResult: TaskCommandResult = {
+    type: 'ok',
+    changed: true,
+    outcome: { type: 'deleted', ref: source },
+  },
+): TaskApplicationApi & {
   queries: TaskApplicationApi['queries'] & { resolve: ReturnType<typeof vi.fn> };
   execute: ReturnType<typeof vi.fn>;
 } {
   const resolve = vi.fn().mockReturnValue(resolveResult);
-  const execute = vi.fn().mockResolvedValue({
-    type: 'ok',
-    changed: true,
-    outcome: { type: 'deleted', ref: source },
-  });
+  const execute = vi.fn().mockResolvedValue(executeResult);
   return {
     queries: {
       list: () => [],
@@ -163,6 +166,54 @@ describe('partial move recovery presentation', () => {
 
     expect(tasks.execute).toHaveBeenCalledOnce();
     expect(tasks.execute).toHaveBeenCalledWith({ type: 'delete', ref: changed.ref });
+  });
+
+  it('does not claim both copies remain when original removal commit state is unknown', async () => {
+    const app = await createAppWithFiles({});
+    const exact = snapshot(source);
+    const tasks = taskApi(
+      { type: 'exact', task: exact },
+      {
+        type: 'io-error',
+        cause: 'process-error',
+        path: 'source.md',
+        contentState: 'unknown',
+      },
+    );
+    const modal = openRecovery(app, tasks);
+
+    button(modal.contentEl, 'Remove original').click();
+    await flushMicrotasks();
+
+    expect(modal.contentEl.querySelector('h3')?.textContent).toBe(
+      'Original removal state is unknown',
+    );
+    expect(modal.contentEl.querySelector('p')?.textContent).toBe(
+      'Could not confirm whether the original in source.md was removed. Rescan and inspect source.md and Projects/P.md before taking any action. Do not repeat removal until the vault state is confirmed.',
+    );
+    expect(modal.contentEl.textContent).not.toContain('Both copies were kept');
+  });
+
+  it('keeps the confirmed-unchanged removal failure wording', async () => {
+    const app = await createAppWithFiles({});
+    const exact = snapshot(source);
+    const tasks = taskApi(
+      { type: 'exact', task: exact },
+      {
+        type: 'io-error',
+        cause: 'read-error',
+        path: 'source.md',
+        contentState: 'unchanged',
+      },
+    );
+    const modal = openRecovery(app, tasks);
+
+    button(modal.contentEl, 'Remove original').click();
+    await flushMicrotasks();
+
+    expect(modal.contentEl.querySelector('p')?.textContent).toBe(
+      'The original could not be removed safely. Both copies were kept.',
+    );
   });
 
   it.each([

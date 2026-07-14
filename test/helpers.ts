@@ -69,6 +69,7 @@ export function taskSnapshotOf(value: Task): TaskSnapshot {
       filePath: value.filePath,
       line: value.line,
       originalMarkdown: value.rawText,
+      originalBlock: value.rawText,
     },
     presentation: {
       linkCount: value.linkCount ?? 0,

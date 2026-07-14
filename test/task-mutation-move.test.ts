@@ -26,7 +26,12 @@ function snapshot(filePath: string): TaskSnapshot {
     tags: [],
     subtasks: [],
     comments: [],
-    source: { filePath, line: 1, originalMarkdown: '- [ ] task' },
+    source: {
+      filePath,
+      line: 1,
+      originalMarkdown: '- [ ] task',
+      originalBlock: '- [ ] task',
+    },
     presentation: { linkCount: 0 },
   };
 }
@@ -92,6 +97,7 @@ describe('TaskApplicationService move command', () => {
     await expect(service(move).execute({ type: 'move', ref, destination })).resolves.toEqual({
       type: 'io-error',
       cause: 'repository-error',
+      path: destination.filePath,
       contentState: 'unknown',
     });
     expect(move).toHaveBeenCalledOnce();

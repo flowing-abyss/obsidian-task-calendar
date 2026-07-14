@@ -1,7 +1,12 @@
+import type { App } from 'obsidian';
 import { Notice } from 'obsidian';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TaskCommandResult } from '../src/tasks';
-import { presentTaskCommandResult, presentTaskCreationResult } from '../src/ui/taskCommandResult';
+import type { TaskApplicationApi, TaskCommandResult } from '../src/tasks';
+import {
+  presentTaskCommandResult,
+  presentTaskCreationResult,
+  presentTaskMoveResult,
+} from '../src/ui/taskCommandResult';
 
 vi.mock('obsidian', async () => {
   const actual = await vi.importActual<typeof import('obsidian')>('obsidian');
@@ -35,6 +40,32 @@ describe('task command result presentation', () => {
       outcome: { type: 'task', task: {} as never },
     });
     expect(noticeCalls()).toHaveLength(0);
+  });
+
+  it('warns against retrying a move when the target commit state is unknown', () => {
+    presentTaskMoveResult({} as App, {} as TaskApplicationApi, {
+      type: 'io-error',
+      cause: 'process-error',
+      path: 'Projects/P.md',
+      contentState: 'unknown',
+    });
+
+    expect(noticeCalls()).toEqual([
+      [
+        'Could not confirm whether the move to Projects/P.md was saved. Rescan and inspect the target and original task before taking any action. Do not retry the move.',
+      ],
+    ]);
+  });
+
+  it('preserves ordinary retry wording when a move failure is confirmed unchanged', () => {
+    presentTaskMoveResult({} as App, {} as TaskApplicationApi, {
+      type: 'io-error',
+      cause: 'read-error',
+      path: 'source.md',
+      contentState: 'unchanged',
+    });
+
+    expect(noticeCalls()).toEqual([['Failed to update task. Please try again.']]);
   });
 
   it('announces a successful task creation with only its destination filename', () => {

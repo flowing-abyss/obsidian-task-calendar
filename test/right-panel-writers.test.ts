@@ -392,7 +392,12 @@ describe('RightPanel planning API delegation', () => {
         },
       ],
       comments: [],
-      source: { filePath: 't.md', line: 0, originalMarkdown: '- [ ] root' },
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] root',
+        originalBlock: '- [ ] root\n  - [ ] child',
+      },
       presentation: { linkCount: 0 },
     };
     const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
@@ -507,7 +512,13 @@ describe('RightPanel planning API delegation', () => {
               ]
             : [],
         comments: [],
-        source: { filePath: 'a.md', line: 0, originalMarkdown: '- [ ] A' },
+        source: {
+          filePath: 'a.md',
+          line: 0,
+          originalMarkdown: '- [ ] A',
+          originalBlock:
+            selection === 'child' ? '- [ ] A\n  - [ ] A child 📅 2026-07-20' : '- [ ] A',
+        },
         presentation: { linkCount: 0 },
       };
       resolveExecute({

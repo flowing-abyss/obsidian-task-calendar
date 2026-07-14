@@ -23,7 +23,12 @@ function task(status: TaskSnapshot['status']): TaskSnapshot {
     tags: [],
     subtasks: [],
     comments: [],
-    source: { filePath: 'Projects/A.md', line: 0, originalMarkdown: `- [ ] ${status}` },
+    source: {
+      filePath: 'Projects/A.md',
+      line: 0,
+      originalMarkdown: `- [ ] ${status}`,
+      originalBlock: `- [ ] ${status}`,
+    },
     presentation: { linkCount: 0 },
   };
 }

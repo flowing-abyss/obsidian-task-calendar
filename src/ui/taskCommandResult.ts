@@ -37,6 +37,13 @@ export function presentTaskMoveResult(
     new TaskMoveRecoveryModal(app, tasks, result.recovery).open();
     return;
   }
+  if (result.type === 'io-error' && result.contentState === 'unknown') {
+    const target = result.path ?? 'the target file';
+    new Notice(
+      `Could not confirm whether the move to ${target} was saved. Rescan and inspect the target and original task before taking any action. Do not retry the move.`,
+    );
+    return;
+  }
   presentTaskCommandResult(result);
 }
 

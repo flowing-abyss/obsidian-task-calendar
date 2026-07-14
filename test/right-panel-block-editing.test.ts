@@ -34,7 +34,12 @@ function snapshot(revision: string, description = 'old description'): TaskSnapsh
       },
     ],
     description,
-    source: { filePath: 'tasks.md', line: 0, originalMarkdown: '- [ ] root' },
+    source: {
+      filePath: 'tasks.md',
+      line: 0,
+      originalMarkdown: '- [ ] root',
+      originalBlock: '- [ ] root',
+    },
     presentation: { linkCount: 0 },
   };
 }

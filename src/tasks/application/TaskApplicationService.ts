@@ -174,7 +174,12 @@ export class TaskApplicationService implements TaskApplicationApi {
       }
       return result;
     } catch {
-      return { type: 'io-error', cause: 'repository-error', contentState: 'unknown' };
+      return {
+        type: 'io-error',
+        cause: 'repository-error',
+        ...(command.type === 'move' && { path: command.destination.filePath }),
+        contentState: 'unknown',
+      };
     }
   }
 

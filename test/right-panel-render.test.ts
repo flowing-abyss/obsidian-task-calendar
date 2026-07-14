@@ -383,7 +383,12 @@ describe('RightPanel popovers', () => {
       tags: [],
       subtasks: [],
       comments: [],
-      source: { filePath: 'f.md', line: 0, originalMarkdown: '- [ ] Scheduled' },
+      source: {
+        filePath: 'f.md',
+        line: 0,
+        originalMarkdown: '- [ ] Scheduled',
+        originalBlock: '- [ ] Scheduled',
+      },
       presentation: { linkCount: 0 },
     };
     const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
