@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
-import type { Task } from '../src/parser/types';
+import { task } from './helpers';
 
 describe('AppState', () => {
   it('returns initial values', () => {
@@ -153,16 +153,7 @@ describe('AppState', () => {
 
   it('draggingTask can be set to a task and back to null', () => {
     const s = new AppState();
-    const t: Task = {
-      filePath: 'a.md',
-      line: 0,
-      rawText: '- [ ] t',
-      text: 't',
-      markdownText: 't',
-      status: 'open',
-      statusSymbol: ' ',
-      priority: 'D',
-    };
+    const t = task({ filePath: 'a.md' });
     s.set('draggingTask', t);
     expect(s.get('draggingTask')).toBe(t);
     s.set('draggingTask', null);

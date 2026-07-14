@@ -6,7 +6,7 @@ import { migrateSettings } from './settings/migration';
 import { CalendarSettingsTab } from './settings/SettingsTab';
 import { toStatusRules } from './settings/statusCatalogAdapter';
 import type { CalendarSettings, CodeBlockParams } from './settings/types';
-import { TaskStore } from './store/TaskStore';
+import { StatusRegistry } from './status/StatusRegistry';
 import { TagManager } from './tags/TagManager';
 import { localDate, type TaskApplicationApi, type TaskQueryApi } from './tasks';
 import { TaskApplicationService } from './tasks/application/TaskApplicationService';
@@ -21,28 +21,31 @@ import { CalendarRenderer } from './ui/CalendarRenderer';
 import { PANEL_VIEW_TYPE, PanelView } from './views/PanelView';
 
 export default class TaskCalendarPlugin extends Plugin {
-  store!: TaskStore;
   settings!: CalendarSettings;
   tagManager!: TagManager;
   queries!: TaskQueryApi;
   tasks!: TaskApplicationApi;
+  private taskIndex!: TaskIndex;
+  private statusCatalog!: StatusCatalog;
+  private statusRegistry!: StatusRegistry;
 
   async onload(): Promise<void> {
     await this.loadSettings();
-    const statusCatalog = new StatusCatalog(toStatusRules(this.settings.taskStatuses));
-    const taskIndex = new TaskIndex(this.app, {
-      statusCatalog,
+    this.statusCatalog = new StatusCatalog(toStatusRules(this.settings.taskStatuses));
+    this.statusRegistry = new StatusRegistry(this.settings.taskStatuses);
+    this.taskIndex = new TaskIndex(this.app, {
+      statusCatalog: this.statusCatalog,
       dailyNoteFormat: this.settings.desktop.dailyNoteFormat,
       ...(this.settings.desktop.globalTaskFilter && {
         globalTaskFilter: this.settings.desktop.globalTaskFilter,
       }),
     });
-    const codec = new TaskMarkdownCodec(statusCatalog);
+    const codec = new TaskMarkdownCodec(this.statusCatalog);
     const repository = new ObsidianTaskRepository(this.app, {
       codec,
       editor: new TaskBlockEditor(),
       locator: new TaskLocator(),
-      snapshotsFromContent: (path, content) => taskIndex.snapshotsFromContent(path, content),
+      snapshotsFromContent: (path, content) => this.taskIndex.snapshotsFromContent(path, content),
     });
     const destinationProvider = new ObsidianTaskDestinationProvider(
       this.app,
@@ -50,13 +53,12 @@ export default class TaskCalendarPlugin extends Plugin {
       new DailyNoteResolver(this.app, this.settings),
     );
     this.tasks = new TaskApplicationService(
-      taskIndex,
+      this.taskIndex,
       repository,
-      statusCatalog,
+      this.statusCatalog,
       { today: () => localDate(window.moment().format('YYYY-MM-DD')) },
       destinationProvider,
     );
-    this.store = new TaskStore(this.app, this.settings, taskIndex, this.tasks, statusCatalog);
     this.queries = this.tasks.queries;
     this.tagManager = new TagManager(this.app, this.settings, () => this.saveSettings());
 
@@ -65,16 +67,16 @@ export default class TaskCalendarPlugin extends Plugin {
       (leaf) =>
         new PanelView(
           leaf,
-          this.store,
           this.settings,
           this.tagManager,
           this.queries,
-          () => this.saveSettings(),
           this.tasks,
+          this.statusRegistry,
+          () => this.saveSettings(),
         ),
     );
 
-    registerCodeBlock(this, this.store, this.settings, this.queries, this.tasks);
+    registerCodeBlock(this, this.settings, this.queries, this.tasks, this.statusRegistry);
 
     this.addCommand({
       id: 'open-panel',
@@ -87,7 +89,7 @@ export default class TaskCalendarPlugin extends Plugin {
     this.addSettingTab(new CalendarSettingsTab(this.app, this));
 
     this.app.workspace.onLayoutReady(() => {
-      void this.store.initialize();
+      void this.taskIndex.initialize();
     });
 
     // Legacy Dataview shim — remove after users migrate to native `task-calendar` code blocks
@@ -102,11 +104,11 @@ export default class TaskCalendarPlugin extends Plugin {
       }
       const renderer = new CalendarRenderer(
         container,
-        this.store,
         resolveConfig(this.settings, params),
         this.app,
         this.queries,
         this.tasks,
+        this.statusRegistry,
         this.settings.taskPrefix,
       );
       renderer.mount();
@@ -114,7 +116,7 @@ export default class TaskCalendarPlugin extends Plugin {
   }
 
   onunload(): void {
-    this.store.destroy();
+    this.taskIndex.destroy();
     delete (window as unknown as Record<string, unknown>).renderCalendar;
   }
 
@@ -128,6 +130,12 @@ export default class TaskCalendarPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+  }
+
+  rebuildTaskStatusSemantics(): void {
+    this.statusCatalog.replace(toStatusRules(this.settings.taskStatuses));
+    this.statusRegistry.replace(this.settings.taskStatuses);
+    this.taskIndex.setStatusCatalog(this.statusCatalog);
   }
 
   private async openPanel(): Promise<void> {

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Task } from '../src/parser/types';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../src/ui/sourceNoteChip';
 import { freshContainer, task } from './helpers';
 
@@ -39,20 +38,20 @@ describe('shouldShowSourceNote', () => {
 describe('renderSourceNoteChip', () => {
   it('appends .tc-task-source-note to container', () => {
     const container = freshContainer();
-    const t = task({ filePath: 'Projects/alpha.md' } as Partial<Task>);
+    const t = task({ filePath: 'Projects/alpha.md' });
     renderSourceNoteChip(container, t);
     expect(container.querySelector('.tc-task-source-note')).not.toBeNull();
   });
 
   it('chip contains .tc-task-source-note-icon element', () => {
     const container = freshContainer();
-    renderSourceNoteChip(container, task({ filePath: 'Projects/alpha.md' } as Partial<Task>));
+    renderSourceNoteChip(container, task({ filePath: 'Projects/alpha.md' }));
     expect(container.querySelector('.tc-task-source-note-icon')).not.toBeNull();
   });
 
   it('chip text contains filename without path or extension', () => {
     const container = freshContainer();
-    renderSourceNoteChip(container, task({ filePath: 'a/b/deep-note.md' } as Partial<Task>));
+    renderSourceNoteChip(container, task({ filePath: 'a/b/deep-note.md' }));
     const chip = container.querySelector('.tc-task-source-note');
     expect(chip?.textContent).toContain('deep-note');
     expect(chip?.textContent).not.toContain('/');
@@ -61,7 +60,7 @@ describe('renderSourceNoteChip', () => {
 
   it('chip has .tc-task-source-note-name span with note name', () => {
     const container = freshContainer();
-    renderSourceNoteChip(container, task({ filePath: 'Note.md' } as Partial<Task>));
+    renderSourceNoteChip(container, task({ filePath: 'Note.md' }));
     const name = container.querySelector('.tc-task-source-note-name');
     expect(name?.textContent).toBe('Note');
   });

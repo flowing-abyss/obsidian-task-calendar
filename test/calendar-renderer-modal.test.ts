@@ -1,6 +1,8 @@
 import type { App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
+import { buildDefaultTaskStatuses } from '../src/settings/defaults';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskApplicationApi, TaskIndexEvent } from '../src/tasks';
 import { freshContainer, queryApiForTasks, resolvedConfig, useRealMoment } from './helpers';
 
@@ -34,7 +36,6 @@ vi.mock('obsidian', async () => {
 });
 
 // Import AFTER vi.mock
-import type { TaskStore } from '../src/store/TaskStore';
 import { CalendarRenderer } from '../src/ui/CalendarRenderer';
 
 class StubStore {
@@ -73,10 +74,15 @@ function makeRenderer(
   config: ReturnType<typeof resolvedConfig>,
   app: App,
 ): CalendarRenderer {
-  return new CalendarRenderer(root, store as unknown as TaskStore, config, app, store.taskQueries, {
-    queries: store.taskQueries,
-    execute: store.execute,
-  });
+  return new CalendarRenderer(
+    root,
+    config,
+    app,
+    store.taskQueries,
+    { queries: store.taskQueries, execute: store.execute },
+    new StatusRegistry(buildDefaultTaskStatuses()),
+    '- [ ] ',
+  );
 }
 
 describe('CalendarRenderer TaskInputModal submit', () => {
@@ -121,7 +127,7 @@ describe('CalendarRenderer TaskInputModal submit', () => {
     expect(store.execute).toHaveBeenCalledWith({
       type: 'create',
       destination: { type: 'configured-default' },
-      markdownBody: 'Buy milk',
+      markdownBody: '- [ ] Buy milk',
       initial: { due: { type: 'set', value: expect.any(String) } },
     });
     expect(store.addTask).not.toHaveBeenCalled();
@@ -139,7 +145,7 @@ describe('CalendarRenderer TaskInputModal submit', () => {
     expect(store.execute).toHaveBeenCalledWith({
       type: 'create',
       destination: { type: 'configured-default' },
-      markdownBody: 'Task via button',
+      markdownBody: '- [ ] Task via button',
       initial: { due: { type: 'set', value: expect.any(String) } },
     });
   });

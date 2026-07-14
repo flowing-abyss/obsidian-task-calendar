@@ -3,10 +3,9 @@ import { Component, setIcon } from 'obsidian';
 import type { AppState } from '../app/AppState';
 import type { LinkToken } from '../parser/links';
 import { formatDurationFromMinutes, parseDurationToMinutes } from '../parser/TaskParser';
-import type { SubTask, Task, TaskComment } from '../parser/types';
-import { buildDefaultTaskStatuses } from '../settings/defaults';
+
 import type { CalendarSettings } from '../settings/types';
-import { StatusRegistry } from '../status/StatusRegistry';
+import type { StatusRegistry } from '../status/StatusRegistry';
 import { colorForTag } from '../tags/tagColor';
 import {
   durationMinutes,
@@ -14,12 +13,15 @@ import {
   localTime,
   type PlanningTarget,
   type SubtaskPatch,
+  type SubtaskSnapshot,
   type TaskApplicationApi,
   type TaskCommandResult,
+  type TaskCommentSnapshot,
   type TaskPatch,
+  type TaskSnapshot,
   type TaskTextTarget,
 } from '../tasks';
-import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
+
 import type { TaskCommand } from '../tasks/domain/commands';
 import type {
   CommentRef,
@@ -41,8 +43,9 @@ import { showStatusMenuAt } from '../ui/statusMenu';
 import { showTagDropdown } from '../ui/tagDropdown';
 import { presentTaskCommandResult } from '../ui/taskCommandResult';
 import { openInFile } from '../ui/taskNavigation';
+import { rebuildTaskSelection, rootTaskRef, taskNodeLine, taskNodeRef } from '../ui/taskSelection';
 
-type TaskLike = Task | SubTask;
+type TaskLike = TaskSnapshot | SubtaskSnapshot;
 
 function rootRefForPlanningTarget(target: PlanningTarget): TaskRef {
   let node: TaskNodeRef = target;
@@ -66,17 +69,13 @@ function planningChildChain(target: PlanningTarget): readonly SubtaskRef[] {
   return chain;
 }
 
-function rebuildPlanningTargetStack(
-  root: ReturnType<typeof legacyTaskView>,
-  target: PlanningTarget,
-) {
+function rebuildPlanningTargetStack(root: TaskSnapshot, target: PlanningTarget): TaskLike[] {
   const stack: TaskLike[] = [root];
   let current: TaskLike = root;
   for (const ref of planningChildChain(target)) {
-    const child = (current.subtasks ?? []).find((candidate) => {
-      if (!('ref' in candidate)) return false;
-      return (candidate.ref as SubtaskRef).relativeLine === ref.relativeLine;
-    });
+    const child: SubtaskSnapshot | undefined = current.subtasks.find(
+      (candidate) => candidate.ref.relativeLine === ref.relativeLine,
+    );
     if (!child) break;
     stack.push(child);
     current = child;
@@ -84,31 +83,26 @@ function rebuildPlanningTargetStack(
   return stack;
 }
 
-function commentRefOf(comment: TaskComment): CommentRef | undefined {
-  if (!('ref' in comment)) return undefined;
-  const ref = (comment as TaskComment & { readonly ref?: CommentRef }).ref;
-  return ref && typeof ref === 'object' ? ref : undefined;
+function commentRefOf(comment: TaskCommentSnapshot): CommentRef {
+  return comment.ref;
 }
 
 export class RightPanel {
   private el!: HTMLElement;
   private off?: () => void;
-  private draggingSub: SubTask | null = null;
-  private statusRegistry: StatusRegistry;
+  private draggingSub: SubtaskSnapshot | null = null;
   private md = new Component();
   private onSuccessfulMutation?: (ref?: TaskRef) => void;
 
   constructor(
     private state: AppState,
     private app: App,
+    private statusRegistry: StatusRegistry,
     private settings?: CalendarSettings,
     onSuccessfulMutation?: (ref?: TaskRef) => void,
     private tasks?: TaskApplicationApi,
   ) {
     this.onSuccessfulMutation = onSuccessfulMutation;
-    this.statusRegistry = new StatusRegistry(
-      this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
-    );
   }
 
   mount(container: HTMLElement): void {
@@ -124,11 +118,6 @@ export class RightPanel {
   }
 
   private render(): void {
-    // Rebuild from current settings so a mid-session status edit (Settings tab) is
-    // reflected immediately — RightPanel is constructed once and never otherwise refreshed.
-    this.statusRegistry = new StatusRegistry(
-      this.settings?.taskStatuses ?? buildDefaultTaskStatuses(),
-    );
     this.md.unload();
     this.md = new Component();
     this.md.load();
@@ -146,7 +135,7 @@ export class RightPanel {
   private enablePaste(el: HTMLTextAreaElement, task: TaskLike): void {
     enableAttachmentPaste(el, {
       app: this.app,
-      sourcePath: task.filePath,
+      sourcePath: rootTaskRef(task).filePath,
       onInsert: (links) => insertAtCaret(el, links),
     });
   }
@@ -160,7 +149,7 @@ export class RightPanel {
       (newRaw) => {
         void this.executeLinkEdit({ type: 'title', target }, occ, newRaw);
       },
-      task.filePath,
+      rootTaskRef(task).filePath,
     ).open();
   }
 
@@ -195,7 +184,7 @@ export class RightPanel {
     const view = section.createDiv({ cls: 'tc-right-desc tc-right-desc-view' });
     enableAttachmentDrop(view, {
       app: this.app,
-      sourcePath: task.filePath,
+      sourcePath: rootTaskRef(task).filePath,
       onLinks: (links) => {
         // The closure carries the observed revision; a concurrent edit is surfaced as a
         // structured conflict instead of overwriting the changed block.
@@ -247,12 +236,17 @@ export class RightPanel {
         view.removeClass('tc-right-desc-empty');
         renderTaskText(view, desc, {
           app: this.app,
-          sourcePath: task.filePath,
+          sourcePath: rootTaskRef(task).filePath,
           component: this.md,
           onEditLink: (occ, token) => {
             const target = this.planningTarget(task);
             if (target) {
-              this.editLinkInString({ type: 'description', target }, occ, token, task.filePath);
+              this.editLinkInString(
+                { type: 'description', target },
+                occ,
+                token,
+                rootTaskRef(task).filePath,
+              );
             }
           },
         });
@@ -289,9 +283,9 @@ export class RightPanel {
       parents.forEach((item, idx) => {
         if (idx > 0) breadcrumb.createEl('span', { cls: 'tc-breadcrumb-sep', text: ' › ' });
         const crumb = breadcrumb.createEl('span', { cls: 'tc-breadcrumb-item' });
-        renderTaskText(crumb, item.markdownText, {
+        renderTaskText(crumb, item.markdownTitle, {
           app: this.app,
-          sourcePath: item.filePath,
+          sourcePath: rootTaskRef(item).filePath,
           component: this.md,
           onEditLink: (occ, token) => this.editLink(item, occ, token),
         });
@@ -319,7 +313,7 @@ export class RightPanel {
       this.renderContextMenu(currentTask, menuBtn);
     });
 
-    // Metadata chips — available for both Task and SubTask
+    // Metadata chips — available for both TaskSnapshot and SubtaskSnapshot
     {
       const chips = this.el.createDiv({ cls: 'tc-chips-row' });
 
@@ -327,16 +321,16 @@ export class RightPanel {
       // "when this sits on the calendar" chip, matching the due-centric anchor-priority rule)
       this.renderDateChip(chips, task);
 
-      // Combined time + duration chip (duration only applies to top-level Task, not SubTask)
-      const duration = 'duration' in task ? task.duration : undefined;
+      // Combined time + duration chip (duration only applies to top-level TaskSnapshot, not SubtaskSnapshot)
+      const duration = 'source' in task ? task.planning.duration : undefined;
       let timeChipText = '⏰';
-      if (task.time) {
+      if (task.planning.time) {
         timeChipText = duration
-          ? `⏰ ${task.time} · ${formatDurationFromMinutes(duration)}`
-          : `⏰ ${task.time}`;
+          ? `⏰ ${task.planning.time} · ${formatDurationFromMinutes(duration)}`
+          : `⏰ ${task.planning.time}`;
       }
       const timeChip = chips.createEl('button', {
-        cls: `tc-chip tc-chip-time${task.time ? '' : ' tc-chip-empty'}`,
+        cls: `tc-chip tc-chip-time${task.planning.time ? '' : ' tc-chip-empty'}`,
         text: timeChipText,
         attr: { title: 'Set time & duration' },
       });
@@ -356,8 +350,8 @@ export class RightPanel {
       // add whichever of Start/Plan are currently unset; picking one opens the exact same
       // popover. This intentionally reverses the "always-visible placeholder pill" unset
       // treatment from the previous round after live testing showed it cluttered the row.
-      if (task.scheduled) this.renderScheduledChip(chips, task);
-      if (task.start) this.renderStartChip(chips, task);
+      if (task.planning.scheduled) this.renderScheduledChip(chips, task);
+      if (task.planning.start) this.renderStartChip(chips, task);
       this.renderAddDateMenu(chips, task);
 
       // Tag chips
@@ -390,7 +384,7 @@ export class RightPanel {
     subHeader.createEl('span', { cls: 'tc-right-section-label', text: 'Sub-tasks' });
     const totalSubs = task.subtasks?.length ?? 0;
     if (totalSubs > 0) {
-      const doneSubs = task.subtasks!.filter((s) => s.status === 'done').length;
+      const doneSubs = task.subtasks.filter((s) => s.status === 'done').length;
       subHeader.createEl('span', {
         cls: 'tc-right-section-count',
         text: `${doneSubs}/${totalSubs}`,
@@ -469,7 +463,7 @@ export class RightPanel {
     });
     enableAttachmentDrop(commentInput, {
       app: this.app,
-      sourcePath: task.filePath,
+      sourcePath: rootTaskRef(task).filePath,
       onLinks: (links) => {
         commentInput.value = commentInput.value ? `${commentInput.value} ${links}` : links;
         commentInput.focus();
@@ -491,13 +485,13 @@ export class RightPanel {
     const view = header.createDiv({ cls: 'tc-right-title tc-right-title-view' });
     enableAttachmentDrop(view, {
       app: this.app,
-      sourcePath: task.filePath,
+      sourcePath: rootTaskRef(task).filePath,
       onLinks: (links) => void this.appendToTitle(task, links),
     });
     const renderView = (): void => {
-      renderTaskText(view, task.markdownText, {
+      renderTaskText(view, task.markdownTitle, {
         app: this.app,
-        sourcePath: task.filePath,
+        sourcePath: rootTaskRef(task).filePath,
         component: this.md,
         onEditLink: (occ, token) => this.editLink(task, occ, token),
       });
@@ -523,7 +517,7 @@ export class RightPanel {
     const ta = header.createEl('textarea', { cls: 'tc-right-title tc-right-title-edit' });
     // Keep the textarea in the title's slot so the ⋯/× action buttons stay on the right.
     view.insertAdjacentElement('afterend', ta);
-    ta.value = task.markdownText;
+    ta.value = task.markdownTitle;
     this.enablePaste(ta, task);
     // Auto-grow to content, but never below the stretched height.
     const grow = (): void => {
@@ -545,7 +539,7 @@ export class RightPanel {
       done = true;
       // Carry the current height back to the read-mode block so the stretch persists.
       view.setCssStyles({ height: `${ta.offsetHeight}px` });
-      if (save && ta.value !== task.markdownText) {
+      if (save && ta.value !== task.markdownTitle) {
         void this.updateTaskTitle(task, ta.value.trim());
       }
       ta.remove();
@@ -565,14 +559,14 @@ export class RightPanel {
     });
   }
 
-  private renderSubTask(container: HTMLElement, sub: SubTask, parentTask: TaskLike): void {
+  private renderSubTask(container: HTMLElement, sub: SubtaskSnapshot, parentTask: TaskLike): void {
     const row = container.createDiv({ cls: 'tc-subtask-row', attr: { draggable: 'true' } });
 
     // ── Drag-and-drop ─────────────────────────────────────────
     row.addEventListener('dragstart', (e) => {
       this.draggingSub = sub;
       row.addClass('is-dragging');
-      e.dataTransfer?.setData('text/plain', String(sub.line));
+      e.dataTransfer?.setData('text/plain', String(sub.ref.relativeLine));
     });
 
     row.addEventListener('dragend', () => {
@@ -587,7 +581,7 @@ export class RightPanel {
 
     row.addEventListener('dragover', (e) => {
       e.preventDefault();
-      if (!this.draggingSub || this.draggingSub.line === sub.line) return;
+      if (!this.draggingSub || this.draggingSub.ref.relativeLine === sub.ref.relativeLine) return;
       const rect = row.getBoundingClientRect();
       const isAbove = e.clientY < rect.top + rect.height / 2;
       // Clear indicators on all siblings first
@@ -608,7 +602,7 @@ export class RightPanel {
     row.addEventListener('drop', (e) => {
       e.preventDefault();
       const dragged = this.draggingSub;
-      if (!dragged || dragged.line === sub.line) return;
+      if (!dragged || dragged.ref.relativeLine === sub.ref.relativeLine) return;
       const position = row.hasClass('drop-above') ? 'before' : 'after';
       row.removeClass('drop-above');
       row.removeClass('drop-below');
@@ -636,9 +630,9 @@ export class RightPanel {
     const label = content.createEl('span', {
       cls: `tc-subtask-label${sub.status === 'done' ? ' is-done' : ''}`,
     });
-    renderTaskText(label, sub.markdownText, {
+    renderTaskText(label, sub.markdownTitle, {
       app: this.app,
-      sourcePath: sub.filePath,
+      sourcePath: rootTaskRef(sub).filePath,
       component: this.md,
       onEditLink: (occ, token) => this.editLink(sub, occ, token),
     });
@@ -653,7 +647,7 @@ export class RightPanel {
     if (subCount > 0 || commentCount > 0) {
       const subMeta = content.createDiv({ cls: 'tc-subtask-meta' });
       if (subCount > 0) {
-        const done = sub.subtasks!.filter((s) => s.status === 'done').length;
+        const done = sub.subtasks.filter((s) => s.status === 'done').length;
         subMeta.createEl('span', { cls: 'tc-subtask-progress', text: `${done}/${subCount}` });
       }
       if (commentCount > 0) {
@@ -662,11 +656,15 @@ export class RightPanel {
     }
   }
 
-  private renderComment(container: HTMLElement, comment: TaskComment, task: TaskLike): void {
+  private renderComment(
+    container: HTMLElement,
+    comment: TaskCommentSnapshot,
+    task: TaskLike,
+  ): void {
     const row = container.createDiv({ cls: 'tc-comment-row' });
     enableAttachmentDrop(row, {
       app: this.app,
-      sourcePath: task.filePath,
+      sourcePath: rootTaskRef(task).filePath,
       onLinks: (links) => void this.updateComment(task, comment, `${comment.text} ${links}`.trim()),
     });
     if (comment.date) {
@@ -728,11 +726,12 @@ export class RightPanel {
       const textEl = row.createEl('p', { cls: 'tc-comment-text' });
       renderTaskText(textEl, comment.text, {
         app: this.app,
-        sourcePath: task.filePath,
+        sourcePath: rootTaskRef(task).filePath,
         component: this.md,
         onEditLink: (occ, token) => {
           const ref = commentRefOf(comment);
-          if (ref) this.editLinkInString({ type: 'comment', ref }, occ, token, task.filePath);
+          if (ref)
+            this.editLinkInString({ type: 'comment', ref }, occ, token, rootTaskRef(task).filePath);
         },
       });
       textEl.addEventListener('click', (e) => {
@@ -745,9 +744,9 @@ export class RightPanel {
   }
 
   private renderDateChip(container: HTMLElement, task: TaskLike): void {
-    const d = task.due ?? task.scheduled;
+    const d = task.planning.due ?? task.planning.scheduled;
     let field: 'due' | 'scheduled' = 'due';
-    if (!task.due && task.scheduled) field = 'scheduled';
+    if (!task.planning.due && task.planning.scheduled) field = 'scheduled';
     const chip = container.createEl('button', {
       cls: `tc-chip${d ? '' : ' tc-chip-empty'}`,
       text: d ? `📅 ${this.formatDate(d)}` : '📅 Date',
@@ -760,7 +759,7 @@ export class RightPanel {
 
   /** "Plan" (⏳/`scheduled`) chip — same round-pill/popover pattern as the due-date chip. */
   private renderScheduledChip(container: HTMLElement, task: TaskLike): void {
-    const value = task.scheduled;
+    const value = task.planning.scheduled;
     const chip = container.createEl('button', {
       cls: `tc-chip tc-chip-scheduled${value ? '' : ' tc-chip-empty'}`,
       text: value ? `⏳ ${this.formatDate(value)}` : '⏳ Plan',
@@ -774,7 +773,7 @@ export class RightPanel {
 
   /** "Start" (🛫/`start`) chip — same round-pill/popover pattern as the due-date chip. */
   private renderStartChip(container: HTMLElement, task: TaskLike): void {
-    const value = task.start;
+    const value = task.planning.start;
     const chip = container.createEl('button', {
       cls: `tc-chip tc-chip-start${value ? '' : ' tc-chip-empty'}`,
       text: value ? `🛫 ${this.formatDate(value)}` : '🛫 Start',
@@ -794,8 +793,8 @@ export class RightPanel {
    */
   private renderAddDateMenu(container: HTMLElement, task: TaskLike): void {
     const options: Array<{ field: 'start' | 'scheduled'; label: string }> = [];
-    if (!task.start) options.push({ field: 'start', label: '🛫 Start' });
-    if (!task.scheduled) options.push({ field: 'scheduled', label: '⏳ Plan' });
+    if (!task.planning.start) options.push({ field: 'start', label: '🛫 Start' });
+    if (!task.planning.scheduled) options.push({ field: 'scheduled', label: '⏳ Plan' });
     if (options.length === 0) return;
 
     const addBtn = container.createEl('button', {
@@ -897,9 +896,9 @@ export class RightPanel {
     const pop = this.el.createDiv({ cls: 'tc-popover tc-date-popover tc-popover-anchored' });
 
     let currentValue: string | undefined;
-    if (field === 'due') currentValue = task.due ?? task.scheduled;
-    else if (field === 'scheduled') currentValue = task.scheduled;
-    else currentValue = task.start;
+    if (field === 'due') currentValue = task.planning.due ?? task.planning.scheduled;
+    else if (field === 'scheduled') currentValue = task.planning.scheduled;
+    else currentValue = task.planning.start;
 
     const inputRow = pop.createDiv({ cls: 'tc-popover-input-row' });
     const input = inputRow.createEl('input', {
@@ -1077,7 +1076,7 @@ export class RightPanel {
     return this.executeBlockCommand({ type: 'add-subtask', parent, text }, parent);
   }
 
-  private async toggleSubTask(sub: SubTask): Promise<void> {
+  private async toggleSubTask(sub: SubtaskSnapshot): Promise<void> {
     const target = this.planningTarget(sub);
     if (!target || !this.tasks) return;
     const result = await this.tasks.execute({ type: 'toggle-completion', target });
@@ -1102,7 +1101,7 @@ export class RightPanel {
 
   private async updateComment(
     _task: TaskLike,
-    comment: TaskComment,
+    comment: TaskCommentSnapshot,
     newText: string,
   ): Promise<boolean> {
     const ref = commentRefOf(comment);
@@ -1113,7 +1112,7 @@ export class RightPanel {
     );
   }
 
-  private async deleteComment(_task: TaskLike, comment: TaskComment): Promise<boolean> {
+  private async deleteComment(_task: TaskLike, comment: TaskCommentSnapshot): Promise<boolean> {
     const ref = commentRefOf(comment);
     if (!ref) return false;
     return this.executeBlockCommand({ type: 'delete-comment', comment: ref }, ref.parent);
@@ -1154,7 +1153,9 @@ export class RightPanel {
   private async clearDate(task: TaskLike): Promise<void> {
     await this.executePlanningPatch(
       task,
-      task.due || !task.scheduled ? { due: { type: 'clear' } } : { scheduled: { type: 'clear' } },
+      task.planning.due || !task.planning.scheduled
+        ? { due: { type: 'clear' } }
+        : { scheduled: { type: 'clear' } },
     );
   }
 
@@ -1177,14 +1178,7 @@ export class RightPanel {
   }
 
   private planningTarget(task: TaskLike): PlanningTarget | undefined {
-    if ('ref' in task) {
-      const ref = task.ref;
-      if (typeof ref === 'object' && ref !== null) {
-        if ('revision' in ref) return { type: 'task', ref: ref as TaskRef };
-        if ('relativeLine' in ref) return { type: 'subtask', ref: ref as SubtaskRef };
-      }
-    }
-    return undefined;
+    return taskNodeRef(task);
   }
 
   private async executePlanningPatch(task: TaskLike, patch: TaskPatch): Promise<void> {
@@ -1214,24 +1208,24 @@ export class RightPanel {
     if (result.type !== 'ok' || result.outcome.type !== 'task') return;
     const stack = this.state.get('taskStack');
     const initiatingRoot = rootRefForPlanningTarget(target);
-    const selectedRoot = stack[0] ? taskRefOf(stack[0]) : undefined;
+    const selectedRoot = stack[0] ? rootTaskRef(stack[0]) : undefined;
     if (
       selectedRoot &&
       sameTaskRef(selectedRoot, initiatingRoot) &&
       (initiatingStack === undefined || stack === initiatingStack)
     ) {
-      const root = legacyTaskView(result.outcome.task);
+      const root = result.outcome.task;
       this.state.set(
         'taskStack',
         target.type === 'subtask'
           ? rebuildPlanningTargetStack(root, target)
-          : rebuildLegacyTaskStack(root, stack),
+          : rebuildTaskSelection(root, stack),
       );
     }
     if (result.changed) this.onSuccessfulMutation?.(result.outcome.task.ref);
   }
 
-  private async updateDuration(task: Task, minutes: number): Promise<void> {
+  private async updateDuration(task: TaskSnapshot, minutes: number): Promise<void> {
     try {
       await this.executePlanningPatch(task, {
         duration: { type: 'set', value: durationMinutes(minutes) },
@@ -1241,7 +1235,7 @@ export class RightPanel {
     }
   }
 
-  private async clearDuration(task: Task): Promise<void> {
+  private async clearDuration(task: TaskSnapshot): Promise<void> {
     await this.executePlanningPatch(task, { duration: { type: 'clear' } });
   }
 
@@ -1280,7 +1274,7 @@ export class RightPanel {
     const inputRow = pop.createDiv({ cls: 'tc-popover-input-row' });
     const input = inputRow.createEl('input', {
       cls: 'tc-time-input',
-      attr: { type: 'time', value: task.time ?? '' },
+      attr: { type: 'time', value: task.planning.time ?? '' },
     });
     window.setTimeout(() => input.focus(), 0);
     input.addEventListener('change', () => {
@@ -1298,9 +1292,9 @@ export class RightPanel {
       void this.updateTime(task, '').then(() => pop.remove());
     });
 
-    // Duration only applies to top-level Task (SubTask has no duration field) —
+    // Duration only applies to top-level TaskSnapshot (SubtaskSnapshot has no duration field) —
     // same 'duration' in task discriminator used for the Planning section gate.
-    if ('duration' in task) {
+    if ('source' in task) {
       const durationRow = pop.createDiv({ cls: 'tc-popover-input-row' });
       const durationInput = durationRow.createEl('input', {
         cls: 'tc-duration-input',
@@ -1308,7 +1302,7 @@ export class RightPanel {
           type: 'text',
           // eslint-disable-next-line obsidianmd/ui/sentence-case
           placeholder: 'Duration, e.g. 1h30m',
-          value: task.duration ? formatDurationFromMinutes(task.duration) : '',
+          value: task.planning.duration ? formatDurationFromMinutes(task.planning.duration) : '',
         },
       });
       durationInput.addEventListener('change', () => {
@@ -1369,7 +1363,8 @@ export class RightPanel {
     });
     openItem.addEventListener('click', () => {
       menu.remove();
-      void openInFile(this.app, task);
+      const root = this.state.get('taskStack')[0];
+      if (root && 'source' in root) void openInFile(this.app, root, taskNodeLine(root, task));
     });
 
     this.dismissMenuOnOutsideClick(menu, anchor);
@@ -1407,7 +1402,7 @@ export class RightPanel {
     }
     presentTaskCommandResult(result);
     const selectedRoot = this.state.get('taskStack')[0];
-    const selectedRef = selectedRoot ? taskRefOf(selectedRoot) : undefined;
+    const selectedRef = selectedRoot ? rootTaskRef(selectedRoot) : undefined;
     if (
       result.type === 'ok' &&
       result.outcome.type === 'deleted' &&
@@ -1421,8 +1416,8 @@ export class RightPanel {
 
   private async reorderSubTask(
     parentTask: TaskLike,
-    moved: SubTask,
-    target: SubTask,
+    moved: SubtaskSnapshot,
+    target: SubtaskSnapshot,
     position: 'before' | 'after',
   ): Promise<void> {
     const parent = this.planningTarget(parentTask);

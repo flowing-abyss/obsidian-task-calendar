@@ -1,13 +1,11 @@
 import { getAllTags, TFile, type App, type CachedMetadata, type TAbstractFile } from 'obsidian';
-import type { Task } from '../parser/types';
 import { evaluateQuery } from '../query/evaluateQuery';
 import type { CalendarSettings } from '../settings/types';
-import type { TaskIndexEvent, TaskQueryApi } from '../tasks';
-import { legacyTaskViews } from '../tasks/compat/legacyTaskView';
+import type { TaskIndexEvent, TaskQueryApi, TaskSnapshot } from '../tasks';
 import { resolveStatus } from './status';
 import type { Project, ProjectStats } from './types';
 
-export function computeStats(tasks: Task[]): ProjectStats {
+export function computeStats(tasks: readonly TaskSnapshot[]): ProjectStats {
   let done = 0;
   let cancelled = 0;
   let inProgress = 0;
@@ -73,7 +71,7 @@ export class ProjectStore {
         if (this.pendingCreates.has(file.path)) {
           if (!metadataMayContainTasks(data, cache) && !this.hasIndexedTasks(file.path)) {
             this.pendingCreates.delete(file.path);
-            this.settlePath(file.path);
+            this.releasePath(file.path);
             return;
           }
         }
@@ -89,7 +87,7 @@ export class ProjectStore {
       this.pendingCreates.delete(file.path);
       const project = this.byPath.get(file.path);
       if (project?.stats.total === 0 && !this.hasIndexedTasks(file.path)) {
-        this.settleDeletedPath(file.path);
+        this.releasePath(file.path);
       } else {
         this.awaitBarrier(file.path);
       }
@@ -102,7 +100,7 @@ export class ProjectStore {
           (project === undefined || project.stats.total === 0) &&
           !this.hasIndexedTasks(oldPath, file.path)
         ) {
-          this.settleRenamedPath(oldPath, file.path);
+          this.releasePath(oldPath, file.path);
         } else {
           this.awaitBarrier(oldPath, file.path);
         }
@@ -178,28 +176,6 @@ export class ProjectStore {
     return paths.some((path) => this.queries.list({ filePath: path }).length > 0);
   }
 
-  private settlePath(path: string): void {
-    const before = this.cacheSignature();
-    this.updateOne(path);
-    this.rebuildCache();
-    this.notifyIfChanged(before);
-  }
-
-  private settleDeletedPath(path: string): void {
-    const before = this.cacheSignature();
-    this.byPath.delete(path);
-    this.rebuildCache();
-    this.notifyIfChanged(before);
-  }
-
-  private settleRenamedPath(oldPath: string, newPath: string): void {
-    const before = this.cacheSignature();
-    this.byPath.delete(oldPath);
-    this.updateOne(newPath);
-    this.rebuildCache();
-    this.notifyIfChanged(before);
-  }
-
   private cacheSignature(): string {
     return JSON.stringify(this.cache);
   }
@@ -230,13 +206,17 @@ export class ProjectStore {
       return;
     }
     const cache = this.app.metadataCache.getFileCache(file);
-    const tasks = legacyTaskViews(this.queries.list({ filePath: path }));
+    const tasks = this.queries.list({ filePath: path });
     const entry = this.makeEntry(path, cache, tasks);
     if (entry) this.byPath.set(path, entry);
     else this.byPath.delete(path);
   }
 
-  private makeEntry(path: string, cache: CachedMetadata | null, tasks: Task[]): Project | null {
+  private makeEntry(
+    path: string,
+    cache: CachedMetadata | null,
+    tasks: readonly TaskSnapshot[],
+  ): Project | null {
     const fm = (cache?.frontmatter ?? {}) as Record<string, unknown>;
     const tags = (cache ? (getAllTags(cache) ?? []) : []).map((tag) => tag.toLowerCase());
     if (!evaluateQuery(this.settings.projects.membershipQuery, path, tags, fm)) return null;
@@ -252,12 +232,12 @@ export class ProjectStore {
     };
   }
 
-  private groupTasksByPath(): Map<string, Task[]> {
-    const map = new Map<string, Task[]>();
-    for (const t of legacyTaskViews(this.queries.list())) {
-      const arr = map.get(t.filePath) ?? [];
+  private groupTasksByPath(): Map<string, TaskSnapshot[]> {
+    const map = new Map<string, TaskSnapshot[]>();
+    for (const t of this.queries.list()) {
+      const arr = map.get(t.source.filePath) ?? [];
       arr.push(t);
-      map.set(t.filePath, arr);
+      map.set(t.source.filePath, arr);
     }
     return map;
   }

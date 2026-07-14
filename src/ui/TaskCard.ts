@@ -1,7 +1,7 @@
 import { Notice, Platform, type App, type Component } from 'obsidian';
 import type { LinkToken } from '../parser/links';
-import type { Task } from '../parser/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskSnapshot } from '../tasks';
 import { attachLongPress } from './MobileTouch';
 import { renderTaskText } from './renderTaskText';
 import { renderStatusMarker } from './StatusMarker';
@@ -12,12 +12,12 @@ export interface TaskCardOptions {
   mode?: TaskCardMode;
   app: App;
   component: Component;
-  onOpenNote: (task: Task) => void;
-  onToggle?: (task: Task) => void;
-  onMove?: (task: Task, newDate: string, newTime: string) => void;
+  onOpenNote: (task: TaskSnapshot) => void;
+  onToggle?: (task: TaskSnapshot) => void;
+  onMove?: (task: TaskSnapshot, newDate: string, newTime: string) => void;
   onEditLink?: (occurrenceIndex: number, token: LinkToken) => void;
   statusRegistry?: StatusRegistry;
-  onContextMenu?: (ev: MouseEvent, task: Task) => void;
+  onContextMenu?: (ev: MouseEvent, task: TaskSnapshot) => void;
 }
 
 const TASK_ICONS: Record<string, string> = {
@@ -42,7 +42,7 @@ function transColor(hex: string, percent: number): string {
 }
 
 export function createTaskCard(
-  task: Task,
+  task: TaskSnapshot,
   taskClass: string,
   options: TaskCardOptions,
 ): HTMLElement {
@@ -52,28 +52,28 @@ export function createTaskCard(
 
   // Compute color style
   let style: string;
-  if (task.noteColor && task.noteTextColor) {
-    style = `--task-background:${task.noteColor}33;--task-color:${task.noteColor};--dark-task-text-color:${task.noteTextColor};--light-task-text-color:${task.noteTextColor}`;
-  } else if (task.noteColor) {
-    style = `--task-background:${task.noteColor}33;--task-color:${task.noteColor};--dark-task-text-color:${transColor(task.noteColor, darker)};--light-task-text-color:${transColor(task.noteColor, lighter)}`;
-  } else if (task.noteTextColor) {
-    style = `--task-background:#7D7D7D33;--task-color:#7D7D7D;--dark-task-text-color:${transColor(task.noteTextColor, darker)};--light-task-text-color:${transColor(task.noteTextColor, lighter)}`;
+  if (task.presentation.noteColor && task.presentation.noteTextColor) {
+    style = `--task-background:${task.presentation.noteColor}33;--task-color:${task.presentation.noteColor};--dark-task-text-color:${task.presentation.noteTextColor};--light-task-text-color:${task.presentation.noteTextColor}`;
+  } else if (task.presentation.noteColor) {
+    style = `--task-background:${task.presentation.noteColor}33;--task-color:${task.presentation.noteColor};--dark-task-text-color:${transColor(task.presentation.noteColor, darker)};--light-task-text-color:${transColor(task.presentation.noteColor, lighter)}`;
+  } else if (task.presentation.noteTextColor) {
+    style = `--task-background:#7D7D7D33;--task-color:#7D7D7D;--dark-task-text-color:${transColor(task.presentation.noteTextColor, darker)};--light-task-text-color:${transColor(task.presentation.noteTextColor, lighter)}`;
   } else {
     style =
       '--task-background:#7D7D7D33;--task-color:#7D7D7D;--dark-task-text-color:#4d4d4d;--light-task-text-color:#a8a8a8';
   }
 
   const taskIcon = TASK_ICONS[taskClass] ?? '';
-  const relative = task.due ? window.moment(task.due).fromNow() : '';
-  const cls = task.noteIcon ? taskClass : taskClass + ' noNoteIcon';
+  const relative = task.planning.due ? window.moment(task.planning.due).fromNow() : '';
+  const cls = task.presentation.noteIcon ? taskClass : taskClass + ' noNoteIcon';
 
   // Root div
   const div = activeDocument.createElement('div');
   div.className = `task ${cls}`;
   div.setAttribute('style', style);
-  div.setAttribute('data-task-text', task.text);
-  div.setAttribute('title', task.text);
-  if (task.due) div.setAttribute('data-due', task.due);
+  div.setAttribute('data-task-text', task.title);
+  div.setAttribute('title', task.title);
+  if (task.planning.due) div.setAttribute('data-due', task.planning.due);
 
   // Inner wrapper
   const inner = activeDocument.createElement('div');
@@ -100,9 +100,9 @@ export function createTaskCard(
   const descEl = activeDocument.createElement('div');
   descEl.className = 'description';
   descEl.dataset['relative'] = relative;
-  renderTaskText(descEl, task.markdownText, {
+  renderTaskText(descEl, task.markdownTitle, {
     app: options.app,
-    sourcePath: task.filePath,
+    sourcePath: task.source.filePath,
     component: options.component,
     onEditLink: options.onEditLink,
   });

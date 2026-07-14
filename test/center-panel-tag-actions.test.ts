@@ -4,7 +4,6 @@ import { AppState } from '../src/app/AppState';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
-import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
 import type { TaskApplicationApi } from '../src/tasks';
 import {
@@ -27,7 +26,7 @@ function makeCenter(
   const s: CalendarSettings = { ...DEFAULT_SETTINGS, ...settings, pinnedTags, archivedTags: [] };
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, s, save);
-  const store = makeStubStore(tasks) as unknown as TaskStore;
+  const store = makeStubStore(tasks);
   const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] }).taskQueries;
   const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
     type: 'io-error',

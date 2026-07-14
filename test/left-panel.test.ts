@@ -3,7 +3,6 @@ import { AppState } from '../src/app/AppState';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
-import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
 import type { TaskApplicationApi } from '../src/tasks';
 import {
@@ -23,7 +22,7 @@ function makePanel(
   archivedTags: string[] = [],
 ) {
   const state = new AppState();
-  const store = makeStubStore(tasks) as TaskStore;
+  const store = makeStubStore(tasks);
   const merged: CalendarSettings = {
     ...DEFAULT_SETTINGS,
     ...settings,
@@ -142,7 +141,7 @@ describe('LeftPanel smart lists', () => {
   it('is-active class on currently-selected smart list', () => {
     const state = new AppState();
     state.set('selectedList', 'today');
-    const store = makeStubStore([]) as TaskStore;
+    const store = makeStubStore([]);
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
     const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
@@ -210,7 +209,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('group header is-active when selectedList is group', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'group', groupId: 'g1' });
-    const store = makeStubStore([]) as TaskStore;
+    const store = makeStubStore([]);
     const save = vi.fn().mockResolvedValue(undefined);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
@@ -245,7 +244,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('chevron click collapses expanded group', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
-    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]) as TaskStore;
+    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -264,7 +263,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('auto-expand when child tag is active (unless explicitly collapsed)', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
-    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]) as TaskStore;
+    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -280,7 +279,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('explicit collapse prevents auto-expand even with active child', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
-    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]) as TaskStore;
+    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -323,7 +322,7 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('child tag is-active when selectedList is that tag', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
-    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]) as TaskStore;
+    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -440,7 +439,7 @@ describe('LeftPanel tag groups (manual mode)', () => {
 describe('LeftPanel lifecycle', () => {
   it('mount subscribes to selectedList changes', () => {
     const state = new AppState();
-    const store = makeStubStore([]) as TaskStore;
+    const store = makeStubStore([]);
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
     const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
@@ -453,7 +452,7 @@ describe('LeftPanel lifecycle', () => {
 
   it('mount subscribes to mode changes', () => {
     const state = new AppState();
-    const store = makeStubStore([]) as TaskStore;
+    const store = makeStubStore([]);
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
     const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
@@ -475,7 +474,7 @@ describe('LeftPanel lifecycle', () => {
 
   it('destroy removes listeners and empties el', () => {
     const state = new AppState();
-    const store = makeStubStore([]) as TaskStore;
+    const store = makeStubStore([]);
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
     const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
@@ -491,7 +490,7 @@ describe('LeftPanel lifecycle', () => {
   it('search mode hides panel (no children)', () => {
     const state = new AppState();
     state.set('mode', 'search');
-    const store = makeStubStore([]) as TaskStore;
+    const store = makeStubStore([]);
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
     const panel = makeLeftPanelForTest(state, store, DEFAULT_SETTINGS, tm, null as never);
@@ -653,7 +652,7 @@ describe('LeftPanel collapsible sections, projects, and tags +', () => {
     }>;
   }) {
     const state = new AppState();
-    const store = makeStubStore(opts.tasks ?? []) as TaskStore;
+    const store = makeStubStore(opts.tasks ?? []);
     const merged: CalendarSettings = { ...DEFAULT_SETTINGS, ...opts.settings };
     const save = vi.fn().mockResolvedValue(undefined);
     const tm = new TagManager(null as never, merged, save);

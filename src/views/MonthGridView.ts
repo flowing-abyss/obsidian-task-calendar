@@ -1,10 +1,10 @@
 import { Component, type App } from 'obsidian';
 import { weekStartOffset } from '../domain/weekGridOffset';
-import type { Task } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
 import { tagColorFor } from '../tags/tagColor';
 import { tagFillTextColorVar } from '../tags/tagFillContrast';
+import type { TaskSnapshot } from '../tasks';
 import type { TaskPriority } from '../tasks/domain/types';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderStatusMarker } from '../ui/StatusMarker';
@@ -17,11 +17,11 @@ export interface MonthGridViewCallbacks {
   app: App;
   onDayClick: (date: string) => void;
   onCreateAtDate: (date: string) => void;
-  onTaskClick: (task: Task) => void;
+  onTaskClick: (task: TaskSnapshot) => void;
   onDrop: (dragData: string, targetDate: string) => void;
-  onToggle: (task: Task) => void;
-  onSetStatus: (task: Task, status: string) => void;
-  onSetPriority: (task: Task, priority: TaskPriority) => void;
+  onToggle: (task: TaskSnapshot) => void;
+  onSetStatus: (task: TaskSnapshot, status: string) => void;
+  onSetPriority: (task: TaskSnapshot, priority: TaskPriority) => void;
   onWeekClick: (weekNr: string, year: string) => void;
   statusRegistry: StatusRegistry;
   tagGroups?: TagGroup[];
@@ -35,7 +35,7 @@ export class MonthGridView extends BaseView {
     super();
   }
 
-  render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+  render(container: HTMLElement, tasks: TaskSnapshot[], config: ResolvedConfig): void {
     this.md.unload();
     this.md = new Component();
     this.md.load();
@@ -147,7 +147,7 @@ export class MonthGridView extends BaseView {
     }
   }
 
-  private renderCompactCell(cell: HTMLElement, tasks: Task[], date: string): void {
+  private renderCompactCell(cell: HTMLElement, tasks: TaskSnapshot[], date: string): void {
     const { timed, spans, timedSpans, plain, deadlines } = bucketTasksForDate(tasks, date);
     const tagGroups = this.callbacks.tagGroups ?? [];
 
@@ -155,7 +155,7 @@ export class MonthGridView extends BaseView {
       const dot = cell.createDiv({ cls: 'tc-mg-block-dot' });
       this.applyTagFill(dot, t, tagGroups);
       this.renderMarker(dot, t);
-      dot.createSpan({ cls: 'tc-mg-item-time', text: `${t.time} ` });
+      dot.createSpan({ cls: 'tc-mg-item-time', text: `${t.planning.time} ` });
       this.renderTitle(dot, t);
       dot.addEventListener('contextmenu', (e) => {
         e.preventDefault();
@@ -185,8 +185,8 @@ export class MonthGridView extends BaseView {
       const bar = cell.createDiv({ cls: 'tc-mg-span-segment' });
       this.applyTagFill(bar, t, tagGroups);
       this.renderMarker(bar, t);
-      if (t.due === date) {
-        bar.createSpan({ cls: 'tc-mg-item-time', text: `${t.time} ` });
+      if (String(t.planning.due) === date) {
+        bar.createSpan({ cls: 'tc-mg-item-time', text: `${t.planning.time} ` });
       }
       this.renderTitle(bar, t);
       bar.addEventListener('contextmenu', (e) => {
@@ -240,11 +240,11 @@ export class MonthGridView extends BaseView {
    * timedSpan, plain, AND deadline markers, see renderCompactCell above), so one change here
    * covers all of them.
    */
-  private renderTitle(container: HTMLElement, t: Task): void {
+  private renderTitle(container: HTMLElement, t: TaskSnapshot): void {
     const titleEl = container.createSpan({ cls: `tc-mg-item-title${statusTitleClass(t.status)}` });
-    renderTaskText(titleEl, t.markdownText, {
+    renderTaskText(titleEl, t.markdownTitle, {
       app: this.callbacks.app,
-      sourcePath: t.filePath,
+      sourcePath: t.source.filePath,
       component: this.md,
     });
   }
@@ -252,7 +252,7 @@ export class MonthGridView extends BaseView {
   // Status marker first: lets a user mark a compact item done without opening the modal. Its
   // own contextmenu handler stops propagation and opens the status/priority popover instead —
   // distinct from right-clicking the item's own contextmenu handler below (opens the task modal).
-  private renderMarker(el: HTMLElement, t: Task): void {
+  private renderMarker(el: HTMLElement, t: TaskSnapshot): void {
     renderStatusMarker(el, {
       task: t,
       registry: this.callbacks.statusRegistry,
@@ -275,10 +275,10 @@ export class MonthGridView extends BaseView {
   // child's own click handler undisturbed — only an actual drag gesture (pointer moves
   // while down) fires `dragstart`. Deadline markers are deliberately excluded — they
   // stay non-draggable per the existing structural rule (Task 2).
-  private makeDraggable(el: HTMLElement, t: Task): void {
+  private makeDraggable(el: HTMLElement, t: TaskSnapshot): void {
     el.setAttribute('draggable', 'true');
     el.addEventListener('dragstart', (e) => {
-      e.dataTransfer?.setData('text/plain', `${t.filePath}:::${t.line}`);
+      e.dataTransfer?.setData('text/plain', `${t.source.filePath}:::${t.source.line}`);
       if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
       el.addClass('is-dragging');
     });
@@ -290,7 +290,7 @@ export class MonthGridView extends BaseView {
    * status marker already conveys priority via its own border, so a second priority
    * border on the compact item itself was redundant visual noise.
    */
-  private applyTagFill(el: HTMLElement, t: Task, tagGroups: TagGroup[]): void {
+  private applyTagFill(el: HTMLElement, t: TaskSnapshot, tagGroups: TagGroup[]): void {
     const tagColor = tagColorFor(t.tags, tagGroups);
     if (tagColor) {
       el.setCssProps({ '--tc-tag-color': tagColor });

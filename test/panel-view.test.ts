@@ -2,16 +2,15 @@ import { WorkspaceLeaf, type App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
-import { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
+import type { TaskIndexEvent, TaskQueryApi } from '../src/tasks';
+import { taskNodeLine } from '../src/ui/taskSelection';
 import { PANEL_VIEW_TYPE, PanelView } from '../src/views/PanelView';
 import {
+  configuredTaskApplication,
   createAppWithFiles,
-  emitStoreQueryEvent,
   flushMicrotasks,
-  readStoreTasks,
   seedTaskCache,
-  taskQueriesOf,
   useRealMoment,
 } from './helpers';
 
@@ -22,25 +21,42 @@ function makeTagManager(): TagManager {
 
 useRealMoment();
 
+function emitQueryEvent(queries: TaskQueryApi, event: TaskIndexEvent): void {
+  const source = queries as unknown as {
+    listeners: Array<(published: TaskIndexEvent) => void>;
+  };
+  for (const listener of [...source.listeners]) listener(event);
+}
+
+type TaskApplication = ReturnType<typeof configuredTaskApplication>;
+
 describe('PanelView', () => {
   describe('empty vault suite', () => {
     let app: Awaited<ReturnType<typeof createAppWithFiles>>;
-    let store: TaskStore;
+    let taskApplication: TaskApplication;
     let leaf: WorkspaceLeaf;
     let view: PanelView;
 
     beforeEach(async () => {
       app = await createAppWithFiles({});
-      store = new TaskStore(app, DEFAULT_SETTINGS);
-      await store.initialize();
+      taskApplication = configuredTaskApplication(app, DEFAULT_SETTINGS);
+      await taskApplication.index.initialize();
       await flushMicrotasks();
       leaf = new (WorkspaceLeaf as unknown as { new (app: App): WorkspaceLeaf })(app);
-      view = new PanelView(leaf, store, DEFAULT_SETTINGS, makeTagManager(), taskQueriesOf(store));
+      view = new PanelView(
+        leaf,
+        DEFAULT_SETTINGS,
+        makeTagManager(),
+        taskApplication.index,
+        taskApplication.tasks,
+        taskApplication.statusRegistry,
+      );
       await view.onOpen();
     });
 
     afterEach(async () => {
       await view.onClose();
+      taskApplication.index.destroy();
     });
 
     it('adds tc-panel-view class to contentEl', () => {
@@ -79,10 +95,12 @@ describe('PanelView', () => {
       expect(layout.className).toContain('tc-layout--calendar');
     });
 
-    it('store.onUpdate with empty taskStack → no error', () => {
+    it('query update with empty taskStack → no error', () => {
       const state = (view as unknown as { state: AppState }).state;
       state.set('taskStack', []);
-      expect(() => emitStoreQueryEvent(store, { type: 'changed', files: ['x.md'] })).not.toThrow();
+      expect(() =>
+        emitQueryEvent(taskApplication.index, { type: 'changed', files: ['x.md'] }),
+      ).not.toThrow();
     });
 
     it('onClose empties contentEl', async () => {
@@ -114,7 +132,7 @@ describe('PanelView', () => {
 
   describe('populated vault suite', () => {
     let app: Awaited<ReturnType<typeof createAppWithFiles>>;
-    let store: TaskStore;
+    let taskApplication: TaskApplication;
     let leaf: WorkspaceLeaf;
     let view: PanelView;
 
@@ -123,45 +141,56 @@ describe('PanelView', () => {
         'today.md': `- [ ] task one 📅 ${window.moment().format('YYYY-MM-DD')}`,
       });
       seedTaskCache(app, 'today.md', [{ task: ' ', parent: -1, line: 0 }]);
-      store = new TaskStore(app, DEFAULT_SETTINGS);
-      await store.initialize();
+      taskApplication = configuredTaskApplication(app, DEFAULT_SETTINGS);
+      await taskApplication.index.initialize();
       await flushMicrotasks();
       leaf = new (WorkspaceLeaf as unknown as { new (app: App): WorkspaceLeaf })(app);
-      view = new PanelView(leaf, store, DEFAULT_SETTINGS, makeTagManager(), taskQueriesOf(store));
+      view = new PanelView(
+        leaf,
+        DEFAULT_SETTINGS,
+        makeTagManager(),
+        taskApplication.index,
+        taskApplication.tasks,
+        taskApplication.statusRegistry,
+      );
       await view.onOpen();
     });
 
     afterEach(async () => {
       await view.onClose();
+      taskApplication.index.destroy();
     });
 
-    it('store.onUpdate matching root task filePath → taskStack replaced with fresh task', () => {
+    it('query update matching root task path → taskStack replaced with fresh task', () => {
       const state = (view as unknown as { state: AppState }).state;
-      const tasks = readStoreTasks(store);
+      const tasks = taskApplication.index.list();
       const root = tasks[0]!;
       state.set('taskStack', [root]);
-      emitStoreQueryEvent(store, { type: 'changed', files: [root.filePath] });
+      emitQueryEvent(taskApplication.index, {
+        type: 'changed',
+        files: [root.source.filePath],
+      });
       const stack = state.get('taskStack');
       expect(stack).toHaveLength(1);
-      // Direct listener emission does not re-parse the file, so the store returns the
-      // same Task reference; the stack array is rebuilt but the root object is unchanged.
-      expect((stack[0] as { filePath: string }).filePath).toBe(root.filePath);
+      expect(stack[0] && 'source' in stack[0] ? stack[0].source.filePath : undefined).toBe(
+        root.source.filePath,
+      );
     });
 
-    it('store.onUpdate with non-matching changedFile → taskStack unchanged', () => {
+    it('query update with non-matching changedFile → taskStack unchanged', () => {
       const state = (view as unknown as { state: AppState }).state;
-      const root = readStoreTasks(store)[0]!;
+      const root = taskApplication.index.list()[0]!;
       state.set('taskStack', [root]);
       const before = state.get('taskStack');
-      emitStoreQueryEvent(store, { type: 'changed', files: ['other.md'] });
+      emitQueryEvent(taskApplication.index, { type: 'changed', files: ['other.md'] });
       expect(state.get('taskStack')).toBe(before);
     });
 
-    it('store.onUpdate when root task deleted → taskStack reset to []', async () => {
+    it('query update when root task deleted → taskStack reset to []', async () => {
       const state = (view as unknown as { state: AppState }).state;
-      const root = readStoreTasks(store)[0]!;
+      const root = taskApplication.index.list()[0]!;
       state.set('taskStack', [root]);
-      const file = app.vault.getAbstractFileByPath(root.filePath);
+      const file = app.vault.getAbstractFileByPath(root.source.filePath);
       if (!file) throw new Error('root task file missing');
       await app.vault.delete(file);
       await flushMicrotasks();
@@ -170,9 +199,7 @@ describe('PanelView', () => {
 
     it('clears owned-write acknowledgement when deletion/switch changes the selected root', () => {
       const state = (view as unknown as { state: AppState }).state;
-      const root = readStoreTasks(store)[0]! as ReturnType<typeof readStoreTasks>[number] & {
-        ref: { filePath: string; line: number; revision: string };
-      };
+      const root = taskApplication.index.list()[0]!;
       state.set('taskStack', [root]);
       (view as unknown as { acknowledgeOwnWrite(task: typeof root): void }).acknowledgeOwnWrite(
         root,
@@ -180,11 +207,11 @@ describe('PanelView', () => {
       state.set('taskStack', []);
       const otherRoot = {
         ...root,
-        filePath: 'other.md',
         ref: { filePath: 'other.md', line: 0, revision: 'other-old' },
+        source: { ...root.source, filePath: 'other.md', line: 0 },
       };
       state.set('taskStack', [otherRoot]);
-      const source = taskQueriesOf(store).list()[0]!;
+      const source = taskApplication.index.list()[0]!;
       const external = {
         ...source,
         ref: { filePath: 'other.md', line: 0, revision: 'other-new' },
@@ -203,15 +230,12 @@ describe('PanelView', () => {
 
     it('rejects a late write acknowledgement after selection switched away from its root', () => {
       const state = (view as unknown as { state: AppState }).state;
-      const first = taskQueriesOf(store).list()[0]!;
-      const firstView = {
-        ...readStoreTasks(store)[0]!,
-        ref: first.ref,
-      };
+      const first = taskApplication.index.list()[0]!;
+      const firstView = first;
       const secondView = {
         ...firstView,
-        filePath: 'other.md',
         ref: { filePath: 'other.md', line: 0, revision: 'second' },
+        source: { ...first.source, filePath: 'other.md', line: 0 },
       };
       state.set('taskStack', [firstView]);
       state.set('taskStack', [secondView]);
@@ -234,17 +258,16 @@ describe('PanelView', () => {
       expect(view.contentEl.querySelector('.tc-task-selection-stale')).not.toBeNull();
     });
 
-    it('refresh updates left panel count badges after store change (DOM assertion)', async () => {
+    it('refresh updates left panel count badges after index change (DOM assertion)', async () => {
       // Initial: one open task due today → Today count badge = "1"
       const left = view.contentEl.querySelector('.tc-left') as HTMLElement;
       const todayItem = Array.from(left.querySelectorAll('.tc-left-item')).find(
         (el) => el.querySelector('.tc-left-label')?.textContent === 'Today',
       ) as HTMLElement | undefined;
       expect(todayItem?.querySelector('.tc-left-count')?.textContent).toBe('1');
-      // Toggle the task done via file mutation (simulates store refresh)
+      // Toggle the task done via file mutation (simulates an external vault edit).
       const file = app.vault.getMarkdownFiles()[0]!;
       await app.vault.process(file, (data) => data.replace('- [ ]', '- [x]'));
-      emitStoreQueryEvent(store, { type: 'changed', files: [file.path] });
       await flushMicrotasks();
       // After refresh: no open tasks due today → Today count badge absent (count 0 → not rendered)
       const todayItemAfter = Array.from(left.querySelectorAll('.tc-left-item')).find(
@@ -256,7 +279,7 @@ describe('PanelView', () => {
 
   describe('deep-stack rebuild suite', () => {
     let app: Awaited<ReturnType<typeof createAppWithFiles>>;
-    let store: TaskStore;
+    let taskApplication: TaskApplication;
     let leaf: WorkspaceLeaf;
     let view: PanelView;
 
@@ -268,27 +291,35 @@ describe('PanelView', () => {
         { task: ' ', parent: -1, line: 0 },
         { task: ' ', parent: 0, line: 1 },
       ]);
-      store = new TaskStore(app, DEFAULT_SETTINGS);
-      await store.initialize();
+      taskApplication = configuredTaskApplication(app, DEFAULT_SETTINGS);
+      await taskApplication.index.initialize();
       await flushMicrotasks();
       leaf = new (WorkspaceLeaf as unknown as { new (app: App): WorkspaceLeaf })(app);
-      view = new PanelView(leaf, store, DEFAULT_SETTINGS, makeTagManager(), taskQueriesOf(store));
+      view = new PanelView(
+        leaf,
+        DEFAULT_SETTINGS,
+        makeTagManager(),
+        taskApplication.index,
+        taskApplication.tasks,
+        taskApplication.statusRegistry,
+      );
       await view.onOpen();
     });
 
     afterEach(async () => {
       await view.onClose();
+      taskApplication.index.destroy();
     });
 
-    it('store.onUpdate with stack.length > 1 rebuilds deep stack with fresh subtask (lines 88-99)', () => {
+    it('exact resolution rebuilds a deep stack with the fresh subtask', () => {
       const state = (view as unknown as { state: AppState }).state;
-      const tasks = readStoreTasks(store);
+      const tasks = taskApplication.index.list();
       const root = tasks[0]!;
-      const sub = root.subtasks?.[0];
+      const sub = root.subtasks[0];
       expect(sub).toBeDefined();
       // Set a 2-level stack: [root, subtask]
       state.set('taskStack', [root, sub!]);
-      const snapshot = taskQueriesOf(store).list({ filePath: root.filePath })[0]!;
+      const snapshot = taskApplication.index.list({ filePath: root.source.filePath })[0]!;
       (
         view as unknown as {
           applyResolution(result: { type: 'exact'; task: typeof snapshot }): void;
@@ -297,27 +328,28 @@ describe('PanelView', () => {
       const stack = state.get('taskStack');
       // Stack should still have 2 elements (root + fresh subtask found by line match)
       expect(stack).toHaveLength(2);
-      expect((stack[0] as { filePath: string }).filePath).toBe(root.filePath);
-      expect((stack[1] as { line: number }).line).toBe(sub!.line);
+      expect(stack[0] && 'source' in stack[0] ? stack[0].source.filePath : undefined).toBe(
+        root.source.filePath,
+      );
+      expect(taskNodeLine(snapshot, stack[1]!)).toBe(taskNodeLine(root, sub!));
     });
 
-    it('store.onUpdate with stack.length > 1 and stale subtask line breaks early (truncates stack)', () => {
+    it('exact resolution truncates a deep stack when the subtask identity is stale', () => {
       const state = (view as unknown as { state: AppState }).state;
-      const tasks = readStoreTasks(store);
+      const tasks = taskApplication.index.list();
       const root = tasks[0]!;
       // Create a fake subtask with a line number that doesn't exist in fresh data
-      const original = root.subtasks?.[0] as NonNullable<typeof root.subtasks>[number] & {
-        ref?: { originalBlock: string };
-      };
+      const original = root.subtasks[0]!;
       const fakeSub = {
         ...original,
-        line: 999,
-        ...(original.ref && {
-          ref: { ...original.ref, originalBlock: '  - [ ] different child' },
-        }),
+        ref: {
+          ...original.ref,
+          relativeLine: 999,
+          originalBlock: '  - [ ] different child',
+        },
       };
       state.set('taskStack', [root, fakeSub]);
-      const snapshot = taskQueriesOf(store).list({ filePath: root.filePath })[0]!;
+      const snapshot = taskApplication.index.list({ filePath: root.source.filePath })[0]!;
       (
         view as unknown as {
           applyResolution(result: { type: 'exact'; task: typeof snapshot }): void;

@@ -3,9 +3,14 @@ import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { TaskApplicationApi, TaskCommandResult, TaskSnapshot } from '../src/tasks';
-import { legacyTaskView } from '../src/tasks/compat/legacyTaskView';
 import type { CommentRef, TaskRef } from '../src/tasks/domain/types';
-import { createAppWithFiles, flushMicrotasks, freshContainer, useRealMoment } from './helpers';
+import {
+  createAppWithFiles,
+  flushMicrotasks,
+  freshContainer,
+  testStatusRegistry,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -129,8 +134,15 @@ async function panelWith(
 ) {
   const app = await createAppWithFiles({ 'tasks.md': '- [ ] root\n' });
   const state = new AppState();
-  state.set('taskStack', [legacyTaskView(initial)]);
-  const panel = new RightPanel(state, app, DEFAULT_SETTINGS, acknowledge, api(execute));
+  state.set('taskStack', [initial]);
+  const panel = new RightPanel(
+    state,
+    app,
+    testStatusRegistry(),
+    DEFAULT_SETTINGS,
+    acknowledge,
+    api(execute),
+  );
   return { app, state, panel };
 }
 
@@ -147,7 +159,7 @@ describe('RightPanel block editing', () => {
 
     const pending = call<Promise<void>>(panel, 'deleteTask', root);
     expect(execute).toHaveBeenCalledWith({ type: 'delete', ref: initial.ref });
-    const newer = legacyTaskView(snapshot('newer'));
+    const newer = snapshot('newer');
     state.set('taskStack', [newer]);
     resolve({
       type: 'ok',
@@ -369,7 +381,7 @@ describe('RightPanel block editing', () => {
       state.get('taskStack')[0]!,
       'new description',
     );
-    state.set('taskStack', [legacyTaskView(other)]);
+    state.set('taskStack', [other]);
     const fresh = snapshot('fresh', 'new description');
     resolve({ type: 'ok', changed: true, outcome: { type: 'task', task: fresh } });
     await pending;
@@ -419,7 +431,7 @@ describe('RightPanel block editing', () => {
       target: afterAdd.subtasks[1]!.ref,
       placement: 'after',
     });
-    expect(state.get('taskStack')[0]!.subtasks?.map((child) => child.text)).toEqual([
+    expect(state.get('taskStack')[0]!.subtasks.map((child) => child.title)).toEqual([
       'second',
       'first',
       'new child',
@@ -435,7 +447,7 @@ describe('RightPanel block editing', () => {
       outcome: { type: 'task', task: afterDelete },
     });
     const { panel, state } = await panelWith(initial, execute);
-    const root = legacyTaskView(initial);
+    const root = initial;
     state.set('taskStack', [root, root.subtasks![0]!]);
     const container = freshContainer();
     panel.mount(container);
@@ -451,7 +463,7 @@ describe('RightPanel block editing', () => {
       subtask: initial.subtasks[0]!.ref,
     });
     expect(state.get('taskStack')).toHaveLength(1);
-    expect(state.get('taskStack')[0]).toMatchObject({ ref: afterDelete.ref, text: 'root' });
+    expect(state.get('taskStack')[0]).toMatchObject({ ref: afterDelete.ref, title: 'root' });
     panel.destroy();
   });
 
@@ -475,7 +487,7 @@ describe('RightPanel block editing', () => {
       root.subtasks![1]!,
       'after',
     );
-    state.set('taskStack', [legacyTaskView(other)]);
+    state.set('taskStack', [other]);
     resolve({
       type: 'ok',
       changed: true,
@@ -529,7 +541,7 @@ describe('RightPanel block editing', () => {
           }),
       );
       const { panel, state } = await panelWith(initial, execute);
-      const root = legacyTaskView(initial);
+      const root = initial;
       const branch = root.subtasks![0]!;
       const sibling = root.subtasks![1]!;
       state.set('taskStack', [root, branch]);

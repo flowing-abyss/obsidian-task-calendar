@@ -2,12 +2,12 @@ import { TFile, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
-import type { SubTask, Task, TaskComment } from '../src/parser/types';
+import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
-import type { TaskApplicationApi, TaskSnapshot } from '../src/tasks';
+import type { StatusRegistry } from '../src/status/StatusRegistry';
+import type { SubtaskSnapshot, TaskApplicationApi, TaskSnapshot } from '../src/tasks';
 import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
-import { legacyTaskViews } from '../src/tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskRef } from '../src/tasks/domain/types';
 import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
@@ -15,11 +15,13 @@ import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockE
 import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
 import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
+import { taskNodeLine } from '../src/ui/taskSelection';
 import {
   createAppWithFiles,
   flushMicrotasks,
   freshContainer,
   task,
+  testStatusRegistry,
   useRealMoment,
 } from './helpers';
 
@@ -54,17 +56,20 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
 }
 
 function attachCurrentRef(panel: RightPanel, taskLike: SubTask): void {
-  const roots = legacyTaskViews(
-    (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list(),
-  );
-  const queue: Array<Task | SubTask> = [...roots];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (current.filePath === taskLike.filePath && current.line === taskLike.line) {
-      if ('ref' in current) Object.assign(taskLike, { ref: current.ref });
-      return;
+  const roots = (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list();
+  for (const root of roots) {
+    const queue: Array<TaskSnapshot | SubtaskSnapshot> = [root];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (
+        root.source.filePath === taskLike.filePath &&
+        taskNodeLine(root, current) === taskLike.line
+      ) {
+        Object.assign(taskLike, { ref: current.ref });
+        return;
+      }
+      queue.push(...current.subtasks);
     }
-    queue.push(...(current.subtasks ?? []));
   }
 }
 
@@ -75,6 +80,7 @@ function attachCurrentRef(panel: RightPanel, taskLike: SubTask): void {
 async function makePanel(
   files: Record<string, string> = {},
   tasks?: TaskApplicationApi,
+  statusRegistry: StatusRegistry = testStatusRegistry(),
 ): Promise<{ panel: RightPanel; state: AppState; app: App; el: HTMLElement }> {
   const app = await createAppWithFiles(files);
   const state = new AppState();
@@ -95,7 +101,14 @@ async function makePanel(
     { today: () => '2026-07-14' as never },
   );
   await index.initialize();
-  const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks ?? defaultTasks);
+  const panel = new RightPanel(
+    state,
+    app,
+    statusRegistry,
+    DEFAULT_SETTINGS,
+    undefined,
+    tasks ?? defaultTasks,
+  );
   const el = freshContainer();
   panel.mount(el);
   return { panel, state, app, el };
@@ -246,6 +259,48 @@ describe('RightPanel.renderTask', () => {
 });
 
 describe('RightPanel.renderSubTask', () => {
+  it('reads status choices from the injected live registry without replacing the selection', async () => {
+    const registry = testStatusRegistry();
+    const { state, el } = await makePanel({}, undefined, registry);
+    const root = task({
+      text: 'Parent',
+      subtasks: [
+        {
+          filePath: 'f.md',
+          line: 1,
+          rawText: '  - [ ] Child',
+          text: 'Child',
+          markdownText: 'Child',
+          status: 'open',
+          statusSymbol: ' ',
+          priority: 'D',
+        },
+      ],
+    });
+    state.set('taskStack', [root]);
+    const observedStack = state.get('taskStack');
+
+    registry.replace([
+      ...registry.all(),
+      {
+        id: 'status-waiting',
+        symbol: 'w',
+        name: 'Waiting',
+        type: 'in-progress',
+        icon: 'pause',
+        core: false,
+      },
+    ]);
+    el.querySelector<HTMLElement>('.tc-subtask-row .tc-status-marker')!.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
+    );
+
+    expect(activeDocument.body.querySelector('.tc-status-popover')?.textContent).toContain(
+      'Waiting',
+    );
+    expect(state.get('taskStack')).toBe(observedStack);
+  });
+
   it('subtask row renders status marker + label text', async () => {
     const { state, el } = await makePanel();
     const sub: SubTask = {
@@ -356,6 +411,47 @@ describe('RightPanel.renderComment', () => {
 });
 
 describe('RightPanel popovers', () => {
+  it('opens a selected nested task at its absolute source line', async () => {
+    const { state, el, app } = await makePanel({
+      'f.md': ['zero', 'one', 'two', 'three', '- [ ] Parent', 'five', 'six', '  - [ ] Child'].join(
+        '\n',
+      ),
+    });
+    const root = task({
+      filePath: 'f.md',
+      line: 4,
+      text: 'Parent',
+      rawText: '- [ ] Parent',
+      subtasks: [
+        {
+          filePath: 'f.md',
+          line: 7,
+          rawText: '  - [ ] Child',
+          text: 'Child',
+          markdownText: 'Child',
+          status: 'open',
+          statusSymbol: ' ',
+          priority: 'D',
+        },
+      ],
+    });
+    const child = root.subtasks[0]!;
+    state.set('taskStack', [root, child]);
+    const leaf = app.workspace.getLeaf('tab');
+    const setCursor = vi.fn();
+    (leaf as unknown as { view: unknown }).view = { editor: { setCursor } };
+    vi.spyOn(app.workspace, 'getLeaf').mockReturnValue(leaf);
+
+    click(el.querySelector<HTMLElement>('[aria-label="More actions"]')!);
+    const openItem = Array.from(el.querySelectorAll<HTMLElement>('.tc-context-item')).find(
+      (item) => item.textContent === 'Open in file',
+    );
+    click(openItem!);
+    await flushMicrotasks();
+
+    expect(setCursor).toHaveBeenCalledWith({ line: 7, ch: 0 });
+  });
+
   it('date chip click → date popover appears', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
@@ -468,7 +564,14 @@ describe('RightPanel popovers', () => {
       },
       execute,
     };
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      state,
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const el = freshContainer();
     panel.mount(el);
     state.set('taskStack', [
@@ -511,7 +614,8 @@ describe('RightPanel popovers', () => {
       priority: 'D',
       time: '09:00',
     };
-    state.set('taskStack', [task({ text: 'Parent' }), sub]);
+    const parent = task({ text: 'Parent', subtasks: [sub] });
+    state.set('taskStack', [parent, parent.subtasks[0]!]);
     const chip = el.querySelector<HTMLElement>('.tc-chip-time')!;
     click(chip);
     expect(el.querySelector('.tc-time-popover')).not.toBeNull();
@@ -739,7 +843,8 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
       due: '2026-07-10', // a real sub-item can carry its own 📅 date via extractMetadata
     };
     // Drill into the sub-task directly, the same way clicking its label would.
-    state.set('taskStack', [task({ text: 'Parent', subtasks: [sub] }), sub]);
+    const parent = task({ text: 'Parent', subtasks: [sub] });
+    state.set('taskStack', [parent, parent.subtasks[0]!]);
     expect(el.querySelector('.tc-planning-section')).toBeNull();
     expect(el.querySelector('.tc-chip-start')).toBeNull();
     expect(el.querySelector('.tc-chip-scheduled')).toBeNull();

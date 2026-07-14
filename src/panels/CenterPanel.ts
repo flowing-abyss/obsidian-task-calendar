@@ -7,7 +7,6 @@ import {
   statusGroupsEqual,
 } from '../app/listViewState';
 import type { LinkToken } from '../parser/links';
-import type { Task } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
@@ -18,8 +17,8 @@ import type {
   PropertyFilter,
   ResolvedConfig,
 } from '../settings/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
 import { ACTIVE_STATUS_GROUPS, ALL_STATUS_GROUPS, TYPE_LABELS } from '../status/statusConstants';
-import type { TaskStore } from '../store/TaskStore';
 import { searchTaskList, selectTaskList } from '../task-lists/TaskListSelector';
 import {
   durationMinutes,
@@ -29,8 +28,8 @@ import {
   type TaskApplicationApi,
   type TaskCommandResult,
   type TaskQueryApi,
+  type TaskSnapshot,
 } from '../tasks';
-import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
 import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderStatusMarker } from '../ui/StatusMarker';
@@ -42,6 +41,7 @@ import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip
 import { buildStatusSubmenu, showStatusMenuAt } from '../ui/statusMenu';
 import { presentTaskCommandResult, presentTaskCreationResult } from '../ui/taskCommandResult';
 import { openInFile } from '../ui/taskNavigation';
+import { rootTaskRef, taskNodeLine } from '../ui/taskSelection';
 import { MonthGridView } from '../views/MonthGridView';
 import { TodayView } from '../views/TodayView';
 import { WeekTimeGridView } from '../views/WeekTimeGridView';
@@ -94,14 +94,14 @@ export class CenterPanel {
   private calViewInstance: TodayView | WeekTimeGridView | MonthGridView | null = null;
   private calUnsubscribe: (() => void) | null = null;
   // Task 27: mountView() destroys and recreates a fresh view instance on every render — including
-  // reactive re-renders driven by TaskStore updates (any task edit anywhere) — so the view
+  // reactive re-renders driven by task-index updates (any task edit anywhere) — so the view
   // instance itself can't remember "did I already scroll-to-now for this view/date". This key
   // (last `${calViewType}:${startPosition}` CenterPanel actually scrolled for) survives that
   // destroy/recreate cycle because it lives on CenterPanel, not on the torn-down view.
   private lastScrolledCalKey: string | null = null;
   // Task 31: render()'s calendar branch calls `this.el.empty()` (destroying the current
   // `.tc-tg-grid-row`) *before* mountView() runs, on every reactive re-render (via PanelView's
-  // store.onUpdate -> center.refresh() -> render()) — not just on the calUnsubscribe -> mountView()
+  // query subscription -> center.refresh() -> render()) — not just on the calUnsubscribe -> mountView()
   // path mountView() itself guards against. This carries the pre-empty() scrollTop across that
   // gap; mountView() consumes (and clears) it as a fallback when its own viewContainer-local read
   // finds nothing (i.e. on a freshly (re)built viewContainer).
@@ -123,10 +123,10 @@ export class CenterPanel {
 
   constructor(
     private state: AppState,
-    private store: TaskStore,
     private app: App,
     private settings: CalendarSettings,
     private queries: TaskQueryApi,
+    private statusRegistry: StatusRegistry,
     onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
     private projectManager: ProjectManager | null = null,
@@ -137,7 +137,13 @@ export class CenterPanel {
 
   mount(container: HTMLElement): void {
     this.el = container;
-    this.taskModal = new TaskModal(this.app, this.settings, this.store, this.queries, this.tasks);
+    this.taskModal = new TaskModal(
+      this.app,
+      this.statusRegistry,
+      this.settings,
+      this.queries,
+      this.tasks,
+    );
 
     // Initialize per-list state before first render
     const initialKey = listSelectionToKey(this.state.get('selectedList'));
@@ -172,12 +178,14 @@ export class CenterPanel {
       this.state.on('searchQuery', () => this.render()),
       this.state.on('taskStack', () => {
         const stack = this.state.get('taskStack');
+        const root = stack[0];
         const current = stack[stack.length - 1];
         this.el.querySelectorAll<HTMLElement>('.tc-task-card').forEach((card) => {
           const isSelected =
+            root !== undefined &&
             current !== undefined &&
-            card.dataset['filePath'] === current.filePath &&
-            card.dataset['line'] === String(current.line);
+            card.dataset['filePath'] === rootTaskRef(root).filePath &&
+            card.dataset['line'] === String(taskNodeLine(root as TaskSnapshot, current));
           card.classList.toggle('is-selected', isSelected);
         });
       }),
@@ -237,7 +245,7 @@ export class CenterPanel {
 
   /** Renders a project's tasks (reusing the card component) plus an add bar that writes into the note. */
   private renderProjectTasks(host: HTMLElement, path: string): void {
-    const tasks = legacyTaskViews(this.queries.list({ filePath: path }));
+    const tasks = [...this.queries.list({ filePath: path })];
     const scroll = host.createDiv({ cls: 'tc-center-scroll tc-project-tasks-scroll' });
     if (tasks.length === 0) {
       scroll.createDiv({ cls: 'tc-center-empty', text: 'No tasks yet' });
@@ -301,7 +309,7 @@ export class CenterPanel {
     if (mode !== 'projects') this.destroyProjectsPanel();
 
     if (mode === 'calendar') {
-      // Task 31: a reactive re-render arrives here too (PanelView's store.onUpdate ->
+      // Task 31: a reactive re-render arrives here too (PanelView's query subscription ->
       // center.refresh() -> render(), independent of the calUnsubscribe -> mountView() path
       // below), and `this.el.empty()` on the next line destroys the current `.tc-tg-grid-row`
       // before mountView() ever gets a chance to read it — capture it now so mountView() (see
@@ -447,7 +455,7 @@ export class CenterPanel {
     };
     updateTitle();
 
-    const handleTaskClick = (t: Task): void => {
+    const handleTaskClick = (t: TaskSnapshot): void => {
       this.taskModal?.open(t);
     };
     const handleDrop = (dragData: string, targetDate: string): void => {
@@ -456,19 +464,19 @@ export class CenterPanel {
     const handleDropTime = (dragData: string, date: string, time: string): void => {
       void this.setTaskTimeFromDrop(dragData, date, time);
     };
-    const handleTimeChange = (t: Task, newStartMinutes: number): void => {
+    const handleTimeChange = (t: TaskSnapshot, newStartMinutes: number): void => {
       void this.updateTaskTime(t, newStartMinutes);
     };
-    const handleDurationChange = (t: Task, newDurationMinutes: number): void => {
+    const handleDurationChange = (t: TaskSnapshot, newDurationMinutes: number): void => {
       void this.updateTaskDuration(t, newDurationMinutes);
     };
-    const handleStartChange = (t: Task, newStart: string): void => {
+    const handleStartChange = (t: TaskSnapshot, newStart: string): void => {
       void this.updateTaskStart(t, newStart);
     };
-    const handleDueChange = (t: Task, newDue: string): void => {
+    const handleDueChange = (t: TaskSnapshot, newDue: string): void => {
       void this.rescheduleTaskDue(t, newDue);
     };
-    const handleExtendToSpan = (t: Task, newDue: string): void => {
+    const handleExtendToSpan = (t: TaskSnapshot, newDue: string): void => {
       void this.extendTaskToSpan(t, newDue);
     };
     const handleCreateAtTime = (date: string, time: string): void => {
@@ -544,11 +552,11 @@ export class CenterPanel {
         startPosition: startPositionFor(this.calViewType, firstDayOfWeek),
       };
       // Scope the render to only the tasks anchored on a visible date, via the
-      // O(1)-per-date TaskDateIndex, instead of scanning every task in the vault.
+      // O(1)-per-date index lookups, instead of scanning every task in the vault.
       const visibleDates = visibleCalendarDates(this.calViewType, this.calDate, cfg.firstDayOfWeek);
-      const tasks = legacyTaskViews(
-        this.queries.forCalendarDates(visibleDates as unknown as readonly LocalDate[]),
-      );
+      const tasks = [
+        ...this.queries.forCalendarDates(visibleDates as unknown as readonly LocalDate[]),
+      ];
 
       // Only scroll-to-now when this (viewType, date) pair is new since the last time we
       // scrolled — a reactive re-render of the same view/date (e.g. a store update from a task
@@ -582,7 +590,7 @@ export class CenterPanel {
           onSetPriority: (t, priority) => {
             void this.setPriority(t, priority);
           },
-          statusRegistry: this.store.statusRegistry,
+          statusRegistry: this.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });
       } else if (this.calViewType === 'week') {
@@ -612,7 +620,7 @@ export class CenterPanel {
           onSetPriority: (t, priority) => {
             void this.setPriority(t, priority);
           },
-          statusRegistry: this.store.statusRegistry,
+          statusRegistry: this.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });
       } else {
@@ -644,7 +652,7 @@ export class CenterPanel {
               .startOf('isoWeek');
             this.render();
           },
-          statusRegistry: this.store.statusRegistry,
+          statusRegistry: this.statusRegistry,
           tagGroups: this.settings.tagGroups,
         });
       }
@@ -758,7 +766,7 @@ export class CenterPanel {
     // coalesced notify, rather than diffing which specific cells/blocks changed and patching
     // only those. Two of the three perf levers from the spec ARE implemented in full: (1)
     // `tasks` above is scoped to the visible date range via TaskQueryApi.forCalendarDates,
-    // which is a union of O(1) TaskDateIndex lookups (Task 4) — mountView() no longer scans
+    // which is a union of O(1) date-index lookups — mountView() no longer scans
     // every task in the vault on every render, only the ones anchored on a currently-visible
     // date; (2) notify() is coalesced (Task 5), so a burst of file edits triggers exactly one
     // rebuild instead of one per file. A true incremental DOM patch (diffing old vs. new task
@@ -791,7 +799,7 @@ export class CenterPanel {
       return;
     }
 
-    const results = legacyTaskViews(searchTaskList(this.queries.list(), query));
+    const results = [...searchTaskList(this.queries.list(), query)];
     const scroll = this.el.createDiv({ cls: 'tc-center-scroll' });
     if (results.length === 0) {
       scroll.createDiv({ cls: 'tc-center-empty', text: 'No results' });
@@ -807,10 +815,10 @@ export class CenterPanel {
         'click',
         (e) => {
           e.stopPropagation();
-          const todayStr = window.moment().format('YYYY-MM-DD');
-          const d = task.due ?? task.scheduled ?? task.dailyNoteDate;
+          const todayStr = localDate(window.moment().format('YYYY-MM-DD'));
+          const d = task.planning.due ?? task.planning.scheduled ?? task.presentation.dailyNoteDate;
           let list: 'inbox' | 'today' | 'upcoming' = 'inbox';
-          if ((task.due && task.due < todayStr) || d === todayStr) {
+          if ((task.planning.due && task.planning.due < todayStr) || d === todayStr) {
             list = 'today';
           } else if (d && d > todayStr) {
             list = 'upcoming';
@@ -824,9 +832,9 @@ export class CenterPanel {
     });
   }
 
-  private renderWithGrouping(container: HTMLElement, tasks: Task[]): void {
+  private renderWithGrouping(container: HTMLElement, tasks: TaskSnapshot[]): void {
     const vs = this.state.get('centerListViewState');
-    const today = window.moment().format('YYYY-MM-DD');
+    const today = localDate(window.moment().format('YYYY-MM-DD'));
     const tomorrow = window.moment().add(1, 'day').format('YYYY-MM-DD');
 
     if (vs.groupBy === 'none') {
@@ -834,13 +842,13 @@ export class CenterPanel {
       return;
     }
 
-    let groups: Array<{ label: string; tasks: Task[] }>;
+    let groups: Array<{ label: string; tasks: TaskSnapshot[] }>;
     if (vs.groupBy === 'date') {
       groups = groupTasksByDate(tasks, today, tomorrow);
     } else if (vs.groupBy === 'priority') {
       groups = groupTasksByPriority(tasks);
     } else if (vs.groupBy === 'status') {
-      groups = groupTasksByStatus(tasks, this.store.statusRegistry);
+      groups = groupTasksByStatus(tasks, this.statusRegistry);
     } else {
       groups = groupTasksByTag(tasks);
     }
@@ -855,34 +863,36 @@ export class CenterPanel {
     }
   }
 
-  private renderFlat(container: HTMLElement, tasks: Task[]): void {
+  private renderFlat(container: HTMLElement, tasks: TaskSnapshot[]): void {
     for (const task of tasks) this.renderTaskCard(container, task);
   }
 
-  private renderTaskCard(container: HTMLElement, task: Task): void {
+  private renderTaskCard(container: HTMLElement, task: TaskSnapshot): void {
     const stack = this.state.get('taskStack');
+    const root = stack[0];
     const current = stack[stack.length - 1];
     const isSelected =
+      root !== undefined &&
+      'source' in root &&
       current !== undefined &&
-      'line' in current &&
-      current.line === task.line &&
-      current.filePath === task.filePath;
+      taskNodeLine(root, current) === task.source.line &&
+      root.source.filePath === task.source.filePath;
 
     const card = container.createDiv({
       cls: `tc-task-card${isSelected ? ' is-selected' : ''}`,
     });
-    card.dataset['filePath'] = task.filePath;
-    card.dataset['line'] = String(task.line);
+    card.dataset['filePath'] = task.source.filePath;
+    card.dataset['line'] = String(task.source.line);
 
     renderStatusMarker(card, {
       task,
-      registry: this.store.statusRegistry,
+      registry: this.statusRegistry,
       onLeftClick: () => void this.toggleTask(task),
       onContextMenu: (ev) => {
         ev.stopPropagation();
         showStatusMenuAt(ev, {
           task,
-          registry: this.store.statusRegistry,
+          registry: this.statusRegistry,
           onPickStatus: (c) => void this.setTaskStatus(task, c),
           onPickPriority: (p) => void this.setPriority(task, p),
         });
@@ -890,9 +900,9 @@ export class CenterPanel {
     });
 
     // Pre-compute metadata needed in both body and meta-right
-    const today = window.moment().format('YYYY-MM-DD');
+    const today = localDate(window.moment().format('YYYY-MM-DD'));
     const sel = this.state.get('selectedList');
-    const d = task.due ?? task.scheduled; // only explicit dates show a badge
+    const d = task.planning.due ?? task.planning.scheduled; // only explicit dates show a badge
     const tags = task.tags ?? [];
     const subtaskCount = task.subtasks?.length ?? 0;
     const commentCount = task.comments?.length ?? 0;
@@ -913,8 +923,8 @@ export class CenterPanel {
       setIcon(badge, 'message-square');
       badge.createEl('span', { text: String(commentCount) });
     }
-    // Attached materials: link count precomputed by TaskStore (no per-render parsing).
-    const linkCount = task.linkCount ?? 0;
+    // Attached materials: link count precomputed by TaskIndex (no per-render parsing).
+    const linkCount = task.presentation.linkCount ?? 0;
     if (linkCount > 0) {
       const badge = titleRow.createEl('span', { cls: 'tc-task-count-badge' });
       setIcon(badge, 'paperclip');
@@ -922,9 +932,9 @@ export class CenterPanel {
     }
 
     const titleEl = titleRow.createEl('span', { cls: 'tc-task-title' });
-    renderTaskText(titleEl, task.markdownText, {
+    renderTaskText(titleEl, task.markdownTitle, {
       app: this.app,
-      sourcePath: task.filePath,
+      sourcePath: task.source.filePath,
       component: this.md,
       onEditLink: (occ, token) => this.editTaskLink(task, occ, token),
     });
@@ -934,7 +944,7 @@ export class CenterPanel {
       // No onEditLink: the card is a compact preview; link editing happens in the panel.
       renderTaskText(descEl, task.description.split('\n')[0] ?? '', {
         app: this.app,
-        sourcePath: task.filePath,
+        sourcePath: task.source.filePath,
         component: this.md,
       });
     }
@@ -944,7 +954,8 @@ export class CenterPanel {
       this.settings.sourceNoteDisplay,
       this.settings.customFilePath,
     );
-    const hasRightMeta = showSourceNote || (d && !suppressToday) || task.time || tags.length > 0;
+    const hasRightMeta =
+      showSourceNote || (d && !suppressToday) || task.planning.time || tags.length > 0;
     if (hasRightMeta) {
       const metaRight = card.createDiv({ cls: 'tc-task-meta-right' });
 
@@ -963,24 +974,24 @@ export class CenterPanel {
           this.addPropertyFilter({ type: 'date', value: d });
         });
         // Time part: clock icon + time text — click to filter by time
-        if (task.time) {
+        if (task.planning.time) {
           const timePart = dateEl.createEl('span', { cls: 'tc-task-time-part tc-cursor-pointer' });
           const clockIcon = timePart.createEl('span', { cls: 'tc-date-icon' });
           setIcon(clockIcon, 'clock');
-          timePart.createEl('span', { text: task.time });
+          timePart.createEl('span', { text: task.planning.time });
           timePart.addEventListener('click', (e) => {
             e.stopPropagation();
-            this.addPropertyFilter({ type: 'time', value: task.time! });
+            this.addPropertyFilter({ type: 'time', value: task.planning.time! });
           });
         }
-      } else if (!d && task.time) {
+      } else if (!d && task.planning.time) {
         const timeEl = metaRight.createEl('span', { cls: 'tc-task-date tc-cursor-pointer' });
         const clockIcon = timeEl.createEl('span', { cls: 'tc-date-icon' });
         setIcon(clockIcon, 'clock');
-        timeEl.createEl('span', { text: task.time });
+        timeEl.createEl('span', { text: task.planning.time });
         timeEl.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.addPropertyFilter({ type: 'time', value: task.time! });
+          this.addPropertyFilter({ type: 'time', value: task.planning.time! });
         });
       }
 
@@ -1095,7 +1106,7 @@ export class CenterPanel {
     card.addEventListener('dragover', (e) => {
       const project = this.state.get('draggingProject');
       const canDropProject =
-        !!project && project !== task.filePath && !!this.projectManager && !!this.tasks;
+        !!project && project !== task.source.filePath && !!this.projectManager && !!this.tasks;
       if (!this.state.get('draggingTag') && !canDropProject) return;
       e.preventDefault();
       card.classList.add('tc-drop-target');
@@ -1110,9 +1121,9 @@ export class CenterPanel {
       if (tag) {
         e.preventDefault();
         void this.assignTagFromInbox(task, tag);
-      } else if (project && project !== task.filePath && this.projectManager && this.tasks) {
+      } else if (project && project !== task.source.filePath && this.projectManager && this.tasks) {
         e.preventDefault();
-        const ref = taskRefOf(task);
+        const ref = task.ref;
         if (ref) {
           void moveTaskToProjectWithRecovery(
             this.app,
@@ -1144,8 +1155,8 @@ export class CenterPanel {
       }
 
       // ── SINGLE TASK MENU ─────────────────────────────────
-      const today = window.moment().format('YYYY-MM-DD');
-      const isToday = task.due === today;
+      const today = localDate(window.moment().format('YYYY-MM-DD'));
+      const isToday = task.planning.due === today;
       const menu = new Menu();
 
       // ── Today toggle ──────────────────────────────────────
@@ -1191,12 +1202,7 @@ export class CenterPanel {
       menu.addItem((item) => {
         item.setTitle('Status').setIcon('check-square').setSection('priority');
         const sub = getSubmenu(item);
-        buildStatusSubmenu(
-          sub,
-          task,
-          this.store.statusRegistry,
-          (c) => void this.setTaskStatus(task, c),
-        );
+        buildStatusSubmenu(sub, task, this.statusRegistry, (c) => void this.setTaskStatus(task, c));
       });
 
       menu.addItem((item) =>
@@ -1252,17 +1258,17 @@ export class CenterPanel {
     return '';
   }
 
-  private makeBulkTagRemoveHandler(selectedTasks: Task[], pinnedTag: string): () => void {
+  private makeBulkTagRemoveHandler(selectedTasks: TaskSnapshot[], pinnedTag: string): () => void {
     return () =>
       void Promise.all(selectedTasks.map((task) => this.patchTaskTags(task, [], [pinnedTag])));
   }
 
-  private makeBulkTagAddHandler(selectedTasks: Task[], pinnedTag: string): () => void {
+  private makeBulkTagAddHandler(selectedTasks: TaskSnapshot[], pinnedTag: string): () => void {
     return () =>
       void Promise.all(selectedTasks.map((task) => this.patchTaskTags(task, [pinnedTag], [])));
   }
 
-  private addBulkTagItem(menu: Menu, pinnedTag: string, selectedTasks: Task[]): void {
+  private addBulkTagItem(menu: Menu, pinnedTag: string, selectedTasks: TaskSnapshot[]): void {
     const count = selectedTasks.filter((task) => task.tags?.includes(pinnedTag) === true).length;
     const allHave = count === selectedTasks.length;
     const indicator = this.bulkTagIndicator(count, selectedTasks.length);
@@ -1278,15 +1284,15 @@ export class CenterPanel {
     );
   }
 
-  private async deleteBulkTasks(selectedTasks: Task[]): Promise<void> {
-    const sorted = [...selectedTasks].sort((a, b) => b.line - a.line);
+  private async deleteBulkTasks(selectedTasks: TaskSnapshot[]): Promise<void> {
+    const sorted = [...selectedTasks].sort((a, b) => b.source.line - a.source.line);
     for (const t of sorted) await this.deleteTask(t);
     this.selectedTaskKeys.clear();
     this.lastClickedTaskKey = null;
     this.updateSelectionVisuals();
   }
 
-  private buildPrioritySubmenu(sub: Menu, task: Task): void {
+  private buildPrioritySubmenu(sub: Menu, task: TaskSnapshot): void {
     for (const level of PRIORITY_LEVELS) {
       sub.addItem((si) => {
         si.setTitle(level.label)
@@ -1298,7 +1304,7 @@ export class CenterPanel {
     }
   }
 
-  private buildBulkPrioritySubmenu(sub: Menu, selectedTasks: Task[]): void {
+  private buildBulkPrioritySubmenu(sub: Menu, selectedTasks: TaskSnapshot[]): void {
     for (const level of PRIORITY_LEVELS) {
       sub.addItem((si) => {
         si.setTitle(level.label)
@@ -1311,16 +1317,16 @@ export class CenterPanel {
     }
   }
 
-  private getTaskTags(task: Task): Set<string> {
+  private getTaskTags(task: TaskSnapshot): Set<string> {
     return new Set(task.tags ?? []);
   }
 
   private async patchTaskTags(
-    task: Task,
+    task: TaskSnapshot,
     add: readonly string[],
     remove: readonly string[],
   ): Promise<void> {
-    const ref = taskRefOf(task);
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     presentTaskCommandResult(
       await this.tasks.execute({
@@ -1331,7 +1337,7 @@ export class CenterPanel {
     );
   }
 
-  private async assignTagFromInbox(task: Task, tag: string): Promise<void> {
+  private async assignTagFromInbox(task: TaskSnapshot, tag: string): Promise<void> {
     const inboxTag = this.settings.inbox.tag;
     const remove =
       this.settings.inbox.removeTagOnAssign && this.getTaskTags(task).has(inboxTag)
@@ -1340,7 +1346,7 @@ export class CenterPanel {
     await this.patchTaskTags(task, [tag], remove);
   }
 
-  private openTagPicker(task: Task): void {
+  private openTagPicker(task: TaskSnapshot): void {
     const currentTags = this.getTaskTags(task);
     const handleCommit = (toAdd: string[], toRemove: string[]): void => {
       void this.patchTaskTags(task, toAdd, toRemove);
@@ -1354,7 +1360,7 @@ export class CenterPanel {
     ).open();
   }
 
-  private openBulkTagPicker(selectedTasks: Task[]): void {
+  private openBulkTagPicker(selectedTasks: TaskSnapshot[]): void {
     const tagSets = selectedTasks.map((t) => this.getTaskTags(t));
     const allTags = new Set(tagSets.flatMap((s) => [...s]));
     const hasAll = (tag: string): boolean => tagSets.every((s) => s.has(tag));
@@ -1374,19 +1380,19 @@ export class CenterPanel {
 
   private showBulkContextMenu(e: MouseEvent, _card: HTMLElement): void {
     const selectedKeys = Array.from(this.selectedTaskKeys);
-    const allTasks = legacyTaskViews(this.queries.list());
+    const allTasks = [...this.queries.list()];
     const selectedTasks = selectedKeys
       .map((k) => {
         const lastColon = k.lastIndexOf(':');
         const fp = k.slice(0, lastColon);
         const lineNum = parseInt(k.slice(lastColon + 1), 10);
-        return allTasks.find((t) => t.filePath === fp && t.line === lineNum);
+        return allTasks.find((t) => t.source.filePath === fp && t.source.line === lineNum);
       })
       .filter((t) => t !== undefined);
 
     const menu = new Menu();
-    const today = window.moment().format('YYYY-MM-DD');
-    const allHaveToday = selectedTasks.every((t) => t.due === today);
+    const today = localDate(window.moment().format('YYYY-MM-DD'));
+    const allHaveToday = selectedTasks.every((t) => t.planning.due === today);
 
     // Header (non-interactive label)
     menu.addItem((item) =>
@@ -1421,7 +1427,7 @@ export class CenterPanel {
     menu.addItem((item) => {
       item.setTitle('Status').setIcon('check-square').setSection('priority');
       const sub = getSubmenu(item);
-      buildStatusSubmenu(sub, selectedTasks[0]!, this.store.statusRegistry, (c) => {
+      buildStatusSubmenu(sub, selectedTasks[0]!, this.statusRegistry, (c) => {
         void Promise.all(selectedTasks.map((t) => this.setTaskStatus(t, c)));
       });
     });
@@ -1467,7 +1473,7 @@ export class CenterPanel {
     if (f.type === 'tag') return f.value;
     if (f.type === 'file') return `📄 ${f.filePath.split('/').pop()?.replace(/\.md$/, '') ?? ''}`;
     if (f.type === 'time') return `⏰ ${f.value}`;
-    if (f.type === 'status') return this.store.statusRegistry.bySymbol(f.value)?.name ?? f.value;
+    if (f.type === 'status') return this.statusRegistry.bySymbol(f.value)?.name ?? f.value;
     if (f.type === 'date') return `📅 ${this.formatDate(f.value)}`;
     const level = PRIORITY_LEVELS.find((l) => l.value === f.value);
     if (!level) return f.value;
@@ -1968,7 +1974,7 @@ export class CenterPanel {
 
   private async createTask(text: string): Promise<void> {
     const sel = this.state.get('selectedList');
-    const today = window.moment().format('YYYY-MM-DD');
+    const today = localDate(window.moment().format('YYYY-MM-DD'));
 
     // Today and upcoming use the configured destination and typed scheduling fields.
     if (sel === 'today' || sel === 'upcoming') {
@@ -2032,14 +2038,14 @@ export class CenterPanel {
     });
   }
 
-  private async deleteTask(task: Task): Promise<void> {
-    const ref = taskRefOf(task);
+  private async deleteTask(task: TaskSnapshot): Promise<void> {
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     const result = await this.tasks.execute({ type: 'delete', ref });
     presentTaskCommandResult(result);
     if (result.type !== 'ok' || result.outcome.type !== 'deleted') return;
     const stack = this.state.get('taskStack');
-    const current = stack[0] ? taskRefOf(stack[0]) : undefined;
+    const current = stack[0] ? rootTaskRef(stack[0]) : undefined;
     if (current && this.sameTaskRef(current, ref)) {
       this.state.set('taskStack', []);
     }
@@ -2101,9 +2107,9 @@ export class CenterPanel {
     );
   }
 
-  private getFilteredTasks(): Task[] {
-    return legacyTaskViews(
-      selectTaskList({
+  private getFilteredTasks(): TaskSnapshot[] {
+    return [
+      ...selectTaskList({
         tasks: this.queries.list(),
         selection: this.state.get('selectedList'),
         viewState: this.state.get('centerListViewState'),
@@ -2111,7 +2117,7 @@ export class CenterPanel {
         today: window.moment().format('YYYY-MM-DD') as LocalDate,
         textQuery: this.state.get('centerFilter'),
       }),
-    );
+    ];
   }
 
   private getTitle(): string {
@@ -2173,16 +2179,18 @@ export class CenterPanel {
     const line = parseInt(lineStr ?? '0', 10);
     if (!filePath || isNaN(line)) return;
 
-    const task = legacyTaskViews(this.queries.list({ filePath })).find((t) => t.line === line);
+    const task = [...this.queries.list({ filePath })].find((t) => t.source.line === line);
     if (!task) return;
 
-    const ref = taskRefOf(task);
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     try {
       const date = localDate(targetDate);
       presentTaskCommandResult(
         await this.tasks.execute(
-          task.time ? { type: 'convert-to-all-day', ref, date } : { type: 'reschedule', ref, date },
+          task.planning.time
+            ? { type: 'convert-to-all-day', ref, date }
+            : { type: 'reschedule', ref, date },
         ),
       );
     } catch {
@@ -2197,10 +2205,10 @@ export class CenterPanel {
     const line = parseInt(lineStr ?? '0', 10);
     if (!filePath || isNaN(line)) return;
 
-    const task = legacyTaskViews(this.queries.list({ filePath })).find((t) => t.line === line);
+    const task = [...this.queries.list({ filePath })].find((t) => t.source.line === line);
     if (!task) return;
 
-    const ref = taskRefOf(task);
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     try {
       presentTaskCommandResult(
@@ -2216,8 +2224,8 @@ export class CenterPanel {
     }
   }
 
-  private async updateTaskTime(task: Task, newStartMinutes: number): Promise<void> {
-    const ref = taskRefOf(task);
+  private async updateTaskTime(task: TaskSnapshot, newStartMinutes: number): Promise<void> {
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     try {
       presentTaskCommandResult(
@@ -2232,8 +2240,8 @@ export class CenterPanel {
     }
   }
 
-  private async updateTaskDuration(task: Task, newDurationMinutes: number): Promise<void> {
-    const ref = taskRefOf(task);
+  private async updateTaskDuration(task: TaskSnapshot, newDurationMinutes: number): Promise<void> {
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     try {
       presentTaskCommandResult(
@@ -2250,8 +2258,8 @@ export class CenterPanel {
     }
   }
 
-  private async updateTaskStart(task: Task, newStart: string): Promise<void> {
-    const ref = taskRefOf(task);
+  private async updateTaskStart(task: TaskSnapshot, newStart: string): Promise<void> {
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     try {
       presentTaskCommandResult(
@@ -2267,8 +2275,8 @@ export class CenterPanel {
     }
   }
 
-  private async rescheduleTaskDue(task: Task, newDue: string): Promise<void> {
-    const ref = taskRefOf(task);
+  private async rescheduleTaskDue(task: TaskSnapshot, newDue: string): Promise<void> {
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     try {
       presentTaskCommandResult(
@@ -2286,9 +2294,9 @@ export class CenterPanel {
 
   // The semantic command freezes the effective scheduled/due anchor when start is absent and
   // validates the final span atomically; presentation supplies only the dragged-to edge.
-  private async extendTaskToSpan(task: Task, newDue: string): Promise<void> {
-    if (!(task.start ?? task.scheduled ?? task.due)) return;
-    const ref = taskRefOf(task);
+  private async extendTaskToSpan(task: TaskSnapshot, newDue: string): Promise<void> {
+    if (!(task.planning.start ?? task.planning.scheduled ?? task.planning.due)) return;
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     try {
       presentTaskCommandResult(
@@ -2299,8 +2307,8 @@ export class CenterPanel {
     }
   }
 
-  private editTaskLink(task: Task, occ: number, token: LinkToken): void {
-    const ref = taskRefOf(task);
+  private editTaskLink(task: TaskSnapshot, occ: number, token: LinkToken): void {
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     new LinkEditModal(
       this.app,
@@ -2313,27 +2321,27 @@ export class CenterPanel {
           replacement: newRaw,
         }).then(presentTaskCommandResult);
       },
-      task.filePath,
+      task.source.filePath,
     ).open();
   }
 
-  private async toggleDueToday(task: Task): Promise<void> {
-    const today = window.moment().format('YYYY-MM-DD');
-    const ref = taskRefOf(task);
+  private async toggleDueToday(task: TaskSnapshot): Promise<void> {
+    const today = localDate(window.moment().format('YYYY-MM-DD'));
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     presentTaskCommandResult(
       await this.tasks.execute({
         type: 'patch',
         target: { type: 'task', ref },
         patch: {
-          due: task.due === today ? { type: 'clear' } : { type: 'set', value: localDate(today) },
+          due: task.planning.due === today ? { type: 'clear' } : { type: 'set', value: today },
         },
       }),
     );
   }
 
-  private taskKey(task: Task): string {
-    return `${task.filePath}:${task.line}`;
+  private taskKey(task: TaskSnapshot): string {
+    return `${task.source.filePath}:${task.source.line}`;
   }
 
   private updateSelectionVisuals(): void {
@@ -2362,10 +2370,10 @@ export class CenterPanel {
   }
 
   private async setPriority(
-    task: Task,
+    task: TaskSnapshot,
     priority: 'A' | 'B' | 'C' | 'D' | 'E' | 'F',
   ): Promise<void> {
-    const ref = taskRefOf(task);
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     presentTaskCommandResult(
       await this.tasks.execute({
@@ -2376,8 +2384,8 @@ export class CenterPanel {
     );
   }
 
-  private async toggleTask(task: Task): Promise<void> {
-    const ref = taskRefOf(task);
+  private async toggleTask(task: TaskSnapshot): Promise<void> {
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     presentTaskCommandResult(
       await this.tasks.execute({
@@ -2387,8 +2395,8 @@ export class CenterPanel {
     );
   }
 
-  private async setTaskStatus(task: Task, symbol: string): Promise<void> {
-    const ref = taskRefOf(task);
+  private async setTaskStatus(task: TaskSnapshot, symbol: string): Promise<void> {
+    const ref = task.ref;
     if (!ref || !this.tasks) return;
     presentTaskCommandResult(
       await this.tasks.execute({

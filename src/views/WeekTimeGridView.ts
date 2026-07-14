@@ -1,7 +1,7 @@
 import { Component } from 'obsidian';
 import { weekStartOffset } from '../domain/weekGridOffset';
-import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
+import type { TaskSnapshot } from '../tasks';
 import { BaseView } from './BaseView';
 import { bucketTasksForDate, NOW_LINE_REFRESH_MS, type TimeGridCallbacks } from './TodayView';
 import { renderHourGrid, repositionNowLine } from './timegrid/HourGrid';
@@ -25,7 +25,7 @@ export class WeekTimeGridView extends BaseView {
 
   render(
     container: HTMLElement,
-    tasks: Task[],
+    tasks: TaskSnapshot[],
     config: ResolvedConfig,
     shouldScrollToNow = true,
     preservedScrollTop?: number,
@@ -109,8 +109,8 @@ export class WeekTimeGridView extends BaseView {
       const { timed, spans, timedSpans, plain, deadlines } = bucketTasksForDate(tasks, day.date);
       // Task 29: full interactive block only on the span's `due` (anchor) day; every other
       // day it covers gets the lighter, non-interactive continuation segment instead.
-      const anchoredTimedSpans = timedSpans.filter((t) => t.due === day.date);
-      const continuationTimedSpans = timedSpans.filter((t) => t.due !== day.date);
+      const anchoredTimedSpans = timedSpans.filter((t) => String(t.planning.due) === day.date);
+      const continuationTimedSpans = timedSpans.filter((t) => String(t.planning.due) !== day.date);
       const anchorBlocks = [...timed, ...anchoredTimedSpans];
       renderTimedBlocksForDay(day.hourColumnEl, anchorBlocks, timedCallbacks, tagGroups);
       renderTimedSpanContinuation(

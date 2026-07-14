@@ -24,7 +24,11 @@ interface WorkspaceLike {
 
 interface PluginLike {
   app: { workspace: WorkspaceLike };
-  store: { initialize: () => Promise<void>; destroy: () => void; constructor: { name: string } };
+  taskIndex: {
+    initialize: () => Promise<void>;
+    destroy: () => void;
+    constructor: { name: string };
+  };
   settings: CalendarSettings;
   data__: unknown;
   commands: Map<string, { id: string; name: string }>;
@@ -103,11 +107,11 @@ describe('TaskCalendarPlugin saveSettings', () => {
 });
 
 describe('TaskCalendarPlugin onload', () => {
-  it('constructs a TaskStore instance', async () => {
+  it('constructs the shared TaskIndex', async () => {
     const plugin = makePlugin();
     await plugin.onload();
-    expect(plugin.store).toBeDefined();
-    expect(plugin.store.constructor.name).toBe('TaskStore');
+    expect(plugin.taskIndex).toBeDefined();
+    expect(plugin.taskIndex.constructor.name).toBe('TaskIndex');
   });
 
   it('registers the panel view with PANEL_VIEW_TYPE', async () => {
@@ -147,11 +151,10 @@ describe('TaskCalendarPlugin onload', () => {
     expect(spy).toHaveBeenCalledOnce();
   });
 
-  it('invokes store.initialize via onLayoutReady', async () => {
+  it('invokes taskIndex.initialize via onLayoutReady', async () => {
     const plugin = makePlugin();
     await plugin.onload();
-    // onload set this.store and queued the initialize callback (layoutReady=false)
-    const spy = vi.spyOn(plugin.store, 'initialize').mockResolvedValue(undefined);
+    const spy = vi.spyOn(plugin.taskIndex, 'initialize').mockResolvedValue(undefined);
     plugin.app.workspace.setLayoutReady__();
     expect(spy).toHaveBeenCalledOnce();
   });
@@ -190,10 +193,10 @@ describe('TaskCalendarPlugin renderCalendar shim', () => {
 });
 
 describe('TaskCalendarPlugin onunload', () => {
-  it('calls store.destroy exactly once', async () => {
+  it('calls taskIndex.destroy exactly once', async () => {
     const plugin = makePlugin();
     await plugin.onload();
-    const spy = vi.spyOn(plugin.store, 'destroy');
+    const spy = vi.spyOn(plugin.taskIndex, 'destroy');
     plugin.onunload();
     expect(spy).toHaveBeenCalledOnce();
   });

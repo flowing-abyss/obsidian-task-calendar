@@ -1,4 +1,4 @@
-import type { Task } from '../parser/types';
+import type { TaskSnapshot } from '../tasks';
 
 /**
  * Task 38 (Round 4 follow-up): `is-done`/`is-cancelled` suffix mirroring ListView.ts's
@@ -9,7 +9,7 @@ import type { Task } from '../parser/types';
  * this shared module (out of renderTimedBlocks.ts, its original home) once a second and
  * third caller needed the identical logic, rather than duplicating it per file.
  */
-export function statusTitleClass(status: Task['status']): string {
+export function statusTitleClass(status: TaskSnapshot['status']): string {
   if (status === 'done') return ' is-done';
   if (status === 'cancelled') return ' is-cancelled';
   return '';

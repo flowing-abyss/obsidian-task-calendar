@@ -1,9 +1,9 @@
 import { Component, type App } from 'obsidian';
-import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { tagFillTextColorVar } from '../../tags/tagFillContrast';
+import type { TaskSnapshot } from '../../tasks';
 import type { TaskPriority } from '../../tasks/domain/types';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
@@ -14,14 +14,14 @@ import { hasCountBadges, renderCountBadges } from './renderTaskMeta';
 export interface AllDayCallbacks {
   app: App;
   component: Component;
-  onTaskClick: (task: Task) => void;
+  onTaskClick: (task: TaskSnapshot) => void;
   onDrop: (dragData: string, targetDate: string) => void; // native HTML5 DnD, existing convention
-  onStartChange: (task: Task, newStart: string) => void; // pointer edge-resize
-  onDueChange: (task: Task, newDue: string) => void; // pointer edge-resize
-  onExtendToSpan: (task: Task, newDue: string) => void; // pointer edge-resize on a plain task
-  onToggle: (task: Task) => void;
-  onSetStatus: (task: Task, status: string) => void;
-  onSetPriority: (task: Task, priority: TaskPriority) => void;
+  onStartChange: (task: TaskSnapshot, newStart: string) => void; // pointer edge-resize
+  onDueChange: (task: TaskSnapshot, newDue: string) => void; // pointer edge-resize
+  onExtendToSpan: (task: TaskSnapshot, newDue: string) => void; // pointer edge-resize on a plain task
+  onToggle: (task: TaskSnapshot) => void;
+  onSetStatus: (task: TaskSnapshot, status: string) => void;
+  onSetPriority: (task: TaskSnapshot, priority: TaskPriority) => void;
   statusRegistry: StatusRegistry;
   /** Click-to-create: fires when the user clicks genuinely empty space in this all-day cell
    * (not an existing span/plain/deadline item, and not the quick-add popover CenterPanel renders
@@ -73,7 +73,7 @@ function endDragTestHook(cellEl: HTMLElement, targetDate: string): void {
 function renderDraggableBody(
   cellEl: HTMLElement,
   cls: string,
-  task: Task,
+  task: TaskSnapshot,
   callbacks: AllDayCallbacks,
   tagGroups: TagGroup[],
 ): HTMLElement {
@@ -103,9 +103,9 @@ function renderDraggableBody(
   // span/plain item read as plain/untouched while the same task's timed block elsewhere
   // showed struck-through.
   const titleEl = el.createSpan({ cls: `tc-tg-body-title${statusTitleClass(task.status)}` });
-  renderTaskText(titleEl, task.markdownText, {
+  renderTaskText(titleEl, task.markdownTitle, {
     app: callbacks.app,
-    sourcePath: task.filePath,
+    sourcePath: task.source.filePath,
     component: callbacks.component,
   });
   // Count badges (subtasks/comments/links) only — Task 44: tag chips were removed here too,
@@ -134,7 +134,7 @@ function renderDraggableBody(
   }
   el.setAttribute('draggable', 'true');
   el.addEventListener('dragstart', (e) => {
-    e.dataTransfer?.setData('text/plain', `${task.filePath}:::${task.line}`);
+    e.dataTransfer?.setData('text/plain', `${task.source.filePath}:::${task.source.line}`);
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
     el.addClass('is-dragging');
   });
@@ -162,8 +162,8 @@ function renderDraggableBody(
 function attachEdgeResize(
   handle: HTMLElement,
   cellEl: HTMLElement,
-  task: Task,
-  onResolve: (task: Task, date: string) => void,
+  task: TaskSnapshot,
+  onResolve: (task: TaskSnapshot, date: string) => void,
 ): void {
   // The handle sits inside a `draggable="true"` body (renderDraggableBody, for the
   // whole-task cross-day move). draggable="false" here is NOT enough on its own to stop a
@@ -265,9 +265,9 @@ function attachEdgeResize(
 export function renderAllDayCell(
   cellEl: HTMLElement,
   date: string,
-  spans: Task[], // tasks with start && due (multi-day)
-  plain: Task[], // tasks with a due-or-scheduled anchor but no time/start (single-day chip)
-  deadlines: Task[], // tasks where scheduled is set AND due is set (due renders as marker, not body)
+  spans: TaskSnapshot[], // tasks with start && due (multi-day)
+  plain: TaskSnapshot[], // tasks with a due-or-scheduled anchor but no time/start (single-day chip)
+  deadlines: TaskSnapshot[], // tasks where scheduled is set AND due is set (due renders as marker, not body)
   callbacks: AllDayCallbacks,
   tagGroups: TagGroup[] = [],
 ): void {
@@ -280,11 +280,11 @@ export function renderAllDayCell(
     const bar = renderDraggableBody(cellEl, 'tc-tg-span', t, callbacks, tagGroups);
     // Edge handles: only rendered on the day matching start/due respectively, so
     // dragging one doesn't accidentally exist mid-span.
-    if (t.start === date) {
+    if (String(t.planning.start) === date) {
       const leftEdge = bar.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--left' });
       attachEdgeResize(leftEdge, cellEl, t, callbacks.onStartChange);
     }
-    if (t.due === date) {
+    if (String(t.planning.due) === date) {
       const rightEdge = bar.createDiv({ cls: 'tc-tg-span-edge tc-tg-span-edge--right' });
       attachEdgeResize(rightEdge, cellEl, t, callbacks.onDueChange);
     }
@@ -320,14 +320,18 @@ export function renderAllDayCell(
     // Task 38 follow-up: same is-done/is-cancelled strikethrough convention as timed blocks
     // and all-day span/plain items above — previously this title had no status class at all.
     const titleEl = marker.createSpan({ cls: `tc-tg-deadline-title${statusTitleClass(t.status)}` });
-    renderTaskText(titleEl, t.markdownText, {
+    renderTaskText(titleEl, t.markdownTitle, {
       app: callbacks.app,
-      sourcePath: t.filePath,
+      sourcePath: t.source.filePath,
       component: callbacks.component,
     });
     // Count badges only (no tag chips) — deadline markers deliberately stay a compact
     // pill with no tag fill (see comment above), so tag chips would fight that convention.
-    if ((t.subtasks?.length ?? 0) > 0 || (t.comments?.length ?? 0) > 0 || (t.linkCount ?? 0) > 0) {
+    if (
+      (t.subtasks?.length ?? 0) > 0 ||
+      (t.comments?.length ?? 0) > 0 ||
+      (t.presentation.linkCount ?? 0) > 0
+    ) {
       const meta = marker.createSpan({ cls: 'tc-tg-body-meta' });
       renderCountBadges(meta, t);
     }

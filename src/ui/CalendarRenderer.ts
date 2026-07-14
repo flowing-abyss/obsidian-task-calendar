@@ -1,9 +1,7 @@
 import { Modal, type App } from 'obsidian';
-import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
-import type { TaskStore } from '../store/TaskStore';
-import { localDate, type TaskApplicationApi, type TaskQueryApi } from '../tasks';
-import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
+import type { StatusRegistry } from '../status/StatusRegistry';
+import { localDate, type TaskApplicationApi, type TaskQueryApi, type TaskSnapshot } from '../tasks';
 import { BaseView } from '../views/BaseView';
 import { ListView } from '../views/ListView';
 import { MonthView } from '../views/MonthView';
@@ -34,11 +32,11 @@ export class CalendarRenderer {
 
   constructor(
     private rootEl: HTMLElement,
-    private store: TaskStore,
     private config: ResolvedConfig,
     private app: App,
     private queries: TaskQueryApi,
     private tasks: TaskApplicationApi,
+    private statusRegistry: StatusRegistry,
     private taskPrefix = '',
   ) {
     this.activeViewType = config.defaultView;
@@ -95,11 +93,7 @@ export class CalendarRenderer {
     this.renderView();
 
     this.unsubscribe = this.queries.subscribe(() => {
-      this.activeView?.patch(
-        this.viewContainer!,
-        legacyTaskViews(this.queries.list()),
-        this.buildConfig(),
-      );
+      this.activeView?.patch(this.viewContainer!, [...this.queries.list()], this.buildConfig());
       this.updateToolbar();
     });
   }
@@ -137,13 +131,10 @@ export class CalendarRenderer {
 
   private buildCallbacks() {
     return {
-      onToggle: (task: Task) => {
-        const ref = taskRefOf(task);
-        if (ref) {
-          void this.tasks
-            .execute({ type: 'toggle-completion', target: { type: 'task', ref } })
-            .then(presentTaskCommandResult);
-        }
+      onToggle: (task: TaskSnapshot) => {
+        void this.tasks
+          .execute({ type: 'toggle-completion', target: { type: 'task', ref: task.ref } })
+          .then(presentTaskCommandResult);
       },
       onCellClick: (date: string) => this.openAddTaskModal(date),
       onWeekClick: (weekNr: string, year: string) => {
@@ -155,29 +146,23 @@ export class CalendarRenderer {
         this.switchView('week');
       },
       onDateClick: (date: string) => this.openAddTaskModal(date),
-      onContextMenu: (ev: MouseEvent, task: Task) => {
+      onContextMenu: (ev: MouseEvent, task: TaskSnapshot) => {
         showStatusMenuAt(ev, {
           task,
-          registry: this.store.statusRegistry,
+          registry: this.statusRegistry,
           onPickStatus: (symbol) => {
-            const ref = taskRefOf(task);
-            if (ref) {
-              void this.tasks
-                .execute({ type: 'set-status', target: { type: 'task', ref }, symbol })
-                .then(presentTaskCommandResult);
-            }
+            void this.tasks
+              .execute({ type: 'set-status', target: { type: 'task', ref: task.ref }, symbol })
+              .then(presentTaskCommandResult);
           },
           onPickPriority: (priority) => {
-            const ref = taskRefOf(task);
-            if (ref) {
-              void this.tasks
-                .execute({
-                  type: 'patch',
-                  target: { type: 'task', ref },
-                  patch: { priority: { type: 'set', value: priority } },
-                })
-                .then(presentTaskCommandResult);
-            }
+            void this.tasks
+              .execute({
+                type: 'patch',
+                target: { type: 'task', ref: task.ref },
+                patch: { priority: { type: 'set', value: priority } },
+              })
+              .then(presentTaskCommandResult);
           },
         });
       },
@@ -206,7 +191,7 @@ export class CalendarRenderer {
 
   private renderView(): void {
     if (!this.viewContainer) return;
-    const tasks = legacyTaskViews(this.queries.list());
+    const tasks = [...this.queries.list()];
     const config = this.buildConfig();
     const cb = this.buildCallbacks();
 
@@ -222,7 +207,7 @@ export class CalendarRenderer {
           onTaskClick: () => {},
           onDrop: () => {},
           onOpenNote: (t) => void openInFile(this.app, t),
-          statusRegistry: this.store.statusRegistry,
+          statusRegistry: this.statusRegistry,
           onContextMenu: cb.onContextMenu,
         });
       } else if (this.activeViewType === 'week') {
@@ -233,7 +218,7 @@ export class CalendarRenderer {
           onTaskClick: () => {},
           onDrop: () => {},
           onOpenNote: (t) => void openInFile(this.app, t),
-          statusRegistry: this.store.statusRegistry,
+          statusRegistry: this.statusRegistry,
           onContextMenu: cb.onContextMenu,
         });
       } else {
@@ -241,7 +226,7 @@ export class CalendarRenderer {
           app: this.app,
           onToggle: cb.onToggle,
           onDateClick: cb.onDateClick,
-          statusRegistry: this.store.statusRegistry,
+          statusRegistry: this.statusRegistry,
           onContextMenu: cb.onContextMenu,
         });
       }
@@ -260,7 +245,7 @@ export class CalendarRenderer {
 
   private updateToolbar(): void {
     if (!this.toolbar) return;
-    const tasks = legacyTaskViews(this.queries.list());
+    const tasks = this.queries.list();
     const today = window.moment().format('YYYY-MM-DD');
     this.toolbar.update({
       currentView: this.activeViewType,
@@ -271,14 +256,17 @@ export class CalendarRenderer {
       activeStatGroup: this.activeStatGroup,
       stats: {
         done: tasks.filter((t) => t.status === 'done').length,
-        due: tasks.filter((t) => t.due && t.status === 'open').length,
+        due: tasks.filter((t) => t.planning.due && t.status === 'open').length,
         overdue: tasks.filter(
-          (t) => t.due && t.status === 'open' && window.moment(t.due).isBefore(today, 'day'),
+          (t) =>
+            t.planning.due &&
+            t.status === 'open' &&
+            window.moment(t.planning.due).isBefore(today, 'day'),
         ).length,
-        start: tasks.filter((t) => t.start && t.status === 'open').length,
-        scheduled: tasks.filter((t) => t.scheduled && t.status === 'open').length,
+        start: tasks.filter((t) => t.planning.start && t.status === 'open').length,
+        scheduled: tasks.filter((t) => t.planning.scheduled && t.status === 'open').length,
         recurrence: tasks.filter((t) => t.recurrence && t.status === 'open').length,
-        dailyNote: tasks.filter((t) => t.dailyNoteDate && t.status === 'open').length,
+        dailyNote: tasks.filter((t) => t.presentation.dailyNoteDate && t.status === 'open').length,
       },
     });
   }

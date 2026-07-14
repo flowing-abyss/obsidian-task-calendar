@@ -1,15 +1,12 @@
 import { Menu, setIcon, TFile, type App } from 'obsidian';
 import type { AppState, ListSelection } from '../app/AppState';
 import { isListViewCustomized, listSelectionToKey } from '../app/listViewState';
-import type { Task } from '../parser/types';
 import type { ProjectManager } from '../projects/ProjectManager';
 import type { ProjectStore } from '../projects/ProjectStore';
 import type { CalendarSettings, TagGroup } from '../settings/types';
-import type { TaskStore } from '../store/TaskStore';
 import { RenameTagModal } from '../tags/RenameTagModal';
 import type { TagManager } from '../tags/TagManager';
-import type { TaskApplicationApi, TaskQueryApi } from '../tasks';
-import { legacyTaskViews, taskRefOf } from '../tasks/compat/legacyTaskView';
+import type { TaskApplicationApi, TaskQueryApi, TaskSnapshot } from '../tasks';
 import { moveTaskToProjectWithRecovery } from '../ui/moveTaskToProject';
 import { presentTaskCommandResult } from '../ui/taskCommandResult';
 
@@ -17,7 +14,7 @@ const PROJECTS_CAP = 10;
 
 /** A task is "active" (actionable) when open or in-progress — the same set the
  *  center list shows by default, so left-panel badges match the opened list. */
-function isActiveTask(t: Task): boolean {
+function isActiveTask(t: TaskSnapshot): boolean {
   return t.status === 'open' || t.status === 'in-progress';
 }
 
@@ -33,15 +30,14 @@ export class LeftPanel {
 
   constructor(
     private state: AppState,
-    private store: TaskStore,
     private settings: CalendarSettings,
     private tagManager: TagManager,
     private app: App,
     private queries: TaskQueryApi,
+    private tasks: TaskApplicationApi,
     private onSaveSettings: () => Promise<void> = async () => {},
     private projectStore: ProjectStore | null = null,
     private projectManager: ProjectManager | null = null,
-    private tasks?: TaskApplicationApi,
   ) {}
 
   mount(container: HTMLElement): void {
@@ -84,7 +80,7 @@ export class LeftPanel {
     // The projects mode is a self-contained deep view; search hides the left panel too.
     if (mode === 'search' || mode === 'projects') return;
 
-    const allTasks = legacyTaskViews(this.queries.list());
+    const allTasks = [...this.queries.list()];
     const today = window.moment().format('YYYY-MM-DD');
 
     this.el.createDiv({ cls: 'tc-left-section' }, (section) => {
@@ -347,7 +343,7 @@ export class LeftPanel {
     if (file instanceof TFile) void this.app.workspace.getLeaf(false).openFile(file);
   }
 
-  private renderPinnedTag(parent: HTMLElement, tag: string, allTasks: Task[]): void {
+  private renderPinnedTag(parent: HTMLElement, tag: string, allTasks: TaskSnapshot[]): void {
     const sel = this.state.get('selectedList');
     const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
     const count = allTasks.filter((t) => isActiveTask(t) && t.tags?.includes(tag) === true).length;
@@ -377,7 +373,12 @@ export class LeftPanel {
   }
 
   /** A flat, non-expandable tag row (used for manual single-tag groups). */
-  private renderTagLeaf(parent: HTMLElement, group: TagGroup, tag: string, allTasks: Task[]): void {
+  private renderTagLeaf(
+    parent: HTMLElement,
+    group: TagGroup,
+    tag: string,
+    allTasks: TaskSnapshot[],
+  ): void {
     const sel = this.state.get('selectedList');
     const isActive = typeof sel === 'object' && sel.type === 'tag' && sel.tag === tag;
     const count = allTasks.filter((t) => isActiveTask(t) && t.tags?.includes(tag) === true).length;
@@ -437,7 +438,7 @@ export class LeftPanel {
     });
   }
 
-  private renderTagGroup(parent: HTMLElement, group: TagGroup, allTasks: Task[]): void {
+  private renderTagGroup(parent: HTMLElement, group: TagGroup, allTasks: TaskSnapshot[]): void {
     const sel = this.state.get('selectedList');
 
     // A manual group holding a single tag is a leaf, not an expandable group —
@@ -679,7 +680,7 @@ export class LeftPanel {
   private attachProjectDropZone(el: HTMLElement, projectPath: string): void {
     el.addEventListener('dragover', (e) => {
       const task = this.state.get('draggingTask');
-      if (!this.projectManager || !this.tasks || !task || task.filePath === projectPath) return;
+      if (!this.projectManager || !task || task.source.filePath === projectPath) return;
       e.preventDefault();
       el.classList.add('tc-drop-target');
     });
@@ -689,18 +690,15 @@ export class LeftPanel {
     el.addEventListener('drop', (e) => {
       el.classList.remove('tc-drop-target');
       const task = this.state.get('draggingTask');
-      if (!task || task.filePath === projectPath || !this.projectManager || !this.tasks) return;
+      if (!task || task.source.filePath === projectPath || !this.projectManager) return;
       e.preventDefault();
-      const ref = taskRefOf(task);
-      if (ref) {
-        void moveTaskToProjectWithRecovery(
-          this.app,
-          this.tasks,
-          this.projectManager,
-          ref,
-          projectPath,
-        );
-      }
+      void moveTaskToProjectWithRecovery(
+        this.app,
+        this.tasks,
+        this.projectManager,
+        task.ref,
+        projectPath,
+      );
     });
   }
 
@@ -737,22 +735,20 @@ export class LeftPanel {
     });
   }
 
-  private async assignTagFromInbox(task: Task, tag: string): Promise<void> {
-    const ref = taskRefOf(task);
-    if (!ref || !this.tasks) return;
+  private async assignTagFromInbox(task: TaskSnapshot, tag: string): Promise<void> {
     const inboxTag = this.settings.inbox.tag;
     const tags = new Set(task.tags ?? []);
     const remove = this.settings.inbox.removeTagOnAssign && tags.has(inboxTag) ? [inboxTag] : [];
     presentTaskCommandResult(
       await this.tasks.execute({
         type: 'patch',
-        target: { type: 'task', ref },
+        target: { type: 'task', ref: task.ref },
         patch: { tags: { add: [tag], remove } },
       }),
     );
   }
 
-  private resolveGroupTags(group: TagGroup, allTasks: Task[]): string[] {
+  private resolveGroupTags(group: TagGroup, allTasks: TaskSnapshot[]): string[] {
     if (group.mode === 'prefix' && group.prefix) {
       const prefix = group.prefix;
       const found = new Set<string>();
@@ -769,7 +765,7 @@ export class LeftPanel {
     return group.tags ?? [];
   }
 
-  private countInbox(tasks: Task[]): number {
+  private countInbox(tasks: TaskSnapshot[]): number {
     const { inbox } = this.settings;
     const allOpen = tasks.filter((t) => t.status === 'open');
     const withTag =
@@ -780,24 +776,28 @@ export class LeftPanel {
     if (untagged.length === 0) return withTag.length;
     const seen = new Set<string>();
     return [...withTag, ...untagged].filter((t) => {
-      const key = `${t.filePath}:${t.line}`;
+      const key = `${t.source.filePath}:${t.source.line}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     }).length;
   }
 
-  private countToday(tasks: Task[], today: string): number {
+  private countToday(tasks: TaskSnapshot[], today: string): number {
     return tasks.filter((t) => {
       if (t.status !== 'open') return false;
-      return t.due === today || t.scheduled === today || t.dailyNoteDate === today;
+      return (
+        String(t.planning.due) === today ||
+        String(t.planning.scheduled) === today ||
+        String(t.presentation.dailyNoteDate) === today
+      );
     }).length;
   }
 
-  private countUpcoming(tasks: Task[], today: string): number {
+  private countUpcoming(tasks: TaskSnapshot[], today: string): number {
     return tasks.filter((t) => {
       if (t.status !== 'open') return false;
-      const d = t.due ?? t.scheduled ?? t.dailyNoteDate;
+      const d = t.planning.due ?? t.planning.scheduled ?? t.presentation.dailyNoteDate;
       return d !== undefined && d > today;
     }).length;
   }

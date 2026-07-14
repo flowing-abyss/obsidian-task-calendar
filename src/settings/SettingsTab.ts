@@ -7,14 +7,10 @@ import type { TaskStatusType } from '../tasks/domain/types';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import type { CalendarSettings, TaskStatusDef } from './types';
 
-interface StoreLike {
-  rebuildStatusRegistry(): void;
-}
-
 interface TaskCalendarPlugin extends Plugin {
   settings: CalendarSettings;
   tagManager: TagManager;
-  store?: StoreLike;
+  rebuildTaskStatusSemantics(): void;
   saveSettings(): Promise<void>;
 }
 
@@ -840,7 +836,7 @@ export class CalendarSettingsTab extends PluginSettingTab {
   /** Persists a taskStatuses mutation and rebuilds the store's registry so open panels update. */
   private async persistStatuses(): Promise<void> {
     await this.plugin.saveSettings();
-    this.plugin.store?.rebuildStatusRegistry();
+    this.plugin.rebuildTaskStatusSemantics();
   }
 
   /** Persists and fully re-renders — for structural changes (add/delete/type/group move). */

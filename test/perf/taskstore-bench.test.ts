@@ -1,5 +1,5 @@
 /**
- * Reproducible performance harness for TaskStore / vault-wide indexing.
+ * Reproducible performance harness for TaskIndex / vault-wide indexing.
  *
  * Excluded from the normal test suite via vitest.config.ts.
  * Run with:
@@ -13,9 +13,8 @@ import moment from 'moment';
 import { App as ObsidianApp } from 'obsidian';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../src/settings/defaults';
-import { TaskStore } from '../../src/store/TaskStore';
 import type { LocalDate } from '../../src/tasks';
-import { readStoreTasks, taskQueriesOf } from '../helpers';
+import { configuredTaskApplication } from '../helpers';
 
 beforeEach(() => {
   (window as unknown as { moment: unknown }).moment = moment;
@@ -179,34 +178,40 @@ async function runScenario(fileCount: number, tasksPerFile: number): Promise<Sce
 
   // Initial indexing
   const { ms: initialMs } = await time(async () => {
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
-    await store.initialize();
-    store.destroy();
+    const application = configuredTaskApplication(app, DEFAULT_SETTINGS);
+    await application.index.initialize();
+    application.index.destroy();
   });
 
-  // Build reusable store for query benchmarks
-  const store = new TaskStore(app, DEFAULT_SETTINGS);
-  await store.initialize();
-  const totalTasks = readStoreTasks(store).length;
+  // Build a reusable final query index for benchmarks.
+  const application = configuredTaskApplication(app, DEFAULT_SETTINGS);
+  await application.index.initialize();
+  const queries = application.tasks.queries;
+  const totalTasks = queries.list().length;
 
   // Query benchmarks (repeated for stable avg)
   const queryAllMs = await avgMs(() => {
-    readStoreTasks(store);
+    queries.list();
   }, QUERY_RUNS);
   const queryTagMs = await avgMs(() => {
-    readStoreTasks(store, { tag: '#tag1' });
+    queries.list({ tag: '#tag1' });
   }, QUERY_RUNS);
   const queryListDateMs = await avgMs(() => {
-    readStoreTasks(store, { dateRange: { from: '2026-01-01', to: '2026-12-31' } });
+    queries.list({
+      dateRange: {
+        from: '2026-01-01' as LocalDate,
+        to: '2026-12-31' as LocalDate,
+      },
+    });
   }, QUERY_RUNS);
   const queryCalendarDateMs = await avgMs(() => {
-    taskQueriesOf(store).forCalendarDates(CALENDAR_DATES as LocalDate[]);
+    queries.forCalendarDates(CALENDAR_DATES as LocalDate[]);
   }, QUERY_RUNS);
   const queryFileMs = await avgMs(() => {
-    readStoreTasks(store, { filePath: 'file-0.md' });
+    queries.list({ filePath: 'file-0.md' });
   }, QUERY_RUNS);
 
-  store.destroy();
+  application.index.destroy();
 
   return {
     fileCount,
@@ -248,7 +253,7 @@ function expectWithinBudget(metrics: ScenarioMetrics, budget: PerformanceBudget)
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('TaskStore performance benchmark', () => {
+describe('TaskIndex performance benchmark', () => {
   for (const scenario of SCENARIOS) {
     it(
       scenario.label,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Task } from '../src/parser/types';
 import type { ResolvedConfig } from '../src/settings/types';
+import type { TaskSnapshot as Task } from '../src/tasks';
 import { BaseView } from '../src/views/BaseView';
 import { freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
 

@@ -2,8 +2,9 @@ import type { App } from 'obsidian';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppState } from '../src/app/AppState';
 import type { TaskIndexEvent, TaskQueryApi, TaskResolution, TaskSnapshot } from '../src/tasks';
-import { legacyTaskView, rebuildLegacyTaskStack } from '../src/tasks/compat/legacyTaskView';
 import type { TaskRef } from '../src/tasks/domain/types';
+import { rebuildTaskSelection, taskNodeLine } from '../src/ui/taskSelection';
+import { testStatusRegistry } from './helpers';
 
 const captured = vi.hoisted(() => ({
   state: null as AppState | null,
@@ -15,6 +16,7 @@ vi.mock('../src/panels/RightPanel', () => ({
     this: unknown,
     state: AppState,
     _app: unknown,
+    _statusRegistry: unknown,
     _settings: unknown,
     acknowledgeOwnWrite?: (ref?: TaskRef) => void,
   ) {
@@ -85,13 +87,13 @@ describe('revision-aware TaskModal refresh', () => {
     const observed = snapshot('old');
     const fresh = { ...observed, presentation: { linkCount: 0, noteColor: '#fff' } };
     const h = queryHarness({ type: 'exact', task: fresh });
-    const modal = new TaskModal({} as App, undefined, undefined, h.queries);
-    modal.open(legacyTaskView(observed));
+    const modal = new TaskModal({} as App, testStatusRegistry(), undefined, h.queries);
+    modal.open(observed);
     h.changed();
     expect(captured.state?.get('taskStack')[0]).toMatchObject({
-      text: 'old',
+      title: 'old',
       ref: fresh.ref,
-      noteColor: '#fff',
+      presentation: { noteColor: '#fff' },
     });
     modal.close();
     expect(h.unsubscribe).toHaveBeenCalledOnce();
@@ -101,12 +103,12 @@ describe('revision-aware TaskModal refresh', () => {
     const observed = snapshot('old', 'Observed');
     const current = snapshot('new', 'Current');
     const h = queryHarness({ type: 'conflict', current });
-    const modal = new TaskModal({} as App, undefined, undefined, h.queries);
-    modal.open(legacyTaskView(observed));
+    const modal = new TaskModal({} as App, testStatusRegistry(), undefined, h.queries);
+    modal.open(observed);
     captured.acknowledgeOwnWrite?.();
     h.changed();
     expect(captured.state?.get('taskStack')[0]).toMatchObject({
-      text: 'Current',
+      title: 'Current',
       ref: current.ref,
     });
     expect(activeDocument.body.querySelector('.tc-task-selection-stale')).toBeNull();
@@ -118,13 +120,13 @@ describe('revision-aware TaskModal refresh', () => {
     const second = snapshot('second', 'Second');
     const external = snapshot('external', 'External');
     const h = queryHarness({ type: 'conflict', current: external });
-    const modal = new TaskModal({} as App, undefined, undefined, h.queries);
-    modal.open(legacyTaskView(first));
-    captured.state?.set('taskStack', [legacyTaskView(second)]);
+    const modal = new TaskModal({} as App, testStatusRegistry(), undefined, h.queries);
+    modal.open(first);
+    captured.state?.set('taskStack', [second]);
     captured.acknowledgeOwnWrite?.(first.ref);
-    captured.state?.set('taskStack', [legacyTaskView(first)]);
+    captured.state?.set('taskStack', [first]);
     h.changed();
-    expect(captured.state?.get('taskStack')[0]).toMatchObject({ text: 'First' });
+    expect(captured.state?.get('taskStack')[0]).toMatchObject({ title: 'First' });
     expect(activeDocument.body.querySelector('.tc-task-selection-stale')).not.toBeNull();
     modal.close();
   });
@@ -133,23 +135,23 @@ describe('revision-aware TaskModal refresh', () => {
     const observed = snapshot('old', 'Observed');
     const current = snapshot('new', 'Current');
     const h = queryHarness({ type: 'conflict', current });
-    const modal = new TaskModal({} as App, undefined, undefined, h.queries);
-    modal.open(legacyTaskView(observed));
+    const modal = new TaskModal({} as App, testStatusRegistry(), undefined, h.queries);
+    modal.open(observed);
     h.changed();
-    expect(captured.state?.get('taskStack')[0]).toMatchObject({ text: 'Observed' });
+    expect(captured.state?.get('taskStack')[0]).toMatchObject({ title: 'Observed' });
     const banner = activeDocument.body.querySelector('.tc-task-selection-stale');
     expect(banner?.textContent).toContain('changed');
     expect(banner?.querySelectorAll('button')).toHaveLength(2);
     (banner?.querySelector('.tc-task-selection-reload') as HTMLButtonElement).click();
-    expect(captured.state?.get('taskStack')[0]).toMatchObject({ text: 'Current' });
+    expect(captured.state?.get('taskStack')[0]).toMatchObject({ title: 'Current' });
     modal.close();
   });
 
   it('closes a missing modal selection', () => {
     const observed = snapshot('old');
     const h = queryHarness({ type: 'not-found', ref: observed.ref });
-    const modal = new TaskModal({} as App, undefined, undefined, h.queries);
-    modal.open(legacyTaskView(observed));
+    const modal = new TaskModal({} as App, testStatusRegistry(), undefined, h.queries);
+    modal.open(observed);
     h.changed();
     expect(activeDocument.body.querySelector('.tc-modal-backdrop')).toBeNull();
   });
@@ -165,14 +167,14 @@ describe('revision-aware TaskModal refresh', () => {
         { root: second, target: { type: 'task', ref: second.ref } },
       ],
     });
-    const modal = new TaskModal({} as App, undefined, undefined, h.queries);
-    modal.open(legacyTaskView(observed));
+    const modal = new TaskModal({} as App, testStatusRegistry(), undefined, h.queries);
+    modal.open(observed);
     h.changed();
-    expect(captured.state?.get('taskStack')[0]).toMatchObject({ text: 'Observed' });
+    expect(captured.state?.get('taskStack')[0]).toMatchObject({ title: 'Observed' });
     const choices = activeDocument.body.querySelectorAll('.tc-task-selection-candidate');
     expect(choices).toHaveLength(2);
     (choices[1] as HTMLButtonElement).click();
-    expect(captured.state?.get('taskStack')[0]).toMatchObject({ text: 'Second' });
+    expect(captured.state?.get('taskStack')[0]).toMatchObject({ title: 'Second' });
     modal.close();
   });
 });
@@ -202,7 +204,7 @@ describe('revision-aware nested selection rebuild', () => {
     };
   }
 
-  it('projects canonical root and nested tags into the panel-facing legacy view', () => {
+  it('keeps canonical root and nested tags in detached snapshots', () => {
     const root = withChild(
       { ...snapshot('same', 'Root'), tags: ['#root'] },
       '  - [ ] Child `#inline` #child',
@@ -210,7 +212,7 @@ describe('revision-aware nested selection rebuild', () => {
     const child = root.subtasks[0]!;
     const tagged = { ...root, subtasks: [{ ...child, tags: ['#child'] }] };
 
-    expect(legacyTaskView(tagged)).toMatchObject({
+    expect(tagged).toMatchObject({
       tags: ['#root'],
       subtasks: [{ tags: ['#child'] }],
     });
@@ -227,20 +229,16 @@ describe('revision-aware nested selection rebuild', () => {
       },
       '  - [ ] Child',
     );
-    const stale = legacyTaskView(staleRoot);
-    const rebuilt = rebuildLegacyTaskStack(legacyTaskView(movedRoot), [stale, stale.subtasks![0]!]);
+    const rebuilt = rebuildTaskSelection(movedRoot, [staleRoot, staleRoot.subtasks[0]!]);
     expect(rebuilt).toHaveLength(2);
-    expect(rebuilt[1]).toMatchObject({ line: 10, text: 'Child' });
+    expect(rebuilt[1]).toMatchObject({ title: 'Child' });
+    expect(taskNodeLine(movedRoot, rebuilt[1]!)).toBe(10);
   });
 
   it('does not adopt a different child at the same relative line after reload', () => {
     const staleRoot = withChild(snapshot('old', 'Root'), '  - [ ] Original');
     const changedRoot = withChild(snapshot('new', 'Root changed'), '  - [ ] Replacement');
-    const stale = legacyTaskView(staleRoot);
-    const rebuilt = rebuildLegacyTaskStack(legacyTaskView(changedRoot), [
-      stale,
-      stale.subtasks![0]!,
-    ]);
+    const rebuilt = rebuildTaskSelection(changedRoot, [staleRoot, staleRoot.subtasks[0]!]);
     expect(rebuilt).toHaveLength(1);
   });
 
@@ -252,13 +250,10 @@ describe('revision-aware nested selection rebuild', () => {
       ...originalRoot,
       subtasks: [{ ...child, ref: { ...child.ref, relativeLine: 2 } }],
     };
-    const stale = legacyTaskView(staleRoot);
-    const rebuilt = rebuildLegacyTaskStack(legacyTaskView(movedChildRoot), [
-      stale,
-      stale.subtasks![0]!,
-    ]);
+    const rebuilt = rebuildTaskSelection(movedChildRoot, [staleRoot, staleRoot.subtasks[0]!]);
     expect(rebuilt).toHaveLength(2);
-    expect(rebuilt[1]).toMatchObject({ line: 6, text: 'Child' });
+    expect(rebuilt[1]).toMatchObject({ title: 'Child' });
+    expect(taskNodeLine(movedChildRoot, rebuilt[1]!)).toBe(6);
   });
 
   it('does not guess between duplicate child blocks after relative-line drift', () => {
@@ -272,9 +267,8 @@ describe('revision-aware nested selection rebuild', () => {
         { ...child, ref: { ...child.ref, relativeLine: 3 } },
       ],
     };
-    const stale = legacyTaskView(staleRoot);
-    expect(
-      rebuildLegacyTaskStack(legacyTaskView(candidateRoot), [stale, stale.subtasks![0]!]),
-    ).toHaveLength(1);
+    expect(rebuildTaskSelection(candidateRoot, [staleRoot, staleRoot.subtasks[0]!])).toHaveLength(
+      1,
+    );
   });
 });

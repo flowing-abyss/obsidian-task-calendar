@@ -3,9 +3,10 @@ import type { Task } from '../parser/types';
 import { toStatusRules } from '../settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../settings/types';
 import { StatusRegistry } from '../status/StatusRegistry';
-import type { TaskApplicationApi, TaskPriority } from '../tasks';
+import type { TaskApplicationApi } from '../tasks';
 import { taskRefOf } from '../tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../tasks/domain/StatusCatalog';
+import type { TaskPriority } from '../tasks/domain/types';
 import { TaskIndex } from '../tasks/infrastructure/TaskIndex';
 import { presentTaskCommandResult } from '../ui/taskCommandResult';
 

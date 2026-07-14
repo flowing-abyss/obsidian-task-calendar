@@ -4,7 +4,7 @@ import type { Task } from '../src/parser/types';
 import { computeStats, ProjectStore } from '../src/projects/ProjectStore';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { TaskIndexEvent } from '../src/tasks';
-import { queryApiForTasks } from './helpers';
+import { queryApiForTasks, taskSnapshotOf } from './helpers';
 
 /** A minimal object that passes `instanceof TFile` (TFile isn't standalone-constructable). */
 function tfile(path: string): { path: string; extension: string } {
@@ -30,11 +30,11 @@ function t(over: Partial<Task>): Task {
 describe('computeStats', () => {
   it('counts task statuses', () => {
     const stats = computeStats([
-      t({ status: 'open' }),
-      t({ status: 'done' }),
-      t({ status: 'done' }),
-      t({ status: 'cancelled' }),
-      t({ status: 'in-progress' }),
+      taskSnapshotOf(t({ status: 'open' })),
+      taskSnapshotOf(t({ status: 'done' })),
+      taskSnapshotOf(t({ status: 'done' })),
+      taskSnapshotOf(t({ status: 'cancelled' })),
+      taskSnapshotOf(t({ status: 'in-progress' })),
     ]);
     expect(stats).toEqual({ total: 5, done: 2, cancelled: 1, inProgress: 1 });
   });

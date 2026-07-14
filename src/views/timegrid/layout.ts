@@ -1,9 +1,9 @@
-import type { Task } from '../../parser/types';
+import type { TaskSnapshot } from '../../tasks';
 
 export const PIXELS_PER_HOUR = 48;
 
 export interface TimedBlockInput {
-  task: Task;
+  task: TaskSnapshot;
   startMinutes: number;
   durationMinutes: number;
 }

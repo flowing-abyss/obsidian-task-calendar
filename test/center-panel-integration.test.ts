@@ -3,39 +3,85 @@ import { TFile, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
-import type { Task } from '../src/parser/types';
-import { DailyNoteResolver } from '../src/resolvers/DailyNoteResolver';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
-import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings } from '../src/settings/types';
-import { TaskStore } from '../src/store/TaskStore';
-import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
-import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
-import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
-import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockEditor';
-import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
-import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
-import { ObsidianTaskDestinationProvider } from '../src/tasks/infrastructure/obsidian/ObsidianTaskDestinationProvider';
-import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
+import { StatusRegistry } from '../src/status/StatusRegistry';
+import type { LocalDate, TaskApplicationApi, TaskQueryApi, TaskSnapshot } from '../src/tasks';
+import type { TaskQuery } from '../src/tasks/application/TaskApplicationApi';
 import { TodayView } from '../src/views/TodayView';
 import { WeekTimeGridView } from '../src/views/WeekTimeGridView';
 import {
+  configuredTaskApplication,
   createAppWithFiles,
   fixedToday,
   flushMicrotasks,
   freshContainer,
-  makeCenterPanelForTest,
-  makeStubStore,
-  readStoreTasks,
   seedTaskCache,
   task,
   useRealMoment,
 } from './helpers';
 
 const TODAY = moment().format('YYYY-MM-DD');
-type TaskStoreType = TaskStore;
 
 useRealMoment();
+
+function queryApiForSnapshots(getTasks: () => readonly TaskSnapshot[]): TaskQueryApi {
+  const list = (query?: TaskQuery): readonly TaskSnapshot[] =>
+    getTasks()
+      .filter((item) => query?.filePath === undefined || item.source.filePath === query.filePath)
+      .filter(
+        (item) => query?.folder === undefined || item.source.filePath.startsWith(query.folder),
+      )
+      .filter((item) => query?.tag === undefined || item.tags.includes(query.tag))
+      .filter((item) => query?.statuses === undefined || query.statuses.includes(item.status))
+      .filter((item) => {
+        if (query?.dateRange === undefined) return true;
+        const dates = [
+          item.planning.due,
+          item.planning.scheduled,
+          item.planning.start,
+          item.presentation.dailyNoteDate,
+        ].filter((date): date is LocalDate => date !== undefined);
+        return dates.some((date) => date >= query.dateRange!.from && date <= query.dateRange!.to);
+      });
+
+  return {
+    list,
+    forCalendarDates: (dates) => {
+      const wanted = new Set(dates);
+      return getTasks().filter((item) =>
+        [
+          item.planning.due,
+          item.planning.scheduled,
+          item.planning.start,
+          item.presentation.dailyNoteDate,
+        ].some((date) => date !== undefined && wanted.has(date)),
+      );
+    },
+    resolve: (ref) => {
+      const found = getTasks().find(
+        (item) => item.ref.filePath === ref.filePath && item.ref.line === ref.line,
+      );
+      return found ? { type: 'exact', task: found } : { type: 'not-found', ref };
+    },
+    subscribe: () => () => {},
+  };
+}
+
+function makeStaticPanel(
+  state: AppState,
+  snapshots: readonly TaskSnapshot[],
+  settings: CalendarSettings = DEFAULT_SETTINGS,
+  app: App = {} as App,
+): CenterPanel {
+  return new CenterPanel(
+    state,
+    app,
+    settings,
+    queryApiForSnapshots(() => snapshots),
+    new StatusRegistry(settings.taskStatuses),
+  );
+}
 
 /**
  * Read a markdown file's current content via the vault. Throws if the path is
@@ -54,48 +100,43 @@ function call<T>(panel: CenterPanel, method: string, ...args: unknown[]): Promis
 }
 
 /**
- * Wire up a real CenterPanel + real TaskStore + real AppState.
+ * Wire up a real CenterPanel + real task index/application API + real AppState.
  * Vault is pre-populated with `files`; each seeded file also gets a task cache.
  */
 async function makePanel(
   files: Record<string, string>,
   settings: CalendarSettings = DEFAULT_SETTINGS,
   seeds: Array<{ path: string; items: Array<{ task: string; parent: number; line: number }> }> = [],
-): Promise<{ panel: CenterPanel; state: AppState; store: TaskStore; app: App }> {
+): Promise<{
+  panel: CenterPanel;
+  state: AppState;
+  index: TaskQueryApi;
+  tasks: TaskApplicationApi;
+  app: App;
+}> {
   const app = await createAppWithFiles(files);
   for (const s of seeds) seedTaskCache(app, s.path, s.items);
   const state = new AppState();
-  const statusCatalog = new StatusCatalog(toStatusRules(settings.taskStatuses));
-  const index = new TaskIndex(app, {
-    statusCatalog,
-    dailyNoteFormat: settings.desktop.dailyNoteFormat,
-  });
-  const tasks = new TaskApplicationService(
-    index,
-    new ObsidianTaskRepository(app, {
-      codec: new TaskMarkdownCodec(statusCatalog),
-      editor: new TaskBlockEditor(),
-      locator: new TaskLocator(),
-      snapshotsFromContent: (path, content) => index.snapshotsFromContent(path, content),
-    }),
-    statusCatalog,
-    { today: () => '2026-07-14' as never },
-    new ObsidianTaskDestinationProvider(app, settings, new DailyNoteResolver(app, settings)),
-  );
-  const store = new TaskStore(app, settings, index, tasks, statusCatalog);
-  await store.initialize();
-  const panel = makeCenterPanelForTest(
+  const taskApplication = configuredTaskApplication(app, settings);
+  await taskApplication.index.initialize();
+  const panel = new CenterPanel(
     state,
-    store,
     app,
     settings,
-    null as never,
+    taskApplication.index,
+    taskApplication.statusRegistry,
     undefined,
     null,
     null,
-    tasks,
+    taskApplication.tasks,
   );
-  return { panel, state, store, app };
+  return {
+    panel,
+    state,
+    index: taskApplication.index,
+    tasks: taskApplication.tasks,
+    app,
+  };
 }
 
 describe('CenterPanel.createTask', () => {
@@ -194,44 +235,47 @@ describe('CenterPanel.createTask', () => {
 
 describe('CenterPanel.deleteTask', () => {
   it('single-line task (no subtaskRange) removes exactly one line', async () => {
-    const { panel, store, app } = await makePanel(
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] keep\n- [ ] delete me\n- [ ] keep2' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 1 }] }],
     );
-    const target = readStoreTasks(store).find((t) => t.text === 'delete me')!;
+    const target = index.list().find((item) => item.title === 'delete me')!;
     await call<void>(panel, 'deleteTask', target);
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] keep\n- [ ] keep2');
   });
 
-  it('multi-line task (with subtaskRange) removes the whole block', async () => {
-    // Root task at line 0, subtask at line 1 (indented); subtaskRange {from:0,to:1}
+  it('multi-line root task removes its complete source block', async () => {
+    // The root snapshot owns the indented subtask in source.originalBlock.
     const content = '- [ ] parent\n    - [ ] sub\n- [ ] other';
-    const { panel, store, app } = await makePanel({ 't.md': content }, DEFAULT_SETTINGS, [
+    const { panel, index, app } = await makePanel({ 't.md': content }, DEFAULT_SETTINGS, [
       { path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] },
     ]);
-    const target = readStoreTasks(store)[0]!;
-    // Force subtaskRange to cover both lines
-    const withRange: Task = { ...target, subtaskRange: { from: 0, to: 1 } };
-    await call<void>(panel, 'deleteTask', withRange);
+    const target = index.list()[0]!;
+    await call<void>(panel, 'deleteTask', target);
     const after = await readMd(app, 't.md');
     expect(after).toBe('- [ ] other');
   });
 
-  it('file not found (task.filePath missing from vault) is a no-op', async () => {
-    const { panel, store } = await makePanel({ 't.md': '- [ ] x' }, DEFAULT_SETTINGS, [
+  it('file not found (task source path missing from vault) is a no-op', async () => {
+    const { panel, index } = await makePanel({ 't.md': '- [ ] x' }, DEFAULT_SETTINGS, [
       { path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] },
     ]);
-    const target = { ...readStoreTasks(store)[0]!, filePath: 'does-not-exist.md' };
+    const original = index.list()[0]!;
+    const target: TaskSnapshot = {
+      ...original,
+      ref: { ...original.ref, filePath: 'does-not-exist.md' },
+      source: { ...original.source, filePath: 'does-not-exist.md' },
+    };
     await expect(call<void>(panel, 'deleteTask', target)).resolves.toBeUndefined();
   });
 
   it('clears taskStack when the deleted task was the stack top', async () => {
-    const { panel, state, store } = await makePanel({ 't.md': '- [ ] x' }, DEFAULT_SETTINGS, [
+    const { panel, state, index } = await makePanel({ 't.md': '- [ ] x' }, DEFAULT_SETTINGS, [
       { path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] },
     ]);
-    const target = readStoreTasks(store)[0]!;
+    const target = index.list()[0]!;
     state.set('taskStack', [target]);
     await call<void>(panel, 'deleteTask', target);
     expect(state.get('taskStack')).toEqual([]);
@@ -240,43 +284,43 @@ describe('CenterPanel.deleteTask', () => {
 
 describe('CenterPanel.rescheduleTask', () => {
   it('task with due date → 📅 replaced with targetDate', async () => {
-    const { panel, store, app } = await makePanel(
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] task 📅 2026-06-20' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = readStoreTasks(store)[0]!;
-    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const target = index.list()[0]!;
+    await call<void>(panel, 'rescheduleTask', `${target.source.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-28');
   });
 
   it('task with scheduled (no due) → ⏳ replaced with targetDate', async () => {
-    const { panel, store, app } = await makePanel(
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] task ⏳ 2026-06-20' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = readStoreTasks(store)[0]!;
-    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const target = index.list()[0]!;
+    await call<void>(panel, 'rescheduleTask', `${target.source.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task ⏳ 2026-06-28');
   });
 
   it('task with no due/scheduled → 📅 targetDate appended', async () => {
-    const { panel, store, app } = await makePanel(
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] plain task' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = readStoreTasks(store)[0]!;
-    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const target = index.list()[0]!;
+    await call<void>(panel, 'rescheduleTask', `${target.source.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] plain task 📅 2026-06-28');
   });
 
   it('invalid dragData (no ::: separator) → no-op', async () => {
-    const { panel, store, app } = await makePanel(
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] task 📅 2026-06-20' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
@@ -284,11 +328,11 @@ describe('CenterPanel.rescheduleTask', () => {
     await call<void>(panel, 'rescheduleTask', 'bogus', '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-20');
-    expect(readStoreTasks(store)[0]?.due).toBe('2026-06-20');
+    expect(index.list()[0]?.planning.due).toBe('2026-06-20');
   });
 
-  it('task not found in store → no-op', async () => {
-    const { panel, store, app } = await makePanel(
+  it('task not found in the query index → no-op', async () => {
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] task 📅 2026-06-20' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
@@ -297,7 +341,7 @@ describe('CenterPanel.rescheduleTask', () => {
     await call<void>(panel, 'rescheduleTask', 't.md:::999', '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-20');
-    expect(readStoreTasks(store)[0]?.due).toBe('2026-06-20');
+    expect(index.list()[0]?.planning.due).toBe('2026-06-20');
   });
 
   // Task 26: dropping a previously-timed block onto the all-day/"No-time" row reuses this
@@ -305,14 +349,14 @@ describe('CenterPanel.rescheduleTask', () => {
   // Task 8's setTaskTimeFromDrop. A task carrying ⏰/⏱️ tokens must have both stripped, in
   // addition to the date move every onDrop call already performs.
   it('a previously-timed task dropped onto the all-day row has ⏰ time and ⏱️ duration stripped, date still moved', async () => {
-    const { panel, store, app } = await makePanel(
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] task 📅 2026-06-20 ⏰ 09:00 ⏱️ 1h30m' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = readStoreTasks(store)[0]!;
-    expect(target.time).toBe('09:00');
-    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const target = index.list()[0]!;
+    expect(target.planning.time).toBe('09:00');
+    await call<void>(panel, 'rescheduleTask', `${target.source.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-28');
     expect(content).not.toContain('⏰');
@@ -320,25 +364,25 @@ describe('CenterPanel.rescheduleTask', () => {
   });
 
   it('a task with time but no duration dropped onto the all-day row strips only ⏰', async () => {
-    const { panel, store, app } = await makePanel(
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] task 📅 2026-06-20 ⏰ 09:00' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = readStoreTasks(store)[0]!;
-    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const target = index.list()[0]!;
+    await call<void>(panel, 'rescheduleTask', `${target.source.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-28');
   });
 
   it('a task with no time is unaffected by the time/duration-stripping branch (unchanged prior behavior)', async () => {
-    const { panel, store, app } = await makePanel(
+    const { panel, index, app } = await makePanel(
       { 't.md': '- [ ] task 📅 2026-06-20' },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
-    const target = readStoreTasks(store)[0]!;
-    await call<void>(panel, 'rescheduleTask', `${target.filePath}:::0`, '2026-06-28');
+    const target = index.list()[0]!;
+    await call<void>(panel, 'rescheduleTask', `${target.source.filePath}:::0`, '2026-06-28');
     const content = await readMd(app, 't.md');
     expect(content).toBe('- [ ] task 📅 2026-06-28');
   });
@@ -351,8 +395,7 @@ describe('CenterPanel.renderWithGrouping (date grouping)', () => {
    * Call the private renderWithGrouping directly with groupBy='date' to exercise
    * the bucketing logic in isolation.
    */
-  function renderWithGroupingByDate(tasks: Task[]): HTMLElement {
-    const store = makeStubStore(tasks) as TaskStoreType;
+  function renderWithGroupingByDate(tasks: TaskSnapshot[]): HTMLElement {
     const state = new AppState();
     state.set('centerListViewState', {
       groupBy: 'date',
@@ -360,7 +403,7 @@ describe('CenterPanel.renderWithGrouping (date grouping)', () => {
       statusGroups: undefined,
       filters: [],
     });
-    const panel = makeCenterPanelForTest(state, store, {} as App, DEFAULT_SETTINGS, null as never);
+    const panel = makeStaticPanel(state, tasks);
     const container = freshContainer();
     void call<void>(panel, 'renderWithGrouping', container, tasks);
     return container;
@@ -407,11 +450,10 @@ describe('CenterPanel.renderSearch', () => {
       task({ text: 'buy milk', filePath: 'a.md', line: 0 }),
       task({ text: 'walk dog', filePath: 'b.md', line: 0 }),
     ];
-    const store = makeStubStore(tasks) as TaskStoreType;
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', 'milk');
-    const panel = makeCenterPanelForTest(state, store, {} as App, DEFAULT_SETTINGS, null as never);
+    const panel = makeStaticPanel(state, tasks);
     panel.mount(freshContainer());
     const cards = panel['el'].querySelectorAll('.tc-task-card');
     expect(cards).toHaveLength(1);
@@ -425,18 +467,20 @@ describe('CenterPanel.renderSearch', () => {
 
   it('clicking a result sets selectedList + mode + taskStack on state', () => {
     const t = task({ text: 'buy milk', due: '2026-06-25', filePath: 'a.md', line: 0 });
-    const store = makeStubStore([t]) as TaskStoreType;
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', 'milk');
-    const panel = makeCenterPanelForTest(state, store, {} as App, DEFAULT_SETTINGS, null as never);
+    const panel = makeStaticPanel(state, [t]);
     panel.mount(freshContainer());
     const card = panel['el'].querySelector<HTMLElement>('.tc-task-card')!;
     card.click();
     expect(state.get('mode')).toBe('tasks');
     expect(state.get('selectedList')).toBe('today');
     expect(state.get('taskStack')).toEqual([
-      expect.objectContaining({ filePath: t.filePath, line: t.line, text: t.text }),
+      expect.objectContaining({
+        ref: expect.objectContaining({ filePath: t.ref.filePath, line: t.ref.line }),
+        title: t.title,
+      }),
     ]);
     panel.destroy();
   });
@@ -446,23 +490,16 @@ describe('CenterPanel source note chip', () => {
   fixedToday('2026-06-25');
 
   function makeSearchPanel(
-    tasks: Task[],
+    tasks: TaskSnapshot[],
     settingsOverrides: Partial<typeof DEFAULT_SETTINGS> = {},
   ): CenterPanel {
-    const store = makeStubStore(tasks) as TaskStoreType;
     const state = new AppState();
     state.set('mode', 'search');
-    state.set('searchQuery', tasks[0]?.text ?? '');
-    const panel = makeCenterPanelForTest(
-      state,
-      store,
-      {} as App,
-      {
-        ...DEFAULT_SETTINGS,
-        ...settingsOverrides,
-      },
-      null as never,
-    );
+    state.set('searchQuery', tasks[0]?.title ?? '');
+    const panel = makeStaticPanel(state, tasks, {
+      ...DEFAULT_SETTINGS,
+      ...settingsOverrides,
+    });
     panel.mount(freshContainer());
     return panel;
   }
@@ -544,9 +581,9 @@ describe('CenterPanel project selection', () => {
     ];
     const { panel, state } = await makePanel(files, DEFAULT_SETTINGS, seeds);
     state.set('selectedList', { type: 'project', path: 'Projects/A.md' });
-    const tasks = call<Task[]>(panel, 'getFilteredTasks') as Task[];
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks') as TaskSnapshot[];
     expect(tasks.length).toBe(2);
-    expect(tasks.every((t) => t.filePath === 'Projects/A.md')).toBe(true);
+    expect(tasks.every((item) => item.source.filePath === 'Projects/A.md')).toBe(true);
     expect(call<string>(panel, 'getTitle')).toBe('A');
   });
 
@@ -601,18 +638,19 @@ describe('CenterPanel projects mode teardown (regression)', () => {
     el: HTMLElement;
   }> {
     const app = await createAppWithFiles({ 'Projects/A.md': '---\nstatus: active\n---\n' });
-    const store = new TaskStore(app, DEFAULT_SETTINGS);
-    await store.initialize();
+    const taskApplication = configuredTaskApplication(app, DEFAULT_SETTINGS);
+    await taskApplication.index.initialize();
     const state = new AppState();
-    const panel = makeCenterPanelForTest(
+    const panel = new CenterPanel(
       state,
-      store,
       app,
       DEFAULT_SETTINGS,
-      null as never,
+      taskApplication.index,
+      taskApplication.statusRegistry,
       async () => {},
       stubProjectStore(),
       stubProjectManager(),
+      taskApplication.tasks,
     );
     const el = freshContainer();
     panel.mount(el);
@@ -728,7 +766,7 @@ describe('CenterPanel calendar mode — Today/Week/Month switcher', () => {
     expect(el.querySelector('.tc-cal-style-btn')).toBeNull();
   });
 
-  it('right-clicking a Month-view checkbox opens the status/priority popover instead of the task-edit modal, and picking a priority mutates the file (onSetPriority wired through store.setPriority)', async () => {
+  it('right-clicking a Month-view checkbox opens the status/priority popover instead of the task-edit modal, and picking a priority mutates the file through the task API', async () => {
     // The task must fall on a currently-visible day of the default (today's) month, so it's
     // anchored to TODAY rather than makeCalendarPanel's fixed June 2026 seed task.
     const { panel, state, app } = await makePanel(
@@ -766,11 +804,12 @@ describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
   async function makeCalendarPanel(): Promise<{
     panel: CenterPanel;
     state: AppState;
-    store: TaskStore;
+    index: TaskQueryApi;
+    tasks: TaskApplicationApi;
     el: HTMLElement;
     app: App;
   }> {
-    const { panel, state, app } = await makePanel(
+    const { panel, state, index, tasks, app } = await makePanel(
       { 't.md': `- [ ] task 📅 ${TODAY}` },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
@@ -778,9 +817,7 @@ describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
     const el = freshContainer();
     panel.mount(el);
     state.set('mode', 'calendar');
-    // Grab the real TaskStore instance CenterPanel was built with (see makePanel above).
-    const store = (panel as unknown as { store: TaskStore }).store;
-    return { panel, state, store, el, app };
+    return { panel, state, index, tasks, el, app };
   }
 
   function clickViewBtn(el: HTMLElement, label: 'Day' | 'Week' | 'Month'): void {
@@ -805,17 +842,20 @@ describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
     renderSpy.mockRestore();
   });
 
-  it('a reactive TaskStore update re-render of the same view/date does not scroll again', async () => {
+  it('a reactive task-index update re-render of the same view/date does not scroll again', async () => {
     const renderSpy = vi.spyOn(WeekTimeGridView.prototype, 'render');
-    const { el, store } = await makeCalendarPanel();
+    const { el, index, tasks } = await makeCalendarPanel();
     clickViewBtn(el, 'Week');
     expect(lastShouldScrollToNow(renderSpy)).toBe(true);
 
-    // Simulate a store-driven re-render (e.g. toggling a checkbox anywhere), which routes
-    // through the `store.onUpdate` subscription in renderCalendarMode -> mountView(), NOT
+    // Simulate an index-driven re-render (e.g. toggling a checkbox anywhere), which routes
+    // through the query subscription in renderCalendarMode -> mountView(), NOT
     // through CenterPanel.render() — this is the exact path the brief's root cause describes.
-    const seededTask = readStoreTasks(store, { filePath: 't.md' })[0]!;
-    await store.toggleTask(seededTask);
+    const seededTask = index.list({ filePath: 't.md' })[0]!;
+    await tasks.execute({
+      type: 'toggle-completion',
+      target: { type: 'task', ref: seededTask.ref },
+    });
     await flushMicrotasks();
 
     expect(lastShouldScrollToNow(renderSpy)).toBe(false);
@@ -855,7 +895,7 @@ describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
   });
 
   it("Round 2 Task 16's periodic now-line-repositioning interval is unaffected: it still registers on a scroll-suppressed reactive re-render", async () => {
-    const { el, store } = await makeCalendarPanel();
+    const { el, index, tasks } = await makeCalendarPanel();
     clickViewBtn(el, 'Week');
 
     const setIntervalSpy = vi.spyOn(window, 'setInterval');
@@ -864,8 +904,11 @@ describe('CenterPanel calendar mode — scroll-to-now dedup (Task 27)', () => {
     // Same view/date -> shouldScrollToNow will be false on this reactive re-render, but the
     // now-line interval must still be torn down (old view destroy()) and re-registered (new
     // view render()) exactly as before this change.
-    const seededTask = readStoreTasks(store, { filePath: 't.md' })[0]!;
-    await store.toggleTask(seededTask);
+    const seededTask = index.list({ filePath: 't.md' })[0]!;
+    await tasks.execute({
+      type: 'toggle-completion',
+      target: { type: 'task', ref: seededTask.ref },
+    });
     await flushMicrotasks();
 
     expect(clearIntervalSpy).toHaveBeenCalled();
@@ -880,11 +923,12 @@ describe('CenterPanel calendar mode — preserve scroll position across reactive
   async function makeCalendarPanel(): Promise<{
     panel: CenterPanel;
     state: AppState;
-    store: TaskStore;
+    index: TaskQueryApi;
+    tasks: TaskApplicationApi;
     el: HTMLElement;
     app: App;
   }> {
-    const { panel, state, app } = await makePanel(
+    const { panel, state, index, tasks, app } = await makePanel(
       { 't.md': `- [ ] task 📅 ${TODAY}` },
       DEFAULT_SETTINGS,
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
@@ -892,8 +936,7 @@ describe('CenterPanel calendar mode — preserve scroll position across reactive
     const el = freshContainer();
     panel.mount(el);
     state.set('mode', 'calendar');
-    const store = (panel as unknown as { store: TaskStore }).store;
-    return { panel, state, store, el, app };
+    return { panel, state, index, tasks, el, app };
   }
 
   function clickViewBtn(el: HTMLElement, label: 'Day' | 'Week' | 'Month'): void {
@@ -905,7 +948,7 @@ describe('CenterPanel calendar mode — preserve scroll position across reactive
   }
 
   it('a reactive re-render (checkbox toggle elsewhere) preserves the exact scrollTop the user had, instead of resetting to 0', async () => {
-    const { el, store } = await makeCalendarPanel();
+    const { el, index, tasks } = await makeCalendarPanel();
     clickViewBtn(el, 'Week');
 
     const gridRowEl = el.querySelector('.tc-tg-grid-row') as HTMLElement;
@@ -914,10 +957,13 @@ describe('CenterPanel calendar mode — preserve scroll position across reactive
     gridRowEl.scrollTop = 777;
     expect(gridRowEl.scrollTop).toBe(777);
 
-    // Reactive re-render of the SAME view/date, via store.onUpdate -> mountView(), exactly the
+    // Reactive re-render of the SAME view/date, via the query subscription, exactly the
     // path a checkbox toggle anywhere in the vault takes (not through CenterPanel.render()).
-    const seededTask = readStoreTasks(store, { filePath: 't.md' })[0]!;
-    await store.toggleTask(seededTask);
+    const seededTask = index.list({ filePath: 't.md' })[0]!;
+    await tasks.execute({
+      type: 'toggle-completion',
+      target: { type: 'task', ref: seededTask.ref },
+    });
     await flushMicrotasks();
 
     const newGridRowEl = el.querySelector('.tc-tg-grid-row') as HTMLElement;
@@ -1033,6 +1079,7 @@ describe('CenterPanel calendar mode — click-to-create', () => {
 
     const input = el.querySelector('.tc-tg-quick-add-input') as HTMLInputElement;
     expect(input).toBeTruthy();
+    expect(input.placeholder).toBe('Task at 10:00…');
     input.value = 'stand-up';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await flushMicrotasks();

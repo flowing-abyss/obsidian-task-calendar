@@ -1,24 +1,25 @@
 import { setIcon } from 'obsidian';
-import type { Task } from '../parser/types';
+import type { TaskSnapshot } from '../tasks';
 
 export function shouldShowSourceNote(
-  task: Task,
+  task: TaskSnapshot,
   sourceNoteDisplay: 'never' | 'always' | 'non-default',
   customFilePath: string,
 ): boolean {
   if (sourceNoteDisplay === 'never') return false;
   if (sourceNoteDisplay === 'always') return true;
   const isDefault =
-    task.dailyNoteDate !== undefined || (customFilePath !== '' && task.filePath === customFilePath);
+    task.presentation.dailyNoteDate !== undefined ||
+    (customFilePath !== '' && task.source.filePath === customFilePath);
   return !isDefault;
 }
 
 export function renderSourceNoteChip(
   container: HTMLElement,
-  task: Task,
+  task: TaskSnapshot,
   onClick?: (filePath: string) => void,
 ): void {
-  const noteName = task.filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
+  const noteName = task.source.filePath.split('/').pop()?.replace(/\.md$/, '') ?? '';
   const chip = container.createEl('span', {
     cls: `tc-task-source-note${onClick ? ' tc-task-source-note--clickable' : ''}`,
   });
@@ -28,7 +29,7 @@ export function renderSourceNoteChip(
   if (onClick) {
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
-      onClick(task.filePath);
+      onClick(task.source.filePath);
     });
   }
 }

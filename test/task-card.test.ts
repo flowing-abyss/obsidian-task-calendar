@@ -1,8 +1,8 @@
 import { Component, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
-import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
+import type { TaskSnapshot as Task } from '../src/tasks';
 import { createTaskCard, type TaskCardOptions } from '../src/ui/TaskCard';
 import { task, useRealMoment, withMobile } from './helpers';
 
@@ -77,7 +77,7 @@ describe('createTaskCard', () => {
       expect(el.className).toBe('task due');
     });
 
-    it('sets data-task-text and title to task.text', () => {
+    it('sets data-task-text and title to task.title', () => {
       const el = createTaskCard(task({ text: 'Buy milk' }), 'due', baseOptions());
       expect(el.getAttribute('data-task-text')).toBe('Buy milk');
       expect(el.getAttribute('title')).toBe('Buy milk');
@@ -118,7 +118,7 @@ describe('createTaskCard', () => {
       const marker = el.querySelector('.tc-status-marker') as HTMLElement;
       marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       expect(onToggle).toHaveBeenCalledTimes(1);
-      expect((onToggle.mock.calls[0]?.[0] as Task).text).toBe('x');
+      expect((onToggle.mock.calls[0]?.[0] as Task).title).toBe('x');
     });
 
     it('invokes onContextMenu with the event and task on right-click', () => {

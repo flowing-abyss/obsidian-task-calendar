@@ -1,4 +1,4 @@
-import type { Task } from '../parser/types';
+import type { TaskSnapshot } from '../tasks';
 
 /**
  * Mutually-exclusive date category for a task relative to today.
@@ -18,11 +18,15 @@ export type TaskDateCategory =
   | 'completed'
   | 'cancelled';
 
-export function getTaskDateCategory(task: Task, today: string): TaskDateCategory {
+export function getTaskDateCategory(task: TaskSnapshot, today: string): TaskDateCategory {
   if (task.status === 'done') return 'completed';
   if (task.status === 'cancelled') return 'cancelled';
 
-  const relevantDate = task.due ?? task.scheduled ?? task.start ?? task.dailyNoteDate;
+  const relevantDate =
+    task.planning.due ??
+    task.planning.scheduled ??
+    task.planning.start ??
+    task.presentation.dailyNoteDate;
   if (!relevantDate) return 'noDate';
   if (relevantDate < today) return 'overdue';
   if (relevantDate === today) return 'today';

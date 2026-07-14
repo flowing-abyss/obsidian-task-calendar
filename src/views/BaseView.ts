@@ -1,5 +1,5 @@
-import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
+import type { TaskSnapshot } from '../tasks';
 
 export abstract class BaseView {
   /**
@@ -20,14 +20,14 @@ export abstract class BaseView {
    */
   abstract render(
     container: HTMLElement,
-    tasks: Task[],
+    tasks: TaskSnapshot[],
     config: ResolvedConfig,
     shouldScrollToNow?: boolean,
     preservedScrollTop?: number,
   ): void;
 
   // Default patch = full re-render. Override in views that need to preserve DOM state.
-  patch(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+  patch(container: HTMLElement, tasks: TaskSnapshot[], config: ResolvedConfig): void {
     this.render(container, tasks, config);
   }
 

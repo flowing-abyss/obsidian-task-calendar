@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
-import type { TaskStore } from '../src/store/TaskStore';
 import type { TaskApplicationApi, TaskIndexEvent } from '../src/tasks';
 import { CalendarRenderer } from '../src/ui/CalendarRenderer';
 import {
@@ -56,10 +55,15 @@ function makeRenderer(
   config: ReturnType<typeof resolvedConfig>,
   app: App,
 ): CalendarRenderer {
-  return new CalendarRenderer(root, store as unknown as TaskStore, config, app, store.taskQueries, {
-    queries: store.taskQueries,
-    execute: store.execute,
-  });
+  return new CalendarRenderer(
+    root,
+    config,
+    app,
+    store.taskQueries,
+    { queries: store.taskQueries, execute: store.execute },
+    store.statusRegistry,
+    '- [ ] ',
+  );
 }
 
 describe('CalendarRenderer', () => {

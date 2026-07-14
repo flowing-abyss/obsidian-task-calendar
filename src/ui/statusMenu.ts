@@ -1,12 +1,12 @@
 import { setIcon, type Menu } from 'obsidian';
-import type { Task } from '../parser/types';
 import { PRIORITY_LEVELS } from '../priority';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { SubtaskSnapshot, TaskSnapshot } from '../tasks';
 import type { TaskPriority } from '../tasks/domain/types';
 import { renderStatusMarker } from './StatusMarker';
 
 export interface StatusMenuOpts {
-  task: Task;
+  task: TaskSnapshot | SubtaskSnapshot;
   registry: StatusRegistry;
   onPickStatus: (char: string) => void;
   onPickPriority: (p: TaskPriority) => void;
@@ -25,7 +25,7 @@ const PRIORITY_OPTIONS: Array<{ p: TaskPriority; label: string }> = PRIORITY_LEV
  */
 export function buildStatusSubmenu(
   sub: Menu,
-  task: Task,
+  task: TaskSnapshot | SubtaskSnapshot,
   registry: StatusRegistry,
   onPickStatus: (char: string) => void,
 ): void {

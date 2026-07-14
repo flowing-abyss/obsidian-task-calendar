@@ -11,7 +11,7 @@ interface StubPlugin {
   app: App;
   settings: CalendarSettings;
   saveSettings(): Promise<void>;
-  store: { rebuildStatusRegistry: ReturnType<typeof vi.fn> };
+  rebuildTaskStatusSemantics: ReturnType<typeof vi.fn>;
 }
 
 interface CapturedButton {
@@ -94,7 +94,7 @@ function makeTab(opts: { withCustomStatus?: boolean } = {}): {
     app,
     settings,
     saveSettings: vi.fn().mockResolvedValue(undefined),
-    store: { rebuildStatusRegistry: vi.fn() },
+    rebuildTaskStatusSemantics: vi.fn(),
   };
   const captured: CapturedButton[] = [];
   const restore = patchAddButton(captured);
@@ -166,7 +166,7 @@ describe('CalendarSettingsTab — custom statuses section', () => {
     expect(added.name).toBe('New status');
     expect(added.type).toBe('todo');
     expect(plugin.saveSettings).toHaveBeenCalled();
-    expect(plugin.store.rebuildStatusRegistry).toHaveBeenCalled();
+    expect(plugin.rebuildTaskStatusSemantics).toHaveBeenCalled();
   });
 
   it('added status gets a symbol not already in use', async () => {

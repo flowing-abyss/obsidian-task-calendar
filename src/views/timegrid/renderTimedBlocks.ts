@@ -1,10 +1,10 @@
 import { Component, type App } from 'obsidian';
 import { formatDurationFromMinutes } from '../../parser/TaskParser';
-import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { tagFillTextColorVar } from '../../tags/tagFillContrast';
+import type { TaskSnapshot } from '../../tasks';
 import type { TaskPriority } from '../../tasks/domain/types';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
@@ -26,23 +26,23 @@ import { hasCountBadges, renderCountBadges } from './renderTaskMeta';
 export interface TimedBlockCallbacks {
   app: App;
   component: Component;
-  onTaskClick: (task: Task) => void;
-  onTimeChange: (task: Task, newStartMinutes: number) => void;
-  onDurationChange: (task: Task, newDurationMinutes: number) => void;
+  onTaskClick: (task: TaskSnapshot) => void;
+  onTimeChange: (task: TaskSnapshot, newStartMinutes: number) => void;
+  onDurationChange: (task: TaskSnapshot, newDurationMinutes: number) => void;
   /** Task 29: horizontal right-edge drag-resize, extending the block into a multi-day timed
    * span. Same mutation as renderAllDay.ts's onExtendToSpan (freezes the original `due` as
    * `start`, moves `due` to the dragged-to date) — reused as-is since it already leaves
    * `⏰`/`⏱️` untouched, which is exactly what preserving the task's time/duration needs. */
-  onExtendToSpan: (task: Task, newDue: string) => void;
+  onExtendToSpan: (task: TaskSnapshot, newDue: string) => void;
   /** Task 34: horizontal left-edge drag-resize, moving/adding `start` while `due`/`⏰`/`⏱️`
    * stay untouched. Same mutation as renderAllDay.ts's onStartChange/CenterPanel's
    * updateTaskStart — reused as-is: whether the task already has a `start` (moved directly)
    * or not (a fresh 🛫 is appended, anchored on the task's own unmoved `due`), `due` is never
    * part of this mutation's `build()` closure, so it can't be touched by it either way. */
-  onStartChange: (task: Task, newStart: string) => void;
-  onToggle: (task: Task) => void;
-  onSetStatus: (task: Task, status: string) => void;
-  onSetPriority: (task: Task, priority: TaskPriority) => void;
+  onStartChange: (task: TaskSnapshot, newStart: string) => void;
+  onToggle: (task: TaskSnapshot) => void;
+  onSetStatus: (task: TaskSnapshot, status: string) => void;
+  onSetPriority: (task: TaskSnapshot, priority: TaskPriority) => void;
   statusRegistry: StatusRegistry;
 }
 
@@ -118,23 +118,23 @@ function tryReleasePointer(el: HTMLElement, pointerId: number): void {
 }
 
 /**
- * Task 37: shared `Task[]` -> `TimedBlockInput[]` conversion, factored out of
+ * Task 37: shared `TaskSnapshot[]` -> `TimedBlockInput[]` conversion, factored out of
  * `renderTimedBlocksForDay` so callers (WeekTimeGridView.ts/TodayView.ts) can build the same
  * `startMinutes`/`durationMinutes` shape for a day's anchor blocks and hand it to
  * `renderTimedSpanContinuation`'s `otherBlocks` parameter — letting a continuation segment's
  * min-height clamp see the anchor block(s) sharing its day column, not just other continuations.
  */
-export function toTimedBlockInputs(tasks: Task[]): TimedBlockInput[] {
+export function toTimedBlockInputs(tasks: TaskSnapshot[]): TimedBlockInput[] {
   return tasks.map((t) => ({
     task: t,
-    startMinutes: timeStringToMinutes(t.time ?? '00:00'),
-    durationMinutes: t.duration ?? DEFAULT_DURATION_MINUTES,
+    startMinutes: timeStringToMinutes(t.planning.time ?? '00:00'),
+    durationMinutes: t.planning.duration ?? DEFAULT_DURATION_MINUTES,
   }));
 }
 
 export function renderTimedBlocksForDay(
   hourColumnEl: HTMLElement,
-  tasksWithTime: Task[],
+  tasksWithTime: TaskSnapshot[],
   callbacks: TimedBlockCallbacks,
   tagGroups: TagGroup[] = [],
 ): void {
@@ -228,9 +228,9 @@ export function renderTimedBlocksForDay(
     const titleEl = head.createDiv({
       cls: `tc-tg-block-title${statusTitleClass(p.task.status)}`,
     });
-    renderTaskText(titleEl, p.task.markdownText, {
+    renderTaskText(titleEl, p.task.markdownTitle, {
       app: callbacks.app,
-      sourcePath: p.task.filePath,
+      sourcePath: p.task.source.filePath,
       component: callbacks.component,
     });
     // Task 34: left-edge horizontal resize, moving/adding `start` while `due`/`⏰`/`⏱️` stay
@@ -250,7 +250,7 @@ export function renderTimedBlocksForDay(
       hourColumnEl,
       p.task,
       callbacks.onStartChange,
-      p.task.due ? { date: p.task.due, kind: 'max' } : undefined,
+      p.task.planning.due ? { date: p.task.planning.due, kind: 'max' } : undefined,
     );
     // Task 29: right-edge horizontal resize, extending the block into a multi-day timed span.
     // Reuses `.tc-tg-span-edge`/`.tc-tg-span-edge--right` — the same classes/CSS renderAllDay.ts's
@@ -264,7 +264,8 @@ export function renderTimedBlocksForDay(
     // itself uses (see that method's own doc comment for why `scheduled` must win over `due`
     // there). Matching that exact priority here keeps the clamp bound consistent with what the
     // commit would actually freeze.
-    const rightEdgeAnchor = p.task.start ?? p.task.scheduled ?? p.task.due;
+    const rightEdgeAnchor =
+      p.task.planning.start ?? p.task.planning.scheduled ?? p.task.planning.due;
     attachHorizontalResize(
       hEdge,
       hourColumnEl,
@@ -288,7 +289,7 @@ export function renderTimedBlocksForDay(
     block.setAttribute('draggable', 'true');
     handle.setAttribute('draggable', 'false');
     block.addEventListener('dragstart', (e) => {
-      e.dataTransfer?.setData('text/plain', `${p.task.filePath}:::${p.task.line}`);
+      e.dataTransfer?.setData('text/plain', `${p.task.source.filePath}:::${p.task.source.line}`);
       if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
       block.addClass('is-dragging');
     });
@@ -344,8 +345,8 @@ export function renderTimedBlocksForDay(
  */
 export function renderTimedSpanContinuation(
   hourColumnEl: HTMLElement,
-  tasks: Task[],
-  onTaskClick?: (task: Task) => void,
+  tasks: TaskSnapshot[],
+  onTaskClick?: (task: TaskSnapshot) => void,
   tagGroups: TagGroup[] = [],
   otherBlocks: TimedBlockInput[] = [],
 ): void {
@@ -388,7 +389,7 @@ export function renderTimedSpanContinuation(
     // same way rather than looking untouched while its anchor block elsewhere shows struck-through.
     seg.createSpan({
       cls: `tc-tg-block-continuation-title${statusTitleClass(t.status)}`,
-      text: t.markdownText,
+      text: t.markdownTitle,
     });
     if (onTaskClick) {
       seg.addEventListener('contextmenu', (e) => {
@@ -460,7 +461,7 @@ function attachKeyboardNudge(
   block: HTMLElement,
   currentStartMinutes: number,
   callbacks: TimedBlockCallbacks,
-  task: Task,
+  task: TaskSnapshot,
 ): void {
   block.addEventListener('keydown', (e: KeyboardEvent) => {
     if (!block.contains(e.target as Node)) return;
@@ -477,17 +478,21 @@ function attachKeyboardNudge(
     // itself never even looks at `scheduled` once `start && due` both hold — see its own early
     // `continue` for that branch). Only for a NON-span task does bucketTasksForDate's
     // `scheduled ?? due` anchor priority apply, so that's the fallback used here too.
-    const isSpan = !!(task.start && task.due);
+    const isSpan = !!(task.planning.start && task.planning.due);
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      const base = isSpan ? task.due : (task.scheduled ?? task.due ?? task.start);
+      const base = isSpan
+        ? task.planning.due
+        : (task.planning.scheduled ?? task.planning.due ?? task.planning.start);
       if (!base) return;
       callbacks.onExtendToSpan(task, window.moment(base).add(1, 'day').format('YYYY-MM-DD'));
       return;
     }
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      const base = isSpan ? task.start : (task.start ?? task.scheduled ?? task.due);
+      const base = isSpan
+        ? task.planning.start
+        : (task.planning.start ?? task.planning.scheduled ?? task.planning.due);
       if (!base) return;
       callbacks.onStartChange(task, window.moment(base).subtract(1, 'day').format('YYYY-MM-DD'));
     }
@@ -531,7 +536,7 @@ function attachDrag(
   initialStart: number,
   initialDuration: number,
   callbacks: TimedBlockCallbacks,
-  task: Task,
+  task: TaskSnapshot,
 ): void {
   let mode: 'move' | 'resize' | null = null;
   let startY = 0;
@@ -717,8 +722,8 @@ function attachDrag(
 function attachHorizontalResize(
   handle: HTMLElement,
   hourColumnEl: HTMLElement,
-  task: Task,
-  onResolve: (task: Task, newDate: string) => void,
+  task: TaskSnapshot,
+  onResolve: (task: TaskSnapshot, newDate: string) => void,
   // Task 51: live-clamp bound (UX nice-to-have layered on top of the mandatory
   // `validateMutatedTaskLine` start<=due safety net — see that file's own doc comment for the
   // data-safety root cause). Without this, `elementFromPoint`'s absolute "day under the cursor"
@@ -746,7 +751,7 @@ function attachHorizontalResize(
   const block = handle.closest<HTMLElement>('.tc-tg-block');
 
   // Dates are always well-formed, zero-padded `YYYY-MM-DD` strings by the time they reach here
-  // (either `task.due`/`task.start`/`task.scheduled`, already-parsed fields, or a `data-tg-date`
+  // (either `task.planning.due`/`task.planning.start`/`task.planning.scheduled`, already-parsed fields, or a `data-tg-date`
   // attribute HourGrid.ts stamps from the same shape) — plain string comparison agrees with
   // chronological order exactly for that shape, no `Date` parsing needed.
   const clampDate = (date: string): string => {

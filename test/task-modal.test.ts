@@ -2,7 +2,7 @@ import type { App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppState } from '../src/app/AppState';
 import type { TaskApplicationApi } from '../src/tasks';
-import { task } from './helpers';
+import { task, testStatusRegistry } from './helpers';
 
 // vi.hoisted runs BEFORE vi.mock factory execution, avoiding TDZ.
 // The factory captures these refs by closure.
@@ -21,6 +21,7 @@ vi.mock('../src/panels/RightPanel', () => ({
     this: unknown,
     state: AppState,
     _app: App,
+    _statusRegistry: unknown,
     _settings: unknown,
     _onSuccessfulMutation: unknown,
     tasks: TaskApplicationApi | undefined,
@@ -56,7 +57,7 @@ describe('TaskModal', () => {
     mockState.includeHeaderActions.value = true;
     mockState.capturedState = null;
     mockState.capturedTasks = undefined;
-    modal = new TaskModal(app);
+    modal = new TaskModal(app, testStatusRegistry());
   });
 
   afterEach(() => {
@@ -94,7 +95,7 @@ describe('TaskModal', () => {
         },
         execute: vi.fn(),
       } satisfies TaskApplicationApi;
-      modal = new TaskModal(app, undefined, undefined, tasks.queries, tasks);
+      modal = new TaskModal(app, testStatusRegistry(), undefined, tasks.queries, tasks);
 
       modal.open(task());
 
@@ -182,7 +183,7 @@ describe('TaskModal', () => {
     });
 
     it('close when never opened is a no-op', () => {
-      const m = new TaskModal(app);
+      const m = new TaskModal(app, testStatusRegistry());
       expect(() => m.close()).not.toThrow();
     });
   });

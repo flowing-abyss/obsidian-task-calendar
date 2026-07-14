@@ -13,7 +13,10 @@ export type {
 } from './domain/commands';
 export type {
   LocalDate,
-  TaskPriority,
+  SubtaskRef,
+  SubtaskSnapshot,
+  TaskCommentSnapshot,
+  TaskNodeRef,
   TaskRef,
   TaskSnapshot,
   TaskTextTarget,

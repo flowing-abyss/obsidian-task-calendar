@@ -134,7 +134,7 @@ describe('groupTasksByDate – noDate bucket fix', () => {
       task({ text: 'noDate' }),
     ];
     const groups = groupTasksByDate(tasks, TODAY, TOMORROW);
-    const byLabel = Object.fromEntries(groups.map((g) => [g.label, g.tasks.map((t) => t.text)]));
+    const byLabel = Object.fromEntries(groups.map((g) => [g.label, g.tasks.map((t) => t.title)]));
     expect(byLabel['Overdue']).toEqual(['overdue']);
     expect(byLabel['Today']).toEqual(['today']);
     expect(byLabel['Tomorrow']).toEqual(['upcoming']);

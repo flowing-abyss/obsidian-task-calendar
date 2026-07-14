@@ -7,7 +7,7 @@ import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
-import type { TaskStore } from '../src/store/TaskStore';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskApplicationApi } from '../src/tasks';
 import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
@@ -49,7 +49,7 @@ async function makePanel(
     if (snapshot) Object.assign(current, { ref: snapshot.ref });
   }
   const state = new AppState();
-  const store = makeStubStore(extraTasks, app) as unknown as TaskStore;
+  const store = makeStubStore(extraTasks, app);
   const snapshots = Object.entries(files).flatMap(([path, content]) =>
     index.snapshotsFromContent(path, content),
   );
@@ -78,10 +78,10 @@ async function makePanel(
   });
   const panel = new CenterPanel(
     state,
-    store,
     app,
     DEFAULT_SETTINGS,
     queries,
+    new StatusRegistry(DEFAULT_SETTINGS.taskStatuses),
     undefined,
     null,
     null,
@@ -94,7 +94,7 @@ describe('CenterPanel planning API delegation', () => {
   it('sends reschedule through TaskApplicationApi without touching the vault directly', async () => {
     const app = await createAppWithFiles({ 'f.md': '- [ ] task\n' });
     const state = new AppState();
-    const store = makeStubStore([], app) as unknown as TaskStore;
+    const store = makeStubStore([], app);
     const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
       .taskQueries;
     const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
@@ -104,10 +104,10 @@ describe('CenterPanel planning API delegation', () => {
     const tasks: TaskApplicationApi = { queries, execute };
     const panel = new CenterPanel(
       state,
-      store,
       app,
       DEFAULT_SETTINGS,
       queries,
+      new StatusRegistry(DEFAULT_SETTINGS.taskStatuses),
       undefined,
       null,
       null,
@@ -185,7 +185,7 @@ describe('CenterPanel planning API delegation', () => {
       }),
       { ref },
     );
-    const store = makeStubStore([current], app) as unknown as TaskStore;
+    const store = makeStubStore([current], app);
     const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
       .taskQueries;
     const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
@@ -194,10 +194,10 @@ describe('CenterPanel planning API delegation', () => {
     });
     const panel = new CenterPanel(
       state,
-      store,
       app,
       DEFAULT_SETTINGS,
       queries,
+      new StatusRegistry(DEFAULT_SETTINGS.taskStatuses),
       undefined,
       null,
       null,
@@ -275,7 +275,7 @@ describe('CenterPanel root lifecycle API delegation', () => {
   it('creates configured and project tasks through typed commands without direct vault writes', async () => {
     const app = await createAppWithFiles({ 'Projects/A.md': '# Project\n' });
     const state = new AppState();
-    const store = makeStubStore([], app) as unknown as TaskStore;
+    const store = makeStubStore([], app);
     const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
       .taskQueries;
     const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
@@ -284,10 +284,10 @@ describe('CenterPanel root lifecycle API delegation', () => {
     });
     const panel = new CenterPanel(
       state,
-      store,
       app,
       DEFAULT_SETTINGS,
       queries,
+      new StatusRegistry(DEFAULT_SETTINGS.taskStatuses),
       undefined,
       null,
       null,
@@ -329,7 +329,7 @@ describe('CenterPanel root lifecycle API delegation', () => {
       const app = await createAppWithFiles(files);
       const state = new AppState();
       state.set('selectedList', 'inbox');
-      const store = makeStubStore([], app) as unknown as TaskStore;
+      const store = makeStubStore([], app);
       const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
         .taskQueries;
       const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
@@ -338,10 +338,10 @@ describe('CenterPanel root lifecycle API delegation', () => {
       });
       const panel = new CenterPanel(
         state,
-        store,
         app,
         { ...DEFAULT_SETTINGS, addToToday: false, customFilePath },
         queries,
+        new StatusRegistry(DEFAULT_SETTINGS.taskStatuses),
         undefined,
         null,
         null,
@@ -371,7 +371,7 @@ describe('CenterPanel root lifecycle API delegation', () => {
     const newTask = task({ filePath: 'f.md', line: 1, text: 'new' });
     const state = new AppState();
     state.set('taskStack', [oldTask]);
-    const store = makeStubStore([oldTask, newTask], app) as unknown as TaskStore;
+    const store = makeStubStore([oldTask, newTask], app);
     const queries = (store as unknown as { taskQueries: TaskApplicationApi['queries'] })
       .taskQueries;
     let finish!: (result: Awaited<ReturnType<TaskApplicationApi['execute']>>) => void;
@@ -380,10 +380,10 @@ describe('CenterPanel root lifecycle API delegation', () => {
       .mockReturnValue(new Promise((resolve) => (finish = resolve)));
     const panel = new CenterPanel(
       state,
-      store,
       app,
       DEFAULT_SETTINGS,
       queries,
+      new StatusRegistry(DEFAULT_SETTINGS.taskStatuses),
       undefined,
       null,
       null,

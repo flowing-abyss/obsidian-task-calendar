@@ -3,10 +3,10 @@ import type { App } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
-import type { Task } from '../src/parser/types';
+import type { Task as LegacyTask } from '../src/parser/types';
 import { DEFAULT_SETTINGS, getListViewDefaults } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
-import type { TaskStore } from '../src/store/TaskStore';
+import type { TaskSnapshot } from '../src/tasks';
 import { fixedToday, makeCenterPanelForTest, makeStubStore, task, useRealMoment } from './helpers';
 
 const TODAY = moment().format('YYYY-MM-DD');
@@ -18,11 +18,11 @@ useRealMoment();
  * Pure helpers don't touch the DOM or vault, so `app` is a minimal stub.
  */
 function makePanel(
-  tasks: Task[],
+  tasks: LegacyTask[],
   settings: CalendarSettings = DEFAULT_SETTINGS,
   state: AppState = new AppState(),
 ): { panel: CenterPanel; state: AppState } {
-  const store = makeStubStore(tasks) as TaskStore;
+  const store = makeStubStore(tasks);
   const app = {} as App;
   const panel = makeCenterPanelForTest(state, store, app, settings, null as never);
   return { panel, state };
@@ -47,8 +47,8 @@ describe('CenterPanel pure helpers', () => {
       };
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text)).toEqual(['no tag']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title)).toEqual(['no tag']);
     });
 
     it('today includes tasks due/scheduled/dailyNoteDate today', () => {
@@ -60,8 +60,8 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
       fixedToday(TODAY);
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text).sort((a, b) => a.localeCompare(b))).toEqual([
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title).sort((a, b) => a.localeCompare(b))).toEqual([
         'dnToday',
         'dueToday',
         'schedToday',
@@ -73,8 +73,8 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
       fixedToday('2026-06-25');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text)).toEqual(['overdue']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title)).toEqual(['overdue']);
     });
 
     it('today does NOT include overdue via scheduled/dailyNoteDate only (CURRENT BEHAVIOR: only due<today counts as overdue, follow-up: FU-31)', () => {
@@ -95,7 +95,7 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
       fixedToday('2026-06-25');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
       // FU-31: only t.due < today triggers overdue inclusion; scheduled/dailyNoteDate overdue are NOT included
       expect(result).toHaveLength(0);
     });
@@ -114,8 +114,8 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
       fixedToday('2026-06-25');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text)).toEqual(['open']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title)).toEqual(['open']);
     });
 
     it('today excludes future tasks (due > today, not overdue)', () => {
@@ -124,7 +124,7 @@ describe('CenterPanel pure helpers', () => {
       const tasks = [task({ text: 'future', rawText: '- [ ] future', due: future })];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
       expect(result).toHaveLength(0);
     });
 
@@ -141,8 +141,8 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'upcoming');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text)).toEqual(['near', 'far']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title)).toEqual(['near', 'far']);
     });
 
     it('upcoming uses due ?? scheduled ?? dailyNoteDate', () => {
@@ -155,8 +155,8 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'upcoming');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text)).toEqual(['sched', 'dn']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title)).toEqual(['sched', 'dn']);
     });
 
     it('default string selection returns all open tasks', () => {
@@ -167,8 +167,8 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'unknown-list' as unknown as 'inbox');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text)).toEqual(['open']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title)).toEqual(['open']);
     });
 
     it('{type:"tag"} filters query snapshots by tag and open status', () => {
@@ -184,8 +184,8 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', { type: 'tag', tag: '#work' });
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text)).toEqual(['work']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title)).toEqual(['work']);
     });
 
     it('{type:"group"} prefix mode matches rawText includes #prefix', () => {
@@ -205,8 +205,8 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', { type: 'group', groupId: 'g1' });
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text).sort((a, b) => a.localeCompare(b))).toEqual([
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title).sort((a, b) => a.localeCompare(b))).toEqual([
         'work',
         'workSub',
       ]);
@@ -227,15 +227,15 @@ describe('CenterPanel pure helpers', () => {
       ];
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', { type: 'group', groupId: 'g1' });
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text).sort((a, b) => a.localeCompare(b))).toEqual(['a', 'b']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title).sort((a, b) => a.localeCompare(b))).toEqual(['a', 'b']);
     });
 
     it('{type:"group"} with missing groupId returns empty', () => {
       const tasks = [task({ text: 'a', rawText: '- [ ] a #a' })];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', { type: 'group', groupId: 'nope' });
-      const result = call<Task[]>(panel, 'getFilteredTasks');
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
       expect(result).toHaveLength(0);
     });
 
@@ -251,8 +251,8 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
       state.set('centerFilter', 'milk');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
-      expect(result.map((t) => t.text)).toEqual(['Buy Milk']);
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
+      expect(result.map((t) => t.title)).toEqual(['Buy Milk']);
     });
 
     it('centerFilter filters by rawText', () => {
@@ -263,7 +263,7 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'inbox');
       state.set('centerFilter', 'urgent-marker');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
       // CURRENT BEHAVIOR: inbox=untagged mode excludes tagged tasks before filter,
       // so the #urgent-marker task is removed by getInboxTasks; centerFilter then
       // has nothing to match. Use tag selection to keep tagged tasks.
@@ -279,9 +279,9 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', { type: 'tag', tag: '#work' });
       state.set('centerFilter', 'urgent-marker');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
       expect(result).toHaveLength(1);
-      expect(result[0]?.rawText).toContain('urgent-marker');
+      expect(result[0]?.source.originalMarkdown).toContain('urgent-marker');
     });
 
     it('centerFilter empty returns all (no filtering)', () => {
@@ -296,7 +296,7 @@ describe('CenterPanel pure helpers', () => {
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', 'inbox');
       state.set('centerFilter', '');
-      const result = call<Task[]>(panel, 'getFilteredTasks');
+      const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
       expect(result).toHaveLength(2);
     });
   });
@@ -548,7 +548,7 @@ describe('getFilteredTasks respects the unified Show status filter (statusGroups
       filters: [],
     });
     state.set('selectedList', 'inbox');
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks.every((t) => t.status !== 'done')).toBe(true);
   });
 
@@ -567,7 +567,7 @@ describe('getFilteredTasks respects the unified Show status filter (statusGroups
       filters: [],
     });
     state.set('selectedList', 'inbox');
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks.every((t) => t.status === 'done')).toBe(true);
   });
 
@@ -586,7 +586,7 @@ describe('getFilteredTasks respects the unified Show status filter (statusGroups
       filters: [],
     });
     state.set('selectedList', 'inbox');
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks.length).toBe(2);
   });
 });
@@ -603,9 +603,9 @@ describe('getFilteredTasks respects property filters', () => {
       filters: [{ type: 'tag', value: '#work' }],
     });
     state.set('selectedList', { type: 'tag', tag: '#work' });
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0]?.text).toBe('work task');
+    expect(tasks[0]?.title).toBe('work task');
   });
 
   it('tag filter does not match partial tags (#work does not match #work/deep)', () => {
@@ -623,9 +623,9 @@ describe('getFilteredTasks respects property filters', () => {
       'selectedList',
       'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
     );
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0]?.text).toBe('exact');
+    expect(tasks[0]?.title).toBe('exact');
   });
 
   it('file filter keeps only tasks from that file', () => {
@@ -642,9 +642,9 @@ describe('getFilteredTasks respects property filters', () => {
       'selectedList',
       'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
     );
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0]?.text).toBe('from a');
+    expect(tasks[0]?.title).toBe('from a');
   });
 
   it('time filter keeps only tasks with matching time', () => {
@@ -662,9 +662,9 @@ describe('getFilteredTasks respects property filters', () => {
       'selectedList',
       'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
     );
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0]?.text).toBe('morning');
+    expect(tasks[0]?.title).toBe('morning');
   });
 
   it('priority filter keeps only tasks with matching priority', () => {
@@ -681,9 +681,9 @@ describe('getFilteredTasks respects property filters', () => {
       'selectedList',
       'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
     );
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0]?.text).toBe('high');
+    expect(tasks[0]?.title).toBe('high');
   });
 
   it('status filter keeps only tasks with matching statusSymbol', () => {
@@ -700,9 +700,9 @@ describe('getFilteredTasks respects property filters', () => {
       'selectedList',
       'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
     );
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0]?.text).toBe('inProgress');
+    expect(tasks[0]?.title).toBe('inProgress');
   });
 
   it('date filter matches due, scheduled, or dailyNoteDate', () => {
@@ -721,9 +721,9 @@ describe('getFilteredTasks respects property filters', () => {
       'selectedList',
       'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
     );
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(3);
-    expect(tasks.map((t) => t.text)).toEqual(expect.arrayContaining(['due', 'sched', 'daily']));
+    expect(tasks.map((t) => t.title)).toEqual(expect.arrayContaining(['due', 'sched', 'daily']));
   });
 
   it('multiple property filters are combined with AND', () => {
@@ -749,9 +749,9 @@ describe('getFilteredTasks respects property filters', () => {
       'selectedList',
       'all-tasks' as unknown as import('../src/app/AppState').ListSelection,
     );
-    const tasks = call<Task[]>(panel, 'getFilteredTasks');
+    const tasks = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
     expect(tasks).toHaveLength(1);
-    expect(tasks[0]?.text).toBe('work morning');
+    expect(tasks[0]?.title).toBe('work morning');
   });
 });
 

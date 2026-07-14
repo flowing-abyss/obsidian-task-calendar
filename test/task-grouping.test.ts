@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Task } from '../src/parser/types';
+import type { TaskSnapshot as Task } from '../src/tasks';
 import {
   getTasksForDate,
   groupTasksByDate,
@@ -40,7 +40,7 @@ describe('sortTasks', () => {
       task({ text: 'noTime', priority: 'D' }),
       task({ text: 'timed', priority: 'D', time: '09:00' }),
     ]);
-    expect(out.map((t) => t.text)).toEqual(['timed', 'noTime']);
+    expect(out.map((t) => t.title)).toEqual(['timed', 'noTime']);
   });
 
   it('within same priority and both timed, orders lex by time (zero-padded = numerically correct)', () => {
@@ -48,7 +48,7 @@ describe('sortTasks', () => {
       task({ text: 'b', priority: 'D', time: '10:00' }),
       task({ text: 'a', priority: 'D', time: '09:00' }),
     ]);
-    expect(out.map((t) => t.time)).toEqual(['09:00', '10:00']);
+    expect(out.map((t) => t.planning.time)).toEqual(['09:00', '10:00']);
   });
 
   it('within same priority and both timed, lex compare mis-sorts unpadded hours (CURRENT BEHAVIOR, follow-up FU-8)', () => {
@@ -57,7 +57,7 @@ describe('sortTasks', () => {
       task({ text: 'b', priority: 'D', time: '9:30' }),
     ]);
     // "9:30" > "10:00" lexically ("9" > "1"), so 9:30 sorts AFTER 10:00
-    expect(out.map((t) => t.time)).toEqual(['10:00', '9:30']);
+    expect(out.map((t) => t.planning.time)).toEqual(['10:00', '9:30']);
   });
 
   it('within same priority and neither timed, orders by text.localeCompare', () => {
@@ -65,7 +65,7 @@ describe('sortTasks', () => {
       task({ text: 'zeta', priority: 'D' }),
       task({ text: 'alpha', priority: 'D' }),
     ]);
-    expect(out.map((t) => t.text)).toEqual(['alpha', 'zeta']);
+    expect(out.map((t) => t.title)).toEqual(['alpha', 'zeta']);
   });
 
   it('ignores status (no status-based ordering)', () => {
@@ -74,7 +74,7 @@ describe('sortTasks', () => {
       task({ text: 'open', priority: 'D', status: 'open' }),
     ]);
     // both priority D, no time → text.localeCompare: 'done' < 'open'
-    expect(out.map((t) => t.text)).toEqual(['done', 'open']);
+    expect(out.map((t) => t.title)).toEqual(['done', 'open']);
   });
 });
 
@@ -187,7 +187,7 @@ describe('sortTasksByDateTime', () => {
       task({ text: 'later', due: '2026-06-26' }),
       task({ text: 'earlier', due: '2026-06-25' }),
     ]);
-    expect(out.map((t) => t.text)).toEqual(['earlier', 'later']);
+    expect(out.map((t) => t.title)).toEqual(['earlier', 'later']);
   });
 
   it('within same date, timed tasks come before untimed', () => {
@@ -195,7 +195,7 @@ describe('sortTasksByDateTime', () => {
       task({ text: 'noTime', due: '2026-06-25' }),
       task({ text: 'timed', due: '2026-06-25', time: '08:00' }),
     ]);
-    expect(out.map((t) => t.text)).toEqual(['timed', 'noTime']);
+    expect(out.map((t) => t.title)).toEqual(['timed', 'noTime']);
   });
 
   it('within same date, timed tasks sort chronologically', () => {
@@ -204,7 +204,7 @@ describe('sortTasksByDateTime', () => {
       task({ text: 'morning', due: '2026-06-25', time: '08:00' }),
       task({ text: 'evening', due: '2026-06-25', time: '20:00' }),
     ]);
-    expect(out.map((t) => t.time)).toEqual(['08:00', '15:00', '20:00']);
+    expect(out.map((t) => t.planning.time)).toEqual(['08:00', '15:00', '20:00']);
   });
 
   it('date ordering is not broken by time — later-date timed task stays after earlier-date untimed', () => {
@@ -214,7 +214,11 @@ describe('sortTasksByDateTime', () => {
       task({ text: 'earlyDateNoTime', due: '2026-06-26' }),
       task({ text: 'earlyDateTimed', due: '2026-06-26', time: '20:00' }),
     ]);
-    expect(out.map((t) => t.text)).toEqual(['earlyDateTimed', 'earlyDateNoTime', 'laterDateTimed']);
+    expect(out.map((t) => t.title)).toEqual([
+      'earlyDateTimed',
+      'earlyDateNoTime',
+      'laterDateTimed',
+    ]);
   });
 
   it('uses scheduled as fallback date when due is absent', () => {
@@ -222,7 +226,7 @@ describe('sortTasksByDateTime', () => {
       task({ text: 'b', scheduled: '2026-06-26' }),
       task({ text: 'a', scheduled: '2026-06-25' }),
     ]);
-    expect(out.map((t) => t.text)).toEqual(['a', 'b']);
+    expect(out.map((t) => t.title)).toEqual(['a', 'b']);
   });
 
   it('uses dailyNoteDate as fallback when due and scheduled are absent', () => {
@@ -230,7 +234,7 @@ describe('sortTasksByDateTime', () => {
       task({ text: 'b', dailyNoteDate: '2026-06-26' }),
       task({ text: 'a', dailyNoteDate: '2026-06-25' }),
     ]);
-    expect(out.map((t) => t.text)).toEqual(['a', 'b']);
+    expect(out.map((t) => t.title)).toEqual(['a', 'b']);
   });
 
   it('tasks with no date sort to end', () => {
@@ -238,7 +242,7 @@ describe('sortTasksByDateTime', () => {
       task({ text: 'noDate' }),
       task({ text: 'dated', due: '2026-06-25' }),
     ]);
-    expect(out.map((t) => t.text)).toEqual(['dated', 'noDate']);
+    expect(out.map((t) => t.title)).toEqual(['dated', 'noDate']);
   });
 });
 
@@ -248,14 +252,14 @@ describe('sortTasksByField', () => {
     const t2 = task({ due: '2026-06-28' });
     const t3 = task({});
     const out = sortTasksByField([t1, t3, t2], 'date', 'asc');
-    expect(out.map((t) => t.due)).toEqual(['2026-06-28', '2026-07-01', undefined]);
+    expect(out.map((t) => t.planning.due)).toEqual(['2026-06-28', '2026-07-01', undefined]);
   });
 
   it('date desc: furthest first, no-date last', () => {
     const t1 = task({ due: '2026-07-01' });
     const t2 = task({ due: '2026-06-28' });
     const out = sortTasksByField([t2, t1], 'date', 'desc');
-    expect(out[0]?.due).toBe('2026-07-01');
+    expect(out[0]?.planning.due).toBe('2026-07-01');
   });
 
   it('priority asc: A before F', () => {
@@ -282,7 +286,7 @@ describe('sortTasksByField', () => {
       'title',
       'asc',
     );
-    expect(out[0]?.text).toBe('apple');
+    expect(out[0]?.title).toBe('apple');
   });
 
   it('tag asc: first tag alphabetical, untagged last', () => {
@@ -290,8 +294,8 @@ describe('sortTasksByField', () => {
     const t2 = task({ rawText: '- [ ] task #art' });
     const t3 = task({ rawText: '- [ ] task no tag' });
     const out = sortTasksByField([t1, t3, t2], 'tag', 'asc');
-    expect((out[0]?.rawText.match(/#[\w/-]+/u) ?? [])[0]).toBe('#art');
-    expect(out[2]?.rawText).toContain('no tag');
+    expect((out[0]?.source.originalMarkdown.match(/#[\w/-]+/u) ?? [])[0]).toBe('#art');
+    expect(out[2]?.source.originalMarkdown).toContain('no tag');
   });
 });
 
@@ -308,7 +312,7 @@ describe('groupTasksByPriority', () => {
     const t = task({ priority: 'A', text: 'urgent' });
     const groups = groupTasksByPriority([t]);
     const highest = groups.find((g) => g.label === '🔺 Highest');
-    expect(highest?.tasks[0]?.text).toBe('urgent');
+    expect(highest?.tasks[0]?.title).toBe('urgent');
   });
 });
 
@@ -353,7 +357,7 @@ describe('renderTaskGroup', () => {
     const spy = vi.fn((_t: Task, cls: string) => {
       const el = activeDocument.createElement('div');
       el.className = cls;
-      el.textContent = _t.text;
+      el.textContent = _t.title;
       return el;
     });
     renderTaskGroup(container, g, '2026-06-24', '2026-06-24', spy);
@@ -421,7 +425,7 @@ describe('renderTaskGroup', () => {
     };
     const texts: string[] = [];
     renderTaskGroup(container, g, '2026-06-24', '2026-06-24', (t) => {
-      texts.push(t.text);
+      texts.push(t.title);
       return activeDocument.createElement('div');
     });
     // priority A before D → 'a' then 'b'

@@ -1,9 +1,9 @@
 import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import type { LinkToken } from '../src/parser/links';
-import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
+import type { TaskSnapshot as Task } from '../src/tasks';
 import { WeekView } from '../src/views/WeekView';
 import {
   dispatchDnD,

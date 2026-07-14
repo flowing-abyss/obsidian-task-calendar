@@ -4,7 +4,6 @@ import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
-import type { TaskStore } from '../src/store/TaskStore';
 import { TagManager } from '../src/tags/TagManager';
 import {
   freshContainer,
@@ -21,7 +20,7 @@ function makeCenter(tasks: Task[]): { el: HTMLElement; state: AppState; panel: C
   state.set('selectedList', 'inbox');
   const save = vi.fn().mockResolvedValue(undefined);
   const tm = new TagManager(null as never, DEFAULT_SETTINGS, save);
-  const store = makeStubStore(tasks) as unknown as TaskStore;
+  const store = makeStubStore(tasks);
   const panel = makeCenterPanelForTest(state, store, null as never, DEFAULT_SETTINGS, tm);
   const el = freshContainer();
   panel.mount(el);

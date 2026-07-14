@@ -1,9 +1,9 @@
 import { Component, type App } from 'obsidian';
 import type { LinkToken } from '../parser/links';
-import type { Task } from '../parser/types';
 import { DEFAULT_VIEW_CONFIG } from '../settings/defaults';
 import type { ResolvedConfig } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskSnapshot } from '../tasks';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { renderTaskText } from '../ui/renderTaskText';
 import { renderSourceNoteChip, shouldShowSourceNote } from '../ui/sourceNoteChip';
@@ -12,12 +12,12 @@ import { getTasksForDate, sortTasks } from './taskGrouping';
 
 export interface ListViewCallbacks {
   app: App;
-  onToggle: (task: Task) => void;
+  onToggle: (task: TaskSnapshot) => void;
   onDateClick: (date: string) => void;
-  onTaskClick?: (task: Task) => void;
-  onEditLink?: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
+  onTaskClick?: (task: TaskSnapshot) => void;
+  onEditLink?: (task: TaskSnapshot, occurrenceIndex: number, token: LinkToken) => void;
   statusRegistry: StatusRegistry;
-  onContextMenu: (ev: MouseEvent, task: Task) => void;
+  onContextMenu: (ev: MouseEvent, task: TaskSnapshot) => void;
 }
 
 export class ListView extends BaseView {
@@ -33,7 +33,7 @@ export class ListView extends BaseView {
     super();
   }
 
-  render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+  render(container: HTMLElement, tasks: TaskSnapshot[], config: ResolvedConfig): void {
     this.md.unload();
     this.md = new Component();
     this.md.load();
@@ -50,8 +50,10 @@ export class ListView extends BaseView {
     const grid = container.createDiv({ cls: 'tc-list-view' });
 
     // Overdue section first
-    const overdueTasks = tasks.filter((t) => t.status === 'open' && t.due && t.due < today);
-    const overdueIds = new Set(overdueTasks.map((t) => `${t.filePath}:${t.line}`));
+    const overdueTasks = tasks.filter(
+      (t) => t.status === 'open' && t.planning.due && t.planning.due < today,
+    );
+    const overdueIds = new Set(overdueTasks.map((t) => `${t.source.filePath}:${t.source.line}`));
     if (overdueTasks.length > 0) {
       const section = grid.createDiv({ cls: 'tc-list-section' });
       const overdueHeader = section.createDiv({
@@ -74,22 +76,22 @@ export class ListView extends BaseView {
       const groups = getTasksForDate(tasks, currentDate, today);
       // Combine all task groups (due, recurrence, start, scheduled, process, dailyNote, allDone, cancelled)
       // Exclude overdue — it has its own section at the top
-      const allTasks: Task[] = [];
+      const allTasks: TaskSnapshot[] = [];
       for (const [key, group] of Object.entries(groups)) {
         if (key === 'overdue') continue;
-        if (Array.isArray(group)) allTasks.push(...(group as Task[]));
+        if (Array.isArray(group)) allTasks.push(...(group as TaskSnapshot[]));
       }
       // Deduplicate: a task may appear in multiple groups (e.g. due + scheduled on same day)
       const seen = new Set<string>();
       const uniqueTasks = allTasks.filter((t) => {
-        const id = `${t.filePath}:${t.line}`;
+        const id = `${t.source.filePath}:${t.source.line}`;
         if (seen.has(id)) return false;
         seen.add(id);
         return true;
       });
       // Filter to only open tasks; also exclude tasks already shown in the overdue section
       const openDayTasks = uniqueTasks.filter(
-        (t) => t.status === 'open' && !overdueIds.has(`${t.filePath}:${t.line}`),
+        (t) => t.status === 'open' && !overdueIds.has(`${t.source.filePath}:${t.source.line}`),
       );
       if (openDayTasks.length === 0) continue;
 
@@ -114,7 +116,7 @@ export class ListView extends BaseView {
     }
   }
 
-  private renderListTask(container: HTMLElement, task: Task): void {
+  private renderListTask(container: HTMLElement, task: TaskSnapshot): void {
     const row = container.createDiv({ cls: 'tc-list-task' });
 
     const marker = renderStatusMarker(row, {
@@ -132,16 +134,16 @@ export class ListView extends BaseView {
     }
     const titleEl = row.createEl('span', { cls: `tc-list-task-title${statusClass}` });
     const onEditLink = this.callbacks.onEditLink;
-    renderTaskText(titleEl, task.markdownText, {
+    renderTaskText(titleEl, task.markdownTitle, {
       app: this.callbacks.app,
-      sourcePath: task.filePath,
+      sourcePath: task.source.filePath,
       component: this.md,
       onEditLink: onEditLink ? (occ, token) => onEditLink(task, occ, token) : undefined,
     });
 
     const meta = row.createDiv({ cls: 'tc-list-task-meta' });
-    if (task.time) {
-      meta.createEl('span', { cls: 'tc-task-time', text: task.time });
+    if (task.planning.time) {
+      meta.createEl('span', { cls: 'tc-task-time', text: task.planning.time });
     }
 
     // Source note chip — before tags
@@ -154,10 +156,10 @@ export class ListView extends BaseView {
       meta.createEl('span', { cls: 'tc-task-tag', text: tag });
     }
     if ((task.subtasks?.length ?? 0) > 0) {
-      const done = task.subtasks!.filter((s) => s.status === 'done').length;
+      const done = task.subtasks.filter((s) => s.status === 'done').length;
       meta.createEl('span', {
         cls: 'tc-task-progress',
-        text: `${done}/${task.subtasks!.length}`,
+        text: `${done}/${task.subtasks.length}`,
       });
     }
 

@@ -4,16 +4,20 @@ import { CenterPanel } from '../panels/CenterPanel';
 import { LeftPanel } from '../panels/LeftPanel';
 import { RailPanel } from '../panels/RailPanel';
 import { RightPanel } from '../panels/RightPanel';
-import type { SubTask, Task } from '../parser/types';
 import { ProjectManager } from '../projects/ProjectManager';
 import { ProjectStore } from '../projects/ProjectStore';
 import { DailyNoteResolver } from '../resolvers/DailyNoteResolver';
 import type { CalendarSettings } from '../settings/types';
-import type { TaskStore } from '../store/TaskStore';
+import type { StatusRegistry } from '../status/StatusRegistry';
 import type { TagManager } from '../tags/TagManager';
-import type { TaskApplicationApi, TaskIndexEvent, TaskQueryApi, TaskResolution } from '../tasks';
-import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
-import type { TaskRef } from '../tasks/domain/types';
+import type {
+  TaskApplicationApi,
+  TaskIndexEvent,
+  TaskQueryApi,
+  TaskRef,
+  TaskResolution,
+} from '../tasks';
+import { rebuildTaskSelection, rootTaskRef, type TaskSelectionNode } from '../ui/taskSelection';
 
 export const PANEL_VIEW_TYPE = 'task-calendar-panel';
 
@@ -32,12 +36,12 @@ export class PanelView extends ItemView {
 
   constructor(
     leaf: WorkspaceLeaf,
-    private store: TaskStore,
     private settings: CalendarSettings,
     private tagManager: TagManager,
     private queries: TaskQueryApi,
+    private tasks: TaskApplicationApi,
+    private statusRegistry: StatusRegistry,
     private onSaveSettings: () => Promise<void> = async () => {},
-    private tasks?: TaskApplicationApi,
   ) {
     super(leaf);
   }
@@ -69,37 +73,35 @@ export class PanelView extends ItemView {
     const projectStore = new ProjectStore(this.app, this.queries, this.settings);
     projectStore.initialize();
     this.projectStore = projectStore;
-    const projectManager = this.tasks
-      ? new ProjectManager(this.app, this.settings, resolver, this.tasks)
-      : undefined;
+    const projectManager = new ProjectManager(this.app, this.settings, resolver, this.tasks);
 
     this.rail = new RailPanel(this.state, this.app as never);
     this.left = new LeftPanel(
       this.state,
-      this.store,
       this.settings,
       this.tagManager,
       this.app,
       this.queries,
+      this.tasks,
       this.onSaveSettings,
       projectStore,
-      projectManager ?? null,
-      this.tasks,
+      projectManager,
     );
     this.center = new CenterPanel(
       this.state,
-      this.store,
       this.app,
       this.settings,
       this.queries,
+      this.statusRegistry,
       this.onSaveSettings,
       projectStore,
-      projectManager ?? null,
+      projectManager,
       this.tasks,
     );
     this.right = new RightPanel(
       this.state,
       this.app,
+      this.statusRegistry,
       this.settings,
       (root) => this.acknowledgeOwnWrite(root),
       this.tasks,
@@ -108,7 +110,7 @@ export class PanelView extends ItemView {
     // Keep panels fresh when the project set / stats change. Only the left
     // panel's Projects section and the projects-mode center depend on this;
     // re-rendering the tasks-mode center here would double-render on every edit
-    // (TaskStore already refreshes it), so gate the center refresh to projects mode.
+    // (TaskIndex already refreshes it), so gate the center refresh to projects mode.
     this.projectStoreUnsub = projectStore.onUpdate(() => {
       this.left.refresh();
       if (this.state.get('mode') === 'projects') this.center.refresh();
@@ -167,7 +169,7 @@ export class PanelView extends ItemView {
     });
     this.selectionUnsub = this.state.on('taskStack', (stack) => {
       if (!this.ownedWriteRef) return;
-      const ref = stack[0] ? taskRefOf(stack[0]) : undefined;
+      const ref = stack[0] ? rootTaskRef(stack[0]) : undefined;
       if (!ref || !this.sameRef(ref, this.ownedWriteRef)) this.ownedWriteRef = undefined;
     });
 
@@ -177,7 +179,7 @@ export class PanelView extends ItemView {
       const stack = this.state.get('taskStack');
       if (stack.length === 0) return;
       const root = stack[0];
-      const ref = root ? taskRefOf(root) : undefined;
+      const ref = root ? rootTaskRef(root) : undefined;
       if (!ref || !this.affects(event, ref.filePath)) return;
       this.applyResolution(this.queries.resolve(ref));
     });
@@ -207,20 +209,17 @@ export class PanelView extends ItemView {
   private applyResolution(resolution: TaskResolution): void {
     const stack = this.state.get('taskStack');
     this.clearSelectionMessage();
-    const rootRef = stack[0] ? taskRefOf(stack[0]) : undefined;
+    const rootRef = stack[0] ? rootTaskRef(stack[0]) : undefined;
     const ownWrite = Boolean(
       rootRef && this.ownedWriteRef && this.sameRef(rootRef, this.ownedWriteRef),
     );
     this.ownedWriteRef = undefined;
     if (resolution.type === 'exact') {
-      this.state.set('taskStack', rebuildLegacyTaskStack(legacyTaskView(resolution.task), stack));
+      this.state.set('taskStack', rebuildTaskSelection(resolution.task, stack));
       return;
     }
     if (ownWrite && resolution.type === 'conflict') {
-      this.state.set(
-        'taskStack',
-        rebuildLegacyTaskStack(legacyTaskView(resolution.current), stack),
-      );
+      this.state.set('taskStack', rebuildTaskSelection(resolution.current, stack));
       return;
     }
     if (resolution.type === 'not-found') {
@@ -235,10 +234,7 @@ export class PanelView extends ItemView {
       );
       this.addSelectionAction(banner, 'Reload', 'tc-task-selection-reload', () => {
         const stale = this.state.get('taskStack');
-        this.state.set(
-          'taskStack',
-          rebuildLegacyTaskStack(legacyTaskView(resolution.current), stale),
-        );
+        this.state.set('taskStack', rebuildTaskSelection(resolution.current, stale));
         this.clearSelectionMessage();
       });
       this.addSelectionAction(banner, 'Close', 'tc-task-selection-close', () => {
@@ -255,17 +251,17 @@ export class PanelView extends ItemView {
       const label = `${candidate.root.title} — ${candidate.root.source.filePath}:${candidate.root.source.line + 1}`;
       this.addSelectionAction(banner, label, 'tc-task-selection-candidate', () => {
         const stale = this.state.get('taskStack');
-        this.state.set('taskStack', rebuildLegacyTaskStack(legacyTaskView(candidate.root), stale));
+        this.state.set('taskStack', rebuildTaskSelection(candidate.root, stale));
         this.clearSelectionMessage();
       });
     }
   }
 
-  private acknowledgeOwnWrite(taskOrRef?: Task | SubTask | TaskRef): void {
+  private acknowledgeOwnWrite(taskOrRef?: TaskSelectionNode | TaskRef): void {
     const selected = this.state.get('taskStack')[0];
-    const selectedRef = selected ? taskRefOf(selected) : undefined;
+    const selectedRef = selected ? rootTaskRef(selected) : undefined;
     let suppliedRef: TaskRef | undefined;
-    if (taskOrRef) suppliedRef = 'revision' in taskOrRef ? taskOrRef : taskRefOf(taskOrRef);
+    if (taskOrRef) suppliedRef = 'revision' in taskOrRef ? taskOrRef : rootTaskRef(taskOrRef);
     if (suppliedRef && (!selectedRef || !this.sameRef(suppliedRef, selectedRef))) return;
     const acknowledged = suppliedRef ?? selectedRef;
     this.ownedWriteRef = acknowledged ? { ...acknowledged } : undefined;

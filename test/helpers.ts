@@ -5,7 +5,7 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import type { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import { LeftPanel } from '../src/panels/LeftPanel';
-import type { Task } from '../src/parser/types';
+import type { SubTask, Task, TaskComment } from '../src/parser/types';
 import type { ProjectManager } from '../src/projects/ProjectManager';
 import type { ProjectStore } from '../src/projects/ProjectStore';
 import { DailyNoteResolver } from '../src/resolvers/DailyNoteResolver';
@@ -13,19 +13,18 @@ import { buildDefaultTaskStatuses, DEFAULT_VIEW_CONFIG } from '../src/settings/d
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings, ResolvedConfig } from '../src/settings/types';
 import { StatusRegistry } from '../src/status/StatusRegistry';
-import type { TaskStore } from '../src/store/TaskStore';
-import { TaskStore as ConcreteTaskStore } from '../src/store/TaskStore';
 import type { TagManager } from '../src/tags/TagManager';
 import type {
   LocalDate,
+  SubtaskSnapshot,
   TaskApplicationApi,
+  TaskCommentSnapshot,
   TaskIndexEvent,
+  TaskNodeRef,
   TaskQueryApi,
   TaskSnapshot,
 } from '../src/tasks';
-import type { TaskQuery } from '../src/tasks/application/TaskApplicationApi';
 import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
-import { legacyTaskViews } from '../src/tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import { localDate } from '../src/tasks/domain/validation';
 import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
@@ -112,54 +111,17 @@ export function queryApiForTasks(
   };
 }
 
-/** Test-only access to the independently queryable index injected into the command-only store. */
-export function taskQueriesOf(store: TaskStore): TaskQueryApi {
-  const source = store as unknown as {
-    taskIndex?: TaskQueryApi;
-    taskQueries?: TaskQueryApi;
-  };
-  const queries = source.taskIndex ?? source.taskQueries;
-  if (!queries) throw new Error('Test store has no TaskQueryApi');
-  return queries;
-}
-
-interface TestTaskFilter {
-  dateRange?: { from: string; to: string };
-  status?: Array<Task['status']>;
-  filePath?: string;
-  tag?: string;
-  folder?: string;
-}
-
-/** Legacy view projection for command tests that need a mutation target from the query index. */
-export function readStoreTasks(store: TaskStore, filter?: TestTaskFilter): Task[] {
-  const query: TaskQuery | undefined = filter
-    ? {
-        ...(filter.filePath !== undefined && { filePath: filter.filePath }),
-        ...(filter.folder !== undefined && { folder: filter.folder }),
-        ...(filter.tag !== undefined && { tag: filter.tag }),
-        ...(filter.status !== undefined && { statuses: filter.status }),
-        ...(filter.dateRange !== undefined && {
-          dateRange: {
-            from: filter.dateRange.from as LocalDate,
-            to: filter.dateRange.to as LocalDate,
-          },
-        }),
-      }
-    : undefined;
-  return legacyTaskViews(taskQueriesOf(store).list(query));
-}
-
-export function emitStoreQueryEvent(store: TaskStore, event: TaskIndexEvent): void {
-  const queries = taskQueriesOf(store) as unknown as {
-    listeners: Array<(value: TaskIndexEvent) => void>;
-  };
-  for (const listener of [...queries.listeners]) listener(event);
+export interface TestTaskHarness extends TaskApplicationApi {
+  readonly taskQueries: TaskQueryApi;
+  readonly statusRegistry: StatusRegistry;
+  readonly toggleTask: ReturnType<typeof vi.fn>;
+  readonly setPriority: ReturnType<typeof vi.fn>;
+  readonly setTaskStatus: ReturnType<typeof vi.fn>;
 }
 
 export function makeCenterPanelForTest(
   state: AppState,
-  store: TaskStore,
+  taskHarness: TestTaskHarness,
   app: ObsidianApp,
   settings: CalendarSettings,
   _tagManager: TagManager,
@@ -168,22 +130,23 @@ export function makeCenterPanelForTest(
   projectManager: ProjectManager | null = null,
   tasks?: TaskApplicationApi,
 ): CenterPanel {
+  const application = tasks ?? taskHarness;
   return new CenterPanel(
     state,
-    store,
     app,
     settings,
-    taskQueriesOf(store),
+    taskHarness.queries,
+    taskHarness.statusRegistry,
     onSaveSettings,
     projectStore,
     projectManager,
-    tasks,
+    application,
   );
 }
 
 export function makeLeftPanelForTest(
   state: AppState,
-  store: TaskStore,
+  taskHarness: TestTaskHarness,
   settings: CalendarSettings,
   tagManager: TagManager,
   app: ObsidianApp,
@@ -192,23 +155,27 @@ export function makeLeftPanelForTest(
   projectManager: ProjectManager | null = null,
   tasks?: TaskApplicationApi,
 ): LeftPanel {
+  const application = tasks ?? taskHarness;
   return new LeftPanel(
     state,
-    store,
     settings,
     tagManager,
     app,
-    taskQueriesOf(store),
+    taskHarness.queries,
+    application,
     onSaveSettings,
     projectStore,
     projectManager,
-    tasks,
   );
 }
 
 /** Canonical semantic status catalog for parser/codec compatibility tests. */
 export function canonicalStatusCatalog(): StatusCatalog {
   return new StatusCatalog(toStatusRules(buildDefaultTaskStatuses()));
+}
+
+export function testStatusRegistry(): StatusRegistry {
+  return new StatusRegistry(buildDefaultTaskStatuses());
 }
 
 /** Install real moment as window.moment for date-aware tests. Idempotent; restores in afterEach. */
@@ -235,11 +202,75 @@ export function withMobile(value: boolean): void {
   });
 }
 
-/** Build a minimal Task satisfying the Task type; overrides win. */
-export function task(overrides: Partial<Task> = {}): Task {
-  const text = overrides.text ?? 't';
-  const rawText = overrides.rawText ?? '- [ ] t';
+export type TaskFixture = Task & TaskSnapshot;
+export type SubtaskFixture = SubTask & SubtaskSnapshot;
+export type TaskCommentFixture = TaskComment & TaskCommentSnapshot;
+
+function commentFixture(
+  comment: TaskComment | TaskCommentSnapshot,
+  parent: TaskNodeRef,
+  parentLine: number,
+): TaskCommentFixture {
+  if ('ref' in comment && !('line' in comment)) return comment as TaskCommentFixture;
+  const legacy = comment as TaskComment;
   return {
+    ...legacy,
+    ref: {
+      parent,
+      relativeLine: legacy.line - parentLine,
+      originalMarkdown: legacy.text,
+    },
+    ...(legacy.date && { date: legacy.date as LocalDate }),
+  } as TaskCommentFixture;
+}
+
+function subtaskFixture(
+  subtask: SubTask | SubtaskSnapshot,
+  parent: TaskNodeRef,
+  parentLine: number,
+): SubtaskFixture {
+  if ('ref' in subtask && !('filePath' in subtask)) return subtask as SubtaskFixture;
+  const legacy = subtask as SubTask & { readonly ref?: SubtaskSnapshot['ref'] };
+  const ref = legacy.ref
+    ? legacy.ref
+    : {
+        parent,
+        relativeLine: legacy.line - parentLine,
+        originalBlock: legacy.rawText,
+      };
+  const nodeRef: TaskNodeRef = { type: 'subtask', ref };
+  const subtasks = (legacy.subtasks ?? []).map((child) =>
+    subtaskFixture(child, nodeRef, legacy.line),
+  );
+  const comments = (legacy.comments ?? []).map((comment) =>
+    commentFixture(comment, nodeRef, legacy.line),
+  );
+  return {
+    ...legacy,
+    ref,
+    title: legacy.text,
+    markdownTitle: legacy.markdownText,
+    planning: {
+      ...(legacy.due && { due: legacy.due as LocalDate }),
+      ...(legacy.scheduled && { scheduled: legacy.scheduled as LocalDate }),
+      ...(legacy.start && { start: legacy.start as LocalDate }),
+      ...(legacy.time && { time: legacy.time as SubtaskSnapshot['planning']['time'] }),
+    },
+    tags: legacy.tags ?? [],
+    subtasks,
+    comments,
+  } as SubtaskFixture;
+}
+
+/** Build one detached snapshot with legacy fixture fields for still-unmigrated parser tests. */
+export function task(
+  overrides: Partial<Task> | Partial<TaskSnapshot> | Record<string, unknown> = {},
+): TaskFixture {
+  const legacyOverrides = overrides as Partial<Task>;
+  const snapshotOverrides = overrides as Partial<TaskSnapshot>;
+  const text = legacyOverrides.text ?? snapshotOverrides.title ?? 't';
+  const rawText = legacyOverrides.rawText ?? '- [ ] t';
+  const legacy: Task = {
     filePath: 'f.md',
     line: 0,
     rawText,
@@ -249,8 +280,23 @@ export function task(overrides: Partial<Task> = {}): Task {
     status: 'open',
     statusSymbol: ' ',
     priority: 'D',
-    ...overrides,
+    ...legacyOverrides,
   };
+  const snapshot = taskSnapshotOf(legacy);
+  const rootRef: TaskNodeRef = { type: 'task', ref: snapshot.ref };
+  const subtasks = (legacy.subtasks ?? []).map((subtask) =>
+    subtaskFixture(subtask, rootRef, legacy.line),
+  );
+  const comments = (legacy.comments ?? []).map((comment) =>
+    commentFixture(comment, rootRef, legacy.line),
+  );
+  return {
+    ...legacy,
+    ...snapshot,
+    ...snapshotOverrides,
+    subtasks: subtasks as TaskFixture['subtasks'],
+    comments: comments as TaskFixture['comments'],
+  } as TaskFixture;
 }
 
 /** Create a fresh App with pre-populated files and flushed async metadata parsing. */
@@ -284,7 +330,7 @@ export function seedTaskCache(
     listItems: items.map((i) => ({
       task: i.task,
       parent: i.parent,
-      // Only `start.line` is read by TaskStore; col/offset included for shape completeness.
+      // Only `start.line` is read by the task index; col/offset complete the cache shape.
       position: {
         start: { line: i.line, col: 0, offset: 0 },
         end: { line: i.line, col: 80, offset: 80 },
@@ -298,9 +344,9 @@ export function seedTaskCache(
 }
 
 /**
- * Capture the `changed` callback TaskStore registers on metadataCache, so tests can invoke it
+ * Capture the `changed` callback the task index registers on metadataCache, so tests can invoke it
  * directly with a crafted (TFile, content, CachedMetadata). Needed because setCache__ fires
- * `changed` with zero args (which would crash the handler). Call BEFORE new TaskStore().initialize()
+ * `changed` with zero args (which would crash the handler). Call before index initialization
  * so registerEvents's metadataCache.on('changed', cb) is captured.
  */
 export function captureChangedCallback(
@@ -396,31 +442,36 @@ export function freshContainer(): HTMLElement {
 }
 
 /**
- * Minimal command-only TaskStore stub paired with a detached TaskQueryApi.
+ * Minimal task-application harness paired with a detached TaskQueryApi.
  *
  * Command methods are inert spies; mutation integrations inject TaskApplicationApi separately.
  */
-export function makeStubStore(
-  tasks: Task[],
-  _app?: ObsidianApp,
-): TaskStore & { taskQueries: TaskQueryApi } {
+export function makeStubStore(tasks: Task[], _app?: ObsidianApp): TestTaskHarness {
   const registry = new StatusRegistry(buildDefaultTaskStatuses());
-  const store = {
+  const queries = queryApiForTasks(() => tasks);
+  return {
     statusRegistry: registry,
+    queries,
+    taskQueries: queries,
+    execute: vi.fn().mockResolvedValue({
+      type: 'invalid',
+      issues: [{ code: 'invalid-target' }],
+    }),
     toggleTask: vi.fn().mockResolvedValue(undefined),
     setPriority: vi.fn().mockResolvedValue(undefined),
     setTaskStatus: vi.fn().mockResolvedValue(undefined),
   };
-  return {
-    ...store,
-    taskQueries: queryApiForTasks(() => tasks),
-  } as unknown as TaskStore & { taskQueries: TaskQueryApi };
 }
 
-export function configuredTaskStore(
+export function configuredTaskApplication(
   app: ObsidianApp,
   settings: CalendarSettings,
-): ConcreteTaskStore {
+): {
+  readonly index: TaskIndex;
+  readonly tasks: TaskApplicationApi;
+  readonly statusCatalog: StatusCatalog;
+  readonly statusRegistry: StatusRegistry;
+} {
   const statusCatalog = new StatusCatalog(toStatusRules(settings.taskStatuses));
   const index = new TaskIndex(app, {
     statusCatalog,
@@ -442,7 +493,12 @@ export function configuredTaskStore(
     { today: () => localDate(moment().format('YYYY-MM-DD')) },
     new ObsidianTaskDestinationProvider(app, settings, new DailyNoteResolver(app, settings)),
   );
-  return new ConcreteTaskStore(app, settings, index, tasks, statusCatalog);
+  return {
+    index,
+    tasks,
+    statusCatalog,
+    statusRegistry: new StatusRegistry(settings.taskStatuses),
+  };
 }
 
 /**

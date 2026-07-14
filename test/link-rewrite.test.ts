@@ -3,11 +3,17 @@ import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import { RightPanel } from '../src/panels/RightPanel';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
-import type { TaskStore } from '../src/store/TaskStore';
+import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TaskApplicationApi } from '../src/tasks';
 import type { TaskRef, TaskSnapshot } from '../src/tasks/domain/types';
 import { LinkEditModal } from '../src/ui/LinkEditModal';
-import { createAppWithFiles, makeStubStore, task, useRealMoment } from './helpers';
+import {
+  createAppWithFiles,
+  makeStubStore,
+  task,
+  testStatusRegistry,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -48,7 +54,14 @@ describe('task link rewrite delegation', () => {
     const app = await createAppWithFiles({ 't.md': '- [ ] [[Old]]\n' });
     const ref: TaskRef = { filePath: 't.md', line: 0, revision: 'root' };
     const { tasks, execute } = taskApi(ref);
-    const panel = new RightPanel(new AppState(), app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      new AppState(),
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const current = Object.assign(task({ filePath: 't.md', markdownText: '[[Old]]' }), { ref });
     saveImmediately('[[Changed]]');
 
@@ -74,13 +87,13 @@ describe('task link rewrite delegation', () => {
     const ref: TaskRef = { filePath: 't.md', line: 0, revision: 'root' };
     const { tasks, execute } = taskApi(ref);
     const state = new AppState();
-    const store = makeStubStore([], app) as unknown as TaskStore;
+    const store = makeStubStore([], app);
     const panel = new CenterPanel(
       state,
-      store,
       app,
       DEFAULT_SETTINGS,
       tasks.queries,
+      new StatusRegistry(DEFAULT_SETTINGS.taskStatuses),
       undefined,
       null,
       null,
@@ -115,7 +128,14 @@ describe('task link rewrite delegation', () => {
       originalMarkdown: '  - 2026-07-14: [[Old]]',
     };
     const { tasks, execute } = taskApi(ref);
-    const panel = new RightPanel(new AppState(), app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      new AppState(),
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const token = {
       raw: '[[Old]]',
       type: 'wiki' as const,
@@ -186,11 +206,18 @@ describe('task link rewrite delegation', () => {
       Object.assign(task({ filePath: 't.md', text: 'Old' }), { ref: staleRef }),
     ]);
     const acknowledged = vi.fn();
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, acknowledged, tasks);
+    const panel = new RightPanel(
+      state,
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      acknowledged,
+      tasks,
+    );
 
     await call<Promise<void>>(panel, 'updateTaskTitle', state.get('taskStack')[0]!, 'New');
 
-    expect(state.get('taskStack')[0]).toMatchObject({ ref: freshRef, markdownText: 'New' });
+    expect(state.get('taskStack')[0]).toMatchObject({ ref: freshRef, markdownTitle: 'New' });
     expect(acknowledged).toHaveBeenCalledWith(freshRef);
   });
 });

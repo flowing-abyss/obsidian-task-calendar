@@ -56,6 +56,24 @@ describe('StatusRegistry', () => {
     expect(r.orderIndex('X')).toBe(r.orderIndex('x'));
     expect(r.orderIndex('X')).toBeLessThan(r.orderIndex('@'));
   });
+
+  it('rebuilds one live presentation registry after status settings change', () => {
+    const r = reg();
+    const defs = buildDefaultTaskStatuses();
+    defs.push({
+      id: 'waiting',
+      symbol: '?',
+      name: 'Waiting',
+      type: 'todo',
+      icon: 'pause',
+      core: false,
+    });
+
+    r.replace(defs);
+
+    expect(r.bySymbol('?')?.name).toBe('Waiting');
+    expect(r.all()).toHaveLength(5);
+  });
 });
 
 describe('toStatusRules', () => {

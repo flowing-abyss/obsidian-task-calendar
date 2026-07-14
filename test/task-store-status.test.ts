@@ -2,7 +2,6 @@ import { TFile } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
-import { TaskStore } from '../src/store/TaskStore';
 import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
 import type { TaskRepository } from '../src/tasks/application/TaskRepository';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
@@ -166,16 +165,17 @@ async function liveCatalogHarness(mutableType: 'in-progress' | 'done' = 'in-prog
     liveCatalog,
     clock,
   );
-  const store = new TaskStore(app, settings, index, application, liveCatalog);
   const rebuildAsDone = () => {
     settings.taskStatuses = settings.taskStatuses.map((status) =>
       status.symbol === 'w' ? { ...status, type: 'done' as const } : status,
     );
-    store.rebuildStatusRegistry();
+    liveCatalog.replace(toStatusRules(settings.taskStatuses));
+    index.setStatusCatalog(liveCatalog);
   };
   const rebuildWithoutMutable = () => {
     settings.taskStatuses = settings.taskStatuses.filter((status) => status.symbol !== 'w');
-    store.rebuildStatusRegistry();
+    liveCatalog.replace(toStatusRules(settings.taskStatuses));
+    index.setStatusCatalog(liveCatalog);
   };
   return {
     application,

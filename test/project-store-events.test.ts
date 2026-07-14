@@ -146,6 +146,7 @@ describe('ProjectStore event convergence', () => {
         h.setFiles([h.file, renamed]);
         h.vault('rename', renamed, empty.path);
       }
+      vi.advanceTimersByTime(150);
       expect(listener).toHaveBeenCalledOnce();
       listener.mockClear();
 
@@ -228,6 +229,8 @@ describe('ProjectStore event convergence', () => {
         h.vault('rename', renamed, oldProject.path);
       }
 
+      expect(listener).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(150);
       expect(store.get('Projects/A.md')?.stats.done).toBe(0);
       if (event === 'create') expect(store.get('Projects/B.md')).toBeDefined();
       else expect(store.get('Projects/B.md')).toBeUndefined();

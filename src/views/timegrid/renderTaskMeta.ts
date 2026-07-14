@@ -1,12 +1,12 @@
 import { setIcon } from 'obsidian';
-import type { Task } from '../../parser/types';
 import type { TagGroup } from '../../settings/types';
 import { colorForTag } from '../../tags/tagColor';
+import type { TaskSnapshot } from '../../tasks';
 
 /** Reads up to `max` canonical semantic tags from the task index projection. */
-export function extractTags(task: Task, max = Infinity): string[] {
+export function extractTags(task: TaskSnapshot, max = Infinity): string[] {
   const tags = task.tags ?? [];
-  return max === Infinity ? tags : tags.slice(0, max);
+  return max === Infinity ? [...tags] : tags.slice(0, max);
 }
 
 /**
@@ -16,10 +16,10 @@ export function extractTags(task: Task, max = Infinity): string[] {
  * carry no click handlers in CenterPanel either, so no drag/pointerdown guard is needed
  * here (unlike tag chips below, which CenterPanel makes interactive — see renderTagChips).
  */
-export function renderCountBadges(container: HTMLElement, task: Task): void {
+export function renderCountBadges(container: HTMLElement, task: TaskSnapshot): void {
   const subtaskCount = task.subtasks?.length ?? 0;
   const commentCount = task.comments?.length ?? 0;
-  const linkCount = task.linkCount ?? 0;
+  const linkCount = task.presentation.linkCount ?? 0;
 
   if (subtaskCount > 0) {
     const doneCount = task.subtasks?.filter((s) => s.status === 'done').length ?? 0;
@@ -51,7 +51,7 @@ export function renderCountBadges(container: HTMLElement, task: Task): void {
  */
 export function renderTagChips(
   container: HTMLElement,
-  task: Task,
+  task: TaskSnapshot,
   tagGroups: TagGroup[],
   max = 3,
 ): void {
@@ -67,11 +67,11 @@ export function renderTagChips(
 }
 
 /** True if the task has anything for renderCountBadges/renderTagChips to show. */
-export function hasMeta(task: Task): boolean {
+export function hasMeta(task: TaskSnapshot): boolean {
   return (
     (task.subtasks?.length ?? 0) > 0 ||
     (task.comments?.length ?? 0) > 0 ||
-    (task.linkCount ?? 0) > 0 ||
+    (task.presentation.linkCount ?? 0) > 0 ||
     extractTags(task, 1).length > 0
   );
 }
@@ -84,10 +84,10 @@ export function hasMeta(task: Task): boolean {
  * would keep reserving/showing an (now chip-less) badges container for a tag-only task that has
  * no counts to show.
  */
-export function hasCountBadges(task: Task): boolean {
+export function hasCountBadges(task: TaskSnapshot): boolean {
   return (
     (task.subtasks?.length ?? 0) > 0 ||
     (task.comments?.length ?? 0) > 0 ||
-    (task.linkCount ?? 0) > 0
+    (task.presentation.linkCount ?? 0) > 0
   );
 }

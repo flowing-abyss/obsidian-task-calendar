@@ -1,7 +1,7 @@
 import { TFile } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { openInFile } from '../src/ui/taskNavigation';
-import { createAppWithFiles } from './helpers';
+import { createAppWithFiles, task } from './helpers';
 
 describe('openInFile', () => {
   it('opens file and sets cursor to task line', async () => {
@@ -13,8 +13,8 @@ describe('openInFile', () => {
     };
     vi.spyOn(app.workspace, 'getLeaf').mockReturnValue(leaf as never);
 
-    const task = { filePath: 'note.md', line: 1 };
-    await openInFile(app, task);
+    const selected = task({ filePath: 'note.md', line: 1 });
+    await openInFile(app, selected);
 
     expect(leaf.openFile).toHaveBeenCalledWith(expect.any(TFile));
     expect(setCursor).toHaveBeenCalledWith({ line: 1, ch: 0 });
@@ -23,7 +23,7 @@ describe('openInFile', () => {
   it('does nothing when filePath is not a TFile', async () => {
     const app = await createAppWithFiles({});
     const getLeaf = vi.spyOn(app.workspace, 'getLeaf');
-    await openInFile(app, { filePath: 'missing.md', line: 0 });
+    await openInFile(app, task({ filePath: 'missing.md', line: 0 }));
     expect(getLeaf).not.toHaveBeenCalled();
   });
 });

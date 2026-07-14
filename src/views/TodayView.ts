@@ -1,7 +1,7 @@
 import { Component, type App } from 'obsidian';
-import type { Task } from '../parser/types';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskSnapshot } from '../tasks';
 import type { TaskPriority } from '../tasks/domain/types';
 import { BaseView } from './BaseView';
 import { renderHourGrid, repositionNowLine } from './timegrid/HourGrid';
@@ -16,7 +16,7 @@ import {
 
 export interface TimeGridCallbacks {
   app: App;
-  onTaskClick: (task: Task) => void;
+  onTaskClick: (task: TaskSnapshot) => void;
   onDrop: (dragData: string, targetDate: string) => void;
   onDropTime: (dragData: string, date: string, time: string) => void;
   onCreateAtTime: (date: string, time: string) => void;
@@ -27,14 +27,14 @@ export interface TimeGridCallbacks {
   /** Header-cell click (Week's day headers): drills into the Day view for that date, same as
    * Month's onDayClick. Optional since TodayView itself has no need to re-drill into itself. */
   onDayHeaderClick?: (date: string) => void;
-  onTimeChange: (task: Task, newStartMinutes: number) => void;
-  onDurationChange: (task: Task, newDurationMinutes: number) => void;
-  onStartChange: (task: Task, newStart: string) => void;
-  onDueChange: (task: Task, newDue: string) => void;
-  onExtendToSpan: (task: Task, newDue: string) => void;
-  onToggle: (task: Task) => void;
-  onSetStatus: (task: Task, status: string) => void;
-  onSetPriority: (task: Task, priority: TaskPriority) => void;
+  onTimeChange: (task: TaskSnapshot, newStartMinutes: number) => void;
+  onDurationChange: (task: TaskSnapshot, newDurationMinutes: number) => void;
+  onStartChange: (task: TaskSnapshot, newStart: string) => void;
+  onDueChange: (task: TaskSnapshot, newDue: string) => void;
+  onExtendToSpan: (task: TaskSnapshot, newDue: string) => void;
+  onToggle: (task: TaskSnapshot) => void;
+  onSetStatus: (task: TaskSnapshot, status: string) => void;
+  onSetPriority: (task: TaskSnapshot, priority: TaskPriority) => void;
   statusRegistry: StatusRegistry;
   tagGroups?: TagGroup[];
 }
@@ -51,16 +51,22 @@ export interface TimeGridCallbacks {
  * `renderTimedSpanContinuation` and MonthGridView's `timedSpans` handling.
  */
 export function bucketTasksForDate(
-  tasks: Task[],
+  tasks: TaskSnapshot[],
   date: string,
-): { timed: Task[]; spans: Task[]; timedSpans: Task[]; plain: Task[]; deadlines: Task[] } {
-  const timed: Task[] = [];
-  const spans: Task[] = [];
-  const timedSpans: Task[] = [];
-  const plain: Task[] = [];
-  const deadlines: Task[] = [];
+): {
+  timed: TaskSnapshot[];
+  spans: TaskSnapshot[];
+  timedSpans: TaskSnapshot[];
+  plain: TaskSnapshot[];
+  deadlines: TaskSnapshot[];
+} {
+  const timed: TaskSnapshot[] = [];
+  const spans: TaskSnapshot[] = [];
+  const timedSpans: TaskSnapshot[] = [];
+  const plain: TaskSnapshot[] = [];
+  const deadlines: TaskSnapshot[] = [];
   // Identity convention for task de-duplication (matches drag-payload identity used elsewhere,
-  // e.g. MonthView.ts's `${task.filePath}:::${task.line}`).
+  // e.g. MonthView.ts's `${task.source.filePath}:::${task.source.line}`).
   const spanIdentities = new Set<string>();
 
   for (const t of tasks) {
@@ -70,23 +76,23 @@ export function bucketTasksForDate(
     // "hide done tasks" feature (if any) lives elsewhere in the plugin and is out of scope here.
 
     // Multi-day span: anchored on every day from start to due
-    if (t.start && t.due) {
-      const inRange = window.moment(date).isBetween(t.start, t.due, 'day', '[]');
+    if (t.planning.start && t.planning.due) {
+      const inRange = window.moment(date).isBetween(t.planning.start, t.planning.due, 'day', '[]');
       if (inRange) {
-        if (t.time) {
+        if (t.planning.time) {
           timedSpans.push(t);
         } else {
           spans.push(t);
         }
-        spanIdentities.add(`${t.filePath}:::${t.line}`);
+        spanIdentities.add(`${t.source.filePath}:::${t.source.line}`);
       }
       continue;
     }
 
-    const anchor = t.scheduled ?? t.due;
-    if (anchor !== date) continue;
+    const anchor = t.planning.scheduled ?? t.planning.due;
+    if (String(anchor) !== date) continue;
 
-    if (t.time) {
+    if (t.planning.time) {
       timed.push(t);
     } else {
       plain.push(t);
@@ -98,8 +104,13 @@ export function bucketTasksForDate(
   // Spans take priority: a task already rendered as a span (its due edge communicates the
   // deadline structurally) never also gets a separate deadline marker for the same date.
   for (const t of tasks) {
-    if (spanIdentities.has(`${t.filePath}:::${t.line}`)) continue;
-    if (t.due === date && t.scheduled && t.scheduled !== t.due) deadlines.push(t);
+    if (spanIdentities.has(`${t.source.filePath}:::${t.source.line}`)) continue;
+    if (
+      String(t.planning.due) === date &&
+      t.planning.scheduled &&
+      t.planning.scheduled !== t.planning.due
+    )
+      deadlines.push(t);
   }
 
   return { timed, spans, timedSpans, plain, deadlines };
@@ -119,7 +130,7 @@ export class TodayView extends BaseView {
 
   render(
     container: HTMLElement,
-    tasks: Task[],
+    tasks: TaskSnapshot[],
     config: ResolvedConfig,
     shouldScrollToNow = true,
     preservedScrollTop?: number,
@@ -152,8 +163,8 @@ export class TodayView extends BaseView {
     // day (the due-centric anchor, matching `spans`' existing left/right-edge convention) —
     // every other day it covers gets the lighter, non-interactive continuation segment instead,
     // so the same task never shows two full interactive blocks at once.
-    const anchoredTimedSpans = timedSpans.filter((t) => t.due === date);
-    const continuationTimedSpans = timedSpans.filter((t) => t.due !== date);
+    const anchoredTimedSpans = timedSpans.filter((t) => String(t.planning.due) === date);
+    const continuationTimedSpans = timedSpans.filter((t) => String(t.planning.due) !== date);
 
     const timedCallbacks: TimedBlockCallbacks = {
       app: this.callbacks.app,

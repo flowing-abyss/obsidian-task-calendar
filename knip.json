@@ -1,5 +1,10 @@
 {
   "entry": ["src/main.ts"],
   "project": ["src/**/*.ts"],
+  "ignore": [
+    "src/store/TaskDateIndex.ts",
+    "src/store/TaskStore.ts",
+    "src/tasks/compat/legacyTaskView.ts"
+  ],
   "ignoreDependencies": ["moment"]
 }

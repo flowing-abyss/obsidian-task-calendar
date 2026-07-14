@@ -5,14 +5,19 @@ import type { TaskStatus, TaskStatusType } from '../tasks/domain/types';
 import { TYPE_ORDER } from './statusConstants';
 
 export class StatusRegistry {
-  private readonly defs: TaskStatusDef[];
-  private readonly catalog: StatusCatalog;
-  private readonly byIdMap: Map<string, TaskStatusDef>;
-  private readonly orderByIdMap: Map<string, number>;
+  private defs: TaskStatusDef[] = [];
+  private catalog: StatusCatalog;
+  private byIdMap = new Map<string, TaskStatusDef>();
+  private orderByIdMap = new Map<string, number>();
 
   constructor(defs: TaskStatusDef[]) {
-    this.defs = defs;
     this.catalog = new StatusCatalog(toStatusRules(defs));
+    this.replace(defs);
+  }
+
+  replace(defs: TaskStatusDef[]): void {
+    this.defs = defs;
+    this.catalog.replace(toStatusRules(defs));
     this.byIdMap = new Map();
     this.orderByIdMap = new Map();
     defs.forEach((d, i) => {

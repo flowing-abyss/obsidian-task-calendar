@@ -1,24 +1,24 @@
 import { Component, type App } from 'obsidian';
 import { weekStartOffset } from '../domain/weekGridOffset';
 import type { LinkToken } from '../parser/links';
-import type { Task } from '../parser/types';
 import type { ResolvedConfig } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
+import type { TaskSnapshot } from '../tasks';
 import { createTaskCard } from '../ui/TaskCard';
 import { BaseView } from './BaseView';
 import { getTasksForDate, renderTaskGroup } from './taskGrouping';
 
 export interface MonthViewCallbacks {
   app: App;
-  onToggle: (task: Task) => void;
+  onToggle: (task: TaskSnapshot) => void;
   onCellClick: (date: string) => void;
   onWeekClick: (weekNr: string, year: string) => void;
-  onTaskClick: (task: Task) => void;
+  onTaskClick: (task: TaskSnapshot) => void;
   onDrop: (dragData: string, targetDate: string) => void;
-  onOpenNote: (task: Task) => void;
-  onEditLink?: (task: Task, occurrenceIndex: number, token: LinkToken) => void;
+  onOpenNote: (task: TaskSnapshot) => void;
+  onEditLink?: (task: TaskSnapshot, occurrenceIndex: number, token: LinkToken) => void;
   statusRegistry: StatusRegistry;
-  onContextMenu: (ev: MouseEvent, task: Task) => void;
+  onContextMenu: (ev: MouseEvent, task: TaskSnapshot) => void;
 }
 
 export class MonthView extends BaseView {
@@ -29,7 +29,7 @@ export class MonthView extends BaseView {
     super();
   }
 
-  render(container: HTMLElement, tasks: Task[], config: ResolvedConfig): void {
+  render(container: HTMLElement, tasks: TaskSnapshot[], config: ResolvedConfig): void {
     this.md.unload();
     this.md = new Component();
     this.md.load();
@@ -135,7 +135,7 @@ export class MonthView extends BaseView {
 
   private renderTasksForDate(
     container: HTMLElement,
-    tasks: Task[],
+    tasks: TaskSnapshot[],
     date: string,
     today: string,
   ): void {
@@ -155,7 +155,7 @@ export class MonthView extends BaseView {
       // Drag source
       card.setAttribute('draggable', 'true');
       card.addEventListener('dragstart', (e) => {
-        e.dataTransfer?.setData('text/plain', `${task.filePath}:::${task.line}`);
+        e.dataTransfer?.setData('text/plain', `${task.source.filePath}:::${task.source.line}`);
         if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
         card.addClass('is-dragging');
       });

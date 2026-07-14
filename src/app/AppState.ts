@@ -1,6 +1,7 @@
-import type { SubTask, Task } from '../parser/types';
 import { getListViewDefaults } from '../settings/defaults';
 import type { ListViewState } from '../settings/types';
+import type { TaskSnapshot } from '../tasks';
+import type { TaskSelectionNode } from '../ui/taskSelection';
 
 export type ViewMode = 'tasks' | 'calendar' | 'search' | 'projects';
 
@@ -17,10 +18,10 @@ type ProjectsPanelState = { view: 'list' } | { view: 'dashboard'; path: string }
 export interface AppStateData {
   mode: ViewMode;
   selectedList: ListSelection;
-  taskStack: Array<Task | SubTask>;
+  taskStack: TaskSelectionNode[];
   centerFilter: string;
   searchQuery: string;
-  draggingTask: Task | null;
+  draggingTask: TaskSnapshot | null;
   draggingTag: string | null;
   draggingProject: string | null;
   centerListViewState: ListViewState;

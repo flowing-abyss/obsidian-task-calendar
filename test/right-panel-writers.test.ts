@@ -4,13 +4,17 @@ import { TFile, type App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
-import type { SubTask, Task, TaskComment } from '../src/parser/types';
+import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
-import type { TaskApplicationApi, TaskCommandResult, TaskSnapshot } from '../src/tasks';
+import type {
+  SubtaskSnapshot,
+  TaskApplicationApi,
+  TaskCommandResult,
+  TaskSnapshot,
+} from '../src/tasks';
 import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
-import { legacyTaskViews } from '../src/tasks/compat/legacyTaskView';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskRef } from '../src/tasks/domain/types';
 import { TaskIndex } from '../src/tasks/infrastructure/TaskIndex';
@@ -19,7 +23,15 @@ import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
 import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 import { openInFile } from '../src/ui/taskNavigation';
-import { createAppWithFiles, freshContainer, seedTaskCache, task, useRealMoment } from './helpers';
+import { taskNodeLine } from '../src/ui/taskSelection';
+import {
+  createAppWithFiles,
+  freshContainer,
+  seedTaskCache,
+  task,
+  testStatusRegistry,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 
@@ -51,37 +63,38 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
       method === 'deleteComment' ||
       method === 'deleteTask') &&
     typeof candidate === 'object' &&
-    candidate !== null &&
-    !('ref' in candidate)
+    candidate !== null
   ) {
-    const legacy = legacyTaskViews(
-      (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list(),
-    );
-    const queue: Array<Task | SubTask> = [...legacy];
-    let found: Task | SubTask | undefined;
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      if (
-        current.filePath === (candidate as SubTask).filePath &&
-        current.line === (candidate as SubTask).line
-      ) {
-        found = current;
-        break;
+    const roots = (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list();
+    let found: TaskSnapshot | SubtaskSnapshot | undefined;
+    let foundRoot: TaskSnapshot | undefined;
+    for (const root of roots) {
+      const queue: Array<TaskSnapshot | SubtaskSnapshot> = [root];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (
+          root.source.filePath === (candidate as SubTask).filePath &&
+          taskNodeLine(root, current) === (candidate as SubTask).line
+        ) {
+          found = current;
+          foundRoot = root;
+          break;
+        }
+        queue.push(...current.subtasks);
       }
-      queue.push(...(current.subtasks ?? []));
+      if (found) break;
     }
-    if (found && 'ref' in found) {
+    if (found && foundRoot) {
       Object.assign(candidate, { ref: found.ref });
       if ((method === 'updateComment' || method === 'deleteComment') && args[1]) {
         const staleComment = args[1] as TaskComment;
-        const currentComment = found.comments?.find(
-          (comment) => comment.line === staleComment.line && comment.text === staleComment.text,
+        const parentLine = taskNodeLine(foundRoot, found);
+        const currentComment = found.comments.find(
+          (comment) =>
+            parentLine + comment.ref.relativeLine === staleComment.line &&
+            comment.text === staleComment.text,
         );
-        if (currentComment && 'ref' in currentComment) {
-          Object.assign(staleComment, {
-            ref: (currentComment as TaskComment & { ref: unknown }).ref,
-          });
-        }
+        if (currentComment) Object.assign(staleComment, { ref: currentComment.ref });
       }
     }
   }
@@ -91,7 +104,7 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
 
 /**
  * Wire up a real RightPanel + real AppState with seeded files and task cache.
- * RightPanel does not use TaskStore for writers, only `app` + `state` + `settings`.
+ * RightPanel writers use only the final task application contract plus view state.
  */
 async function makePanel(
   files: Record<string, string>,
@@ -119,7 +132,14 @@ async function makePanel(
     { today: () => '2026-07-14' as never },
   );
   await index.initialize();
-  const panel = new RightPanel(state, app, settings, onSuccessfulMutation, tasks);
+  const panel = new RightPanel(
+    state,
+    app,
+    testStatusRegistry(),
+    settings,
+    onSuccessfulMutation,
+    tasks,
+  );
   return { panel, state, app };
 }
 
@@ -180,7 +200,7 @@ describe('RightPanel.getTagColor', () => {
   it('no settings → undefined', async () => {
     const app = await createAppWithFiles({ 't.md': '- [ ] x' });
     const state = new AppState();
-    const panel = new RightPanel(state, app, undefined);
+    const panel = new RightPanel(state, app, testStatusRegistry(), undefined);
     expect(call<string | undefined>(panel, 'getTagColor', '#anything')).toBeUndefined();
   });
 });
@@ -203,7 +223,14 @@ describe('RightPanel planning API delegation', () => {
       },
       execute,
     };
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      state,
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const current = Object.assign(task({ filePath: 't.md', line: 0 }), { ref });
     const process = vi.spyOn(app.vault, 'process');
 
@@ -254,7 +281,14 @@ describe('RightPanel planning API delegation', () => {
       },
       execute,
     };
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      state,
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const current = Object.assign(
       task({ filePath: 't.md', line: 0, due: undefined, scheduled: '2026-07-20' }),
       { ref },
@@ -311,7 +345,14 @@ describe('RightPanel planning API delegation', () => {
       },
       execute,
     };
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      state,
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
     const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
     const process = vi.spyOn(app.vault, 'process');
@@ -414,7 +455,14 @@ describe('RightPanel planning API delegation', () => {
       },
       execute,
     };
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      state,
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const legacyRoot = Object.assign(task({ filePath: 't.md', line: 0, text: 'root' }), {
       ref: rootRef,
     });
@@ -426,7 +474,10 @@ describe('RightPanel planning API delegation', () => {
     await call(panel, 'updateDue', legacyChild, '2026-07-20');
 
     expect(state.get('taskStack')).toHaveLength(2);
-    expect(state.get('taskStack')[1]).toMatchObject({ due: '2026-07-20', ref: freshChildRef });
+    expect(state.get('taskStack')[1]).toMatchObject({
+      planning: { due: '2026-07-20' },
+      ref: freshChildRef,
+    });
   });
 
   it.each(['root', 'child'] as const)(
@@ -460,7 +511,14 @@ describe('RightPanel planning API delegation', () => {
         },
         execute,
       };
-      const panel = new RightPanel(state, app, DEFAULT_SETTINGS, acknowledge, tasks);
+      const panel = new RightPanel(
+        state,
+        app,
+        testStatusRegistry(),
+        DEFAULT_SETTINGS,
+        acknowledge,
+        tasks,
+      );
       const legacyRoot = Object.assign(task({ filePath: 'a.md', line: 0, text: 'A' }), {
         ref: rootRef,
       });
@@ -549,7 +607,7 @@ describe('RightPanel.formatDate', () => {
   function makePanelNoVault(): RightPanel {
     const state = new AppState();
     const app = { vault: { getAbstractFileByPath: () => null } } as unknown as App;
-    return new RightPanel(state, app, DEFAULT_SETTINGS);
+    return new RightPanel(state, app, testStatusRegistry(), DEFAULT_SETTINGS);
   }
 
   it('today → "Today"', () => {
@@ -591,7 +649,14 @@ describe('RightPanel.updateTaskTitle', () => {
       },
       execute,
     };
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      state,
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
     const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
     const process = vi.spyOn(app.vault, 'process');
@@ -631,9 +696,7 @@ describe('RightPanel.updateTaskTitle', () => {
       await gate;
       return originalProcess(file, transform);
     });
-    const first = legacyTaskViews(
-      (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list(),
-    )[0]!;
+    const first = (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list()[0]!;
     const second = Object.assign(task({ filePath: 'other.md', line: 0 }), {
       ref: { filePath: 'other.md', line: 0, revision: 'second' },
     });
@@ -911,16 +974,7 @@ describe('RightPanel.toggleSubTask', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '  - [ ] sub' });
-    const sub: SubTask = {
-      filePath: 'missing.md',
-      line: 0,
-      rawText: '  - [ ] sub',
-      text: 'sub',
-      markdownText: 'sub',
-      status: 'open',
-      statusSymbol: ' ',
-      priority: 'D',
-    };
+    const sub = task({ filePath: 'missing.md', rawText: '  - [ ] sub', text: 'sub' });
     await expect(call<Promise<void>>(panel, 'toggleSubTask', sub)).resolves.toBeUndefined();
   });
 });
@@ -1224,7 +1278,14 @@ describe('RightPanel.removeTag', () => {
       },
       execute,
     };
-    const panel = new RightPanel(state, app, DEFAULT_SETTINGS, undefined, tasks);
+    const panel = new RightPanel(
+      state,
+      app,
+      testStatusRegistry(),
+      DEFAULT_SETTINGS,
+      undefined,
+      tasks,
+    );
     const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
     const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
     const process = vi.spyOn(app.vault, 'process');

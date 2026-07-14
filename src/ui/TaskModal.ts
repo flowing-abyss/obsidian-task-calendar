@@ -1,11 +1,17 @@
 import type { App } from 'obsidian';
 import { AppState } from '../app/AppState';
 import { RightPanel } from '../panels/RightPanel';
-import type { SubTask, Task } from '../parser/types';
 import type { CalendarSettings } from '../settings/types';
-import type { TaskApplicationApi, TaskIndexEvent, TaskQueryApi, TaskResolution } from '../tasks';
-import { legacyTaskView, rebuildLegacyTaskStack, taskRefOf } from '../tasks/compat/legacyTaskView';
-import type { TaskRef } from '../tasks/domain/types';
+import type { StatusRegistry } from '../status/StatusRegistry';
+import type {
+  TaskApplicationApi,
+  TaskIndexEvent,
+  TaskQueryApi,
+  TaskRef,
+  TaskResolution,
+  TaskSnapshot,
+} from '../tasks';
+import { rebuildTaskSelection, rootTaskRef, type TaskSelectionNode } from './taskSelection';
 
 export class TaskModal {
   private backdropEl: HTMLElement | null = null;
@@ -14,19 +20,19 @@ export class TaskModal {
   private innerPanel: RightPanel | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
   private ownerDoc: Document | null = null;
-  private storeUnsub: (() => void) | null = null;
+  private queryUnsub: (() => void) | null = null;
   private selectionUnsub: (() => void) | null = null;
   private ownedWriteRef: TaskRef | undefined = undefined;
 
   constructor(
     private app: App,
+    private statusRegistry: StatusRegistry,
     private settings?: CalendarSettings,
-    _store?: unknown,
     private queries?: TaskQueryApi,
     private tasks?: TaskApplicationApi,
   ) {}
 
-  open(task: Task): void {
+  open(task: TaskSnapshot): void {
     this.close();
     // Capture the active document at open time so close() removes from the same document
     this.ownerDoc = activeDocument;
@@ -34,17 +40,17 @@ export class TaskModal {
     this.innerState.set('taskStack', [task]);
     this.selectionUnsub = this.innerState.on('taskStack', (stack) => {
       if (!this.ownedWriteRef) return;
-      const ref = stack[0] ? taskRefOf(stack[0]) : undefined;
+      const ref = stack[0] ? rootTaskRef(stack[0]) : undefined;
       if (!ref || !this.sameRef(ref, this.ownedWriteRef)) this.ownedWriteRef = undefined;
     });
 
-    // Mirror PanelView's store-refresh wiring: without it, the modal's own AppState is
-    // isolated from the TaskStore, so mutating Start/Plan (or any field) via RightPanel's
-    // Planning disclosure updates the file/store but leaves this modal showing the stale
-    // task object — RightPanel's Start/Plan chips (task.start / task.scheduled) then never
+    // Mirror PanelView's index-refresh wiring: without it, the modal's own AppState is
+    // isolated from TaskIndex, so mutating Start/Plan (or any field) via RightPanel's
+    // Planning disclosure updates the file/index but leaves this modal showing the stale
+    // task object — RightPanel's Start/Plan chips then never
     // appear until the modal is closed and reopened.
-    if (this.queries && taskRefOf(task)) {
-      this.storeUnsub = this.queries.subscribe((event) => this.onIndexEvent(event));
+    if (this.queries) {
+      this.queryUnsub = this.queries.subscribe((event) => this.onIndexEvent(event));
     }
 
     const backdrop = this.ownerDoc.body.createDiv({ cls: 'tc-modal-backdrop' });
@@ -59,6 +65,7 @@ export class TaskModal {
     this.innerPanel = new RightPanel(
       this.innerState,
       this.app,
+      this.statusRegistry,
       this.settings,
       (root) => this.acknowledgeOwnWrite(root),
       this.tasks,
@@ -94,8 +101,8 @@ export class TaskModal {
       this.ownerDoc.removeEventListener('keydown', this.keyHandler);
       this.keyHandler = null;
     }
-    this.storeUnsub?.();
-    this.storeUnsub = null;
+    this.queryUnsub?.();
+    this.queryUnsub = null;
     this.selectionUnsub?.();
     this.selectionUnsub = null;
     this.ownerDoc?.body.removeClass('tc-modal-open');
@@ -113,8 +120,8 @@ export class TaskModal {
     const stack = this.innerState?.get('taskStack');
     const root = stack?.[0];
     if (!stack || !root) return;
-    const ref = taskRefOf(root);
-    if (!ref || !this.queries || !this.affects(event, ref.filePath)) return;
+    const ref = rootTaskRef(root);
+    if (!this.queries || !this.affects(event, ref.filePath)) return;
     this.applyResolution(this.queries.resolve(ref), stack);
   }
 
@@ -125,25 +132,19 @@ export class TaskModal {
     return event.path === path;
   }
 
-  private applyResolution(resolution: TaskResolution, stack: Array<Task | SubTask>): void {
+  private applyResolution(resolution: TaskResolution, stack: TaskSelectionNode[]): void {
     this.clearResolutionMessage();
-    const rootRef = stack[0] ? taskRefOf(stack[0]) : undefined;
+    const rootRef = stack[0] ? rootTaskRef(stack[0]) : undefined;
     const ownWrite = Boolean(
       rootRef && this.ownedWriteRef && this.sameRef(rootRef, this.ownedWriteRef),
     );
     this.ownedWriteRef = undefined;
     if (resolution.type === 'exact') {
-      this.innerState?.set(
-        'taskStack',
-        rebuildLegacyTaskStack(legacyTaskView(resolution.task), stack),
-      );
+      this.innerState?.set('taskStack', rebuildTaskSelection(resolution.task, stack));
       return;
     }
     if (ownWrite && resolution.type === 'conflict') {
-      this.innerState?.set(
-        'taskStack',
-        rebuildLegacyTaskStack(legacyTaskView(resolution.current), stack),
-      );
+      this.innerState?.set('taskStack', rebuildTaskSelection(resolution.current, stack));
       return;
     }
     if (resolution.type === 'not-found') {
@@ -157,10 +158,7 @@ export class TaskModal {
       );
       this.addAction(banner, 'Reload', 'tc-task-selection-reload', () => {
         const stale = this.innerState?.get('taskStack') ?? [];
-        this.innerState?.set(
-          'taskStack',
-          rebuildLegacyTaskStack(legacyTaskView(resolution.current), stale),
-        );
+        this.innerState?.set('taskStack', rebuildTaskSelection(resolution.current, stale));
         this.clearResolutionMessage();
       });
       this.addAction(banner, 'Close', 'tc-task-selection-close', () => this.close());
@@ -174,20 +172,17 @@ export class TaskModal {
       const label = `${candidate.root.title} — ${candidate.root.source.filePath}:${candidate.root.source.line + 1}`;
       this.addAction(banner, label, 'tc-task-selection-candidate', () => {
         const stale = this.innerState?.get('taskStack') ?? [];
-        this.innerState?.set(
-          'taskStack',
-          rebuildLegacyTaskStack(legacyTaskView(candidate.root), stale),
-        );
+        this.innerState?.set('taskStack', rebuildTaskSelection(candidate.root, stale));
         this.clearResolutionMessage();
       });
     }
   }
 
-  private acknowledgeOwnWrite(taskOrRef?: Task | SubTask | TaskRef): void {
+  private acknowledgeOwnWrite(taskOrRef?: TaskSelectionNode | TaskRef): void {
     const selected = this.innerState?.get('taskStack')[0];
-    const selectedRef = selected ? taskRefOf(selected) : undefined;
+    const selectedRef = selected ? rootTaskRef(selected) : undefined;
     let suppliedRef: TaskRef | undefined;
-    if (taskOrRef) suppliedRef = 'revision' in taskOrRef ? taskOrRef : taskRefOf(taskOrRef);
+    if (taskOrRef) suppliedRef = 'revision' in taskOrRef ? taskOrRef : rootTaskRef(taskOrRef);
     if (suppliedRef && (!selectedRef || !this.sameRef(suppliedRef, selectedRef))) return;
     const acknowledged = suppliedRef ?? selectedRef;
     this.ownedWriteRef = acknowledged ? { ...acknowledged } : undefined;
