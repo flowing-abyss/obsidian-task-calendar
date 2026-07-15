@@ -47,12 +47,33 @@ const PARSER_GRAMMAR_TESTS = new Set([
 const FORBIDDEN_TEST_COMPATIBILITY =
   /(?:store\/TaskStore(?:\.ts)?(?=['"])|store\/TaskDateIndex(?:\.ts)?(?=['"])|tasks\/compat\/legacyTaskView(?:\.ts)?(?=['"])|\bTaskStore\b|\b(?:LegacyTaskCommentView|LegacySubtaskView|LegacyTaskView|legacyTaskView|legacyTaskViews|taskRefOf|rebuildLegacyTaskStack)\b|\b(?:class|interface|type|const|let|var|function)\s+TaskDateIndex\b|configuredTaskStore)/u;
 
+const FORBIDDEN_PRODUCTION_COMPATIBILITY =
+  /(?:store\/TaskStore(?:\.[cm]?[jt]s)?(?=['"])|store\/TaskDateIndex(?:\.[cm]?[jt]s)?(?=['"])|tasks\/compat\/legacyTaskView(?:\.[cm]?[jt]s)?(?=['"])|plugin\.store|\b(?:TaskStore|LegacyTaskCommentView|LegacySubtaskView|LegacyTaskView|legacyTaskView|legacyTaskViews|taskRefOf|rebuildLegacyTaskStack|configuredTaskStore)\b)/u;
+
+const TASK_DATE_INDEX_DECLARATION =
+  /\b(?:export\s+)?(?:class|interface|type|const|let|var|function)\s+TaskDateIndex\b/gu;
+const CANONICAL_TASK_DATE_INDEX = 'src/tasks/infrastructure/TaskDateIndex.ts';
+const CANONICAL_TASK_DATE_INDEX_DECLARATION = 'export class TaskDateIndex';
+
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), 'utf8');
 }
 
 function matchingFiles(paths: readonly string[], pattern: RegExp): string[] {
   return paths.filter((path) => pattern.test(source(path)));
+}
+
+function hasForbiddenProductionCompatibility(path: string, candidate: string): boolean {
+  if (FORBIDDEN_PRODUCTION_COMPATIBILITY.test(candidate)) return true;
+
+  const taskDateIndexDeclarations = candidate.match(TASK_DATE_INDEX_DECLARATION) ?? [];
+  if (taskDateIndexDeclarations.length === 0) return false;
+
+  return (
+    path !== CANONICAL_TASK_DATE_INDEX ||
+    taskDateIndexDeclarations.length !== 1 ||
+    taskDateIndexDeclarations[0] !== CANONICAL_TASK_DATE_INDEX_DECLARATION
+  );
 }
 
 function typeScriptFiles(directory: string): string[] {
@@ -91,10 +112,58 @@ describe('final task consumer contract', () => {
   });
 
   it('routes every production source through final task contracts', () => {
-    const forbidden =
-      /(?:store\/TaskStore|store\/TaskDateIndex|tasks\/compat\/legacyTaskView|plugin\.store|\bTaskStore\b)/u;
+    expect(
+      productionConsumers.filter((path) => hasForbiddenProductionCompatibility(path, source(path))),
+    ).toEqual([]);
+  });
 
-    expect(matchingFiles(productionConsumers, forbidden)).toEqual([]);
+  it('rejects local compatibility declarations from production sources', () => {
+    const compatibilityDeclarations = [
+      'class TaskDateIndex {}',
+      'interface LegacyTaskView {}',
+      'const legacyTaskView = {};',
+    ];
+
+    expect(
+      compatibilityDeclarations.filter((candidate) =>
+        hasForbiddenProductionCompatibility('src/example.ts', candidate),
+      ),
+    ).toEqual(compatibilityDeclarations);
+  });
+
+  it('recognizes aliased and suffix compatibility imports in production sources', () => {
+    const compatibilityImports = [
+      "import { createStore as oldStore } from '@/store/TaskStore';",
+      "import { TaskDateIndex as OldIndex } from '@/store/TaskDateIndex.ts';",
+      "import { taskRefOf as oldRef } from '@/tasks/compat/legacyTaskView.js';",
+    ];
+
+    expect(
+      compatibilityImports.filter((candidate) =>
+        hasForbiddenProductionCompatibility('src/example.ts', candidate),
+      ),
+    ).toEqual(compatibilityImports);
+  });
+
+  it('allows only the expected canonical TaskDateIndex declaration', () => {
+    expect(
+      hasForbiddenProductionCompatibility(
+        CANONICAL_TASK_DATE_INDEX,
+        'export class TaskDateIndex<T> {}',
+      ),
+    ).toBe(false);
+    expect(
+      hasForbiddenProductionCompatibility(
+        CANONICAL_TASK_DATE_INDEX,
+        'export class TaskDateIndex<T> {}\nconst legacyTaskView = {};',
+      ),
+    ).toBe(true);
+    expect(
+      hasForbiddenProductionCompatibility(
+        CANONICAL_TASK_DATE_INDEX,
+        'export class TaskDateIndex<T> {}\ninterface TaskDateIndex {}',
+      ),
+    ).toBe(true);
   });
 
   it('keeps the final read model independent of legacy parser projections and task shapes', () => {
