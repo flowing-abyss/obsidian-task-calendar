@@ -190,9 +190,9 @@ describe('TaskModal', () => {
 
   describe('lifecycle', () => {
     it('open twice without close → first backdrop removed, second created', () => {
-      modal.open(task({ text: 'first' }));
+      modal.open(task({ title: 'first' }));
       const firstBackdrop = activeDocument.body.querySelector('.tc-modal-backdrop') as HTMLElement;
-      modal.open(task({ text: 'second' }));
+      modal.open(task({ title: 'second' }));
       const secondBackdrop = activeDocument.body.querySelector('.tc-modal-backdrop') as HTMLElement;
       expect(secondBackdrop).not.toBeNull();
       expect(firstBackdrop.isConnected).toBe(false);

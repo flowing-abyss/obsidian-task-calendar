@@ -117,6 +117,61 @@ describe('TaskIndex lifecycle and events', () => {
     expect(source).not.toMatch(/\bparseTask\s*\(/u);
   });
 
+  it('projects complete recursive snapshots directly from lossless task blocks', async () => {
+    const content = [
+      '> - [/] Parent [[Note|alias]] #root 🔺 🔁 every week 🛫 2026-07-10 📅 2026-07-12 ⏰ 09:30 ⏱️ 1h30m 🆔 parent-id ⛔ dep-1 ^parent',
+      '>   - > first description line',
+      '>   - > second description line',
+      '>   - 2026-07-11: root comment [[Comment]]',
+      '>   - [x] Child [docs](https://example.com) #child ⏳ 2026-07-11 ✅ 2026-07-11 🆔 child-id',
+      '>     - plain child comment',
+      '>     - [ ] Grandchild #deep 🛫 2026-07-09 ⏰ 08:00',
+    ].join('\n');
+    const { index } = await setup({ 'nested.md': content });
+
+    const root = index.snapshotsFromContent('nested.md', content)[0]!;
+
+    expect(root).toMatchObject({
+      title: 'Parent 🔗Note',
+      markdownTitle: 'Parent [[Note|alias]]',
+      status: 'in-progress',
+      statusSymbol: '/',
+      priority: 'A',
+      planning: {
+        start: '2026-07-10',
+        due: '2026-07-12',
+        time: '09:30',
+        duration: 90,
+      },
+      tags: ['#root'],
+      recurrence: 'every week',
+      description: 'first description line\nsecond description line',
+      source: { originalMarkdown: expect.stringContaining('🆔 parent-id ⛔ dep-1 ^parent') },
+    });
+    expect(root.source.originalBlock).toBe(content);
+    expect(root.presentation.linkCount).toBe(2);
+    expect(root.comments).toMatchObject([{ date: '2026-07-11', text: 'root comment [[Comment]]' }]);
+    expect(root.subtasks[0]).toMatchObject({
+      title: 'Child 🌐 docs',
+      markdownTitle: 'Child [docs](https://example.com)',
+      status: 'done',
+      planning: { scheduled: '2026-07-11' },
+      tags: ['#child'],
+      comments: [{ text: 'plain child comment' }],
+    });
+    expect(root.subtasks[0]?.ref.originalBlock).toContain('🆔 child-id');
+    expect(root.subtasks[0]?.subtasks[0]).toMatchObject({
+      title: 'Grandchild',
+      tags: ['#deep'],
+      planning: { start: '2026-07-09', time: '08:00' },
+    });
+    expect(root.subtasks[0]?.comments[0]?.ref.parent).toEqual({
+      type: 'subtask',
+      ref: root.subtasks[0]?.ref,
+    });
+    index.destroy();
+  });
+
   it('initially scans markdown files and returns stable vault-path/line ordering', async () => {
     const { index } = await setup({
       'z.md': '- [ ] z',

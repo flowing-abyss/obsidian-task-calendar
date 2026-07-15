@@ -1,9 +1,8 @@
 import type { App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
-import type { TaskApplicationApi, TaskIndexEvent } from '../src/tasks';
+import type { TaskApplicationApi, TaskIndexEvent, TaskSnapshot } from '../src/tasks';
 import { freshContainer, queryApiForTasks, resolvedConfig, useRealMoment } from './helpers';
 
 useRealMoment();
@@ -39,7 +38,7 @@ vi.mock('obsidian', async () => {
 import { CalendarRenderer } from '../src/ui/CalendarRenderer';
 
 class StubStore {
-  private tasks: Task[] = [];
+  private tasks: TaskSnapshot[] = [];
   private listeners = new Set<(event: TaskIndexEvent) => void>();
   taskQueries = queryApiForTasks(
     () => this.tasks,
@@ -53,7 +52,7 @@ class StubStore {
       listener({ type: 'changed', files: changedFile ? [changedFile] : [] });
     }
   }
-  setTasks(t: Task[]): void {
+  setTasks(t: TaskSnapshot[]): void {
     this.tasks = t;
   }
   toggleTask = vi.fn();

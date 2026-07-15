@@ -2,7 +2,6 @@ import { TFile, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
-import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { StatusRegistry } from '../src/status/StatusRegistry';
@@ -15,12 +14,14 @@ import { TaskBlockEditor } from '../src/tasks/infrastructure/markdown/TaskBlockE
 import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
 import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
-import { taskNodeLine } from '../src/ui/taskSelection';
+import { rootTaskRef, taskNodeLine } from '../src/ui/taskSelection';
 import {
   createAppWithFiles,
   flushMicrotasks,
   freshContainer,
+  subtask,
   task,
+  taskComment,
   testStatusRegistry,
   useRealMoment,
 } from './helpers';
@@ -55,15 +56,28 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
   return fn.call(panel, ...args);
 }
 
-function attachCurrentRef(panel: RightPanel, taskLike: SubTask): void {
+function absoluteFixtureLine(taskLike: TaskSnapshot | SubtaskSnapshot): number {
+  if ('source' in taskLike) return taskLike.source.line;
+  let line = rootTaskRef(taskLike).line;
+  let ref = taskLike.ref;
+  const offsets: number[] = [];
+  while ('parent' in ref) {
+    offsets.unshift(ref.relativeLine);
+    if (ref.parent.type === 'task') break;
+    ref = ref.parent.ref;
+  }
+  return offsets.reduce((sum, offset) => sum + offset, line);
+}
+
+function attachCurrentRef(panel: RightPanel, taskLike: TaskSnapshot | SubtaskSnapshot): void {
   const roots = (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list();
   for (const root of roots) {
     const queue: Array<TaskSnapshot | SubtaskSnapshot> = [root];
     while (queue.length > 0) {
       const current = queue.shift()!;
       if (
-        root.source.filePath === taskLike.filePath &&
-        taskNodeLine(root, current) === taskLike.line
+        root.source.filePath === rootTaskRef(taskLike).filePath &&
+        taskNodeLine(root, current) === absoluteFixtureLine(taskLike)
       ) {
         Object.assign(taskLike, { ref: current.ref });
         return;
@@ -118,7 +132,7 @@ describe('RightPanel render lifecycle', () => {
   it('mount subscribes to taskStack → re-renders when stack changes', async () => {
     const { state, el } = await makePanel();
     expect(el.querySelector('.tc-right-title-view')).toBeNull();
-    state.set('taskStack', [task({ text: 'Hello' })]);
+    state.set('taskStack', [task({ title: 'Hello' })]);
     const view = el.querySelector('.tc-right-title-view');
     expect(view).not.toBeNull();
   });
@@ -126,7 +140,7 @@ describe('RightPanel render lifecycle', () => {
   it('destroy removes the taskStack listener (no re-render after destroy)', async () => {
     const { panel, state, el } = await makePanel();
     panel.destroy();
-    state.set('taskStack', [task({ text: 'After destroy' })]);
+    state.set('taskStack', [task({ title: 'After destroy' })]);
     expect(el.querySelector('.tc-right-title-view')).toBeNull();
     expect(el.children).toHaveLength(0);
   });
@@ -141,7 +155,7 @@ describe('RightPanel render lifecycle', () => {
 describe('RightPanel.renderTask', () => {
   it('breadcrumb renders only when stack.length > 1', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Parent' }), task({ text: 'Child' })]);
+    state.set('taskStack', [task({ title: 'Parent' }), task({ title: 'Child' })]);
     const breadcrumb = el.querySelector('.tc-breadcrumb');
     expect(breadcrumb).not.toBeNull();
     // Crumb text renders via MarkdownRenderer (mocked as a noop in tests), so we
@@ -151,7 +165,7 @@ describe('RightPanel.renderTask', () => {
 
   it('title view renders idle; clicking it enters edit mode with markdownText', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'My task' })]);
+    state.set('taskStack', [task({ title: 'My task' })]);
     const view = el.querySelector<HTMLElement>('.tc-right-title-view')!;
     expect(view).not.toBeNull();
     expect(el.querySelector('.tc-right-title-edit')).toBeNull();
@@ -165,7 +179,10 @@ describe('RightPanel.renderTask', () => {
   it('editing the title and blurring writes back via updateTaskTitle', async () => {
     const fileContent = '- [ ] My task\n';
     const { panel, state, el, app } = await makePanel({ 'f.md': fileContent });
-    const current = task({ text: 'My task', rawText: '- [ ] My task' });
+    const current = task({
+      title: 'My task',
+      source: { originalMarkdown: '- [ ] My task', originalBlock: '- [ ] My task' },
+    });
     attachCurrentRef(panel, current);
     state.set('taskStack', [current]);
     const view = el.querySelector<HTMLElement>('.tc-right-title-view')!;
@@ -184,7 +201,14 @@ describe('RightPanel.renderTask', () => {
   it('date chip renders (non-empty) when task.due is present', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
-      task({ text: 'Dated', due: '2026-06-25', rawText: '- [ ] Dated 📅 2026-06-25' }),
+      task({
+        title: 'Dated',
+        planning: { due: '2026-06-25' },
+        source: {
+          originalMarkdown: '- [ ] Dated 📅 2026-06-25',
+          originalBlock: '- [ ] Dated 📅 2026-06-25',
+        },
+      }),
     ]);
     const chips = el.querySelectorAll('.tc-chips-row .tc-chip');
     const dateChip = Array.from(chips).find((c) => c.textContent?.startsWith('📅'));
@@ -194,7 +218,7 @@ describe('RightPanel.renderTask', () => {
 
   it('priority chip renders (non-empty) when task.priority !== "D"', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'P', priority: 'A' })]);
+    state.set('taskStack', [task({ title: 'P', priority: 'A' })]);
     const chip = el.querySelector('.tc-priority-chip');
     expect(chip).not.toBeNull();
     expect(chip?.classList.contains('tc-chip-empty')).toBe(false);
@@ -205,7 +229,7 @@ describe('RightPanel.renderTask', () => {
     'priority chip carries data-priority="%s" so it can be color-keyed anywhere it mounts',
     async (priority) => {
       const { state, el } = await makePanel();
-      state.set('taskStack', [task({ text: 'P', priority })]);
+      state.set('taskStack', [task({ title: 'P', priority })]);
       const chip = el.querySelector('.tc-priority-chip');
       expect(chip?.getAttribute('data-priority')).toBe(priority);
     },
@@ -227,7 +251,16 @@ describe('RightPanel.renderTask', () => {
 
   it('tag chips render for each #tag in rawText', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Tagged', rawText: '- [ ] Tagged #work #home/kitchen' })]);
+    state.set('taskStack', [
+      task({
+        title: 'Tagged',
+        tags: ['#work', '#home/kitchen'],
+        source: {
+          originalMarkdown: '- [ ] Tagged #work #home/kitchen',
+          originalBlock: '- [ ] Tagged #work #home/kitchen',
+        },
+      }),
+    ]);
     const tagChips = el.querySelectorAll('.tc-chip-tag');
     expect(tagChips).toHaveLength(2);
     expect(tagChips[0]?.textContent).toContain('#work');
@@ -236,9 +269,15 @@ describe('RightPanel.renderTask', () => {
 
   it('does not render a removable chip for a tag lookalike inside inline code', async () => {
     const { state, el } = await makePanel();
-    const inlineOnly = Object.assign(task({ text: 'Tagged', rawText: '- [ ] Tagged `#work`' }), {
-      tags: [],
-    });
+    const inlineOnly = Object.assign(
+      task({
+        title: 'Tagged',
+        source: { originalMarkdown: '- [ ] Tagged `#work`', originalBlock: '- [ ] Tagged `#work`' },
+      }),
+      {
+        tags: [],
+      },
+    );
 
     state.set('taskStack', [inlineOnly]);
 
@@ -247,9 +286,18 @@ describe('RightPanel.renderTask', () => {
 
   it('renders one canonical chip for mixed inline and real occurrences', async () => {
     const { state, el } = await makePanel();
-    const mixed = Object.assign(task({ text: 'Tagged', rawText: '- [ ] Tagged `#work` #work' }), {
-      tags: ['#work'],
-    });
+    const mixed = Object.assign(
+      task({
+        title: 'Tagged',
+        source: {
+          originalMarkdown: '- [ ] Tagged `#work` #work',
+          originalBlock: '- [ ] Tagged `#work` #work',
+        },
+      }),
+      {
+        tags: ['#work'],
+      },
+    );
 
     state.set('taskStack', [mixed]);
 
@@ -263,19 +311,8 @@ describe('RightPanel.renderSubTask', () => {
     const registry = testStatusRegistry();
     const { state, el } = await makePanel({}, undefined, registry);
     const root = task({
-      text: 'Parent',
-      subtasks: [
-        {
-          filePath: 'f.md',
-          line: 1,
-          rawText: '  - [ ] Child',
-          text: 'Child',
-          markdownText: 'Child',
-          status: 'open',
-          statusSymbol: ' ',
-          priority: 'D',
-        },
-      ],
+      title: 'Parent',
+      subtasks: [subtask({ title: 'Child', ref: { originalBlock: '  - [ ] Child' } })],
     });
     state.set('taskStack', [root]);
     const observedStack = state.get('taskStack');
@@ -303,17 +340,8 @@ describe('RightPanel.renderSubTask', () => {
 
   it('subtask row renders status marker + label text', async () => {
     const { state, el } = await makePanel();
-    const sub: SubTask = {
-      filePath: 'f.md',
-      line: 1,
-      rawText: '  - [ ] sub one',
-      text: 'sub one',
-      markdownText: 'sub one',
-      status: 'open',
-      statusSymbol: ' ',
-      priority: 'D',
-    };
-    state.set('taskStack', [task({ text: 'Parent', subtasks: [sub] })]);
+    const sub = subtask({ title: 'sub one', ref: { originalBlock: '  - [ ] sub one' } });
+    state.set('taskStack', [task({ title: 'Parent', subtasks: [sub] })]);
     const row = el.querySelector('.tc-subtask-row');
     expect(row).not.toBeNull();
     const marker = row?.querySelector<HTMLElement>('.tc-status-marker');
@@ -328,18 +356,11 @@ describe('RightPanel.renderSubTask', () => {
     const { panel, state, el, app } = await makePanel({
       'f.md': '- [ ] parent\n  - [ ] sub one',
     });
-    const sub: SubTask = {
-      filePath: 'f.md',
-      line: 1,
-      rawText: '  - [ ] sub one',
-      text: 'sub one',
-      markdownText: 'sub one',
-      status: 'open',
-      statusSymbol: ' ',
-      priority: 'D',
-    };
+    const sub = subtask({ title: 'sub one', ref: { originalBlock: '  - [ ] sub one' } });
     attachCurrentRef(panel, sub);
-    state.set('taskStack', [task({ filePath: 'f.md', line: 0, text: 'parent', subtasks: [sub] })]);
+    state.set('taskStack', [
+      task({ title: 'parent', subtasks: [sub], source: { filePath: 'f.md', line: 0 } }),
+    ]);
     const marker = el.querySelector<HTMLElement>('.tc-status-marker')!;
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await flushMicrotasks(20);
@@ -389,8 +410,8 @@ describe('RightPanel.renderSubTask', () => {
 describe('RightPanel.renderComment', () => {
   it('comment row renders date span + text', async () => {
     const { state, el } = await makePanel();
-    const comment: TaskComment = { line: 1, date: '2026-06-20', text: 'hello world' };
-    state.set('taskStack', [task({ text: 'T', comments: [comment] })]);
+    const comment = taskComment({ text: 'hello world', date: '2026-06-20' });
+    state.set('taskStack', [task({ title: 'T', comments: [comment] })]);
     const row = el.querySelector('.tc-comment-row');
     expect(row).not.toBeNull();
     expect(row?.querySelector('.tc-comment-date')).not.toBeNull();
@@ -401,8 +422,8 @@ describe('RightPanel.renderComment', () => {
 
   it('click on comment text → edit-mode textarea appears', async () => {
     const { state, el } = await makePanel();
-    const comment: TaskComment = { line: 1, date: '2026-06-20', text: 'editable' };
-    state.set('taskStack', [task({ text: 'T', comments: [comment] })]);
+    const comment = taskComment({ text: 'editable', date: '2026-06-20' });
+    state.set('taskStack', [task({ title: 'T', comments: [comment] })]);
     const textEl = el.querySelector<HTMLElement>('.tc-comment-text')!;
     click(textEl);
     expect(el.querySelector('.tc-comment-edit-input')).not.toBeNull();
@@ -418,22 +439,20 @@ describe('RightPanel popovers', () => {
       ),
     });
     const root = task({
-      filePath: 'f.md',
-      line: 4,
-      text: 'Parent',
-      rawText: '- [ ] Parent',
+      title: 'Parent',
       subtasks: [
-        {
-          filePath: 'f.md',
-          line: 7,
-          rawText: '  - [ ] Child',
-          text: 'Child',
-          markdownText: 'Child',
-          status: 'open',
-          statusSymbol: ' ',
-          priority: 'D',
-        },
+        subtask({
+          title: 'Child',
+          root: { filePath: 'f.md', line: 4 },
+          ref: { relativeLine: 3, originalBlock: '  - [ ] Child' },
+        }),
       ],
+      source: {
+        filePath: 'f.md',
+        line: 4,
+        originalMarkdown: '- [ ] Parent',
+        originalBlock: '- [ ] Parent',
+      },
     });
     const child = root.subtasks[0]!;
     state.set('taskStack', [root, child]);
@@ -455,7 +474,14 @@ describe('RightPanel popovers', () => {
   it('date chip click → date popover appears', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
-      task({ text: 'D', due: '2026-06-25', rawText: '- [ ] D 📅 2026-06-25' }),
+      task({
+        title: 'D',
+        planning: { due: '2026-06-25' },
+        source: {
+          originalMarkdown: '- [ ] D 📅 2026-06-25',
+          originalBlock: '- [ ] D 📅 2026-06-25',
+        },
+      }),
     ]);
     const chips = el.querySelectorAll('.tc-chips-row .tc-chip');
     const dateChip = Array.from(chips).find((c) => c.textContent?.startsWith('📅')) as HTMLElement;
@@ -505,11 +531,13 @@ describe('RightPanel popovers', () => {
     state.set('taskStack', [
       Object.assign(
         task({
-          filePath: 'f.md',
-          text: 'Scheduled',
-          due: undefined,
-          scheduled: '2026-07-05',
-          rawText: '- [ ] Scheduled ⏳ 2026-07-05',
+          title: 'Scheduled',
+          planning: { due: undefined, scheduled: '2026-07-05' },
+          source: {
+            filePath: 'f.md',
+            originalMarkdown: '- [ ] Scheduled ⏳ 2026-07-05',
+            originalBlock: '- [ ] Scheduled ⏳ 2026-07-05',
+          },
         }),
         { ref },
       ),
@@ -535,7 +563,14 @@ describe('RightPanel popovers', () => {
   it('time chip click → popover has both a time input and a duration input', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
-      task({ text: 'T', time: '15:00', duration: 90, rawText: '- [ ] T ⏰ 15:00 ⏱️ 1h30m' }),
+      task({
+        title: 'T',
+        planning: { time: '15:00', duration: 90 },
+        source: {
+          originalMarkdown: '- [ ] T ⏰ 15:00 ⏱️ 1h30m',
+          originalBlock: '- [ ] T ⏰ 15:00 ⏱️ 1h30m',
+        },
+      }),
     ]);
     const chip = el.querySelector<HTMLElement>('.tc-chip-time')!;
     click(chip);
@@ -577,12 +612,14 @@ describe('RightPanel popovers', () => {
     state.set('taskStack', [
       Object.assign(
         task({
-          filePath: 'f.md',
-          line: 0,
-          text: 'T',
-          time: '15:00',
-          duration: undefined, // real parseTask output always has this key, even when unset
-          rawText: '- [ ] T ⏰ 15:00',
+          title: 'T',
+          planning: { time: '15:00', duration: undefined },
+          source: {
+            filePath: 'f.md',
+            line: 0,
+            originalMarkdown: '- [ ] T ⏰ 15:00',
+            originalBlock: '- [ ] T ⏰ 15:00',
+          },
         }),
         { ref },
       ),
@@ -603,18 +640,12 @@ describe('RightPanel popovers', () => {
 
   it('the duration input does not render for a SubTask (no duration field)', async () => {
     const { state, el } = await makePanel();
-    const sub: SubTask = {
-      filePath: 'f.md',
-      line: 1,
-      rawText: '  - [ ] sub ⏰ 09:00',
-      text: 'sub',
-      markdownText: 'sub',
-      status: 'open',
-      statusSymbol: ' ',
-      priority: 'D',
-      time: '09:00',
-    };
-    const parent = task({ text: 'Parent', subtasks: [sub] });
+    const sub = subtask({
+      title: 'sub',
+      planning: { time: '09:00' },
+      ref: { originalBlock: '  - [ ] sub ⏰ 09:00' },
+    });
+    const parent = task({ title: 'Parent', subtasks: [sub] });
     state.set('taskStack', [parent, parent.subtasks[0]!]);
     const chip = el.querySelector<HTMLElement>('.tc-chip-time')!;
     click(chip);
@@ -624,7 +655,7 @@ describe('RightPanel popovers', () => {
 
   it('priority chip click → priority popover appears with options', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'P', priority: 'B' })]);
+    state.set('taskStack', [task({ title: 'P', priority: 'B' })]);
     const chip = el.querySelector<HTMLElement>('.tc-priority-chip')!;
     click(chip);
     const pop = el.querySelector('.tc-priority-popover');
@@ -634,7 +665,7 @@ describe('RightPanel popovers', () => {
 
   it('priority popover options use the shared menu option structure', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'P', priority: 'F' })]);
+    state.set('taskStack', [task({ title: 'P', priority: 'F' })]);
     const chip = el.querySelector<HTMLElement>('.tc-priority-chip')!;
     click(chip);
 
@@ -673,7 +704,7 @@ describe('RightPanel popovers', () => {
 
   it('outside click dismisses the priority popover', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'P', priority: 'B' })]);
+    state.set('taskStack', [task({ title: 'P', priority: 'B' })]);
     const chip = el.querySelector<HTMLElement>('.tc-priority-chip')!;
     click(chip);
     expect(el.querySelector('.tc-priority-popover')).not.toBeNull();
@@ -689,7 +720,9 @@ describe('RightPanel popovers', () => {
 describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priority)', () => {
   it('unset Start and Plan render NO placeholder badges in the top chip row; a "+" control is offered instead', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
+    state.set('taskStack', [
+      task({ title: 'Dated', planning: { due: '2026-06-25', duration: undefined } }),
+    ]);
     // No placeholder pills for unset Start/Plan clutter the main row any more.
     expect(el.querySelector('.tc-chip-start')).toBeNull();
     expect(el.querySelector('.tc-chip-scheduled')).toBeNull();
@@ -703,7 +736,10 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
   it('a task with scheduled set shows a value-bearing (non-empty) scheduled badge in the top row', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
-      task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined }),
+      task({
+        title: 'Sched',
+        planning: { due: undefined, scheduled: '2026-07-05', duration: undefined },
+      }),
     ]);
     const chip = el.querySelector('.tc-chip-scheduled');
     expect(chip?.textContent).toContain('5 Jul');
@@ -713,7 +749,10 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
   it('a task with start set shows a value-bearing (non-empty) start badge in the top row', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
-      task({ text: 'Started', due: undefined, start: '2026-07-05', duration: undefined }),
+      task({
+        title: 'Started',
+        planning: { due: undefined, start: '2026-07-05', duration: undefined },
+      }),
     ]);
     const chip = el.querySelector('.tc-chip-start');
     expect(chip?.textContent).toContain('5 Jul');
@@ -722,7 +761,9 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
 
   it('the "+" control\'s menu offers both Start and Plan when neither is set', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
+    state.set('taskStack', [
+      task({ title: 'Dated', planning: { due: '2026-06-25', duration: undefined } }),
+    ]);
     const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
     click(addBtn);
     const menu = el.querySelector('.tc-add-date-menu');
@@ -734,7 +775,10 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
   it('the "+" control\'s menu offers only the currently-unset field when the other is already set', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
-      task({ text: 'Sched', due: undefined, scheduled: '2026-07-05', duration: undefined }),
+      task({
+        title: 'Sched',
+        planning: { due: undefined, scheduled: '2026-07-05', duration: undefined },
+      }),
     ]);
     // Plan is set, so it renders as a normal pill and is no longer offered in the menu.
     expect(el.querySelector('.tc-chip-scheduled')).not.toBeNull();
@@ -749,14 +793,19 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
   it('the "+" control does not render once both Start and Plan are set', async () => {
     const { state, el } = await makePanel();
     state.set('taskStack', [
-      task({ text: 'Both', start: '2026-07-01', scheduled: '2026-07-05', duration: undefined }),
+      task({
+        title: 'Both',
+        planning: { start: '2026-07-01', scheduled: '2026-07-05', duration: undefined },
+      }),
     ]);
     expect(el.querySelector('.tc-chip-add-date')).toBeNull();
   });
 
   it('clicking "Start" in the "+" menu opens the same date popover style used for the due-date chip', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
+    state.set('taskStack', [
+      task({ title: 'Dated', planning: { due: '2026-06-25', duration: undefined } }),
+    ]);
     const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
     click(addBtn);
     const startOption = Array.from(el.querySelectorAll<HTMLElement>('.tc-add-date-menu-item')).find(
@@ -770,7 +819,9 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
 
   it('clicking "Plan" in the "+" menu opens the same date popover style used for the due-date chip', async () => {
     const { state, el } = await makePanel();
-    state.set('taskStack', [task({ text: 'Dated', due: '2026-06-25', duration: undefined })]);
+    state.set('taskStack', [
+      task({ title: 'Dated', planning: { due: '2026-06-25', duration: undefined } }),
+    ]);
     const addBtn = el.querySelector<HTMLElement>('.tc-chip-add-date')!;
     click(addBtn);
     const planOption = Array.from(el.querySelectorAll<HTMLElement>('.tc-add-date-menu-item')).find(
@@ -801,12 +852,14 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
     state.set('taskStack', [
       Object.assign(
         task({
-          filePath: 'f.md',
-          line: 0,
-          text: 'Dated',
-          due: '2026-06-25',
-          duration: undefined,
-          rawText: '- [ ] Dated 📅 2026-06-25',
+          title: 'Dated',
+          planning: { due: '2026-06-25', duration: undefined },
+          source: {
+            filePath: 'f.md',
+            line: 0,
+            originalMarkdown: '- [ ] Dated 📅 2026-06-25',
+            originalBlock: '- [ ] Dated 📅 2026-06-25',
+          },
         }),
         { ref },
       ),
@@ -831,19 +884,13 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
 
   it('a SubTask (no duration field) offers the "+" control for its own unset Start/Plan — not gated on the removed Planning disclosure', async () => {
     const { state, el } = await makePanel();
-    const sub: SubTask = {
-      filePath: 'f.md',
-      line: 1,
-      rawText: '  - [ ] sub-thing 📅 2026-07-10',
-      text: 'sub-thing',
-      markdownText: 'sub-thing',
-      status: 'open',
-      statusSymbol: ' ',
-      priority: 'D',
-      due: '2026-07-10', // a real sub-item can carry its own 📅 date via extractMetadata
-    };
+    const sub = subtask({
+      title: 'sub-thing',
+      planning: { due: '2026-07-10' }, // a real sub-item can carry its own 📅 date
+      ref: { originalBlock: '  - [ ] sub-thing 📅 2026-07-10' },
+    });
     // Drill into the sub-task directly, the same way clicking its label would.
-    const parent = task({ text: 'Parent', subtasks: [sub] });
+    const parent = task({ title: 'Parent', subtasks: [sub] });
     state.set('taskStack', [parent, parent.subtasks[0]!]);
     expect(el.querySelector('.tc-planning-section')).toBeNull();
     expect(el.querySelector('.tc-chip-start')).toBeNull();
@@ -853,11 +900,13 @@ describe('RightPanel Start/Plan badges (round-pill, unified with due/time/priori
 
   it('combined time+duration chip shows "time · duration" when both set, just time otherwise', async () => {
     const withBothPanel = await makePanel();
-    withBothPanel.state.set('taskStack', [task({ text: 'TD', time: '15:00', duration: 90 })]);
+    withBothPanel.state.set('taskStack', [
+      task({ title: 'TD', planning: { time: '15:00', duration: 90 } }),
+    ]);
     expect(el2Text(withBothPanel.el, '.tc-chip-time')).toBe('⏰ 15:00 · 1h30m');
 
     const timeOnlyPanel = await makePanel();
-    timeOnlyPanel.state.set('taskStack', [task({ text: 'T', time: '15:00' })]);
+    timeOnlyPanel.state.set('taskStack', [task({ title: 'T', planning: { time: '15:00' } })]);
     expect(el2Text(timeOnlyPanel.el, '.tc-chip-time')).toBe('⏰ 15:00');
   });
 });

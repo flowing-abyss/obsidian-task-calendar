@@ -12,7 +12,9 @@ import type { StatusRegistry } from '../status/StatusRegistry';
 import type { TagManager } from '../tags/TagManager';
 import type {
   TaskApplicationApi,
+  TaskCommandResult,
   TaskIndexEvent,
+  TaskNodeRef,
   TaskQueryApi,
   TaskRef,
   TaskResolution,
@@ -20,6 +22,42 @@ import type {
 import { rebuildTaskSelection, rootTaskRef, type TaskSelectionNode } from '../ui/taskSelection';
 
 export const PANEL_VIEW_TYPE = 'task-calendar-panel';
+
+function rootRefOfNode(target: TaskNodeRef): TaskRef {
+  let current = target;
+  while (current.type === 'subtask') current = current.ref.parent;
+  return current.ref;
+}
+
+type TaskCommand = Parameters<TaskApplicationApi['execute']>[0];
+
+function commandRootRef(command: TaskCommand): TaskRef | undefined {
+  if (command.type === 'create') return undefined;
+  if (
+    command.type === 'patch' ||
+    command.type === 'append-title' ||
+    command.type === 'set-status' ||
+    command.type === 'toggle-completion' ||
+    command.type === 'set-description'
+  ) {
+    return rootRefOfNode(command.target);
+  }
+  if (command.type === 'edit-link') {
+    return rootRefOfNode(
+      command.target.type === 'comment' ? command.target.ref.parent : command.target.target,
+    );
+  }
+  if (command.type === 'add-subtask' || command.type === 'add-comment') {
+    return rootRefOfNode(command.parent);
+  }
+  if (command.type === 'delete-subtask' || command.type === 'reorder-subtask') {
+    return rootRefOfNode(command.subtask.parent);
+  }
+  if (command.type === 'update-comment' || command.type === 'delete-comment') {
+    return rootRefOfNode(command.comment.parent);
+  }
+  return command.ref;
+}
 
 export class PanelView extends ItemView {
   private state!: AppState;
@@ -62,6 +100,15 @@ export class PanelView extends ItemView {
     this.contentEl.addClass('tc-panel-view');
 
     this.state = new AppState();
+    const selectionTasks: TaskApplicationApi = {
+      queries: this.tasks.queries,
+      execute: async (command) => {
+        const initiatingRef = commandRootRef(command);
+        const result = await this.tasks.execute(command);
+        if (initiatingRef) this.convergeOwnCommand(initiatingRef, result);
+        return result;
+      },
+    };
 
     const layout = this.contentEl.createDiv({ cls: 'tc-layout tc-layout--tasks' });
     const railEl = layout.createDiv({ cls: 'tc-rail' });
@@ -73,7 +120,7 @@ export class PanelView extends ItemView {
     const projectStore = new ProjectStore(this.app, this.queries, this.settings);
     projectStore.initialize();
     this.projectStore = projectStore;
-    const projectManager = new ProjectManager(this.app, this.settings, resolver, this.tasks);
+    const projectManager = new ProjectManager(this.app, this.settings, resolver, selectionTasks);
 
     this.rail = new RailPanel(this.state, this.app as never);
     this.left = new LeftPanel(
@@ -82,7 +129,7 @@ export class PanelView extends ItemView {
       this.tagManager,
       this.app,
       this.queries,
-      this.tasks,
+      selectionTasks,
       this.onSaveSettings,
       projectStore,
       projectManager,
@@ -96,7 +143,7 @@ export class PanelView extends ItemView {
       this.onSaveSettings,
       projectStore,
       projectManager,
-      this.tasks,
+      selectionTasks,
     );
     this.right = new RightPanel(
       this.state,
@@ -265,6 +312,16 @@ export class PanelView extends ItemView {
     if (suppliedRef && (!selectedRef || !this.sameRef(suppliedRef, selectedRef))) return;
     const acknowledged = suppliedRef ?? selectedRef;
     this.ownedWriteRef = acknowledged ? { ...acknowledged } : undefined;
+  }
+
+  private convergeOwnCommand(initiatingRef: TaskRef, result: TaskCommandResult): void {
+    if (result.type !== 'ok' || result.outcome.type !== 'task') return;
+    const stack = this.state.get('taskStack');
+    const selectedRef = stack[0] ? rootTaskRef(stack[0]) : undefined;
+    if (!selectedRef || !this.sameRef(selectedRef, initiatingRef)) return;
+    const updated = result.outcome.task;
+    this.state.set('taskStack', rebuildTaskSelection(updated, stack));
+    this.ownedWriteRef = result.changed ? { ...updated.ref } : undefined;
   }
 
   private sameRef(left: TaskRef, right: TaskRef): boolean {

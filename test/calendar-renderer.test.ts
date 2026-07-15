@@ -1,9 +1,8 @@
 import type { App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
-import type { Task } from '../src/parser/types';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
-import type { TaskApplicationApi, TaskIndexEvent } from '../src/tasks';
+import type { TaskApplicationApi, TaskIndexEvent, TaskSnapshot } from '../src/tasks';
 import { CalendarRenderer } from '../src/ui/CalendarRenderer';
 import {
   fixedToday,
@@ -17,7 +16,7 @@ import {
 useRealMoment();
 
 class StubStore {
-  private tasks: Task[] = [];
+  private tasks: TaskSnapshot[] = [];
   private listeners = new Set<(event: TaskIndexEvent) => void>();
   statusRegistry = new StatusRegistry(buildDefaultTaskStatuses());
   taskQueries = queryApiForTasks(
@@ -32,7 +31,7 @@ class StubStore {
       listener({ type: 'changed', files: changedFile ? [changedFile] : [] });
     }
   }
-  setTasks(t: Task[]): void {
+  setTasks(t: TaskSnapshot[]): void {
     this.tasks = t;
   }
   toggleTask = vi.fn();
@@ -141,7 +140,9 @@ describe('CalendarRenderer', () => {
       const root = freshContainer();
       const r = makeRenderer(root, store, resolvedConfig(), fakeApp());
       r.mount();
-      store.setTasks([task({ due: window.moment().format('YYYY-MM-DD'), status: 'open' })]);
+      store.setTasks([
+        task({ status: 'open', planning: { due: window.moment().format('YYYY-MM-DD') } }),
+      ]);
       store.emit();
       // after emit, toolbar stats should reflect 1 due task
       expect(
@@ -343,9 +344,9 @@ describe('CalendarRenderer', () => {
       const todayStr = window.moment().format('YYYY-MM-DD');
       store.setTasks([
         task({ status: 'done' }),
-        task({ due: todayStr, status: 'open' }),
-        task({ due: '2020-01-01', status: 'open' }),
-        task({ start: todayStr, status: 'open' }),
+        task({ status: 'open', planning: { due: todayStr } }),
+        task({ status: 'open', planning: { due: '2020-01-01' } }),
+        task({ status: 'open', planning: { start: todayStr } }),
       ]);
       store.emit();
       expect(
@@ -398,7 +399,7 @@ describe('CalendarRenderer', () => {
       const r = makeRenderer(root, store, resolvedConfig({ defaultView: 'month' }), fakeApp());
       r.mount();
       const todayStr = window.moment().format('YYYY-MM-DD');
-      const t = task({ due: todayStr, status: 'open' });
+      const t = task({ status: 'open', planning: { due: todayStr } });
       store.setTasks([t]);
       store.emit();
       // click the status marker inside the task card
@@ -408,7 +409,7 @@ describe('CalendarRenderer', () => {
         type: 'toggle-completion',
         target: {
           type: 'task',
-          ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+          ref: expect.objectContaining({ filePath: t.ref.filePath, line: t.ref.line }),
         },
       });
       r.destroy();

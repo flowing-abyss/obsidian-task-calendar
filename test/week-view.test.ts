@@ -104,7 +104,7 @@ describe('WeekView', () => {
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: '2026-06-17', status: 'open' });
+      const t = task({ status: 'open', planning: { due: '2026-06-17' } });
       view.render(c, [t], resolvedConfig());
       expect(c.querySelectorAll('.task')).toHaveLength(1);
       vi.useRealTimers();
@@ -115,7 +115,7 @@ describe('WeekView', () => {
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
       const { view } = makeView();
       const c = freshContainer();
-      view.render(c, [task({ due: '2026-06-17', status: 'open' })], resolvedConfig());
+      view.render(c, [task({ status: 'open', planning: { due: '2026-06-17' } })], resolvedConfig());
       expect((c.querySelector('.task') as HTMLElement).getAttribute('draggable')).toBe('true');
       vi.useRealTimers();
     });
@@ -125,7 +125,11 @@ describe('WeekView', () => {
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: '2026-06-17', status: 'open', filePath: 'b.md', line: 7 });
+      const t = task({
+        status: 'open',
+        planning: { due: '2026-06-17' },
+        source: { filePath: 'b.md', line: 7 },
+      });
       view.render(c, [t], resolvedConfig());
       const card = c.querySelector('.task') as HTMLElement;
       const dt = new (class {
@@ -191,7 +195,7 @@ describe('WeekView', () => {
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
       const { view, spies } = makeView({ onTaskClick: (t) => t });
       const c = freshContainer();
-      const t = task({ due: '2026-06-17', status: 'open', text: 'click me' });
+      const t = task({ status: 'open', title: 'click me', planning: { due: '2026-06-17' } });
       view.render(c, [t], resolvedConfig());
       const card = c.querySelector('.task') as HTMLElement;
       card.dispatchEvent(new MouseEvent('click', { bubbles: true }));

@@ -9,7 +9,7 @@ import {
   renderTimedSpanContinuation,
   toTimedBlockInputs,
 } from '../src/views/timegrid/renderTimedBlocks';
-import { dispatchDnD, freshContainer, task, useRealMoment } from './helpers';
+import { dispatchDnD, freshContainer, task, taskComment, useRealMoment } from './helpers';
 
 useRealMoment();
 
@@ -43,7 +43,7 @@ function callbacks() {
 describe('renderTimedBlocksForDay', () => {
   it('does not set data-priority on the block (calendar blocks no longer render a priority border)', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00', priority: 'A' });
+    const t = task({ priority: 'A', planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -63,7 +63,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('wraps the status marker and title together in a .tc-tg-block-head row, marker first', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], callbacks());
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     const head = block.querySelector('.tc-tg-block-head') as HTMLElement;
@@ -78,7 +78,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('Task 38: a done task still renders as a full timed block, checkbox showing checked, not removed', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00', status: 'done', statusSymbol: 'x' });
+    const t = task({ status: 'done', statusSymbol: 'x', planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], callbacks());
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     expect(block).not.toBeNull();
@@ -90,7 +90,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('Task 38: a cancelled task still renders as a full timed block, not removed, title marked is-cancelled', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00', status: 'cancelled', statusSymbol: '-' });
+    const t = task({ status: 'cancelled', statusSymbol: '-', planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], callbacks());
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     expect(block).not.toBeNull();
@@ -100,7 +100,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('Task 38: an open task gets neither is-done nor is-cancelled on its title', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], callbacks());
     const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
     expect(title.classList.contains('is-done')).toBe(false);
@@ -115,7 +115,7 @@ describe('renderTimedBlocksForDay', () => {
   it('clicking the status marker fires onToggle with the task, not onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], cbs);
     const marker = container.querySelector('.tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -126,7 +126,7 @@ describe('renderTimedBlocksForDay', () => {
   it('right-clicking the status marker opens the status/priority popover and does NOT fire onTaskClick (checkbox contextmenu is distinct from the block contextmenu)', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], cbs);
     const marker = container.querySelector('.tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -137,7 +137,7 @@ describe('renderTimedBlocksForDay', () => {
   it('picking a status from the popover fires onSetStatus with the task and chosen symbol', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], cbs);
     const marker = container.querySelector('.tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -150,7 +150,7 @@ describe('renderTimedBlocksForDay', () => {
   it('picking a priority flag from the popover fires onSetPriority with the task and chosen priority', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], cbs);
     const marker = container.querySelector('.tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -165,7 +165,7 @@ describe('renderTimedBlocksForDay', () => {
   it('a real pointerdown→pointerup→click sequence on the status marker (no movement) fires only onToggle, never onTimeChange/onDurationChange', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ time: '09:00', duration: 60 });
+    const t = task({ planning: { time: '09:00', duration: 60 } });
     renderTimedBlocksForDay(container, [t], cbs);
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     block.setPointerCapture = () => {};
@@ -185,7 +185,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('omits data-priority entirely when the task has no priority (D)', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00', priority: 'D' });
+    const t = task({ priority: 'D', planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -205,7 +205,11 @@ describe('renderTimedBlocksForDay', () => {
 
   it('sets --tc-tag-color when the task has a tag matching a configured tag group', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00', rawText: '- [ ] t #work' });
+    const t = task({
+      tags: ['#work'],
+      planning: { time: '09:00' },
+      source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+    });
     renderTimedBlocksForDay(
       container,
       [t],
@@ -230,7 +234,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('shows the start–end time range with duration in parentheses in the block subtitle', () => {
     const container = freshContainer();
-    const t = task({ time: '15:00', duration: 90 });
+    const t = task({ planning: { time: '15:00', duration: 90 } });
     renderTimedBlocksForDay(container, [t], callbacks());
     const subtitle = container.querySelector('.tc-tg-block-subtitle') as HTMLElement;
     expect(subtitle).not.toBeNull();
@@ -239,7 +243,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('defaults duration to 60min when unset, shown as "(1h)" in the subtitle', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], callbacks());
     const subtitle = container.querySelector('.tc-tg-block-subtitle') as HTMLElement;
     expect(subtitle.textContent).toBe('09:00–10:00 (1h)');
@@ -247,7 +251,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('renders the subtitle (inside its top row) before the head row (time+duration at the top of the block)', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], callbacks());
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     const subtitle = block.querySelector('.tc-tg-block-subtitle') as HTMLElement;
@@ -264,7 +268,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('renders one block per timed task, positioned by time and sized by duration', () => {
     const container = freshContainer();
-    const t = task({ time: '15:00', duration: 120, text: 'Gym' });
+    const t = task({ title: 'Gym', planning: { time: '15:00', duration: 120 } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -287,7 +291,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('defaults duration to 60 minutes when unset', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -308,7 +312,7 @@ describe('renderTimedBlocksForDay', () => {
   it('a plain click does NOT fire onTaskClick (reserved for drag)', () => {
     const container = freshContainer();
     const onTaskClick = vi.fn();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -330,7 +334,7 @@ describe('renderTimedBlocksForDay', () => {
   it('a right-click (contextmenu) fires onTaskClick', () => {
     const container = freshContainer();
     const onTaskClick = vi.fn();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -352,7 +356,7 @@ describe('renderTimedBlocksForDay', () => {
   it('right-clicking the resize handle does NOT fire onTaskClick', () => {
     const container = freshContainer();
     const onTaskClick = vi.fn();
-    const t = task({ time: '09:00' });
+    const t = task({ planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -373,8 +377,8 @@ describe('renderTimedBlocksForDay', () => {
 
   it('two overlapping blocks are given proportional widths/left offsets (no visual overlap)', () => {
     const container = freshContainer();
-    const a = task({ time: '09:00', duration: 60, line: 0 });
-    const b = task({ time: '09:30', duration: 60, line: 1 });
+    const a = task({ planning: { time: '09:00', duration: 60 }, source: { line: 0 } });
+    const b = task({ planning: { time: '09:30', duration: 60 }, source: { line: 1 } });
     renderTimedBlocksForDay(container, [a, b], {
       app: fakeApp,
       component: new Component(),
@@ -398,7 +402,7 @@ describe('renderTimedBlocksForDay', () => {
   it('dragging the block body by one hour snaps to 15-minute steps and fires onTimeChange on pointerup', () => {
     const container = freshContainer();
     const onTimeChange = vi.fn();
-    const t = task({ time: '09:00', duration: 60 });
+    const t = task({ planning: { time: '09:00', duration: 60 } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -427,7 +431,7 @@ describe('renderTimedBlocksForDay', () => {
     const container = freshContainer();
     const onDurationChange = vi.fn();
     const onTimeChange = vi.fn();
-    const t = task({ time: '09:00', duration: 60 });
+    const t = task({ planning: { time: '09:00', duration: 60 } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -456,7 +460,7 @@ describe('renderTimedBlocksForDay', () => {
   it('a stationary right-click (pointerdown button=2, pointerup at same position, no move) does NOT fire onTimeChange', () => {
     const container = freshContainer();
     const onTimeChange = vi.fn();
-    const t = task({ time: '09:00', duration: 60 });
+    const t = task({ planning: { time: '09:00', duration: 60 } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -483,7 +487,11 @@ describe('renderTimedBlocksForDay', () => {
 
   it('renders the title via renderTaskText (markdown-link-aware), not raw textContent, for a task with a [[wikilink]]', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00', text: 'see [[Note]]', markdownText: 'see [[Note]]' });
+    const t = task({
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { time: '09:00' },
+    });
     renderTimedBlocksForDay(container, [t], callbacks());
     const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
     // renderTaskText only wraps in a `.tc-md` holder (and defers to MarkdownRenderer) when it
@@ -497,7 +505,7 @@ describe('renderTimedBlocksForDay', () => {
 
   it('renders plain title text (no [[links]]) via the renderTaskText fast path, unchanged from before', () => {
     const container = freshContainer();
-    const t = task({ time: '09:00', text: 'Gym', markdownText: 'Gym' });
+    const t = task({ title: 'Gym', markdownTitle: 'Gym', planning: { time: '09:00' } });
     renderTimedBlocksForDay(container, [t], callbacks());
     const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
     expect(title.querySelector('.tc-md')).toBeNull();
@@ -508,10 +516,9 @@ describe('renderTimedBlocksForDay', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const t = task({
-      time: '09:00',
-      duration: 60,
-      text: 'see [[Note]]',
-      markdownText: 'see [[Note]]',
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { time: '09:00', duration: 60 },
     });
     renderTimedBlocksForDay(container, [t], cbs);
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -535,7 +542,11 @@ describe('renderTimedBlocksForDay', () => {
   it('dragging that starts on the title text itself (not a link) still arms move and fires onTimeChange (guard is link-specific, not title-wide)', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ time: '09:00', duration: 60, text: 'Gym', markdownText: 'Gym' });
+    const t = task({
+      title: 'Gym',
+      markdownTitle: 'Gym',
+      planning: { time: '09:00', duration: 60 },
+    });
     renderTimedBlocksForDay(container, [t], cbs);
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
     block.setPointerCapture = () => {};
@@ -561,7 +572,7 @@ describe('renderTimedBlocksForDay', () => {
     it('an extreme downward drag on the block body clamps onTimeChange to the last valid slot of the day (23:45), not an out-of-range value', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '10:00', duration: 60 });
+      const t = task({ planning: { time: '10:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -583,7 +594,7 @@ describe('renderTimedBlocksForDay', () => {
     it('an extreme downward drag on the resize handle clamps onDurationChange to a one-day cap, not an unbounded value', () => {
       const container = freshContainer();
       const onDurationChange = vi.fn();
-      const t = task({ time: '10:00', duration: 60 });
+      const t = task({ planning: { time: '10:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onDurationChange });
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
       handle.setPointerCapture = () => {};
@@ -603,7 +614,7 @@ describe('renderTimedBlocksForDay', () => {
     it('an ordinary in-range drag is unaffected by the new clamp', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -620,7 +631,7 @@ describe('renderTimedBlocksForDay', () => {
   it('a stationary right-click on the resize handle does NOT fire onDurationChange', () => {
     const container = freshContainer();
     const onDurationChange = vi.fn();
-    const t = task({ time: '09:00', duration: 60 });
+    const t = task({ planning: { time: '09:00', duration: 60 } });
     renderTimedBlocksForDay(container, [t], {
       app: fakeApp,
       component: new Component(),
@@ -647,10 +658,11 @@ describe('renderTimedBlocksForDay', () => {
   it('renders count badges in a top-right .tc-tg-block-badges container when the task has them, and never a tag chip even when the task has tags (Task 35)', () => {
     const container = freshContainer();
     const t = task({
-      time: '09:00',
-      rawText: '- [ ] t #work',
-      comments: [{ line: 1, text: 'note' }],
-      linkCount: 2,
+      tags: ['#work'],
+      comments: [taskComment({ text: 'note' })],
+      planning: { time: '09:00' },
+      source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+      presentation: { linkCount: 2 },
     });
     renderTimedBlocksForDay(container, [t], callbacks(), [
       { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
@@ -665,8 +677,12 @@ describe('renderTimedBlocksForDay', () => {
 
   it('omits .tc-tg-block-badges entirely for a task with no subtasks/comments/links (including a tag-only task, since tags no longer render anything here)', () => {
     const container = freshContainer();
-    const plain = task({ time: '09:00' });
-    const tagOnly = task({ time: '10:00', rawText: '- [ ] t #work', line: 1 });
+    const plain = task({ planning: { time: '09:00' } });
+    const tagOnly = task({
+      tags: ['#work'],
+      planning: { time: '10:00' },
+      source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work', line: 1 },
+    });
     renderTimedBlocksForDay(container, [plain, tagOnly], callbacks());
     expect(container.querySelector('.tc-tg-block-badges')).toBeNull();
     expect(container.querySelector('.tc-task-tag')).toBeNull();
@@ -675,7 +691,7 @@ describe('renderTimedBlocksForDay', () => {
   describe('native HTML5 drag-out (Task 26: drop onto the all-day row)', () => {
     it('the block is draggable="true", matching the all-day cross-day drag convention', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       expect(block.getAttribute('draggable')).toBe('true');
@@ -683,7 +699,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('the resize handle stays draggable="false" (Round 2 Task 9 pattern: a non-draggable island inside a draggable ancestor)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
       expect(handle.getAttribute('draggable')).toBe('false');
@@ -691,7 +707,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('dragstart on the block carries the filePath:::line payload, the same convention as renderAllDay.ts', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', filePath: 'a.md', line: 3 });
+      const t = task({ planning: { time: '09:00' }, source: { filePath: 'a.md', line: 3 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const dt = dispatchDnD(block, 'dragstart');
@@ -700,7 +716,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('dragstart adds is-dragging, dragend removes it (mirrors renderAllDay.ts body)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       dispatchDnD(block, 'dragstart');
@@ -712,7 +728,7 @@ describe('renderTimedBlocksForDay', () => {
     it('regression: vertical Pointer-Events move still fires onTimeChange after draggable="true" was added', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -729,7 +745,7 @@ describe('renderTimedBlocksForDay', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
       const onDurationChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange, onDurationChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -756,7 +772,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('a pointercancel mid-MOVE reverts the live-preview top back to the pre-gesture position, since no mutation committed (regression: previously left the block visually parked at the abandoned preview position with no underlying data change)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -779,7 +795,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('a pointercancel mid-RESIZE reverts the live-preview height back to the pre-gesture duration', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
@@ -798,7 +814,7 @@ describe('renderTimedBlocksForDay', () => {
     describe('ancestor-draggable-toggle fix: draggable="false" on the handle alone does not stop the ancestor fallback (mirrors renderAllDay.ts attachEdgeResize)', () => {
       it("pointerdown on the vertical resize handle flips the block's own draggable to false (resize mode), restored on pointerup", () => {
         const container = freshContainer();
-        const t = task({ time: '09:00', duration: 60 });
+        const t = task({ planning: { time: '09:00', duration: 60 } });
         renderTimedBlocksForDay(container, [t], callbacks());
         const block = container.querySelector('.tc-tg-block') as HTMLElement;
         const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
@@ -816,7 +832,7 @@ describe('renderTimedBlocksForDay', () => {
 
       it("a pointercancel mid-resize (native drag hijacking the session) also restores the block's draggable to true", () => {
         const container = freshContainer();
-        const t = task({ time: '09:00', duration: 60 });
+        const t = task({ planning: { time: '09:00', duration: 60 } });
         renderTimedBlocksForDay(container, [t], callbacks());
         const block = container.querySelector('.tc-tg-block') as HTMLElement;
         const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
@@ -833,7 +849,7 @@ describe('renderTimedBlocksForDay', () => {
 
       it('grabbing the block BODY (move mode, the legitimate drag-out-to-all-day gesture) does NOT flip draggable to false — only the resize handle does', () => {
         const container = freshContainer();
-        const t = task({ time: '09:00', duration: 60 });
+        const t = task({ planning: { time: '09:00', duration: 60 } });
         renderTimedBlocksForDay(container, [t], callbacks());
         const block = container.querySelector('.tc-tg-block') as HTMLElement;
         block.setPointerCapture = () => {};
@@ -852,7 +868,7 @@ describe('renderTimedBlocksForDay', () => {
   describe('Task 39: pick-up visual feedback on a move-mode drag', () => {
     it('pointerdown on the block body (move mode) immediately adds is-picked-up', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -866,7 +882,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('releasing (pointerup) removes is-picked-up', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -880,7 +896,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('a pointercancel mid-gesture also removes is-picked-up (does not get stuck on)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -898,7 +914,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('pointerdown on the vertical resize handle (resize mode, not move) does NOT add is-picked-up', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
@@ -926,7 +942,7 @@ describe('renderTimedBlocksForDay', () => {
     it('move: the live top (mid-drag) equals minutesToPixels of the value committed via onTimeChange', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -947,7 +963,7 @@ describe('renderTimedBlocksForDay', () => {
     it('resize: the live height (mid-drag) equals minutesToPixels of the value committed via onDurationChange', () => {
       const container = freshContainer();
       const onDurationChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onDurationChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
@@ -968,7 +984,7 @@ describe('renderTimedBlocksForDay', () => {
   describe('Task 39: keyboard nudge while the block has native DOM focus', () => {
     it('the block is a keyboard-focusable target (tabindex="0")', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       expect(block.getAttribute('tabindex')).toBe('0');
@@ -977,7 +993,7 @@ describe('renderTimedBlocksForDay', () => {
     it('ArrowDown nudges the time later by one snap increment (15 min) via onTimeChange', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
@@ -987,7 +1003,7 @@ describe('renderTimedBlocksForDay', () => {
     it('ArrowUp nudges the time earlier by one snap increment (15 min) via onTimeChange', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
@@ -997,7 +1013,7 @@ describe('renderTimedBlocksForDay', () => {
     it('repeated ArrowDown presses each nudge by one increment (uses the render-time start, matching how a re-render after each commit would supply the next base)', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
@@ -1009,7 +1025,7 @@ describe('renderTimedBlocksForDay', () => {
     it('ArrowUp at 00:00 clamps to 0, never going negative', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '00:00', duration: 60 });
+      const t = task({ planning: { time: '00:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
@@ -1019,7 +1035,7 @@ describe('renderTimedBlocksForDay', () => {
     it('ArrowDown at 23:45 (the last valid slot) clamps there, never exceeding MAX_START_MINUTES', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '23:45', duration: 60 });
+      const t = task({ planning: { time: '23:45', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
@@ -1029,7 +1045,7 @@ describe('renderTimedBlocksForDay', () => {
     it('a non-arrow key is ignored (no onTimeChange call)', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
@@ -1044,7 +1060,7 @@ describe('renderTimedBlocksForDay', () => {
       // broke arrow-key handling for the rest of that focus session).
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
@@ -1055,7 +1071,7 @@ describe('renderTimedBlocksForDay', () => {
     it('a keydown from an element truly outside the block is still ignored', () => {
       const container = freshContainer();
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const outsider = container.createDiv();
       outsider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
@@ -1072,7 +1088,7 @@ describe('renderTimedBlocksForDay', () => {
     it('focusing the block adds is-selected', () => {
       const container = freshContainer();
       document.body.appendChild(container);
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       expect(block.hasClass('is-selected')).toBe(false);
@@ -1084,7 +1100,7 @@ describe('renderTimedBlocksForDay', () => {
     it('blurring the block removes is-selected', () => {
       const container = freshContainer();
       document.body.appendChild(container);
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.focus();
@@ -1104,7 +1120,7 @@ describe('renderTimedBlocksForDay', () => {
 
       const container = freshContainer();
       document.body.appendChild(container);
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -1124,7 +1140,7 @@ describe('renderTimedBlocksForDay', () => {
     it('Bug fix (focus/blur robustness): tabbing from the block onto its own embedded link (a real, independently-focusable descendant renderTaskText.ts can produce) does not drop is-selected', () => {
       const container = freshContainer();
       document.body.appendChild(container);
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
@@ -1154,7 +1170,7 @@ describe('renderTimedBlocksForDay', () => {
       const container = freshContainer();
       document.body.appendChild(container);
       const onTimeChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onTimeChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
@@ -1174,7 +1190,7 @@ describe('renderTimedBlocksForDay', () => {
     it('ArrowRight extends due one day forward via onExtendToSpan (same mutation as the mouse-driven right-edge drag)', () => {
       const container = freshContainer();
       const onExtendToSpan = vi.fn();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
@@ -1184,7 +1200,7 @@ describe('renderTimedBlocksForDay', () => {
     it('ArrowLeft moves start one day earlier via onStartChange (same mutation as the mouse-driven left-edge drag), anchored on due when the task has no start yet', () => {
       const container = freshContainer();
       const onStartChange = vi.fn();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onStartChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
@@ -1194,7 +1210,7 @@ describe('renderTimedBlocksForDay', () => {
     it('ArrowLeft on a task that already spans (has its own start) moves that start one day further back, not due-1', () => {
       const container = freshContainer();
       const onStartChange = vi.fn();
-      const t = task({ time: '09:00', due: '2026-07-10', start: '2026-07-08' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10', start: '2026-07-08' } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onStartChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
@@ -1207,7 +1223,7 @@ describe('renderTimedBlocksForDay', () => {
       // "Deadline" pattern: interactive body renders on the scheduled day, a separate
       // non-interactive deadline marker renders on the due day — the block under test here (the
       // one the user is actually looking at and pressing arrow keys on) is anchored on scheduled.
-      const t = task({ time: '09:00', scheduled: '2026-07-05', due: '2026-07-20' });
+      const t = task({ planning: { time: '09:00', scheduled: '2026-07-05', due: '2026-07-20' } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
@@ -1217,7 +1233,7 @@ describe('renderTimedBlocksForDay', () => {
     it('Bug B regression: ArrowLeft computes from `scheduled`, not `due`, for a non-span task with both set to DIFFERENT dates', () => {
       const container = freshContainer();
       const onStartChange = vi.fn();
-      const t = task({ time: '09:00', scheduled: '2026-07-05', due: '2026-07-20' });
+      const t = task({ planning: { time: '09:00', scheduled: '2026-07-05', due: '2026-07-20' } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onStartChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
@@ -1229,10 +1245,12 @@ describe('renderTimedBlocksForDay', () => {
       const onExtendToSpan = vi.fn();
       const onStartChange = vi.fn();
       const t = task({
-        time: '09:00',
-        start: '2026-07-08',
-        due: '2026-07-10',
-        scheduled: '2026-07-01',
+        planning: {
+          time: '09:00',
+          start: '2026-07-08',
+          due: '2026-07-10',
+          scheduled: '2026-07-01',
+        },
       });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan, onStartChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -1245,7 +1263,7 @@ describe('renderTimedBlocksForDay', () => {
     it('repeated ArrowRight presses each extend by one more day from the render-time due (matching how a re-render after each commit would supply the next base)', () => {
       const container = freshContainer();
       const onExtendToSpan = vi.fn();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
@@ -1257,7 +1275,7 @@ describe('renderTimedBlocksForDay', () => {
     it('ArrowRight/ArrowLeft never call onTimeChange/onDurationChange (stay on the horizontal mutation path only)', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', due: '2026-07-10', start: '2026-07-08' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10', start: '2026-07-08' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
@@ -1272,7 +1290,7 @@ describe('renderTimedBlocksForDay', () => {
       const container = freshContainer();
       const onExtendToSpan = vi.fn();
       const onStartChange = vi.fn();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan, onStartChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const title = block.querySelector('.tc-tg-block-title') as HTMLElement;
@@ -1286,7 +1304,7 @@ describe('renderTimedBlocksForDay', () => {
       const container = freshContainer();
       const onExtendToSpan = vi.fn();
       const onStartChange = vi.fn();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onExtendToSpan, onStartChange });
       const outsider = container.createDiv();
       outsider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
@@ -1316,7 +1334,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('renders a right-edge horizontal resize handle on every timed block', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = block.querySelector('.tc-tg-span-edge--right') as HTMLElement;
@@ -1325,7 +1343,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('the horizontal handle stays draggable="false" (same defensive island-in-a-draggable-ancestor pattern as the vertical resize handle)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       expect(handle.getAttribute('draggable')).toBe('false');
@@ -1334,7 +1352,7 @@ describe('renderTimedBlocksForDay', () => {
     it('pointer-dragging the horizontal handle fires onExtendToSpan with the resolved date, not onTimeChange/onDurationChange', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
@@ -1353,7 +1371,7 @@ describe('renderTimedBlocksForDay', () => {
     it('a pointerdown on the horizontal handle does not arm the vertical move/resize gesture (a subsequent window pointermove/pointerup does not fire onTimeChange/onDurationChange)', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', duration: 60, due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', duration: 60, due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       handle.dispatchEvent(
@@ -1372,7 +1390,7 @@ describe('renderTimedBlocksForDay', () => {
       // rather than forcing a real-layout/real-elementFromPoint assertion jsdom cannot support.
       it('pointermove over a day column adds is-drag-over to that column', () => {
         const container = freshContainer();
-        const t = task({ time: '09:00', due: '2026-07-10' });
+        const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
         renderTimedBlocksForDay(container, [t], callbacks());
         const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
         const dayEl = document.createElement('div');
@@ -1385,7 +1403,7 @@ describe('renderTimedBlocksForDay', () => {
 
       it('moving from one day column to another moves the highlight, never leaving two columns highlighted at once', () => {
         const container = freshContainer();
-        const t = task({ time: '09:00', due: '2026-07-10' });
+        const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
         renderTimedBlocksForDay(container, [t], callbacks());
         const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
         const dayA = document.createElement('div');
@@ -1404,7 +1422,7 @@ describe('renderTimedBlocksForDay', () => {
 
       it('releasing (pointerup) clears the highlight', () => {
         const container = freshContainer();
-        const t = task({ time: '09:00', due: '2026-07-10' });
+        const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
         renderTimedBlocksForDay(container, [t], callbacks());
         const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
         const dayEl = document.createElement('div');
@@ -1419,7 +1437,7 @@ describe('renderTimedBlocksForDay', () => {
 
       it('a pointercancel mid-gesture also clears the highlight (does not get stuck on)', () => {
         const container = freshContainer();
-        const t = task({ time: '09:00', due: '2026-07-10' });
+        const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
         renderTimedBlocksForDay(container, [t], callbacks());
         const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
         const dayEl = document.createElement('div');
@@ -1436,7 +1454,7 @@ describe('renderTimedBlocksForDay', () => {
     it("a pointercancel mid-gesture on the horizontal handle (simulating the browser hijacking the pointer session into a native drag, mirroring Task 26's vertical-drag fix) tears down its window listeners: a subsequent real pointerup that WOULD resolve to a day does not fire onExtendToSpan", () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       // Override the describe-block-wide null stub just for this test: a day-column stand-in
@@ -1460,7 +1478,7 @@ describe('renderTimedBlocksForDay', () => {
     it('regression: vertical Pointer-Events move on the block body still fires onTimeChange after the horizontal handle was added', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], cbs);
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = () => {};
@@ -1476,7 +1494,7 @@ describe('renderTimedBlocksForDay', () => {
     it('regression: dragging the vertical resize handle still fires onDurationChange after the horizontal handle was added', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
       handle.setPointerCapture = () => {};
@@ -1492,7 +1510,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it("pointerdown on the right-edge handle flips the block's own draggable to false (blocking the native-drag-ancestor-fallback), restored on pointerup", () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
@@ -1506,7 +1524,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('a pointercancel mid-drag on the right-edge handle also restores draggable to true', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
@@ -1531,7 +1549,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('renders a left-edge horizontal resize handle on every timed block, alongside the existing right edge', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       expect(block.querySelector('.tc-tg-span-edge--left')).not.toBeNull();
@@ -1540,7 +1558,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('the left-edge handle stays draggable="false" (same defensive island-in-a-draggable-ancestor pattern as the right edge and the vertical resize handle)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00' });
+      const t = task({ planning: { time: '09:00' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
       expect(handle.getAttribute('draggable')).toBe('false');
@@ -1549,7 +1567,7 @@ describe('renderTimedBlocksForDay', () => {
     it('pointer-dragging the left-edge handle fires onStartChange with the resolved date, not onExtendToSpan/onTimeChange/onDurationChange', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
       handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
@@ -1569,7 +1587,7 @@ describe('renderTimedBlocksForDay', () => {
     it('pointer-dragging the RIGHT edge on a block that also has a left edge still fires only onExtendToSpan, not onStartChange (the two handles do not cross-fire on the shared hourColumnEl test seam)', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const rightHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       rightHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
@@ -1583,7 +1601,7 @@ describe('renderTimedBlocksForDay', () => {
     it('a pointerdown on the left-edge handle does not arm the vertical move/resize gesture (a subsequent window pointermove/pointerup does not fire onTimeChange/onDurationChange)', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', duration: 60, due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', duration: 60, due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
       handle.dispatchEvent(
@@ -1598,7 +1616,7 @@ describe('renderTimedBlocksForDay', () => {
     it("a pointercancel mid-gesture on the left-edge handle (mirroring the right edge's Task 29 fix) tears down its window listeners: a subsequent real pointerup that WOULD resolve to a day does not fire onStartChange", () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
       const fakeDayEl = document.createElement('div');
@@ -1614,7 +1632,9 @@ describe('renderTimedBlocksForDay', () => {
       const container = freshContainer();
       const cbs = callbacks();
       // The exact repro: a 3-day span, left edge dragged right past its own due day.
-      const t = task({ time: '13:00', duration: 60, start: '2026-07-13', due: '2026-07-15' });
+      const t = task({
+        planning: { time: '13:00', duration: 60, start: '2026-07-13', due: '2026-07-15' },
+      });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
       handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
@@ -1628,7 +1648,9 @@ describe('renderTimedBlocksForDay', () => {
     it('Task 51: dragging the left edge to a date still before/at due is unaffected by the clamp', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '13:00', duration: 60, start: '2026-07-13', due: '2026-07-15' });
+      const t = task({
+        planning: { time: '13:00', duration: 60, start: '2026-07-13', due: '2026-07-15' },
+      });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
       handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
@@ -1641,7 +1663,7 @@ describe('renderTimedBlocksForDay', () => {
     it('Task 51 (mirror): dragging the right edge before the anchor that would freeze as start clamps to that anchor, never firing onExtendToSpan with a due before it', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '13:00', duration: 60, due: '2026-07-10' });
+      const t = task({ planning: { time: '13:00', duration: 60, due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
@@ -1655,7 +1677,7 @@ describe('renderTimedBlocksForDay', () => {
     it('coexistence: all five interaction modes now living on one .tc-tg-block (left edge, right edge, vertical move, vertical resize, native whole-block drag) each fire only their own callback', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ time: '09:00', duration: 60, due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', duration: 60, due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], cbs);
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const leftHandle = block.querySelector('.tc-tg-span-edge--left') as HTMLElement;
@@ -1719,7 +1741,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it("pointerdown on the left-edge handle flips the block's own draggable to false (blocking the native-drag-ancestor-fallback), restored on pointerup", () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
@@ -1733,7 +1755,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('a pointercancel mid-drag on the left-edge handle also restores draggable to true', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
@@ -1775,7 +1797,7 @@ describe('renderTimedBlocksForDay', () => {
     // capture call while refactoring) would break.
     it("pointerdown on the vertical resize handle arms pointer capture on the handle with the gesture's pointerId", () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
       handle.setPointerCapture = vi.fn();
@@ -1788,7 +1810,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('pointerdown on the block body (move mode) arms pointer capture on the block too (same abandoned-gesture risk exists for the plain move gesture)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       block.setPointerCapture = vi.fn();
@@ -1801,7 +1823,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('pointerdown on the left-edge horizontal handle arms pointer capture on that handle', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
       handle.setPointerCapture = vi.fn();
@@ -1812,7 +1834,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('pointerdown on the right-edge horizontal handle arms pointer capture on that handle', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       handle.setPointerCapture = vi.fn();
@@ -1824,7 +1846,7 @@ describe('renderTimedBlocksForDay', () => {
     it('a source lacking setPointerCapture (e.g. jsdom, or any host without Pointer Events capture support) is tolerated: no throw, and the pre-existing pointerup cleanup still runs', () => {
       const container = freshContainer();
       const onDurationChange = vi.fn();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], { ...callbacks(), onDurationChange });
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
@@ -1845,7 +1867,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('releasePointerCapture is called on pointerup cleanup (vertical resize) with the same pointerId that was captured', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 60 });
+      const t = task({ planning: { time: '09:00', duration: 60 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const handle = container.querySelector('.tc-tg-resize-handle') as HTMLElement;
       handle.setPointerCapture = vi.fn();
@@ -1859,7 +1881,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('releasePointerCapture is called on pointercancel cleanup (left-edge horizontal resize) with the same pointerId that was captured', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', due: '2026-07-10' });
+      const t = task({ planning: { time: '09:00', due: '2026-07-10' } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const handle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
       handle.setPointerCapture = vi.fn();
@@ -1873,7 +1895,9 @@ describe('renderTimedBlocksForDay', () => {
   describe('renderTimedSpanContinuation (Task 29: non-anchor days of a multi-day timed span)', () => {
     it('renders a continuation segment positioned at the same time-of-day row as a full block would be', () => {
       const container = freshContainer();
-      const t = task({ time: '15:00', duration: 90, start: '2026-07-01', due: '2026-07-03' });
+      const t = task({
+        planning: { time: '15:00', duration: 90, start: '2026-07-01', due: '2026-07-03' },
+      });
       renderTimedSpanContinuation(container, [t]);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
       expect(seg).not.toBeNull();
@@ -1883,7 +1907,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('is not draggable and carries no resize handles (non-interactive continuation, not a duplicate full block)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', start: '2026-07-01', due: '2026-07-03' });
+      const t = task({ planning: { time: '09:00', start: '2026-07-01', due: '2026-07-03' } });
       renderTimedSpanContinuation(container, [t]);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
       expect(seg.getAttribute('draggable')).not.toBe('true');
@@ -1893,7 +1917,10 @@ describe('renderTimedBlocksForDay', () => {
 
     it('shows the task title so the continuation reads as clearly linked to the anchor block, not an unrelated duplicate task', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', start: '2026-07-01', due: '2026-07-03', text: 'Conference' });
+      const t = task({
+        title: 'Conference',
+        planning: { time: '09:00', start: '2026-07-01', due: '2026-07-03' },
+      });
       renderTimedSpanContinuation(container, [t]);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
       expect(seg.textContent).toContain('Conference');
@@ -1902,7 +1929,7 @@ describe('renderTimedBlocksForDay', () => {
     it('a right-click fires onTaskClick, same as a full block', () => {
       const container = freshContainer();
       const onTaskClick = vi.fn();
-      const t = task({ time: '09:00', start: '2026-07-01', due: '2026-07-03' });
+      const t = task({ planning: { time: '09:00', start: '2026-07-01', due: '2026-07-03' } });
       renderTimedSpanContinuation(container, [t], onTaskClick);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
       seg.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -1912,10 +1939,9 @@ describe('renderTimedBlocksForDay', () => {
     it('renders one continuation segment per task, in tag color when a tag matches', () => {
       const container = freshContainer();
       const t = task({
-        time: '09:00',
-        start: '2026-07-01',
-        due: '2026-07-03',
-        rawText: '- [ ] t #work',
+        tags: ['#work'],
+        planning: { time: '09:00', start: '2026-07-01', due: '2026-07-03' },
+        source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
       });
       renderTimedSpanContinuation(container, [t], undefined, [
         { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
@@ -1928,7 +1954,9 @@ describe('renderTimedBlocksForDay', () => {
     // count badges the anchor block shows, but must stay just as non-interactive as before.
     it("shows the time range + duration subtitle, matching the anchor block's format", () => {
       const container = freshContainer();
-      const t = task({ time: '15:00', duration: 90, start: '2026-07-01', due: '2026-07-03' });
+      const t = task({
+        planning: { time: '15:00', duration: 90, start: '2026-07-01', due: '2026-07-03' },
+      });
       renderTimedSpanContinuation(container, [t]);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
       const subtitle = seg.querySelector('.tc-tg-block-subtitle') as HTMLElement;
@@ -1939,11 +1967,10 @@ describe('renderTimedBlocksForDay', () => {
     it('renders count badges in a .tc-tg-block-badges container when the task has subtasks/comments/links, and never a tag chip', () => {
       const container = freshContainer();
       const t = task({
-        time: '09:00',
-        start: '2026-07-01',
-        due: '2026-07-03',
-        rawText: '- [ ] t #work',
-        linkCount: 1,
+        tags: ['#work'],
+        planning: { time: '09:00', start: '2026-07-01', due: '2026-07-03' },
+        source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+        presentation: { linkCount: 1 },
       });
       renderTimedSpanContinuation(container, [t], undefined, [
         { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
@@ -1957,7 +1984,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('omits .tc-tg-block-badges entirely for a continuation task with no subtasks/comments/links', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', start: '2026-07-01', due: '2026-07-03' });
+      const t = task({ planning: { time: '09:00', start: '2026-07-01', due: '2026-07-03' } });
       renderTimedSpanContinuation(container, [t]);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
       expect(seg.querySelector('.tc-tg-block-badges')).toBeNull();
@@ -1966,11 +1993,8 @@ describe('renderTimedBlocksForDay', () => {
     it('still has no checkbox/status marker and no draggable/resize/pointer-driven interactivity now that the subtitle and badges were added (regression: must stay non-interactive)', () => {
       const container = freshContainer();
       const t = task({
-        time: '09:00',
-        duration: 60,
-        start: '2026-07-01',
-        due: '2026-07-03',
-        comments: [{ line: 1, text: 'note' }],
+        comments: [taskComment({ text: 'note' })],
+        planning: { time: '09:00', duration: 60, start: '2026-07-01', due: '2026-07-03' },
       });
       renderTimedSpanContinuation(container, [t]);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
@@ -2006,7 +2030,7 @@ describe('renderTimedBlocksForDay', () => {
 
     it('a 10-minute task does not get an explicit inline min-height override when nothing follows it in its column (the CSS rule alone is enough)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 10 });
+      const t = task({ planning: { time: '09:00', duration: 10 } });
       renderTimedBlocksForDay(container, [t], callbacks());
       const block = container.querySelector('.tc-tg-block') as HTMLElement;
       expect(block.style.height).toBe(`${(10 / 60) * 48}px`);
@@ -2015,8 +2039,16 @@ describe('renderTimedBlocksForDay', () => {
 
     it('two 10-minute tasks scheduled back-to-back (09:00-09:10, 09:10-09:20): the earlier block gets an inline min-height clamped to the real gap, so growing to legibly show its title cannot visually cross into the next block', () => {
       const container = freshContainer();
-      const a = task({ time: '09:00', duration: 10, line: 0, text: 'A' });
-      const b = task({ time: '09:10', duration: 10, line: 1, text: 'B' });
+      const a = task({
+        title: 'A',
+        planning: { time: '09:00', duration: 10 },
+        source: { line: 0 },
+      });
+      const b = task({
+        title: 'B',
+        planning: { time: '09:10', duration: 10 },
+        source: { line: 1 },
+      });
       renderTimedBlocksForDay(container, [a, b], callbacks());
       const blocks = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block'));
       expect(blocks).toHaveLength(2);
@@ -2033,8 +2065,8 @@ describe('renderTimedBlocksForDay', () => {
 
     it('two tasks with a generous gap (09:00-09:10, then 11:00) get no inline min-height override — the CSS rule has plenty of room', () => {
       const container = freshContainer();
-      const a = task({ time: '09:00', duration: 10, line: 0 });
-      const b = task({ time: '11:00', duration: 60, line: 1 });
+      const a = task({ planning: { time: '09:00', duration: 10 }, source: { line: 0 } });
+      const b = task({ planning: { time: '11:00', duration: 60 }, source: { line: 1 } });
       renderTimedBlocksForDay(container, [a, b], callbacks());
       const blocks = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block'));
       expect(blocks[0]!.style.minHeight).toBe('');
@@ -2050,7 +2082,9 @@ describe('renderTimedBlocksForDay', () => {
   describe('Task 37: continuation segments get the same min-height collision clamp as anchor blocks', () => {
     it('a 10-minute continuation does not get an explicit inline min-height override when nothing follows it (the CSS rule alone is enough)', () => {
       const container = freshContainer();
-      const t = task({ time: '09:00', duration: 10, start: '2026-07-01', due: '2026-07-03' });
+      const t = task({
+        planning: { time: '09:00', duration: 10, start: '2026-07-01', due: '2026-07-03' },
+      });
       renderTimedSpanContinuation(container, [t]);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;
       expect(seg.style.height).toBe(`${(10 / 60) * 48}px`);
@@ -2060,20 +2094,14 @@ describe('renderTimedBlocksForDay', () => {
     it('two 10-minute continuation segments scheduled back-to-back (09:00-09:10, 09:10-09:20): the earlier one gets an inline min-height clamped to the real gap, so it cannot visually cross into the next one', () => {
       const container = freshContainer();
       const a = task({
-        time: '09:00',
-        duration: 10,
-        line: 0,
-        text: 'A',
-        start: '2026-07-01',
-        due: '2026-07-03',
+        title: 'A',
+        planning: { time: '09:00', duration: 10, start: '2026-07-01', due: '2026-07-03' },
+        source: { line: 0 },
       });
       const b = task({
-        time: '09:10',
-        duration: 10,
-        line: 1,
-        text: 'B',
-        start: '2026-07-01',
-        due: '2026-07-04',
+        title: 'B',
+        planning: { time: '09:10', duration: 10, start: '2026-07-01', due: '2026-07-04' },
+        source: { line: 1 },
       });
       renderTimedSpanContinuation(container, [a, b]);
       const segs = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block-continuation'));
@@ -2091,18 +2119,12 @@ describe('renderTimedBlocksForDay', () => {
     it('two continuation segments with a generous gap (09:00-09:10, then 11:00) get no inline min-height override', () => {
       const container = freshContainer();
       const a = task({
-        time: '09:00',
-        duration: 10,
-        line: 0,
-        start: '2026-07-01',
-        due: '2026-07-03',
+        planning: { time: '09:00', duration: 10, start: '2026-07-01', due: '2026-07-03' },
+        source: { line: 0 },
       });
       const b = task({
-        time: '11:00',
-        duration: 60,
-        line: 1,
-        start: '2026-07-01',
-        due: '2026-07-04',
+        planning: { time: '11:00', duration: 60, start: '2026-07-01', due: '2026-07-04' },
+        source: { line: 1 },
       });
       renderTimedSpanContinuation(container, [a, b]);
       const segs = Array.from(container.querySelectorAll<HTMLElement>('.tc-tg-block-continuation'));
@@ -2112,14 +2134,15 @@ describe('renderTimedBlocksForDay', () => {
     it('a short continuation segment immediately followed by an anchor block in the same day column is capped against the anchor block, not left to grow past its top', () => {
       const container = freshContainer();
       const continuationTask = task({
-        time: '09:00',
-        duration: 10,
-        line: 0,
-        text: 'Continuation',
-        start: '2026-07-01',
-        due: '2026-07-03',
+        title: 'Continuation',
+        planning: { time: '09:00', duration: 10, start: '2026-07-01', due: '2026-07-03' },
+        source: { line: 0 },
       });
-      const anchorTask = task({ time: '09:10', duration: 60, line: 1, text: 'Anchor' });
+      const anchorTask = task({
+        title: 'Anchor',
+        planning: { time: '09:10', duration: 60 },
+        source: { line: 1 },
+      });
       const anchorInputs = toTimedBlockInputs([anchorTask]);
       renderTimedSpanContinuation(container, [continuationTask], undefined, [], anchorInputs);
       const seg = container.querySelector('.tc-tg-block-continuation') as HTMLElement;

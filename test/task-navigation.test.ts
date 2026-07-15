@@ -13,7 +13,7 @@ describe('openInFile', () => {
     };
     vi.spyOn(app.workspace, 'getLeaf').mockReturnValue(leaf as never);
 
-    const selected = task({ filePath: 'note.md', line: 1 });
+    const selected = task({ source: { filePath: 'note.md', line: 1 } });
     await openInFile(app, selected);
 
     expect(leaf.openFile).toHaveBeenCalledWith(expect.any(TFile));
@@ -23,7 +23,7 @@ describe('openInFile', () => {
   it('does nothing when filePath is not a TFile', async () => {
     const app = await createAppWithFiles({});
     const getLeaf = vi.spyOn(app.workspace, 'getLeaf');
-    await openInFile(app, task({ filePath: 'missing.md', line: 0 }));
+    await openInFile(app, task({ source: { filePath: 'missing.md', line: 0 } }));
     expect(getLeaf).not.toHaveBeenCalled();
   });
 });

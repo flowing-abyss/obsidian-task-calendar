@@ -25,15 +25,15 @@ describe('test helpers', () => {
   describe('task builder', () => {
     it('produces a Task with sensible defaults', () => {
       const t = task();
-      expect(t.filePath).toBe('f.md');
+      expect(t.source.filePath).toBe('f.md');
       expect(t.status).toBe('open');
       expect(t.priority).toBe('D');
     });
     it('overrides win', () => {
-      const t = task({ status: 'done', priority: 'A', due: '2026-06-24' });
+      const t = task({ status: 'done', priority: 'A', planning: { due: '2026-06-24' } });
       expect(t.status).toBe('done');
       expect(t.priority).toBe('A');
-      expect(t.due).toBe('2026-06-24');
+      expect(t.planning.due).toBe('2026-06-24');
     });
   });
 

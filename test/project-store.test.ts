@@ -1,10 +1,9 @@
 import { TFile } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
-import type { Task } from '../src/parser/types';
 import { computeStats, ProjectStore } from '../src/projects/ProjectStore';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
-import type { TaskIndexEvent } from '../src/tasks';
-import { queryApiForTasks, taskSnapshotOf } from './helpers';
+import type { TaskIndexEvent, TaskSnapshot } from '../src/tasks';
+import { queryApiForTasks, task, type TaskFixtureInput } from './helpers';
 
 /** A minimal object that passes `instanceof TFile` (TFile isn't standalone-constructable). */
 function tfile(path: string): { path: string; extension: string } {
@@ -14,27 +13,18 @@ function tfile(path: string): { path: string; extension: string } {
   };
 }
 
-function t(over: Partial<Task>): Task {
-  return {
-    filePath: 'x.md',
-    line: 0,
-    rawText: '',
-    text: '',
-    markdownText: '',
-    status: 'open',
-    priority: 'none',
-    ...over,
-  } as Task;
+function t(over: TaskFixtureInput): TaskSnapshot {
+  return task({ ...over, source: { filePath: 'x.md', ...over.source } });
 }
 
 describe('computeStats', () => {
   it('counts task statuses', () => {
     const stats = computeStats([
-      taskSnapshotOf(t({ status: 'open' })),
-      taskSnapshotOf(t({ status: 'done' })),
-      taskSnapshotOf(t({ status: 'done' })),
-      taskSnapshotOf(t({ status: 'cancelled' })),
-      taskSnapshotOf(t({ status: 'in-progress' })),
+      t({ status: 'open' }),
+      t({ status: 'done' }),
+      t({ status: 'done' }),
+      t({ status: 'cancelled' }),
+      t({ status: 'in-progress' }),
     ]);
     expect(stats).toEqual({ total: 5, done: 2, cancelled: 1, inProgress: 1 });
   });
@@ -94,7 +84,7 @@ function makeApp(files: FakeFile[]): MockApp {
   return { app, fire, fireChanged, setCache };
 }
 
-function storeWith(tasks: Task[]): never {
+function storeWith(tasks: TaskSnapshot[]): never {
   return queryApiForTasks(() => tasks) as never;
 }
 
@@ -120,9 +110,9 @@ describe('ProjectStore enumeration', () => {
   it('computes stats from tasks in the note', () => {
     const { app } = makeApp([{ path: 'Projects/A.md', tags: [], fm: { status: 'active' } }]);
     const tasks = [
-      t({ filePath: 'Projects/A.md', status: 'open' }),
-      t({ filePath: 'Projects/A.md', status: 'done' }),
-      t({ filePath: 'Other.md', status: 'open' }),
+      t({ source: { filePath: 'Projects/A.md' }, status: 'open' }),
+      t({ source: { filePath: 'Projects/A.md' }, status: 'done' }),
+      t({ source: { filePath: 'Other.md' }, status: 'open' }),
     ];
     const ps = new ProjectStore(app, storeWith(tasks), { ...DEFAULT_SETTINGS });
     ps.initialize();
@@ -165,7 +155,7 @@ describe('ProjectStore incremental update', () => {
       { path: 'Projects/A.md', tags: [], fm: { status: 'active' } },
       { path: 'Notes/C.md', tags: [], fm: {} },
     ]);
-    let tasks: Task[] = [t({ filePath: 'Projects/A.md', status: 'open' })];
+    let tasks: TaskSnapshot[] = [t({ source: { filePath: 'Projects/A.md' }, status: 'open' })];
     let indexListener: ((event: TaskIndexEvent) => void) | undefined;
     const store = queryApiForTasks(
       () => tasks,
@@ -181,7 +171,7 @@ describe('ProjectStore incremental update', () => {
     ps.onUpdate(cb);
 
     // A task in A is completed.
-    tasks = [t({ filePath: 'Projects/A.md', status: 'done' })];
+    tasks = [t({ source: { filePath: 'Projects/A.md' }, status: 'done' })];
     mock.fireChanged('Projects/A.md');
     indexListener?.({ type: 'changed', files: ['Projects/A.md'] });
     // Debounced: not applied yet.
@@ -199,7 +189,7 @@ describe('ProjectStore incremental update', () => {
     const mock = makeApp([{ path: 'Notes/C.md', tags: [], fm: {} }]);
     let indexListener: ((event: TaskIndexEvent) => void) | undefined;
     const store = queryApiForTasks(
-      () => [] as Task[],
+      () => [] as TaskSnapshot[],
       (listener) => {
         indexListener = listener;
         return () => {};

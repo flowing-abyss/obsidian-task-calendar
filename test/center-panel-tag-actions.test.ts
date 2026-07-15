@@ -1,11 +1,10 @@
 import { Menu } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
-import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import { TagManager } from '../src/tags/TagManager';
-import type { TaskApplicationApi } from '../src/tasks';
+import type { TaskApplicationApi, TaskSnapshot } from '../src/tasks';
 import {
   freshContainer,
   makeCenterPanelForTest,
@@ -17,7 +16,7 @@ import {
 useRealMoment();
 
 function makeCenter(
-  tasks: Task[] = [],
+  tasks: TaskSnapshot[] = [],
   settings: Partial<CalendarSettings> = {},
   pinnedTags: string[] = [],
 ) {
@@ -44,14 +43,24 @@ function makeCenter(
 
 describe('CenterPanel drag source', () => {
   it('task card has draggable attribute', () => {
-    const tasks = [task({ rawText: '- [ ] t #task/inbox', status: 'open' })];
+    const tasks = [
+      task({
+        status: 'open',
+        tags: ['#task/inbox'],
+        source: { originalMarkdown: '- [ ] t #task/inbox', originalBlock: '- [ ] t #task/inbox' },
+      }),
+    ];
     const { el } = makeCenter(tasks);
     const card = el.querySelector('.tc-task-card') as HTMLElement;
     expect(card.getAttribute('draggable')).toBe('true');
   });
 
   it('dragstart sets state.draggingTask', () => {
-    const t = task({ rawText: '- [ ] t #task/inbox', status: 'open' });
+    const t = task({
+      status: 'open',
+      tags: ['#task/inbox'],
+      source: { originalMarkdown: '- [ ] t #task/inbox', originalBlock: '- [ ] t #task/inbox' },
+    });
     const { el, state } = makeCenter([t]);
     const card = el.querySelector('.tc-task-card') as HTMLElement;
     const ev = new MouseEvent('dragstart', { bubbles: true });
@@ -60,7 +69,11 @@ describe('CenterPanel drag source', () => {
   });
 
   it('dragend clears state.draggingTask', () => {
-    const t = task({ rawText: '- [ ] t #task/inbox', status: 'open' });
+    const t = task({
+      status: 'open',
+      tags: ['#task/inbox'],
+      source: { originalMarkdown: '- [ ] t #task/inbox', originalBlock: '- [ ] t #task/inbox' },
+    });
     const { el, state } = makeCenter([t]);
     const card = el.querySelector('.tc-task-card') as HTMLElement;
     const startEv = new MouseEvent('dragstart', { bubbles: true });
@@ -73,7 +86,11 @@ describe('CenterPanel drag source', () => {
 
 describe('CenterPanel tag→task drop target', () => {
   it('task card assigns a tag and removes the inbox tag in one API patch', () => {
-    const t = task({ rawText: '- [ ] t #task/inbox', status: 'open' });
+    const t = task({
+      status: 'open',
+      tags: ['#task/inbox'],
+      source: { originalMarkdown: '- [ ] t #task/inbox', originalBlock: '- [ ] t #task/inbox' },
+    });
     const { el, state, execute } = makeCenter([t]);
     const card = el.querySelector('.tc-task-card') as HTMLElement;
 
@@ -89,14 +106,18 @@ describe('CenterPanel tag→task drop target', () => {
       type: 'patch',
       target: {
         type: 'task',
-        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+        ref: expect.objectContaining({ filePath: t.ref.filePath, line: t.ref.line }),
       },
       patch: { tags: { add: ['#task/next'], remove: ['#task/inbox'] } },
     });
   });
 
   it('task card ignores dragover when draggingTag is null', () => {
-    const t = task({ rawText: '- [ ] t #task/inbox', status: 'open' });
+    const t = task({
+      status: 'open',
+      tags: ['#task/inbox'],
+      source: { originalMarkdown: '- [ ] t #task/inbox', originalBlock: '- [ ] t #task/inbox' },
+    });
     const { el, state } = makeCenter([t]);
     state.set('draggingTag', null);
     const card = el.querySelector('.tc-task-card') as HTMLElement;
@@ -106,9 +127,18 @@ describe('CenterPanel tag→task drop target', () => {
   });
 
   it('ignores inline-code tag lookalikes and adds the real tag through the API', () => {
-    const t = Object.assign(task({ rawText: '- [ ] t `#work` #task/inbox', status: 'open' }), {
-      tags: ['#task/inbox'],
-    });
+    const t = Object.assign(
+      task({
+        status: 'open',
+        source: {
+          originalMarkdown: '- [ ] t `#work` #task/inbox',
+          originalBlock: '- [ ] t `#work` #task/inbox',
+        },
+      }),
+      {
+        tags: ['#task/inbox'],
+      },
+    );
     const { el, state, execute } = makeCenter([t]);
     const card = el.querySelector('.tc-task-card') as HTMLElement;
 
@@ -122,7 +152,7 @@ describe('CenterPanel tag→task drop target', () => {
       type: 'patch',
       target: {
         type: 'task',
-        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+        ref: expect.objectContaining({ filePath: t.ref.filePath, line: t.ref.line }),
       },
       patch: { tags: { add: ['#work'], remove: ['#task/inbox'] } },
     });
@@ -182,9 +212,18 @@ describe('CenterPanel pinned-tag context menu', () => {
     ) {
       return this;
     });
-    const t = Object.assign(task({ rawText: '- [ ] t `#work` #task/inbox', status: 'open' }), {
-      tags: ['#task/inbox'],
-    });
+    const t = Object.assign(
+      task({
+        status: 'open',
+        source: {
+          originalMarkdown: '- [ ] t `#work` #task/inbox',
+          originalBlock: '- [ ] t `#work` #task/inbox',
+        },
+      }),
+      {
+        tags: ['#task/inbox'],
+      },
+    );
     const { el, execute } = makeCenter([t], {}, ['#work']);
 
     (el.querySelector('.tc-task-card') as HTMLElement).dispatchEvent(
@@ -198,7 +237,7 @@ describe('CenterPanel pinned-tag context menu', () => {
       type: 'patch',
       target: {
         type: 'task',
-        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+        ref: expect.objectContaining({ filePath: t.ref.filePath, line: t.ref.line }),
       },
       patch: { tags: { add: ['#work'], remove: [] } },
     });
@@ -209,7 +248,15 @@ describe('CenterPanel pinned-tag context menu', () => {
 
 describe('CenterPanel tag chip replace on drop', () => {
   it('dropping draggingTag onto a chip sends one replacement patch', () => {
-    const t = task({ rawText: '- [ ] t #work #task/inbox', status: 'open', line: 1 });
+    const t = task({
+      status: 'open',
+      tags: ['#work', '#task/inbox'],
+      source: {
+        originalMarkdown: '- [ ] t #work #task/inbox',
+        originalBlock: '- [ ] t #work #task/inbox',
+        line: 1,
+      },
+    });
     const { el, state, execute } = makeCenter([t], {
       inbox: { mode: 'both', tag: '#task/inbox', removeTagOnAssign: true },
     });
@@ -227,14 +274,18 @@ describe('CenterPanel tag chip replace on drop', () => {
       type: 'patch',
       target: {
         type: 'task',
-        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+        ref: expect.objectContaining({ filePath: t.ref.filePath, line: t.ref.line }),
       },
       patch: { tags: { add: ['#task/next'], remove: ['#work'] } },
     });
   });
 
   it('dragging a chip onto itself is a no-op', () => {
-    const t = task({ rawText: '- [ ] t #work', status: 'open', line: 1 });
+    const t = task({
+      status: 'open',
+      tags: ['#work'],
+      source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work', line: 1 },
+    });
     const { el, state, execute } = makeCenter([t], {
       inbox: { mode: 'tag', tag: '#work', removeTagOnAssign: true },
     });
@@ -250,7 +301,13 @@ describe('CenterPanel tag chip replace on drop', () => {
 
   it('renders one canonical chip when the same spelling also appears in inline code', () => {
     const t = Object.assign(
-      task({ rawText: '- [ ] t `#work` #work #task/inbox', status: 'open' }),
+      task({
+        status: 'open',
+        source: {
+          originalMarkdown: '- [ ] t `#work` #work #task/inbox',
+          originalBlock: '- [ ] t `#work` #work #task/inbox',
+        },
+      }),
       { tags: ['#work', '#task/inbox'] },
     );
     const { el } = makeCenter([t]);
@@ -264,8 +321,16 @@ describe('CenterPanel tag chip replace on drop', () => {
 describe('CenterPanel inbox tasks (new inbox object)', () => {
   it('getInboxTasks tag mode returns tasks with inbox.tag', () => {
     const tasks = [
-      task({ rawText: '- [ ] a #task/inbox', status: 'open' }),
-      task({ rawText: '- [ ] b #work', status: 'open' }),
+      task({
+        status: 'open',
+        tags: ['#task/inbox'],
+        source: { originalMarkdown: '- [ ] a #task/inbox', originalBlock: '- [ ] a #task/inbox' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#work'],
+        source: { originalMarkdown: '- [ ] b #work', originalBlock: '- [ ] b #work' },
+      }),
     ];
     const { el } = makeCenter(tasks, {
       inbox: { mode: 'tag', tag: '#task/inbox', removeTagOnAssign: true },
@@ -276,8 +341,15 @@ describe('CenterPanel inbox tasks (new inbox object)', () => {
 
   it('getInboxTasks untagged mode returns tasks without any tag', () => {
     const tasks = [
-      task({ rawText: '- [ ] no tag', status: 'open' }),
-      task({ rawText: '- [ ] has tag #work', status: 'open' }),
+      task({
+        status: 'open',
+        source: { originalMarkdown: '- [ ] no tag', originalBlock: '- [ ] no tag' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#work'],
+        source: { originalMarkdown: '- [ ] has tag #work', originalBlock: '- [ ] has tag #work' },
+      }),
     ];
     const { el } = makeCenter(tasks, {
       inbox: { mode: 'untagged', tag: '#task/inbox', removeTagOnAssign: true },

@@ -4,7 +4,6 @@ import { TFile, type App } from 'obsidian';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { RightPanel } from '../src/panels/RightPanel';
-import type { SubTask, TaskComment } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
@@ -12,6 +11,7 @@ import type {
   SubtaskSnapshot,
   TaskApplicationApi,
   TaskCommandResult,
+  TaskCommentSnapshot,
   TaskSnapshot,
 } from '../src/tasks';
 import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
@@ -23,12 +23,14 @@ import { TaskLocator } from '../src/tasks/infrastructure/markdown/TaskLocator';
 import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMarkdownCodec';
 import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 import { openInFile } from '../src/ui/taskNavigation';
-import { taskNodeLine } from '../src/ui/taskSelection';
+import { rootTaskRef, taskNodeLine } from '../src/ui/taskSelection';
 import {
   createAppWithFiles,
   freshContainer,
   seedTaskCache,
+  subtask,
   task,
+  taskComment,
   testStatusRegistry,
   useRealMoment,
 } from './helpers';
@@ -65,6 +67,7 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
     typeof candidate === 'object' &&
     candidate !== null
   ) {
+    const taskLike = candidate as TaskSnapshot | SubtaskSnapshot;
     const roots = (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list();
     let found: TaskSnapshot | SubtaskSnapshot | undefined;
     let foundRoot: TaskSnapshot | undefined;
@@ -73,8 +76,8 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
       while (queue.length > 0) {
         const current = queue.shift()!;
         if (
-          root.source.filePath === (candidate as SubTask).filePath &&
-          taskNodeLine(root, current) === (candidate as SubTask).line
+          root.source.filePath === rootTaskRef(taskLike).filePath &&
+          taskNodeLine(root, current) === absoluteFixtureLine(taskLike)
         ) {
           found = current;
           foundRoot = root;
@@ -87,11 +90,11 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
     if (found && foundRoot) {
       Object.assign(candidate, { ref: found.ref });
       if ((method === 'updateComment' || method === 'deleteComment') && args[1]) {
-        const staleComment = args[1] as TaskComment;
+        const staleComment = args[1] as TaskCommentSnapshot;
         const parentLine = taskNodeLine(foundRoot, found);
         const currentComment = found.comments.find(
           (comment) =>
-            parentLine + comment.ref.relativeLine === staleComment.line &&
+            parentLine + comment.ref.relativeLine === parentLine + staleComment.ref.relativeLine &&
             comment.text === staleComment.text,
         );
         if (currentComment) Object.assign(staleComment, { ref: currentComment.ref });
@@ -100,6 +103,19 @@ function call<T>(panel: RightPanel, method: string, ...args: unknown[]): T {
   }
   const fn = (panel as unknown as Record<string, (...a: unknown[]) => T>)[method]!;
   return fn.call(panel, ...args);
+}
+
+function absoluteFixtureLine(taskLike: TaskSnapshot | SubtaskSnapshot): number {
+  if ('source' in taskLike) return taskLike.source.line;
+  let line = rootTaskRef(taskLike).line;
+  let ref = taskLike.ref;
+  const offsets: number[] = [];
+  while ('parent' in ref) {
+    offsets.unshift(ref.relativeLine);
+    if (ref.parent.type === 'task') break;
+    ref = ref.parent.ref;
+  }
+  return offsets.reduce((sum, offset) => sum + offset, line);
 }
 
 /**
@@ -231,7 +247,7 @@ describe('RightPanel planning API delegation', () => {
       undefined,
       tasks,
     );
-    const current = Object.assign(task({ filePath: 't.md', line: 0 }), { ref });
+    const current = Object.assign(task({ source: { filePath: 't.md', line: 0 } }), { ref });
     const process = vi.spyOn(app.vault, 'process');
 
     await call(panel, 'updateDue', current, '2026-07-20');
@@ -290,7 +306,10 @@ describe('RightPanel planning API delegation', () => {
       tasks,
     );
     const current = Object.assign(
-      task({ filePath: 't.md', line: 0, due: undefined, scheduled: '2026-07-20' }),
+      task({
+        planning: { due: undefined, scheduled: '2026-07-20' },
+        source: { filePath: 't.md', line: 0 },
+      }),
       { ref },
     );
 
@@ -308,10 +327,8 @@ describe('RightPanel planning API delegation', () => {
       'clearDate',
       Object.assign(
         task({
-          filePath: 't.md',
-          line: 0,
-          due: '2026-07-21',
-          scheduled: '2026-07-20',
+          planning: { due: '2026-07-21', scheduled: '2026-07-20' },
+          source: { filePath: 't.md', line: 0 },
         }),
         { ref },
       ),
@@ -353,8 +370,8 @@ describe('RightPanel planning API delegation', () => {
       undefined,
       tasks,
     );
-    const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
-    const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
+    const root = Object.assign(task({ source: { filePath: 't.md', line: 0 } }), { ref: rootRef });
+    const child = Object.assign(task({ source: { filePath: 't.md', line: 1 } }), { ref: childRef });
     const process = vi.spyOn(app.vault, 'process');
 
     await call(panel, 'updateTime', root, '14:30');
@@ -463,12 +480,18 @@ describe('RightPanel planning API delegation', () => {
       undefined,
       tasks,
     );
-    const legacyRoot = Object.assign(task({ filePath: 't.md', line: 0, text: 'root' }), {
-      ref: rootRef,
-    });
-    const legacyChild = Object.assign(task({ filePath: 't.md', line: 1, text: 'child' }), {
-      ref: childRef,
-    });
+    const legacyRoot = Object.assign(
+      task({ title: 'root', source: { filePath: 't.md', line: 0 } }),
+      {
+        ref: rootRef,
+      },
+    );
+    const legacyChild = Object.assign(
+      task({ title: 'child', source: { filePath: 't.md', line: 1 } }),
+      {
+        ref: childRef,
+      },
+    );
     state.set('taskStack', [legacyRoot, legacyChild]);
 
     await call(panel, 'updateDue', legacyChild, '2026-07-20');
@@ -519,12 +542,18 @@ describe('RightPanel planning API delegation', () => {
         acknowledge,
         tasks,
       );
-      const legacyRoot = Object.assign(task({ filePath: 'a.md', line: 0, text: 'A' }), {
-        ref: rootRef,
-      });
-      const legacyChild = Object.assign(task({ filePath: 'a.md', line: 1, text: 'A child' }), {
-        ref: childRef,
-      });
+      const legacyRoot = Object.assign(
+        task({ title: 'A', source: { filePath: 'a.md', line: 0 } }),
+        {
+          ref: rootRef,
+        },
+      );
+      const legacyChild = Object.assign(
+        task({ title: 'A child', source: { filePath: 'a.md', line: 1 } }),
+        {
+          ref: childRef,
+        },
+      );
       state.set('taskStack', selection === 'child' ? [legacyRoot, legacyChild] : [legacyRoot]);
       const pending = call<Promise<void>>(
         panel,
@@ -533,7 +562,7 @@ describe('RightPanel planning API delegation', () => {
         '2026-07-20',
       );
 
-      const other = Object.assign(task({ filePath: 'b.md', line: 0, text: 'B' }), {
+      const other = Object.assign(task({ title: 'B', source: { filePath: 'b.md', line: 0 } }), {
         ref: { filePath: 'b.md', line: 0, revision: 'b' },
       });
       state.set('taskStack', [other]);
@@ -657,8 +686,8 @@ describe('RightPanel.updateTaskTitle', () => {
       undefined,
       tasks,
     );
-    const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
-    const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
+    const root = Object.assign(task({ source: { filePath: 't.md', line: 0 } }), { ref: rootRef });
+    const child = Object.assign(task({ source: { filePath: 't.md', line: 1 } }), { ref: childRef });
     const process = vi.spyOn(app.vault, 'process');
 
     await call<Promise<void>>(panel, 'updateTaskTitle', root, 'New [[Title]]');
@@ -697,7 +726,7 @@ describe('RightPanel.updateTaskTitle', () => {
       return originalProcess(file, transform);
     });
     const first = (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list()[0]!;
-    const second = Object.assign(task({ filePath: 'other.md', line: 0 }), {
+    const second = Object.assign(task({ source: { filePath: 'other.md', line: 0 } }), {
       ref: { filePath: 'other.md', line: 0, revision: 'second' },
     });
     state.set('taskStack', [first]);
@@ -722,7 +751,14 @@ describe('RightPanel.updateTaskTitle', () => {
     await call<Promise<void>>(
       panel,
       'updateTaskTitle',
-      task({ filePath: 't.md', line: 0, rawText: '- [ ] old title' }),
+      task({
+        source: {
+          filePath: 't.md',
+          line: 0,
+          originalMarkdown: '- [ ] old title',
+          originalBlock: '- [ ] old title',
+        },
+      }),
       'new title',
     );
     expect(acknowledge).toHaveBeenCalledOnce();
@@ -739,7 +775,14 @@ describe('RightPanel.updateTaskTitle', () => {
     await call<Promise<void>>(
       panel,
       'updateTaskTitle',
-      task({ filePath: 't.md', line: 0, rawText: '- [ ] same title' }),
+      task({
+        source: {
+          filePath: 't.md',
+          line: 0,
+          originalMarkdown: '- [ ] same title',
+          originalBlock: '- [ ] same title',
+        },
+      }),
       'same title',
     );
     expect(acknowledge).not.toHaveBeenCalled();
@@ -748,11 +791,14 @@ describe('RightPanel.updateTaskTitle', () => {
   it('replaces title preserving prefix and metadata suffix', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] old title 📅 2026-06-20' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'old title',
-      rawText: '- [ ] old title 📅 2026-06-20',
-      due: '2026-06-20',
+      title: 'old title',
+      planning: { due: '2026-06-20' },
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] old title 📅 2026-06-20',
+        originalBlock: '- [ ] old title 📅 2026-06-20',
+      },
     });
     await call<Promise<void>>(panel, 'updateTaskTitle', t, 'new title');
     const content = await readMd(app, 't.md');
@@ -763,7 +809,15 @@ describe('RightPanel.updateTaskTitle', () => {
 
   it('preserves tags in suffix', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] old #work' });
-    const t = task({ filePath: 't.md', line: 0, text: 'old', rawText: '- [ ] old #work' });
+    const t = task({
+      title: 'old',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] old #work',
+        originalBlock: '- [ ] old #work',
+      },
+    });
     await call<Promise<void>>(panel, 'updateTaskTitle', t, 'renamed');
     const content = await readMd(app, 't.md');
     expect(content).toContain('renamed');
@@ -772,7 +826,15 @@ describe('RightPanel.updateTaskTitle', () => {
 
   it('no-op if line has no checkbox prefix', async () => {
     const { panel, app } = await makePanel({ 't.md': 'just plain text' });
-    const t = task({ filePath: 't.md', line: 0, text: 'plain', rawText: 'just plain text' });
+    const t = task({
+      title: 'plain',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: 'just plain text',
+        originalBlock: 'just plain text',
+      },
+    });
     await call<Promise<void>>(panel, 'updateTaskTitle', t, 'renamed');
     const content = await readMd(app, 't.md');
     expect(content).toBe('just plain text');
@@ -780,7 +842,15 @@ describe('RightPanel.updateTaskTitle', () => {
 
   it('file not found → no-op (no throw)', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
     await expect(
       call<Promise<void>>(panel, 'updateTaskTitle', t, 'renamed'),
     ).resolves.toBeUndefined();
@@ -790,7 +860,15 @@ describe('RightPanel.updateTaskTitle', () => {
 describe('RightPanel.updateDescription', () => {
   it('inserts a new description line when none exists', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task\n- [ ] other' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     await call<Promise<void>>(panel, 'updateDescription', t, 'a description');
     const content = await readMd(app, 't.md');
     expect(content).toContain('- > a description');
@@ -804,11 +882,13 @@ describe('RightPanel.updateDescription', () => {
     const content = '- [ ] task\n  - > old desc\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task',
-      subtaskRange: { from: 0, to: 1 },
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
     });
     await call<Promise<void>>(panel, 'updateDescription', t, 'new desc');
     const after = await readMd(app, 't.md');
@@ -820,11 +900,13 @@ describe('RightPanel.updateDescription', () => {
     const content = '- [ ] task\n  - > old desc\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task',
-      subtaskRange: { from: 0, to: 1 },
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
     });
     await call<Promise<void>>(panel, 'updateDescription', t, '');
     const after = await readMd(app, 't.md');
@@ -836,7 +918,15 @@ describe('RightPanel.updateDescription', () => {
   it('uses the revisioned block to replace an existing description without legacy range data', async () => {
     const content = '- [ ] task\n  - > old desc\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     await call<Promise<void>>(panel, 'updateDescription', t, 'new desc');
     const after = await readMd(app, 't.md');
     expect(after).not.toContain('old desc');
@@ -845,7 +935,15 @@ describe('RightPanel.updateDescription', () => {
 
   it('multi-line description inserts multiple - > lines', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task\n- [ ] other' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     await call<Promise<void>>(panel, 'updateDescription', t, 'line one\nline two');
     const after = await readMd(app, 't.md');
     expect(after).toContain('- > line one');
@@ -854,7 +952,15 @@ describe('RightPanel.updateDescription', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
     await expect(call<Promise<boolean>>(panel, 'updateDescription', t, 'desc')).resolves.toBe(
       false,
     );
@@ -864,7 +970,15 @@ describe('RightPanel.updateDescription', () => {
 describe('RightPanel.addSubTask', () => {
   it('without subtaskRange: inserts a new subtask line right after task line', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] parent\n- [ ] other' });
-    const t = task({ filePath: 't.md', line: 0, text: 'parent', rawText: '- [ ] parent' });
+    const t = task({
+      title: 'parent',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] parent',
+        originalBlock: '- [ ] parent',
+      },
+    });
     await call<Promise<void>>(panel, 'addSubTask', t, 'first sub');
     const after = await readMd(app, 't.md');
     const lines = after.split('\n');
@@ -877,11 +991,13 @@ describe('RightPanel.addSubTask', () => {
     const content = '- [ ] parent\n    - [ ] existing sub\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'parent',
-      rawText: '- [ ] parent',
-      subtaskRange: { from: 0, to: 1 },
+      title: 'parent',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] parent',
+        originalBlock: '- [ ] parent',
+      },
     });
     await call<Promise<void>>(panel, 'addSubTask', t, 'new sub');
     const after = await readMd(app, 't.md');
@@ -893,7 +1009,15 @@ describe('RightPanel.addSubTask', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
     await expect(call<Promise<boolean>>(panel, 'addSubTask', t, 'sub')).resolves.toBe(false);
   });
 });
@@ -901,16 +1025,11 @@ describe('RightPanel.addSubTask', () => {
 describe('RightPanel.toggleSubTask', () => {
   it('open → done: replaces "- [ ]" with "- [x]" (case-sensitive)', async () => {
     const { panel, app } = await makePanel({ 't.md': '  - [ ] sub' });
-    const sub: SubTask = {
-      filePath: 't.md',
-      line: 0,
-      rawText: '  - [ ] sub',
-      text: 'sub',
-      markdownText: 'sub',
-      status: 'open',
-      statusSymbol: ' ',
-      priority: 'D',
-    };
+    const sub = subtask({
+      title: 'sub',
+      root: { filePath: 't.md', line: 0 },
+      ref: { relativeLine: 0, originalBlock: '  - [ ] sub' },
+    });
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
     const after = await readMd(app, 't.md');
     expect(after).toContain('- [x]');
@@ -922,16 +1041,13 @@ describe('RightPanel.toggleSubTask', () => {
   // the X->x alias) correctly toggles to the registry's default todo symbol.
   it('registry-driven: "- [X]" (done via X->x alias) toggles to open, ignoring stale status field', async () => {
     const { panel, app } = await makePanel({ 't.md': '  - [X] sub' });
-    const sub: SubTask = {
-      filePath: 't.md',
-      line: 0,
-      rawText: '  - [X] sub',
-      text: 'sub',
-      markdownText: 'sub',
+    const sub = subtask({
+      title: 'sub',
       status: 'open', // caller claims open, but statusSymbol 'X' resolves to done
       statusSymbol: 'X',
-      priority: 'D',
-    };
+      root: { filePath: 't.md', line: 0 },
+      ref: { relativeLine: 0, originalBlock: '  - [X] sub' },
+    });
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
     const after = await readMd(app, 't.md');
     expect(after).toBe('  - [ ] sub');
@@ -939,16 +1055,13 @@ describe('RightPanel.toggleSubTask', () => {
 
   it('done → open: replaces "- [x]" with "- [ ]" (case-insensitive)', async () => {
     const { panel, app } = await makePanel({ 't.md': '  - [x] sub' });
-    const sub: SubTask = {
-      filePath: 't.md',
-      line: 0,
-      rawText: '  - [x] sub',
-      text: 'sub',
-      markdownText: 'sub',
+    const sub = subtask({
+      title: 'sub',
       status: 'done',
       statusSymbol: 'x',
-      priority: 'D',
-    };
+      root: { filePath: 't.md', line: 0 },
+      ref: { relativeLine: 0, originalBlock: '  - [x] sub' },
+    });
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
     const after = await readMd(app, 't.md');
     expect(after).toContain('- [ ]');
@@ -957,16 +1070,13 @@ describe('RightPanel.toggleSubTask', () => {
 
   it('done → open: case-insensitive matches uppercase "- [X]"', async () => {
     const { panel, app } = await makePanel({ 't.md': '  - [X] sub' });
-    const sub: SubTask = {
-      filePath: 't.md',
-      line: 0,
-      rawText: '  - [X] sub',
-      text: 'sub',
-      markdownText: 'sub',
+    const sub = subtask({
+      title: 'sub',
       status: 'done',
       statusSymbol: 'X',
-      priority: 'D',
-    };
+      root: { filePath: 't.md', line: 0 },
+      ref: { relativeLine: 0, originalBlock: '  - [X] sub' },
+    });
     await call<Promise<void>>(panel, 'toggleSubTask', sub);
     const after = await readMd(app, 't.md');
     expect(after).toContain('- [ ]');
@@ -974,7 +1084,14 @@ describe('RightPanel.toggleSubTask', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '  - [ ] sub' });
-    const sub = task({ filePath: 'missing.md', rawText: '  - [ ] sub', text: 'sub' });
+    const sub = task({
+      title: 'sub',
+      source: {
+        filePath: 'missing.md',
+        originalMarkdown: '  - [ ] sub',
+        originalBlock: '  - [ ] sub',
+      },
+    });
     await expect(call<Promise<void>>(panel, 'toggleSubTask', sub)).resolves.toBeUndefined();
   });
 });
@@ -998,7 +1115,15 @@ describe('RightPanel.addComment', () => {
   it('appends a comment line "- <today>: <text>" after the task line (no subtaskRange)', async () => {
     const { panel, state, app } = await makePanel({ 't.md': '- [ ] task\n- [ ] other' });
     freezeToday();
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     state.set('taskStack', [t]);
     const commentList = freshContainer();
     const inputEl = freshContainer().createEl('textarea');
@@ -1019,11 +1144,13 @@ describe('RightPanel.addComment', () => {
     const { panel, app } = await makePanel({ 't.md': content });
     freezeToday();
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task',
-      subtaskRange: { from: 0, to: 1 },
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
     });
     const commentList = freshContainer();
     const inputEl = freshContainer().createEl('textarea');
@@ -1037,12 +1164,28 @@ describe('RightPanel.addComment', () => {
   it('keeps the draft and DOM unchanged when no revisioned parent can be resolved', async () => {
     const { panel, state } = await makePanel({ 't.md': '- [ ] task' });
     freezeToday();
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     state.set('taskStack', [t]);
     const commentList = freshContainer();
     const inputEl = freshContainer().createEl('textarea');
     inputEl.value = 'pre-existing';
-    const missing = { ...t, filePath: 'missing.md' };
+    const missing = task({
+      title: 'task',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     await expect(
       call<Promise<boolean>>(panel, 'addComment', missing, 'ghost', commentList, inputEl),
     ).resolves.toBe(false);
@@ -1053,7 +1196,15 @@ describe('RightPanel.addComment', () => {
   it('file not found → reports no commit', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] task' });
     freezeToday();
-    const t = task({ filePath: 'missing.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     const commentList = freshContainer();
     const inputEl = freshContainer().createEl('textarea');
     await expect(
@@ -1066,8 +1217,16 @@ describe('RightPanel.updateComment', () => {
   it('preserves date prefix when present', async () => {
     const content = '- [ ] task\n  - 2026-06-20: old text\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
-    const comment: TaskComment = { line: 1, date: '2026-06-20', text: 'old text' };
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
+    const comment = taskComment({ text: 'old text', date: '2026-06-20' });
     await call<Promise<void>>(panel, 'updateComment', t, comment, 'new text');
     const after = await readMd(app, 't.md');
     const lines = after.split('\n');
@@ -1077,8 +1236,16 @@ describe('RightPanel.updateComment', () => {
   it('without date prefix: uses bare "- " prefix', async () => {
     const content = '- [ ] task\n  - plain comment\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
-    const comment: TaskComment = { line: 1, text: 'plain comment' };
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
+    const comment = taskComment({ text: 'plain comment' });
     await call<Promise<void>>(panel, 'updateComment', t, comment, 'edited');
     const after = await readMd(app, 't.md');
     const lines = after.split('\n');
@@ -1088,8 +1255,19 @@ describe('RightPanel.updateComment', () => {
   it('refuses to rewrite a malformed non-comment line', async () => {
     const content = '- [ ] task\n    not-a-comment\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
-    const comment: TaskComment = { line: 1, text: 'not-a-comment' };
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
+    const comment = taskComment({
+      text: 'not-a-comment',
+      ref: { originalMarkdown: '    not-a-comment' },
+    });
     await call<Promise<void>>(panel, 'updateComment', t, comment, 'replacement');
     const after = await readMd(app, 't.md');
     const lines = after.split('\n');
@@ -1098,8 +1276,16 @@ describe('RightPanel.updateComment', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    const comment: TaskComment = { line: 1, text: 'x' };
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
+    const comment = taskComment({ text: 'x' });
     await expect(call<Promise<boolean>>(panel, 'updateComment', t, comment, 'y')).resolves.toBe(
       false,
     );
@@ -1110,8 +1296,16 @@ describe('RightPanel.deleteComment', () => {
   it('valid index removes the comment line', async () => {
     const content = '- [ ] task\n  - 2026-06-20: c1\n  - 2026-06-21: c2\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
-    const comment: TaskComment = { line: 1, date: '2026-06-20', text: 'c1' };
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
+    const comment = taskComment({ text: 'c1', date: '2026-06-20' });
     await call<Promise<void>>(panel, 'deleteComment', t, comment);
     const after = await readMd(app, 't.md');
     const lines = after.split('\n');
@@ -1124,9 +1318,17 @@ describe('RightPanel.deleteComment', () => {
   it('out-of-range line: splice at non-existent index → no-op on content (CURRENT BEHAVIOR)', async () => {
     const content = '- [ ] task\n- [ ] other';
     const { panel, app } = await makePanel({ 't.md': content });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     // line 99 doesn't exist; splice(99,1) on a 2-element array is a no-op
-    const comment: TaskComment = { line: 99, text: 'ghost' };
+    const comment = taskComment({ text: 'ghost', ref: { relativeLine: 99 } });
     await call<Promise<void>>(panel, 'deleteComment', t, comment);
     const after = await readMd(app, 't.md');
     expect(after).toBe(content);
@@ -1134,8 +1336,16 @@ describe('RightPanel.deleteComment', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
-    const comment: TaskComment = { line: 0, text: 'x' };
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
+    const comment = taskComment({ text: 'x', ref: { relativeLine: 0 } });
     await expect(call<Promise<boolean>>(panel, 'deleteComment', t, comment)).resolves.toBe(false);
   });
 });
@@ -1144,11 +1354,14 @@ describe('RightPanel.updatePriority', () => {
   it('A → appends 🔺 (highest)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task',
+      title: 'task',
       priority: 'D',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
     });
     await call<Promise<void>>(panel, 'updatePriority', t, 'A');
     const after = await readMd(app, 't.md');
@@ -1158,11 +1371,14 @@ describe('RightPanel.updatePriority', () => {
   it('B → appends ⏫', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task',
+      title: 'task',
       priority: 'D',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
     });
     await call<Promise<void>>(panel, 'updatePriority', t, 'B');
     const after = await readMd(app, 't.md');
@@ -1172,11 +1388,14 @@ describe('RightPanel.updatePriority', () => {
   it('C → sets Medium priority (🔼), replacing any existing emoji', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task 🔺' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task 🔺',
+      title: 'task',
       priority: 'A',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task 🔺',
+        originalBlock: '- [ ] task 🔺',
+      },
     });
     await call<Promise<void>>(panel, 'updatePriority', t, 'C');
     const after = await readMd(app, 't.md');
@@ -1188,11 +1407,14 @@ describe('RightPanel.updatePriority', () => {
   it('D → strips all priority emojis, appends nothing (Normal = no emoji)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task 🔺' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task 🔺',
+      title: 'task',
       priority: 'A',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task 🔺',
+        originalBlock: '- [ ] task 🔺',
+      },
     });
     await call<Promise<void>>(panel, 'updatePriority', t, 'D');
     const after = await readMd(app, 't.md');
@@ -1208,11 +1430,14 @@ describe('RightPanel.updatePriority', () => {
   it('E → appends 🔽', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task',
+      title: 'task',
       priority: 'D',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
     });
     await call<Promise<void>>(panel, 'updatePriority', t, 'E');
     const after = await readMd(app, 't.md');
@@ -1222,11 +1447,14 @@ describe('RightPanel.updatePriority', () => {
   it('F → appends ⏬', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task',
+      title: 'task',
       priority: 'D',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
     });
     await call<Promise<void>>(panel, 'updatePriority', t, 'F');
     const after = await readMd(app, 't.md');
@@ -1236,11 +1464,14 @@ describe('RightPanel.updatePriority', () => {
   it('replaces existing priority emoji with new one', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task 🔺' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task 🔺',
+      title: 'task',
       priority: 'A',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task 🔺',
+        originalBlock: '- [ ] task 🔺',
+      },
     });
     await call<Promise<void>>(panel, 'updatePriority', t, 'F');
     const after = await readMd(app, 't.md');
@@ -1250,7 +1481,15 @@ describe('RightPanel.updatePriority', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
     await expect(call<Promise<void>>(panel, 'updatePriority', t, 'A')).resolves.toBeUndefined();
   });
 });
@@ -1286,8 +1525,8 @@ describe('RightPanel.removeTag', () => {
       undefined,
       tasks,
     );
-    const root = Object.assign(task({ filePath: 't.md', line: 0 }), { ref: rootRef });
-    const child = Object.assign(task({ filePath: 't.md', line: 1 }), { ref: childRef });
+    const root = Object.assign(task({ source: { filePath: 't.md', line: 0 } }), { ref: rootRef });
+    const child = Object.assign(task({ source: { filePath: 't.md', line: 1 } }), { ref: childRef });
     const process = vi.spyOn(app.vault, 'process');
 
     await call<Promise<void>>(panel, 'removeTag', root, '#work');
@@ -1310,7 +1549,15 @@ describe('RightPanel.removeTag', () => {
 
   it('removes a standalone tag (with leading #)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task #work' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task #work' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task #work',
+        originalBlock: '- [ ] task #work',
+      },
+    });
     await call<Promise<void>>(panel, 'removeTag', t, '#work');
     const after = await readMd(app, 't.md');
     expect(after).not.toContain('#work');
@@ -1319,7 +1566,15 @@ describe('RightPanel.removeTag', () => {
 
   it('removes a standalone tag (without leading #)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task #work' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task #work' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task #work',
+        originalBlock: '- [ ] task #work',
+      },
+    });
     await call<Promise<void>>(panel, 'removeTag', t, 'work');
     const after = await readMd(app, 't.md');
     expect(after).not.toContain('#work');
@@ -1328,10 +1583,13 @@ describe('RightPanel.removeTag', () => {
   it('subtag guard: does not remove #work when only #work/deep matches (and vice versa)', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task #work/deep' });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'task',
-      rawText: '- [ ] task #work/deep',
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task #work/deep',
+        originalBlock: '- [ ] task #work/deep',
+      },
     });
     // Removing "#work" should NOT remove "#work/deep" because the regex uses a
     // negative lookahead for word chars or subtag separator: (?![\w/-])
@@ -1343,7 +1601,10 @@ describe('RightPanel.removeTag', () => {
   it('removes #work and leaves #work/deep intact when both present', async () => {
     const content = '- [ ] task #work #work/deep';
     const { panel, app } = await makePanel({ 't.md': content });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: content });
+    const t = task({
+      title: 'task',
+      source: { filePath: 't.md', line: 0, originalMarkdown: content, originalBlock: content },
+    });
     await call<Promise<void>>(panel, 'removeTag', t, '#work');
     const after = await readMd(app, 't.md');
     // #work (standalone) is removed; #work/deep is kept due to the (?![\w/-]) lookahead
@@ -1353,7 +1614,15 @@ describe('RightPanel.removeTag', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
     await expect(call<Promise<void>>(panel, 'removeTag', t, '#work')).resolves.toBeUndefined();
   });
 });
@@ -1361,7 +1630,15 @@ describe('RightPanel.removeTag', () => {
 describe('RightPanel.addTag', () => {
   it('without #: adds the # prefix', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     await call<Promise<void>>(panel, 'addTag', t, 'work');
     const after = await readMd(app, 't.md');
     expect(after).toContain('#work');
@@ -1369,7 +1646,15 @@ describe('RightPanel.addTag', () => {
 
   it('with #: keeps the # as-is', async () => {
     const { panel, app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     await call<Promise<void>>(panel, 'addTag', t, '#work');
     const after = await readMd(app, 't.md');
     expect(after).toContain('#work');
@@ -1378,7 +1663,15 @@ describe('RightPanel.addTag', () => {
 
   it('file not found → no-op', async () => {
     const { panel } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
     await expect(call<Promise<void>>(panel, 'addTag', t, 'work')).resolves.toBeUndefined();
   });
 });
@@ -1388,11 +1681,13 @@ describe('RightPanel.deleteTask', () => {
     const content = '- [ ] parent\n    - [ ] sub\n- [ ] other';
     const { panel, state, app } = await makePanel({ 't.md': content });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'parent',
-      rawText: '- [ ] parent',
-      subtaskRange: { from: 0, to: 1 },
+      title: 'parent',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] parent',
+        originalBlock: '- [ ] parent',
+      },
     });
     state.set('taskStack', [t]);
     await call<Promise<void>>(panel, 'deleteTask', t);
@@ -1408,11 +1703,13 @@ describe('RightPanel.deleteTask', () => {
     const content = '- [ ] parent\n    - [ ] sub\n    - > desc line\n- [ ] other';
     const { panel, state, app } = await makePanel({ 't.md': content });
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'parent',
-      rawText: '- [ ] parent',
-      // No subtaskRange — indentation scan determines block extent
+      title: 'parent',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] parent',
+        originalBlock: '- [ ] parent',
+      },
     });
     state.set('taskStack', [t]);
     await call<Promise<void>>(panel, 'deleteTask', t);
@@ -1426,7 +1723,15 @@ describe('RightPanel.deleteTask', () => {
 
   it('clears taskStack after deletion', async () => {
     const { panel, state, app } = await makePanel({ 't.md': '- [ ] task\n- [ ] other' });
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     state.set('taskStack', [t]);
     await call<Promise<void>>(panel, 'deleteTask', t);
     expect(state.get('taskStack')).toEqual([]);
@@ -1436,7 +1741,15 @@ describe('RightPanel.deleteTask', () => {
 
   it('file not found → no-op, does not clear stack (early return before state.set)', async () => {
     const { panel, state } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
     state.set('taskStack', [t]);
     await call<Promise<void>>(panel, 'deleteTask', t);
     // CURRENT BEHAVIOR: `if (!(file instanceof TFile)) return;` runs before state.set,
@@ -1448,7 +1761,15 @@ describe('RightPanel.deleteTask', () => {
 describe('openInFile (used by RightPanel)', () => {
   it('calls workspace.getLeaf("tab") + leaf.openFile(file) + editor.setCursor', async () => {
     const { app } = await makePanel({ 't.md': '- [ ] task' });
-    const t = task({ filePath: 't.md', line: 3, text: 'task', rawText: '- [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 3,
+        originalMarkdown: '- [ ] task',
+        originalBlock: '- [ ] task',
+      },
+    });
     // Build a leaf with a view + editor so openInFile can call setCursor.
     const leaf = app.workspace.getLeaf('tab');
     const setCursor = vi.fn();
@@ -1464,7 +1785,15 @@ describe('openInFile (used by RightPanel)', () => {
 
   it('file not found (not a TFile) → no-op, does not throw', async () => {
     const { app } = await makePanel({ 't.md': '- [ ] x' });
-    const t = task({ filePath: 'missing.md', line: 0, text: 'x', rawText: '- [ ] x' });
+    const t = task({
+      title: 'x',
+      source: {
+        filePath: 'missing.md',
+        line: 0,
+        originalMarkdown: '- [ ] x',
+        originalBlock: '- [ ] x',
+      },
+    });
     await expect(openInFile(app, t)).resolves.toBeUndefined();
   });
 });
@@ -1477,11 +1806,14 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
       [{ path: 't.md', items: [{ task: ' ', parent: -1, line: 0 }] }],
     );
     const t = task({
-      filePath: 't.md',
-      line: 0,
-      text: 'old',
-      rawText: '> - [ ] old 📅 2026-06-20',
-      due: '2026-06-20',
+      title: 'old',
+      planning: { due: '2026-06-20' },
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '> - [ ] old 📅 2026-06-20',
+        originalBlock: '> - [ ] old 📅 2026-06-20',
+      },
     });
     const indexed = (panel as unknown as { tasks: TaskApplicationApi }).tasks.queries.list({
       filePath: 't.md',
@@ -1507,7 +1839,15 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
         },
       ],
     );
-    const t = task({ filePath: 't.md', line: 0, text: 'parent', rawText: '> - [ ] parent' });
+    const t = task({
+      title: 'parent',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '> - [ ] parent',
+        originalBlock: '> - [ ] parent',
+      },
+    });
     await call<Promise<void>>(panel, 'addSubTask', t, 'child');
     const lines = (await readMd(app, 't.md')).split('\n');
     expect(lines[1]).toBe('>   - [ ] child');
@@ -1528,7 +1868,15 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
         },
       ],
     );
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '> - [ ] task',
+        originalBlock: '> - [ ] task',
+      },
+    });
     await call<Promise<void>>(panel, 'updateDescription', t, 'a desc');
     const after = await readMd(app, 't.md');
     expect(after).toContain('>   - > a desc');
@@ -1549,7 +1897,15 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
         },
       ],
     );
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '> - [ ] task',
+        originalBlock: '> - [ ] task',
+      },
+    });
     const commentList = freshContainer();
     const inputEl = freshContainer().createEl('textarea');
     await call<Promise<void>>(panel, 'addComment', t, 'note', commentList, inputEl);
@@ -1565,8 +1921,20 @@ describe('RightPanel — blockquote write-path preserves "> " formatting', () =>
         items: [{ task: ' ', parent: -1, line: 0 }],
       },
     ]);
-    const t = task({ filePath: 't.md', line: 0, text: 'task', rawText: '> - [ ] task' });
-    const comment: TaskComment = { line: 1, date: '2026-06-20', text: 'old' };
+    const t = task({
+      title: 'task',
+      source: {
+        filePath: 't.md',
+        line: 0,
+        originalMarkdown: '> - [ ] task',
+        originalBlock: '> - [ ] task',
+      },
+    });
+    const comment = taskComment({
+      text: 'old',
+      date: '2026-06-20',
+      ref: { originalMarkdown: '>   - 2026-06-20: old' },
+    });
     await call<Promise<void>>(panel, 'updateComment', t, comment, 'new');
     const lines = (await readMd(app, 't.md')).split('\n');
     expect(lines[1]).toBe('>   - 2026-06-20: new');

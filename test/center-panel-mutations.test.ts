@@ -4,11 +4,10 @@ import { TFile, type App } from 'obsidian';
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
-import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { toStatusRules } from '../src/settings/statusCatalogAdapter';
 import { StatusRegistry } from '../src/status/StatusRegistry';
-import type { TaskApplicationApi } from '../src/tasks';
+import type { TaskApplicationApi, TaskSnapshot } from '../src/tasks';
 import { TaskApplicationService } from '../src/tasks/application/TaskApplicationService';
 import { StatusCatalog } from '../src/tasks/domain/StatusCatalog';
 import type { TaskRef } from '../src/tasks/domain/types';
@@ -34,7 +33,7 @@ function callPrivate<T>(panel: CenterPanel, method: string, ...args: unknown[]):
 
 async function makePanel(
   files: Record<string, string>,
-  extraTasks: Task[] = [],
+  extraTasks: TaskSnapshot[] = [],
 ): Promise<{ panel: CenterPanel; app: App }> {
   const app = await createAppWithFiles(files);
   const statusCatalog = new StatusCatalog(toStatusRules(DEFAULT_SETTINGS.taskStatuses));
@@ -44,8 +43,8 @@ async function makePanel(
   });
   for (const current of extraTasks) {
     const snapshot = index
-      .snapshotsFromContent(current.filePath, files[current.filePath] ?? '')
-      .find((candidate) => candidate.source.line === current.line);
+      .snapshotsFromContent(current.source.filePath, files[current.source.filePath] ?? '')
+      .find((candidate) => candidate.source.line === current.source.line);
     if (snapshot) Object.assign(current, { ref: snapshot.ref });
   }
   const state = new AppState();
@@ -114,7 +113,7 @@ describe('CenterPanel planning API delegation', () => {
       tasks,
     );
     const ref: TaskRef = { filePath: 'f.md', line: 0, revision: 'r' };
-    const current = Object.assign(task({ filePath: 'f.md', line: 0 }), { ref });
+    const current = Object.assign(task({ source: { filePath: 'f.md', line: 0 } }), { ref });
     vi.spyOn(queries, 'list').mockReturnValue([
       {
         ref,
@@ -176,12 +175,13 @@ describe('CenterPanel planning API delegation', () => {
     const ref: TaskRef = { filePath: 'f.md', line: 0, revision: 'r' };
     const current = Object.assign(
       task({
-        filePath: 'f.md',
-        line: 0,
-        rawText: '- [ ] task 📅 2026-07-20 ⏰ 09:00 ⏱️ 1h',
-        due: '2026-07-20',
-        time: '09:00',
-        duration: 60,
+        planning: { due: '2026-07-20', time: '09:00', duration: 60 },
+        source: {
+          filePath: 'f.md',
+          line: 0,
+          originalMarkdown: '- [ ] task 📅 2026-07-20 ⏰ 09:00 ⏱️ 1h',
+          originalBlock: '- [ ] task 📅 2026-07-20 ⏰ 09:00 ⏱️ 1h',
+        },
       }),
       { ref },
     );
@@ -365,10 +365,10 @@ describe('CenterPanel root lifecycle API delegation', () => {
   it('does not clear a newly selected task when an earlier deletion resolves late', async () => {
     const app = await createAppWithFiles({ 'f.md': '- [ ] old\n- [ ] new\n' });
     const oldRef: TaskRef = { filePath: 'f.md', line: 0, revision: 'old' };
-    const oldTask = Object.assign(task({ filePath: 'f.md', line: 0, text: 'old' }), {
+    const oldTask = Object.assign(task({ title: 'old', source: { filePath: 'f.md', line: 0 } }), {
       ref: oldRef,
     });
-    const newTask = task({ filePath: 'f.md', line: 1, text: 'new' });
+    const newTask = task({ title: 'new', source: { filePath: 'f.md', line: 1 } });
     const state = new AppState();
     state.set('taskStack', [oldTask]);
     const store = makeStubStore([oldTask, newTask], app);
@@ -402,7 +402,15 @@ describe('CenterPanel root lifecycle API delegation', () => {
 
 describe('CenterPanel.setPriority', () => {
   it('adds priority emoji when task has none', async () => {
-    const t = task({ filePath: 'n.md', line: 0, rawText: '- [ ] Task', priority: 'D' });
+    const t = task({
+      priority: 'D',
+      source: {
+        filePath: 'n.md',
+        line: 0,
+        originalMarkdown: '- [ ] Task',
+        originalBlock: '- [ ] Task',
+      },
+    });
     const { panel, app } = await makePanel({ 'n.md': '- [ ] Task\n' }, [t]);
     await callPrivate(panel, 'setPriority', t, 'A');
     const content = await readMd(app, 'n.md');
@@ -411,7 +419,10 @@ describe('CenterPanel.setPriority', () => {
 
   it('removes all priority emojis when D (normal) is selected', async () => {
     const raw = '- [ ] Task 🔺';
-    const t = task({ filePath: 'n.md', line: 0, rawText: raw, priority: 'A' });
+    const t = task({
+      priority: 'A',
+      source: { filePath: 'n.md', line: 0, originalMarkdown: raw, originalBlock: raw },
+    });
     const { panel, app } = await makePanel({ 'n.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'setPriority', t, 'D');
     const content = await readMd(app, 'n.md');
@@ -420,7 +431,10 @@ describe('CenterPanel.setPriority', () => {
 
   it('replaces existing priority with new one', async () => {
     const raw = '- [ ] Task ⏫';
-    const t = task({ filePath: 'n.md', line: 0, rawText: raw, priority: 'B' });
+    const t = task({
+      priority: 'B',
+      source: { filePath: 'n.md', line: 0, originalMarkdown: raw, originalBlock: raw },
+    });
     const { panel, app } = await makePanel({ 'n.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'setPriority', t, 'C');
     const content = await readMd(app, 'n.md');
@@ -433,11 +447,8 @@ describe('CenterPanel.rescheduleTask anchor priority', () => {
   it('moves scheduled date when both scheduled and due are set (scheduled wins)', async () => {
     const raw = '- [ ] t ⏳ 2026-07-02 📅 2026-07-10';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      scheduled: '2026-07-02',
-      due: '2026-07-10',
+      planning: { scheduled: '2026-07-02', due: '2026-07-10' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'rescheduleTask', 'f.md:::0', '2026-07-03');
@@ -449,10 +460,8 @@ describe('CenterPanel.rescheduleTask anchor priority', () => {
   it('moves due date when only due is set', async () => {
     const raw = '- [ ] t 📅 2026-07-10';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      due: '2026-07-10',
+      planning: { due: '2026-07-10' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'rescheduleTask', 'f.md:::0', '2026-07-11');
@@ -463,9 +472,7 @@ describe('CenterPanel.rescheduleTask anchor priority', () => {
   it('adds a new due date when neither is set', async () => {
     const raw = '- [ ] t';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'rescheduleTask', 'f.md:::0', '2026-07-12');
@@ -478,10 +485,8 @@ describe('CenterPanel.extendTaskToSpan', () => {
   it('freezes the original due as the new start and writes the new due, in one mutation', async () => {
     const raw = '- [ ] t 📅 2026-07-10';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      due: '2026-07-10',
+      planning: { due: '2026-07-10' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'extendTaskToSpan', t, '2026-07-12');
@@ -494,10 +499,8 @@ describe('CenterPanel.extendTaskToSpan', () => {
   it('extends a scheduled-only task (Bug A regression: used to silently no-op since it required task.due)', async () => {
     const raw = '- [ ] t ⏳ 2026-07-10';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      scheduled: '2026-07-10',
+      planning: { scheduled: '2026-07-10' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'extendTaskToSpan', t, '2026-07-12');
@@ -518,11 +521,8 @@ describe('CenterPanel.extendTaskToSpan', () => {
     // date the caller actually computed the new due from.
     const raw = '- [ ] t ⏳ 2026-07-12 📅 2026-07-17';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      scheduled: '2026-07-12',
-      due: '2026-07-17',
+      planning: { scheduled: '2026-07-12', due: '2026-07-17' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'extendTaskToSpan', t, '2026-07-13');
@@ -536,11 +536,8 @@ describe('CenterPanel.extendTaskToSpan', () => {
   it('re-extending an already-spanning task does not append a second 🛫 token', async () => {
     const raw = '- [ ] t 🛫 2026-07-08 📅 2026-07-10';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      start: '2026-07-08',
-      due: '2026-07-10',
+      planning: { start: '2026-07-08', due: '2026-07-10' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'extendTaskToSpan', t, '2026-07-12');
@@ -554,7 +551,9 @@ describe('CenterPanel.extendTaskToSpan', () => {
 describe('CenterPanel.setTaskTimeFromDrop', () => {
   it('adds both a new due date and a new time when neither is set (plain task dropped into hour grid)', async () => {
     const raw = '- [ ] t';
-    const t = task({ filePath: 'f.md', line: 0, rawText: raw });
+    const t = task({
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
+    });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'setTaskTimeFromDrop', 'f.md:::0', '2026-07-12', '14:30');
     const content = await readMd(app, 'f.md');
@@ -564,7 +563,10 @@ describe('CenterPanel.setTaskTimeFromDrop', () => {
 
   it('writes the scheduled date (not due) when the task already has a scheduled date (scheduled wins)', async () => {
     const raw = '- [ ] t ⏳ 2026-07-02';
-    const t = task({ filePath: 'f.md', line: 0, rawText: raw, scheduled: '2026-07-02' });
+    const t = task({
+      planning: { scheduled: '2026-07-02' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
+    });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'setTaskTimeFromDrop', 'f.md:::0', '2026-07-03', '09:00');
     const content = await readMd(app, 'f.md');
@@ -575,11 +577,8 @@ describe('CenterPanel.setTaskTimeFromDrop', () => {
   it('replaces an existing time rather than duplicating the emoji', async () => {
     const raw = '- [ ] t 📅 2026-07-10 ⏰ 09:00';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      due: '2026-07-10',
-      time: '09:00',
+      planning: { due: '2026-07-10', time: '09:00' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
     await callPrivate(panel, 'setTaskTimeFromDrop', 'f.md:::0', '2026-07-10', '16:45');
@@ -607,12 +606,8 @@ describe('CenterPanel.updateTaskTime — Task 33 data-safety net (the disappeari
   it('rejects an out-of-range minutes value that would corrupt the ⏰ token, leaving the original line completely untouched', async () => {
     const raw = '- [ ] Drag test alpha ⏰ 10:00 ⏱️ 1h 📅 2026-07-11';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      time: '10:00',
-      duration: 60,
-      due: '2026-07-11',
+      planning: { time: '10:00', duration: 60, due: '2026-07-11' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
 
@@ -627,12 +622,8 @@ describe('CenterPanel.updateTaskTime — Task 33 data-safety net (the disappeari
   it('still accepts an ordinary, in-range time change (the safety net does not over-reject valid drags)', async () => {
     const raw = '- [ ] Drag test alpha ⏰ 10:00 ⏱️ 1h 📅 2026-07-11';
     const t = task({
-      filePath: 'f.md',
-      line: 0,
-      rawText: raw,
-      time: '10:00',
-      duration: 60,
-      due: '2026-07-11',
+      planning: { time: '10:00', duration: 60, due: '2026-07-11' },
+      source: { filePath: 'f.md', line: 0, originalMarkdown: raw, originalBlock: raw },
     });
     const { panel, app } = await makePanel({ 'f.md': `${raw}\n` }, [t]);
 

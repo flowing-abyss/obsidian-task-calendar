@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import { renderAllDayCell } from '../src/views/timegrid/renderAllDay';
-import { dispatchDnD, freshContainer, task } from './helpers';
+import { dispatchDnD, freshContainer, task, taskComment } from './helpers';
 
 const registry = new StatusRegistry(buildDefaultTaskStatuses());
 const fakeApp = {} as App;
@@ -35,13 +35,13 @@ const callbacks = () => ({
 describe('renderAllDayCell', () => {
   it('never sets data-priority on a plain chip or span, even for a prioritized task (calendar body no longer renders a priority border)', () => {
     const container = freshContainer();
-    const prioritized = task({ due: '2026-07-10', priority: 'B', text: 'Plain' });
+    const prioritized = task({ priority: 'B', title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [prioritized], [], callbacks());
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     expect(chip.hasAttribute('data-priority')).toBe(false);
 
     const container2 = freshContainer();
-    const none = task({ due: '2026-07-10', priority: 'D', text: 'Plain' });
+    const none = task({ priority: 'D', title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container2, '2026-07-10', [], [none], [], callbacks());
     const chip2 = container2.querySelector('.tc-tg-plain') as HTMLElement;
     expect(chip2.hasAttribute('data-priority')).toBe(false);
@@ -49,7 +49,12 @@ describe('renderAllDayCell', () => {
 
   it('sets --tc-tag-color on a plain chip when a tag matches a configured tag group', () => {
     const container = freshContainer();
-    const t = task({ due: '2026-07-10', rawText: '- [ ] t #work', text: 'Plain' });
+    const t = task({
+      title: 'Plain',
+      tags: ['#work'],
+      planning: { due: '2026-07-10' },
+      source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+    });
     renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks(), [
       { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
     ]);
@@ -60,11 +65,14 @@ describe('renderAllDayCell', () => {
   it('sets data-priority on a deadline marker but never --tc-tag-color (structural pill, no fill)', () => {
     const container = freshContainer();
     const t = task({
-      due: '2026-07-10',
-      scheduled: '2026-07-05',
       priority: 'A',
-      rawText: '- [ ] t #work 📅 2026-07-10',
-      text: 'Deadline',
+      title: 'Deadline',
+      tags: ['#work'],
+      planning: { due: '2026-07-10', scheduled: '2026-07-05' },
+      source: {
+        originalMarkdown: '- [ ] t #work 📅 2026-07-10',
+        originalBlock: '- [ ] t #work 📅 2026-07-10',
+      },
     });
     renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks(), [
       { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
@@ -76,7 +84,7 @@ describe('renderAllDayCell', () => {
 
   it('renders a plain task as a draggable chip', () => {
     const container = freshContainer();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     expect(chip.getAttribute('draggable')).toBe('true');
@@ -85,14 +93,14 @@ describe('renderAllDayCell', () => {
 
   it('renders a span as a filled bar, draggable', () => {
     const container = freshContainer();
-    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-12' } });
     renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks());
     const bar = container.querySelector('.tc-tg-span') as HTMLElement;
     expect(bar.getAttribute('draggable')).toBe('true');
   });
 
   it('renders edge handles only on the day matching start/due, not on mid-span days', () => {
-    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-12' } });
 
     const startContainer = freshContainer();
     renderAllDayCell(startContainer, '2026-07-08', [t], [], [], callbacks());
@@ -112,7 +120,7 @@ describe('renderAllDayCell', () => {
 
   it('renders a deadline marker as non-draggable, structurally distinct from a plain chip', () => {
     const container = freshContainer();
-    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-10', scheduled: '2026-07-05' } });
     renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks());
     const marker = container.querySelector('.tc-tg-deadline-marker') as HTMLElement;
     expect(marker).not.toBeNull();
@@ -124,7 +132,7 @@ describe('renderAllDayCell', () => {
   it('a plain click on a plain chip does NOT fire onTaskClick (reserved for drag)', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
     (container.querySelector('.tc-tg-plain') as HTMLElement).dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
@@ -135,7 +143,7 @@ describe('renderAllDayCell', () => {
   it('a right-click (contextmenu) on a plain chip fires onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
     (container.querySelector('.tc-tg-plain') as HTMLElement).dispatchEvent(
       new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
@@ -146,7 +154,7 @@ describe('renderAllDayCell', () => {
   it('a plain click on a span body does NOT fire onTaskClick (reserved for drag)', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-12' } });
     renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
     (container.querySelector('.tc-tg-span') as HTMLElement).dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
@@ -157,7 +165,7 @@ describe('renderAllDayCell', () => {
   it('a right-click (contextmenu) on a span body fires onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-12' } });
     renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
     (container.querySelector('.tc-tg-span') as HTMLElement).dispatchEvent(
       new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
@@ -168,7 +176,7 @@ describe('renderAllDayCell', () => {
   it('a plain click on a deadline marker does NOT fire onTaskClick (reserved for drag)', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-10', scheduled: '2026-07-05' } });
     renderAllDayCell(container, '2026-07-10', [], [], [t], cbs);
     (container.querySelector('.tc-tg-deadline-marker') as HTMLElement).dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
@@ -179,7 +187,7 @@ describe('renderAllDayCell', () => {
   it('a right-click (contextmenu) on a deadline marker fires onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-10', scheduled: '2026-07-05' } });
     renderAllDayCell(container, '2026-07-10', [], [], [t], cbs);
     (container.querySelector('.tc-tg-deadline-marker') as HTMLElement).dispatchEvent(
       new MouseEvent('contextmenu', { bubbles: true, cancelable: true }),
@@ -190,7 +198,7 @@ describe('renderAllDayCell', () => {
   it('renders a status marker as the first child of a plain chip; clicking it fires onToggle, not onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     const marker = chip.querySelector('.tc-status-marker');
@@ -204,7 +212,7 @@ describe('renderAllDayCell', () => {
   it('renders a status marker as the first child of a span body; clicking it fires onToggle, not onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-12' } });
     renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
     const bar = container.querySelector('.tc-tg-span') as HTMLElement;
     const marker = bar.querySelector('.tc-status-marker');
@@ -218,7 +226,7 @@ describe('renderAllDayCell', () => {
   it('renders a status marker as the first child of a deadline marker; clicking it fires onToggle, not onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-10', scheduled: '2026-07-05' } });
     renderAllDayCell(container, '2026-07-10', [], [], [t], cbs);
     const marker_el = container.querySelector('.tc-tg-deadline-marker') as HTMLElement;
     const marker = marker_el.querySelector('.tc-status-marker');
@@ -231,7 +239,7 @@ describe('renderAllDayCell', () => {
 
   it('renders the status marker and title as flex-row siblings in one line on a plain chip (Task 21: was stacking on separate lines)', () => {
     const container = freshContainer();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     const marker = chip.querySelector('.tc-status-marker');
@@ -243,7 +251,7 @@ describe('renderAllDayCell', () => {
 
   it('renders the status marker and title as flex-row siblings in one line on a span body (Task 21)', () => {
     const container = freshContainer();
-    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-12' } });
     renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks());
     const bar = container.querySelector('.tc-tg-span') as HTMLElement;
     const marker = bar.querySelector('.tc-status-marker');
@@ -256,7 +264,7 @@ describe('renderAllDayCell', () => {
   it('right-clicking the status marker on a plain chip opens the status/priority popover and does NOT fire onTaskClick (distinct from the chip contextmenu)', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
     const marker = container.querySelector('.tc-tg-plain .tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -267,7 +275,7 @@ describe('renderAllDayCell', () => {
   it('picking a status from the popover on a plain chip fires onSetStatus, and a priority flag fires onSetPriority', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
     const marker = container.querySelector('.tc-tg-plain .tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -287,7 +295,7 @@ describe('renderAllDayCell', () => {
   it('right-clicking the status marker on a deadline marker opens the popover, fires onSetStatus/onSetPriority, and does NOT fire onTaskClick', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-10', scheduled: '2026-07-05' } });
     renderAllDayCell(container, '2026-07-10', [], [], [t], cbs);
     const marker = container.querySelector(
       '.tc-tg-deadline-marker .tc-status-marker',
@@ -311,7 +319,7 @@ describe('renderAllDayCell', () => {
   it("pointer-dragging a span's right edge fires onDueChange on pointerup", () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
     // Right (due) edge handle only renders on the due-date cell, per the rule that
     // edge handles appear only on the day matching start/due respectively.
     renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
@@ -330,7 +338,11 @@ describe('renderAllDayCell', () => {
 
   it('renders a plain chip title via renderTaskText (markdown-link-aware), not raw textContent, for a task with a [[wikilink]]', () => {
     const container = freshContainer();
-    const t = task({ due: '2026-07-10', text: 'see [[Note]]', markdownText: 'see [[Note]]' });
+    const t = task({
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { due: '2026-07-10' },
+    });
     renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     // MarkdownRenderer is a noop in this test harness (see test/center-panel-integration.test.ts
@@ -343,10 +355,9 @@ describe('renderAllDayCell', () => {
   it('renders a deadline marker title via renderTaskText for a task with a [[wikilink]]', () => {
     const container = freshContainer();
     const t = task({
-      due: '2026-07-10',
-      scheduled: '2026-07-05',
-      text: 'see [[Note]]',
-      markdownText: 'see [[Note]]',
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { due: '2026-07-10', scheduled: '2026-07-05' },
     });
     renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks());
     const marker = container.querySelector('.tc-tg-deadline-marker') as HTMLElement;
@@ -356,7 +367,7 @@ describe('renderAllDayCell', () => {
 
   it('renders plain title text (no [[links]]) via the renderTaskText fast path, unchanged from before', () => {
     const container = freshContainer();
-    const t = task({ due: '2026-07-10', text: 'Plain', markdownText: 'Plain' });
+    const t = task({ title: 'Plain', markdownTitle: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     expect(chip.querySelector('.tc-md')).toBeNull();
@@ -366,7 +377,7 @@ describe('renderAllDayCell', () => {
   it("pointer-dragging a span's left edge fires onStartChange on pointerup", () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-08', [t], [], [], cbs);
     const leftHandle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
     leftHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
@@ -385,7 +396,7 @@ describe('renderAllDayCell', () => {
     it('pointermove over a day cell adds is-drag-over to that cell', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+      const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
       const rightHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       const dayEl = document.createElement('div');
@@ -402,7 +413,7 @@ describe('renderAllDayCell', () => {
     it('releasing (pointerup) clears the highlight', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+      const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
       const rightHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       const dayEl = document.createElement('div');
@@ -420,7 +431,7 @@ describe('renderAllDayCell', () => {
     it('a pointercancel mid-gesture also clears the highlight (does not get stuck on)', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+      const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
       const rightHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       const dayEl = document.createElement('div');
@@ -439,7 +450,7 @@ describe('renderAllDayCell', () => {
   it('a plain task gets a right-edge handle that fires onExtendToSpan (not onDueChange) on pointerup', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
     const handle = container.querySelector('.tc-tg-plain .tc-tg-span-edge--right') as HTMLElement;
     expect(handle).not.toBeNull();
@@ -454,13 +465,13 @@ describe('renderAllDayCell', () => {
   it('sets draggable="false" on edge handles so a drag started on one never races the ancestor\'s native cross-day dragstart', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const span = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+    const span = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [span], [], [], cbs);
     const spanHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
     expect(spanHandle.getAttribute('draggable')).toBe('false');
 
     const plainContainer = freshContainer();
-    const plainTask = task({ due: '2026-07-10', text: 'Plain' });
+    const plainTask = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(plainContainer, '2026-07-10', [], [plainTask], [], cbs);
     const plainHandle = plainContainer.querySelector(
       '.tc-tg-plain .tc-tg-span-edge--right',
@@ -471,7 +482,7 @@ describe('renderAllDayCell', () => {
   it('a span keeps exactly one right-edge handle, never a second one from the plain-task extend feature', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
     const handles = container.querySelectorAll('.tc-tg-span .tc-tg-span-edge--right');
     expect(handles.length).toBe(1);
@@ -480,7 +491,7 @@ describe('renderAllDayCell', () => {
   it('clicking the status marker on a plain task with an edge handle still toggles it (handle does not steal the click)', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     const marker =
@@ -492,7 +503,7 @@ describe('renderAllDayCell', () => {
   it('a stationary right-click (pointerdown button=2, pointerup at same position, no move) on an edge handle does NOT fire onStartChange/onDueChange', () => {
     const container = freshContainer();
     const cbs = callbacks();
-    const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-08', [t], [], [], cbs);
     const leftHandle = container.querySelector('.tc-tg-span-edge--left') as HTMLElement;
     // Simulate a real browser resolving an element under a stationary cursor (jsdom's
@@ -524,10 +535,11 @@ describe('renderAllDayCell', () => {
   it('renders count badges (no tag chips) in a .tc-tg-body-meta span on a plain chip', () => {
     const container = freshContainer();
     const t = task({
-      due: '2026-07-10',
-      text: 'Plain',
-      rawText: '- [ ] Plain #work',
-      linkCount: 1,
+      title: 'Plain',
+      tags: ['#work'],
+      planning: { due: '2026-07-10' },
+      source: { originalMarkdown: '- [ ] Plain #work', originalBlock: '- [ ] Plain #work' },
+      presentation: { linkCount: 1 },
     });
     renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks(), [
       { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
@@ -542,7 +554,12 @@ describe('renderAllDayCell', () => {
   describe("Task 44: no tag chips on all-day/plain/span items (mirrors Task 35's timed-block removal)", () => {
     it('never renders a .tc-task-tag on a plain chip, even for a tagged task', () => {
       const container = freshContainer();
-      const t = task({ due: '2026-07-10', text: 'Plain', rawText: '- [ ] Plain #work' });
+      const t = task({
+        title: 'Plain',
+        tags: ['#work'],
+        planning: { due: '2026-07-10' },
+        source: { originalMarkdown: '- [ ] Plain #work', originalBlock: '- [ ] Plain #work' },
+      });
       renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks(), [
         { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
       ]);
@@ -553,10 +570,10 @@ describe('renderAllDayCell', () => {
     it('never renders a .tc-task-tag on a span body, even for a tagged task', () => {
       const container = freshContainer();
       const t = task({
-        start: '2026-07-08',
-        due: '2026-07-12',
-        text: 'Trip',
-        rawText: '- [ ] Trip #work',
+        title: 'Trip',
+        tags: ['#work'],
+        planning: { start: '2026-07-08', due: '2026-07-12' },
+        source: { originalMarkdown: '- [ ] Trip #work', originalBlock: '- [ ] Trip #work' },
       });
       renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks(), [
         { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
@@ -567,7 +584,12 @@ describe('renderAllDayCell', () => {
 
     it('a tagged plain chip with no subtasks/comments/links now omits .tc-tg-body-meta entirely (no chip left to show)', () => {
       const container = freshContainer();
-      const t = task({ due: '2026-07-10', text: 'Plain', rawText: '- [ ] Plain #work' });
+      const t = task({
+        title: 'Plain',
+        tags: ['#work'],
+        planning: { due: '2026-07-10' },
+        source: { originalMarkdown: '- [ ] Plain #work', originalBlock: '- [ ] Plain #work' },
+      });
       renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks(), [
         { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
       ]);
@@ -598,11 +620,11 @@ describe('renderAllDayCell', () => {
   it('renders count badges (no tag chips) on a deadline marker, per the no-tag-fill convention', () => {
     const container = freshContainer();
     const t = task({
-      scheduled: '2026-07-09',
-      due: '2026-07-10',
-      text: 'Deadline',
-      rawText: '- [ ] Deadline #work',
-      comments: [{ line: 1, text: 'c' }],
+      title: 'Deadline',
+      tags: ['#work'],
+      comments: [taskComment({ text: 'c' })],
+      planning: { scheduled: '2026-07-09', due: '2026-07-10' },
+      source: { originalMarkdown: '- [ ] Deadline #work', originalBlock: '- [ ] Deadline #work' },
     });
     renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks(), [
       { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
@@ -616,7 +638,7 @@ describe('renderAllDayCell', () => {
 
   it('omits .tc-tg-body-meta entirely for a plain chip with no tags/subtasks/comments/links', () => {
     const container = freshContainer();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
     const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
     expect(chip.querySelector('.tc-tg-body-meta')).toBeNull();
@@ -633,7 +655,7 @@ describe('renderAllDayCell', () => {
   it('clicking an existing plain chip does not also fire onCreateAtDate', () => {
     const container = freshContainer();
     const onCreateAtDate = vi.fn();
-    const t = task({ due: '2026-07-10', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
     renderAllDayCell(container, '2026-07-10', [], [t], [], { ...callbacks(), onCreateAtDate });
     (container.querySelector('.tc-tg-plain') as HTMLElement).dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
@@ -644,7 +666,7 @@ describe('renderAllDayCell', () => {
   it('clicking an existing span body does not also fire onCreateAtDate', () => {
     const container = freshContainer();
     const onCreateAtDate = vi.fn();
-    const t = task({ start: '2026-07-08', due: '2026-07-12', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-12' } });
     renderAllDayCell(container, '2026-07-10', [t], [], [], { ...callbacks(), onCreateAtDate });
     (container.querySelector('.tc-tg-span') as HTMLElement).dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
@@ -655,7 +677,7 @@ describe('renderAllDayCell', () => {
   it('clicking an existing deadline marker does not also fire onCreateAtDate', () => {
     const container = freshContainer();
     const onCreateAtDate = vi.fn();
-    const t = task({ due: '2026-07-10', scheduled: '2026-07-05', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-10', scheduled: '2026-07-05' } });
     renderAllDayCell(container, '2026-07-10', [], [], [t], { ...callbacks(), onCreateAtDate });
     (container.querySelector('.tc-tg-deadline-marker') as HTMLElement).dispatchEvent(
       new MouseEvent('click', { bubbles: true }),
@@ -691,7 +713,7 @@ describe('renderAllDayCell', () => {
     it('pointerdown on a span edge handle flips the ancestor .tc-tg-body draggable to false and adds is-edge-resizing (blocking the native-drag-ancestor-fallback that used to arm mid-resize)', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+      const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [t], [], [], cbs);
       const bar = container.querySelector('.tc-tg-span') as HTMLElement;
       const rightHandle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
@@ -719,7 +741,7 @@ describe('renderAllDayCell', () => {
     it('a pointercancel (native drag hijacking the session) restores draggable/removes is-edge-resizing and does not fire the resolve callback, without leaking listeners for the next gesture', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ due: '2026-07-10', text: 'Plain' });
+      const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
       const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
       const handle = container.querySelector('.tc-tg-plain .tc-tg-span-edge--right') as HTMLElement;
@@ -744,8 +766,8 @@ describe('renderAllDayCell', () => {
     it("resizing one item does not mutate any sibling element's layout-affecting attributes/inline styles (purely a class/attribute toggle on the dragged item itself)", () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const span = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
-      const plain = task({ due: '2026-07-10', text: 'Plain' });
+      const span = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
+      const plain = task({ title: 'Plain', planning: { due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [span], [plain], [], cbs);
 
       const bar = container.querySelector('.tc-tg-span') as HTMLElement;
@@ -787,7 +809,7 @@ describe('renderAllDayCell', () => {
     // that provides it, so a future refactor that drops the capture call regresses visibly.
     it("pointerdown on an edge-resize handle arms pointer capture on that handle with the gesture's pointerId", () => {
       const container = freshContainer();
-      const t = task({ start: '2026-07-08', due: '2026-07-10', text: 'Trip' });
+      const t = task({ title: 'Trip', planning: { start: '2026-07-08', due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks());
       const handle = container.querySelector('.tc-tg-span-edge--right') as HTMLElement;
       handle.setPointerCapture = vi.fn();
@@ -798,7 +820,7 @@ describe('renderAllDayCell', () => {
 
     it('releasePointerCapture is called on pointercancel cleanup with the same pointerId that was captured', () => {
       const container = freshContainer();
-      const t = task({ due: '2026-07-10', text: 'Plain' });
+      const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
       const handle = container.querySelector('.tc-tg-plain .tc-tg-span-edge--right') as HTMLElement;
       handle.setPointerCapture = vi.fn();
@@ -811,7 +833,7 @@ describe('renderAllDayCell', () => {
     it('a host lacking setPointerCapture/releasePointerCapture entirely (e.g. jsdom) is tolerated: no throw, and the pre-existing pointercancel cleanup still runs', () => {
       const container = freshContainer();
       const cbs = callbacks();
-      const t = task({ due: '2026-07-10', text: 'Plain' });
+      const t = task({ title: 'Plain', planning: { due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [], [t], [], cbs);
       const chip = container.querySelector('.tc-tg-plain') as HTMLElement;
       const handle = container.querySelector('.tc-tg-plain .tc-tg-span-edge--right') as HTMLElement;
@@ -831,7 +853,7 @@ describe('renderAllDayCell', () => {
   describe('Task 38 follow-up: is-done/is-cancelled strikethrough parity with timed blocks', () => {
     it('marks a done plain item title is-done', () => {
       const container = freshContainer();
-      const t = task({ due: '2026-07-10', status: 'done', statusSymbol: 'x' });
+      const t = task({ status: 'done', statusSymbol: 'x', planning: { due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
       const title = container.querySelector('.tc-tg-body-title') as HTMLElement;
       expect(title.classList.contains('is-done')).toBe(true);
@@ -840,10 +862,9 @@ describe('renderAllDayCell', () => {
     it('marks a cancelled span item title is-cancelled', () => {
       const container = freshContainer();
       const t = task({
-        start: '2026-07-08',
-        due: '2026-07-12',
         status: 'cancelled',
         statusSymbol: '-',
+        planning: { start: '2026-07-08', due: '2026-07-12' },
       });
       renderAllDayCell(container, '2026-07-10', [t], [], [], callbacks());
       const title = container.querySelector('.tc-tg-body-title') as HTMLElement;
@@ -852,7 +873,7 @@ describe('renderAllDayCell', () => {
 
     it('an open plain/span item gets neither is-done nor is-cancelled on its title', () => {
       const container = freshContainer();
-      const t = task({ due: '2026-07-10' });
+      const t = task({ planning: { due: '2026-07-10' } });
       renderAllDayCell(container, '2026-07-10', [], [t], [], callbacks());
       const title = container.querySelector('.tc-tg-body-title') as HTMLElement;
       expect(title.classList.contains('is-done')).toBe(false);
@@ -862,10 +883,9 @@ describe('renderAllDayCell', () => {
     it('marks a done deadline marker title is-done', () => {
       const container = freshContainer();
       const t = task({
-        due: '2026-07-10',
-        scheduled: '2026-07-05',
         status: 'done',
         statusSymbol: 'x',
+        planning: { due: '2026-07-10', scheduled: '2026-07-05' },
       });
       renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks());
       const title = container.querySelector('.tc-tg-deadline-title') as HTMLElement;
@@ -876,10 +896,9 @@ describe('renderAllDayCell', () => {
     it('marks a cancelled deadline marker title is-cancelled', () => {
       const container = freshContainer();
       const t = task({
-        due: '2026-07-10',
-        scheduled: '2026-07-05',
         status: 'cancelled',
         statusSymbol: '-',
+        planning: { due: '2026-07-10', scheduled: '2026-07-05' },
       });
       renderAllDayCell(container, '2026-07-10', [], [], [t], callbacks());
       const title = container.querySelector('.tc-tg-deadline-title') as HTMLElement;

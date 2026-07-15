@@ -153,7 +153,7 @@ describe('AppState', () => {
 
   it('draggingTask can be set to a task and back to null', () => {
     const s = new AppState();
-    const t = task({ filePath: 'a.md' });
+    const t = task({ source: { filePath: 'a.md' } });
     s.set('draggingTask', t);
     expect(s.get('draggingTask')).toBe(t);
     s.set('draggingTask', null);

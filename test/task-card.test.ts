@@ -28,7 +28,11 @@ function baseOptions(overrides: Partial<TaskCardOptions> = {}): TaskCardOptions 
 describe('createTaskCard', () => {
   describe('color styling (transColor via style attribute)', () => {
     it('noteColor only: derives dark/light via transColor (pinned values)', () => {
-      const el = createTaskCard(task({ noteColor: '#3a3a3a' }), 'due', baseOptions());
+      const el = createTaskCard(
+        task({ presentation: { noteColor: '#3a3a3a' } }),
+        'due',
+        baseOptions(),
+      );
       const style = el.getAttribute('style');
       expect(style).toBe(
         '--task-background:#3a3a3a33;--task-color:#3a3a3a;--dark-task-text-color:#000000;--light-task-text-color:#7a7a7a',
@@ -36,7 +40,11 @@ describe('createTaskCard', () => {
     });
 
     it('noteTextColor only: gray background, text colors via transColor of noteTextColor', () => {
-      const el = createTaskCard(task({ noteTextColor: '#ff8800' }), 'due', baseOptions());
+      const el = createTaskCard(
+        task({ presentation: { noteTextColor: '#ff8800' } }),
+        'due',
+        baseOptions(),
+      );
       expect(el.getAttribute('style')).toBe(
         '--task-background:#7D7D7D33;--task-color:#7D7D7D;--dark-task-text-color:#992200;--light-task-text-color:#ffc840',
       );
@@ -44,7 +52,7 @@ describe('createTaskCard', () => {
 
     it('both noteColor and noteTextColor: text colors set directly, no transColor call', () => {
       const el = createTaskCard(
-        task({ noteColor: '#abcdef', noteTextColor: '#123456' }),
+        task({ presentation: { noteColor: '#abcdef', noteTextColor: '#123456' } }),
         'due',
         baseOptions(),
       );
@@ -73,19 +81,23 @@ describe('createTaskCard', () => {
     });
 
     it('root div has class "task {cls}" (no noNoteIcon) when noteIcon present', () => {
-      const el = createTaskCard(task({ noteIcon: '🔵' }), 'due', baseOptions());
+      const el = createTaskCard(task({ presentation: { noteIcon: '🔵' } }), 'due', baseOptions());
       expect(el.className).toBe('task due');
     });
 
     it('sets data-task-text and title to task.title', () => {
-      const el = createTaskCard(task({ text: 'Buy milk' }), 'due', baseOptions());
+      const el = createTaskCard(task({ title: 'Buy milk' }), 'due', baseOptions());
       expect(el.getAttribute('data-task-text')).toBe('Buy milk');
       expect(el.getAttribute('title')).toBe('Buy milk');
     });
 
     it('sets data-due iff task.due', () => {
       expect(
-        createTaskCard(task({ due: '2026-06-24' }), 'due', baseOptions()).getAttribute('data-due'),
+        createTaskCard(
+          task({ planning: { due: '2026-06-24' } }),
+          'due',
+          baseOptions(),
+        ).getAttribute('data-due'),
       ).toBe('2026-06-24');
       expect(createTaskCard(task(), 'due', baseOptions()).getAttribute('data-due')).toBeNull();
     });
@@ -114,7 +126,7 @@ describe('createTaskCard', () => {
 
     it('invokes onToggle once on click', () => {
       const onToggle = vi.fn();
-      const el = createTaskCard(task({ text: 'x' }), 'due', baseOptions({ onToggle }));
+      const el = createTaskCard(task({ title: 'x' }), 'due', baseOptions({ onToggle }));
       const marker = el.querySelector('.tc-status-marker') as HTMLElement;
       marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       expect(onToggle).toHaveBeenCalledTimes(1);
@@ -123,7 +135,7 @@ describe('createTaskCard', () => {
 
     it('invokes onContextMenu with the event and task on right-click', () => {
       const onContextMenu = vi.fn();
-      const t = task({ text: 'y' });
+      const t = task({ title: 'y' });
       const el = createTaskCard(t, 'due', baseOptions({ onContextMenu }));
       const marker = el.querySelector('.tc-status-marker') as HTMLElement;
       const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
@@ -134,7 +146,7 @@ describe('createTaskCard', () => {
 
   describe('note link (de-anchored)', () => {
     it('renders a non-anchor .inner-link wrapper (no nested <a> for the card itself)', () => {
-      const el = createTaskCard(task({ filePath: 'notes/x.md' }), 'due', baseOptions());
+      const el = createTaskCard(task({ source: { filePath: 'notes/x.md' } }), 'due', baseOptions());
       const link = el.querySelector('.inner-link');
       expect(link).not.toBeNull();
       expect(link?.tagName).not.toBe('A');
@@ -142,7 +154,7 @@ describe('createTaskCard', () => {
 
     it('clicking the card content invokes onOpenNote with the task', () => {
       const onOpenNote = vi.fn();
-      const t = task({ filePath: 'notes/x.md' });
+      const t = task({ source: { filePath: 'notes/x.md' } });
       const el = createTaskCard(t, 'due', baseOptions({ onOpenNote }));
       const link = el.querySelector<HTMLElement>('.inner-link');
       link?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -179,7 +191,7 @@ describe('createTaskCard', () => {
   describe('data-relative', () => {
     it('populates data-relative from window.moment(due).fromNow() when due', () => {
       vi.useFakeTimers({ now: new Date('2026-06-24T10:00:00Z').getTime() });
-      const el = createTaskCard(task({ due: '2026-06-24' }), 'due', baseOptions());
+      const el = createTaskCard(task({ planning: { due: '2026-06-24' } }), 'due', baseOptions());
       // exact phrasing depends on locale/timezone; assert it is non-empty
       expect(el.querySelector<HTMLElement>('.description')?.dataset.relative).toBeTruthy();
       vi.useRealTimers();

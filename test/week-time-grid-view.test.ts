@@ -68,7 +68,7 @@ describe('WeekTimeGridView', () => {
   it('places a timed task in the correct day column within the week', () => {
     const container = freshContainer();
     const view = new WeekTimeGridView(callbacks());
-    const t = task({ due: '2026-07-08', time: '10:00' });
+    const t = task({ planning: { due: '2026-07-08', time: '10:00' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
     expect(container.querySelectorAll('.tc-tg-block')).toHaveLength(1);
   });
@@ -76,7 +76,7 @@ describe('WeekTimeGridView', () => {
   it('a span crossing multiple days in the week renders a body in each covered day cell', () => {
     const container = freshContainer();
     const view = new WeekTimeGridView(callbacks());
-    const t = task({ start: '2026-07-07', due: '2026-07-09' });
+    const t = task({ planning: { start: '2026-07-07', due: '2026-07-09' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
     expect(container.querySelectorAll('.tc-tg-span')).toHaveLength(3);
   });
@@ -154,10 +154,9 @@ describe('WeekTimeGridView', () => {
     const container = freshContainer();
     const view = new WeekTimeGridView(callbacks());
     const t = task({
-      due: '2026-07-08',
-      time: '10:00',
-      text: 'see [[Note]]',
-      markdownText: 'see [[Note]]',
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { due: '2026-07-08', time: '10:00' },
     });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
     const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
@@ -168,7 +167,7 @@ describe('WeekTimeGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new WeekTimeGridView(cbs);
-    const t = task({ due: '2026-07-08', time: '10:00' });
+    const t = task({ planning: { due: '2026-07-08', time: '10:00' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
     const marker = container.querySelector('.tc-tg-block .tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -428,11 +427,8 @@ describe('WeekTimeGridView', () => {
       const view = new WeekTimeGridView(callbacks());
       // Monday-Sunday week of 2026-07-06..12 (firstDayOfWeek: 1); the span covers Mon-Wed.
       const t = task({
-        start: '2026-07-06',
-        due: '2026-07-08',
-        time: '09:00',
-        duration: 60,
-        text: 'Conference',
+        title: 'Conference',
+        planning: { start: '2026-07-06', due: '2026-07-08', time: '09:00', duration: 60 },
       });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
 
@@ -463,7 +459,7 @@ describe('WeekTimeGridView', () => {
     it('an untimed start+due span still renders only in the all-day row (unaffected by the new timedSpans handling)', () => {
       const container = freshContainer();
       const view = new WeekTimeGridView(callbacks());
-      const t = task({ start: '2026-07-06', due: '2026-07-08', text: 'Trip' });
+      const t = task({ title: 'Trip', planning: { start: '2026-07-06', due: '2026-07-08' } });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-28', firstDayOfWeek: 1 }));
       expect(container.querySelector('.tc-tg-span')).not.toBeNull();
       expect(container.querySelector('.tc-tg-block-continuation')).toBeNull();

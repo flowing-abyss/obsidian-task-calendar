@@ -33,7 +33,7 @@ describe('TodayView', () => {
   it('renders a timed task in the hour grid for the configured day', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
-    const t = task({ due: '2026-07-10', time: '15:00', duration: 60 });
+    const t = task({ planning: { due: '2026-07-10', time: '15:00', duration: 60 } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     expect(container.querySelector('.tc-tg-block')).not.toBeNull();
   });
@@ -54,7 +54,7 @@ describe('TodayView', () => {
   it('renders a plain due-only task in the all-day band, not the hour grid', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
-    const t = task({ due: '2026-07-10' });
+    const t = task({ planning: { due: '2026-07-10' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     expect(container.querySelector('.tc-tg-plain')).not.toBeNull();
     expect(container.querySelector('.tc-tg-block')).toBeNull();
@@ -63,7 +63,7 @@ describe('TodayView', () => {
   it('renders a scheduled+due task as a plain body on its scheduled day, and a deadline marker on due day (not shown here since due != this day)', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
-    const t = task({ due: '2026-07-15', scheduled: '2026-07-10' });
+    const t = task({ planning: { due: '2026-07-15', scheduled: '2026-07-10' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     expect(container.querySelector('.tc-tg-plain')).not.toBeNull();
     expect(container.querySelector('.tc-tg-deadline-marker')).toBeNull();
@@ -71,24 +71,19 @@ describe('TodayView', () => {
 
   it('Task 38: bucketTasksForDate does NOT filter out done/cancelled tasks (timed, plain, deadlines)', () => {
     const doneTimed = task({
-      due: '2026-07-10',
-      time: '15:00',
       status: 'done',
-      filePath: 'a.md',
-      line: 1,
+      planning: { due: '2026-07-10', time: '15:00' },
+      source: { filePath: 'a.md', line: 1 },
     });
     const cancelledPlain = task({
-      due: '2026-07-10',
       status: 'cancelled',
-      filePath: 'b.md',
-      line: 2,
+      planning: { due: '2026-07-10' },
+      source: { filePath: 'b.md', line: 2 },
     });
     const doneDeadline = task({
-      due: '2026-07-10',
-      scheduled: '2026-07-05',
       status: 'done',
-      filePath: 'c.md',
-      line: 3,
+      planning: { due: '2026-07-10', scheduled: '2026-07-05' },
+      source: { filePath: 'c.md', line: 3 },
     });
     const { timed, plain, deadlines } = bucketTasksForDate(
       [doneTimed, cancelledPlain, doneDeadline],
@@ -102,7 +97,7 @@ describe('TodayView', () => {
   it('a task not anchored to the configured day is excluded entirely', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
-    const t = task({ due: '2026-08-01' });
+    const t = task({ planning: { due: '2026-08-01' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     expect(container.querySelector('.tc-tg-plain')).toBeNull();
   });
@@ -111,11 +106,9 @@ describe('TodayView', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
     const t = task({
-      due: '2026-07-10',
-      time: '15:00',
-      duration: 60,
       status: 'done',
       statusSymbol: 'x',
+      planning: { due: '2026-07-10', time: '15:00', duration: 60 },
     });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     const block = container.querySelector('.tc-tg-block') as HTMLElement;
@@ -129,7 +122,7 @@ describe('TodayView', () => {
   it('Task 38: a done plain (untimed) task still renders in the all-day band, not removed', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
-    const t = task({ due: '2026-07-10', status: 'done', statusSymbol: 'x' });
+    const t = task({ status: 'done', statusSymbol: 'x', planning: { due: '2026-07-10' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     expect(container.querySelector('.tc-tg-plain')).not.toBeNull();
   });
@@ -207,7 +200,7 @@ describe('TodayView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new TodayView(cbs);
-    const t = task({ due: '2026-07-10', time: '15:00', duration: 60 });
+    const t = task({ planning: { due: '2026-07-10', time: '15:00', duration: 60 } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     const marker = container.querySelector('.tc-tg-block .tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -219,7 +212,7 @@ describe('TodayView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new TodayView(cbs);
-    const t = task({ due: '2026-07-10' });
+    const t = task({ planning: { due: '2026-07-10' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     const marker = container.querySelector('.tc-tg-plain .tc-status-marker') as HTMLElement;
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -231,11 +224,9 @@ describe('TodayView', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
     const t = task({
-      due: '2026-07-10',
-      time: '15:00',
-      duration: 60,
-      text: 'see [[Note]]',
-      markdownText: 'see [[Note]]',
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { due: '2026-07-10', time: '15:00', duration: 60 },
     });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     const title = container.querySelector('.tc-tg-block-title') as HTMLElement;
@@ -248,7 +239,7 @@ describe('TodayView', () => {
   it('a second render() call does not leak the previous Component (unload/reload lifecycle mirrors legacy MonthView)', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
-    const t = task({ due: '2026-07-10', time: '15:00', duration: 60 });
+    const t = task({ planning: { due: '2026-07-10', time: '15:00', duration: 60 } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' }));
     expect(() =>
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07-10' })),
@@ -256,7 +247,9 @@ describe('TodayView', () => {
   });
 
   it('a task with start+due+distinct scheduled lands in spans (not deadlines) on its due day', () => {
-    const t = task({ start: '2026-07-01', due: '2026-07-05', scheduled: '2026-07-03' });
+    const t = task({
+      planning: { start: '2026-07-01', due: '2026-07-05', scheduled: '2026-07-03' },
+    });
     const { spans, deadlines } = bucketTasksForDate([t], '2026-07-05');
     expect(spans).toContain(t);
     expect(deadlines).not.toContain(t);
@@ -265,7 +258,9 @@ describe('TodayView', () => {
   it('renders only a span bar, not a deadline marker, for a start+due+distinct-scheduled task on its due day', () => {
     const container = freshContainer();
     const view = new TodayView(callbacks());
-    const t = task({ start: '2026-07-01', due: '2026-07-05', scheduled: '2026-07-03' });
+    const t = task({
+      planning: { start: '2026-07-01', due: '2026-07-05', scheduled: '2026-07-03' },
+    });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07-05' }));
     expect(container.querySelector('.tc-tg-span')).not.toBeNull();
     expect(container.querySelector('.tc-tg-deadline-marker')).toBeNull();
@@ -273,21 +268,21 @@ describe('TodayView', () => {
 
   describe('timed multi-day spans (Task 29)', () => {
     it('a start+due task with a time set lands in timedSpans, not the untimed spans bucket', () => {
-      const t = task({ start: '2026-07-01', due: '2026-07-03', time: '09:00' });
+      const t = task({ planning: { start: '2026-07-01', due: '2026-07-03', time: '09:00' } });
       const { spans, timedSpans } = bucketTasksForDate([t], '2026-07-02');
       expect(timedSpans).toContain(t);
       expect(spans).not.toContain(t);
     });
 
     it('an untimed start+due task still lands in spans, not timedSpans', () => {
-      const t = task({ start: '2026-07-01', due: '2026-07-03' });
+      const t = task({ planning: { start: '2026-07-01', due: '2026-07-03' } });
       const { spans, timedSpans } = bucketTasksForDate([t], '2026-07-02');
       expect(spans).toContain(t);
       expect(timedSpans).not.toContain(t);
     });
 
     it('a timed span is present in timedSpans on every day from start to due inclusive', () => {
-      const t = task({ start: '2026-07-01', due: '2026-07-03', time: '09:00' });
+      const t = task({ planning: { start: '2026-07-01', due: '2026-07-03', time: '09:00' } });
       expect(bucketTasksForDate([t], '2026-07-01').timedSpans).toContain(t);
       expect(bucketTasksForDate([t], '2026-07-02').timedSpans).toContain(t);
       expect(bucketTasksForDate([t], '2026-07-03').timedSpans).toContain(t);
@@ -295,7 +290,10 @@ describe('TodayView', () => {
     });
 
     it('Task 38: a done/cancelled timed span is NOT excluded from timedSpans (stays visible)', () => {
-      const t = task({ start: '2026-07-01', due: '2026-07-03', time: '09:00', status: 'done' });
+      const t = task({
+        status: 'done',
+        planning: { start: '2026-07-01', due: '2026-07-03', time: '09:00' },
+      });
       const { timedSpans } = bucketTasksForDate([t], '2026-07-02');
       expect(timedSpans).toContain(t);
     });
@@ -413,7 +411,10 @@ describe('TodayView', () => {
     it('renders the full interactive block on the due (anchor) day', () => {
       const container = freshContainer();
       const view = new TodayView(callbacks());
-      const t = task({ start: '2026-07-06', due: '2026-07-08', time: '09:00', text: 'Conf' });
+      const t = task({
+        title: 'Conf',
+        planning: { start: '2026-07-06', due: '2026-07-08', time: '09:00' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07-08' }));
       expect(container.querySelector('.tc-tg-block')).not.toBeNull();
       expect(container.querySelector('.tc-tg-block-continuation')).toBeNull();
@@ -422,7 +423,10 @@ describe('TodayView', () => {
     it('renders a continuation segment (not a full block) on a non-anchor day it spans', () => {
       const container = freshContainer();
       const view = new TodayView(callbacks());
-      const t = task({ start: '2026-07-06', due: '2026-07-08', time: '09:00', text: 'Conf' });
+      const t = task({
+        title: 'Conf',
+        planning: { start: '2026-07-06', due: '2026-07-08', time: '09:00' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07-07' }));
       expect(container.querySelector('.tc-tg-block')).toBeNull();
       expect(container.querySelector('.tc-tg-block-continuation')).not.toBeNull();

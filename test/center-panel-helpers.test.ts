@@ -3,7 +3,6 @@ import type { App } from 'obsidian';
 import { describe, expect, it } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
-import type { Task as LegacyTask } from '../src/parser/types';
 import { DEFAULT_SETTINGS, getListViewDefaults } from '../src/settings/defaults';
 import type { CalendarSettings, TagGroup } from '../src/settings/types';
 import type { TaskSnapshot } from '../src/tasks';
@@ -18,7 +17,7 @@ useRealMoment();
  * Pure helpers don't touch the DOM or vault, so `app` is a minimal stub.
  */
 function makePanel(
-  tasks: LegacyTask[],
+  tasks: TaskSnapshot[],
   settings: CalendarSettings = DEFAULT_SETTINGS,
   state: AppState = new AppState(),
 ): { panel: CenterPanel; state: AppState } {
@@ -38,8 +37,15 @@ describe('CenterPanel pure helpers', () => {
   describe('getFilteredTasks', () => {
     it('inbox delegates to getInboxTasks (untagged mode excludes tagged)', () => {
       const tasks = [
-        task({ text: 'no tag', rawText: '- [ ] no tag' }),
-        task({ text: 'tagged', rawText: '- [ ] tagged #work' }),
+        task({
+          title: 'no tag',
+          source: { originalMarkdown: '- [ ] no tag', originalBlock: '- [ ] no tag' },
+        }),
+        task({
+          title: 'tagged',
+          tags: ['#work'],
+          source: { originalMarkdown: '- [ ] tagged #work', originalBlock: '- [ ] tagged #work' },
+        }),
       ];
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
@@ -53,9 +59,21 @@ describe('CenterPanel pure helpers', () => {
 
     it('today includes tasks due/scheduled/dailyNoteDate today', () => {
       const tasks = [
-        task({ text: 'dueToday', rawText: '- [ ] dueToday', due: TODAY }),
-        task({ text: 'schedToday', rawText: '- [ ] schedToday', scheduled: TODAY }),
-        task({ text: 'dnToday', rawText: '- [ ] dnToday', dailyNoteDate: TODAY }),
+        task({
+          title: 'dueToday',
+          planning: { due: TODAY },
+          source: { originalMarkdown: '- [ ] dueToday', originalBlock: '- [ ] dueToday' },
+        }),
+        task({
+          title: 'schedToday',
+          planning: { scheduled: TODAY },
+          source: { originalMarkdown: '- [ ] schedToday', originalBlock: '- [ ] schedToday' },
+        }),
+        task({
+          title: 'dnToday',
+          source: { originalMarkdown: '- [ ] dnToday', originalBlock: '- [ ] dnToday' },
+          presentation: { dailyNoteDate: TODAY },
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
@@ -69,7 +87,13 @@ describe('CenterPanel pure helpers', () => {
     });
 
     it('today includes overdue (due < today)', () => {
-      const tasks = [task({ text: 'overdue', rawText: '- [ ] overdue', due: '2026-06-20' })];
+      const tasks = [
+        task({
+          title: 'overdue',
+          planning: { due: '2026-06-20' },
+          source: { originalMarkdown: '- [ ] overdue', originalBlock: '- [ ] overdue' },
+        }),
+      ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
       fixedToday('2026-06-25');
@@ -80,16 +104,15 @@ describe('CenterPanel pure helpers', () => {
     it('today does NOT include overdue via scheduled/dailyNoteDate only (CURRENT BEHAVIOR: only due<today counts as overdue, follow-up: FU-31)', () => {
       const tasks = [
         task({
-          text: 'sched-overdue',
-          rawText: '- [ ] sched-overdue',
-          scheduled: '2026-06-20',
-          due: undefined,
+          title: 'sched-overdue',
+          planning: { scheduled: '2026-06-20', due: undefined },
+          source: { originalMarkdown: '- [ ] sched-overdue', originalBlock: '- [ ] sched-overdue' },
         }),
         task({
-          text: 'dn-overdue',
-          rawText: '- [ ] dn-overdue',
-          dailyNoteDate: '2026-06-20',
-          due: undefined,
+          title: 'dn-overdue',
+          planning: { due: undefined },
+          source: { originalMarkdown: '- [ ] dn-overdue', originalBlock: '- [ ] dn-overdue' },
+          presentation: { dailyNoteDate: '2026-06-20' },
         }),
       ];
       const { panel, state } = makePanel(tasks);
@@ -103,13 +126,17 @@ describe('CenterPanel pure helpers', () => {
     it('today excludes done tasks', () => {
       const tasks = [
         task({
-          text: 'done',
-          rawText: '- [x] done',
+          title: 'done',
           status: 'done',
           statusSymbol: 'x',
-          due: '2026-06-25',
+          planning: { due: '2026-06-25' },
+          source: { originalMarkdown: '- [x] done', originalBlock: '- [x] done' },
         }),
-        task({ text: 'open', rawText: '- [ ] open', due: '2026-06-25' }),
+        task({
+          title: 'open',
+          planning: { due: '2026-06-25' },
+          source: { originalMarkdown: '- [ ] open', originalBlock: '- [ ] open' },
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
@@ -121,7 +148,13 @@ describe('CenterPanel pure helpers', () => {
     it('today excludes future tasks (due > today, not overdue)', () => {
       // Date relative to "now" so the test stays correct as real time passes.
       const future = moment().add(5, 'days').format('YYYY-MM-DD');
-      const tasks = [task({ text: 'future', rawText: '- [ ] future', due: future })];
+      const tasks = [
+        task({
+          title: 'future',
+          planning: { due: future },
+          source: { originalMarkdown: '- [ ] future', originalBlock: '- [ ] future' },
+        }),
+      ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'today');
       const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
@@ -134,10 +167,28 @@ describe('CenterPanel pure helpers', () => {
       const far = moment().add(15, 'days').format('YYYY-MM-DD');
       const past = moment().subtract(5, 'days').format('YYYY-MM-DD');
       const tasks = [
-        task({ text: 'far', rawText: '- [ ] far', due: far }),
-        task({ text: 'near', rawText: '- [ ] near', due: near }),
-        task({ text: 'past', rawText: '- [ ] past', due: past }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x', due: near }),
+        task({
+          title: 'far',
+          planning: { due: far },
+          source: { originalMarkdown: '- [ ] far', originalBlock: '- [ ] far' },
+        }),
+        task({
+          title: 'near',
+          planning: { due: near },
+          source: { originalMarkdown: '- [ ] near', originalBlock: '- [ ] near' },
+        }),
+        task({
+          title: 'past',
+          planning: { due: past },
+          source: { originalMarkdown: '- [ ] past', originalBlock: '- [ ] past' },
+        }),
+        task({
+          title: 'done',
+          status: 'done',
+          statusSymbol: 'x',
+          planning: { due: near },
+          source: { originalMarkdown: '- [x] done', originalBlock: '- [x] done' },
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'upcoming');
@@ -150,8 +201,16 @@ describe('CenterPanel pure helpers', () => {
       const sched = moment().add(3, 'days').format('YYYY-MM-DD');
       const dn = moment().add(4, 'days').format('YYYY-MM-DD');
       const tasks = [
-        task({ text: 'sched', rawText: '- [ ] sched', scheduled: sched }),
-        task({ text: 'dn', rawText: '- [ ] dn', dailyNoteDate: dn }),
+        task({
+          title: 'sched',
+          planning: { scheduled: sched },
+          source: { originalMarkdown: '- [ ] sched', originalBlock: '- [ ] sched' },
+        }),
+        task({
+          title: 'dn',
+          source: { originalMarkdown: '- [ ] dn', originalBlock: '- [ ] dn' },
+          presentation: { dailyNoteDate: dn },
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'upcoming');
@@ -162,8 +221,16 @@ describe('CenterPanel pure helpers', () => {
     it('default string selection returns all open tasks', () => {
       // 'today' is a known string; use a non-matching string by casting
       const tasks = [
-        task({ text: 'open', rawText: '- [ ] open' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x' }),
+        task({
+          title: 'open',
+          source: { originalMarkdown: '- [ ] open', originalBlock: '- [ ] open' },
+        }),
+        task({
+          title: 'done',
+          status: 'done',
+          statusSymbol: 'x',
+          source: { originalMarkdown: '- [x] done', originalBlock: '- [x] done' },
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'unknown-list' as unknown as 'inbox');
@@ -173,14 +240,29 @@ describe('CenterPanel pure helpers', () => {
 
     it('{type:"tag"} filters query snapshots by tag and open status', () => {
       const tasks = [
-        task({ text: 'work', rawText: '- [ ] work #work' }),
         task({
-          text: 'workDone',
-          rawText: '- [x] workDone #work',
+          title: 'work',
+          tags: ['#work'],
+          source: { originalMarkdown: '- [ ] work #work', originalBlock: '- [ ] work #work' },
+        }),
+        task({
+          title: 'workDone',
           status: 'done',
           statusSymbol: 'x',
+          tags: ['#work'],
+          source: {
+            originalMarkdown: '- [x] workDone #work',
+            originalBlock: '- [x] workDone #work',
+          },
         }),
-        task({ text: 'personal', rawText: '- [ ] personal #personal' }),
+        task({
+          title: 'personal',
+          tags: ['#personal'],
+          source: {
+            originalMarkdown: '- [ ] personal #personal',
+            originalBlock: '- [ ] personal #personal',
+          },
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', { type: 'tag', tag: '#work' });
@@ -198,10 +280,34 @@ describe('CenterPanel pure helpers', () => {
       };
       const settings: CalendarSettings = { ...DEFAULT_SETTINGS, tagGroups: [group] };
       const tasks = [
-        task({ text: 'work', rawText: '- [ ] work #work' }),
-        task({ text: 'workSub', rawText: '- [ ] workSub #work/deep' }),
-        task({ text: 'other', rawText: '- [ ] other #personal' }),
-        task({ text: 'done', rawText: '- [x] done #work', status: 'done', statusSymbol: 'x' }),
+        task({
+          title: 'work',
+          tags: ['#work'],
+          source: { originalMarkdown: '- [ ] work #work', originalBlock: '- [ ] work #work' },
+        }),
+        task({
+          title: 'workSub',
+          tags: ['#work/deep'],
+          source: {
+            originalMarkdown: '- [ ] workSub #work/deep',
+            originalBlock: '- [ ] workSub #work/deep',
+          },
+        }),
+        task({
+          title: 'other',
+          tags: ['#personal'],
+          source: {
+            originalMarkdown: '- [ ] other #personal',
+            originalBlock: '- [ ] other #personal',
+          },
+        }),
+        task({
+          title: 'done',
+          status: 'done',
+          statusSymbol: 'x',
+          tags: ['#work'],
+          source: { originalMarkdown: '- [x] done #work', originalBlock: '- [x] done #work' },
+        }),
       ];
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', { type: 'group', groupId: 'g1' });
@@ -221,9 +327,21 @@ describe('CenterPanel pure helpers', () => {
       };
       const settings: CalendarSettings = { ...DEFAULT_SETTINGS, tagGroups: [group] };
       const tasks = [
-        task({ text: 'a', rawText: '- [ ] a #a' }),
-        task({ text: 'b', rawText: '- [ ] b #b' }),
-        task({ text: 'c', rawText: '- [ ] c #c' }),
+        task({
+          title: 'a',
+          tags: ['#a'],
+          source: { originalMarkdown: '- [ ] a #a', originalBlock: '- [ ] a #a' },
+        }),
+        task({
+          title: 'b',
+          tags: ['#b'],
+          source: { originalMarkdown: '- [ ] b #b', originalBlock: '- [ ] b #b' },
+        }),
+        task({
+          title: 'c',
+          tags: ['#c'],
+          source: { originalMarkdown: '- [ ] c #c', originalBlock: '- [ ] c #c' },
+        }),
       ];
       const { panel, state } = makePanel(tasks, settings);
       state.set('selectedList', { type: 'group', groupId: 'g1' });
@@ -232,7 +350,13 @@ describe('CenterPanel pure helpers', () => {
     });
 
     it('{type:"group"} with missing groupId returns empty', () => {
-      const tasks = [task({ text: 'a', rawText: '- [ ] a #a' })];
+      const tasks = [
+        task({
+          title: 'a',
+          tags: ['#a'],
+          source: { originalMarkdown: '- [ ] a #a', originalBlock: '- [ ] a #a' },
+        }),
+      ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', { type: 'group', groupId: 'nope' });
       const result = call<TaskSnapshot[]>(panel, 'getFilteredTasks');
@@ -241,8 +365,14 @@ describe('CenterPanel pure helpers', () => {
 
     it('centerFilter filters by text (case-insensitive)', () => {
       const tasks = [
-        task({ text: 'Buy Milk', rawText: '- [ ] Buy Milk' }),
-        task({ text: 'Walk dog', rawText: '- [ ] Walk dog' }),
+        task({
+          title: 'Buy Milk',
+          source: { originalMarkdown: '- [ ] Buy Milk', originalBlock: '- [ ] Buy Milk' },
+        }),
+        task({
+          title: 'Walk dog',
+          source: { originalMarkdown: '- [ ] Walk dog', originalBlock: '- [ ] Walk dog' },
+        }),
       ];
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
@@ -257,8 +387,19 @@ describe('CenterPanel pure helpers', () => {
 
     it('centerFilter filters by rawText', () => {
       const tasks = [
-        task({ text: 'task', rawText: '- [ ] task #urgent-marker' }),
-        task({ text: 'task2', rawText: '- [ ] task2 #other' }),
+        task({
+          title: 'task',
+          tags: ['#urgent-marker'],
+          source: {
+            originalMarkdown: '- [ ] task #urgent-marker',
+            originalBlock: '- [ ] task #urgent-marker',
+          },
+        }),
+        task({
+          title: 'task2',
+          tags: ['#other'],
+          source: { originalMarkdown: '- [ ] task2 #other', originalBlock: '- [ ] task2 #other' },
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', 'inbox');
@@ -273,8 +414,22 @@ describe('CenterPanel pure helpers', () => {
 
     it('centerFilter filters by rawText on tag selection', () => {
       const tasks = [
-        task({ text: 'same', rawText: '- [ ] same #work urgent-marker' }),
-        task({ text: 'same', rawText: '- [ ] same #work other' }),
+        task({
+          title: 'same',
+          tags: ['#work'],
+          source: {
+            originalMarkdown: '- [ ] same #work urgent-marker',
+            originalBlock: '- [ ] same #work urgent-marker',
+          },
+        }),
+        task({
+          title: 'same',
+          tags: ['#work'],
+          source: {
+            originalMarkdown: '- [ ] same #work other',
+            originalBlock: '- [ ] same #work other',
+          },
+        }),
       ];
       const { panel, state } = makePanel(tasks);
       state.set('selectedList', { type: 'tag', tag: '#work' });
@@ -286,8 +441,8 @@ describe('CenterPanel pure helpers', () => {
 
     it('centerFilter empty returns all (no filtering)', () => {
       const tasks = [
-        task({ text: 'a', rawText: '- [ ] a' }),
-        task({ text: 'b', rawText: '- [ ] b' }),
+        task({ title: 'a', source: { originalMarkdown: '- [ ] a', originalBlock: '- [ ] a' } }),
+        task({ title: 'b', source: { originalMarkdown: '- [ ] b', originalBlock: '- [ ] b' } }),
       ];
       const settings: CalendarSettings = {
         ...DEFAULT_SETTINGS,
@@ -536,8 +691,18 @@ describe('getFilteredTasks respects the unified Show status filter (statusGroups
   it('statusGroups=[todo,in-progress] (Active preset) excludes done tasks', () => {
     const { panel, state } = makePanel(
       [
-        task({ text: 'open', rawText: '- [ ] open', status: 'open', statusSymbol: ' ' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x' }),
+        task({
+          title: 'open',
+          status: 'open',
+          statusSymbol: ' ',
+          source: { originalMarkdown: '- [ ] open', originalBlock: '- [ ] open' },
+        }),
+        task({
+          title: 'done',
+          status: 'done',
+          statusSymbol: 'x',
+          source: { originalMarkdown: '- [x] done', originalBlock: '- [x] done' },
+        }),
       ],
       untaggedSettings,
     );
@@ -555,8 +720,18 @@ describe('getFilteredTasks respects the unified Show status filter (statusGroups
   it('statusGroups=[done,cancelled] returns only done/cancelled tasks', () => {
     const { panel, state } = makePanel(
       [
-        task({ text: 'open', rawText: '- [ ] open', status: 'open', statusSymbol: ' ' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x' }),
+        task({
+          title: 'open',
+          status: 'open',
+          statusSymbol: ' ',
+          source: { originalMarkdown: '- [ ] open', originalBlock: '- [ ] open' },
+        }),
+        task({
+          title: 'done',
+          status: 'done',
+          statusSymbol: 'x',
+          source: { originalMarkdown: '- [x] done', originalBlock: '- [x] done' },
+        }),
       ],
       untaggedSettings,
     );
@@ -574,8 +749,18 @@ describe('getFilteredTasks respects the unified Show status filter (statusGroups
   it('statusGroups=undefined (All preset) returns both', () => {
     const { panel, state } = makePanel(
       [
-        task({ text: 'open', rawText: '- [ ] open', status: 'open', statusSymbol: ' ' }),
-        task({ text: 'done', rawText: '- [x] done', status: 'done', statusSymbol: 'x' }),
+        task({
+          title: 'open',
+          status: 'open',
+          statusSymbol: ' ',
+          source: { originalMarkdown: '- [ ] open', originalBlock: '- [ ] open' },
+        }),
+        task({
+          title: 'done',
+          status: 'done',
+          statusSymbol: 'x',
+          source: { originalMarkdown: '- [x] done', originalBlock: '- [x] done' },
+        }),
       ],
       untaggedSettings,
     );
@@ -594,8 +779,24 @@ describe('getFilteredTasks respects the unified Show status filter (statusGroups
 describe('getFilteredTasks respects property filters', () => {
   it('tag filter keeps only tasks with matching tag', () => {
     const { panel, state } = makePanel([
-      task({ rawText: '- [ ] work task #work', text: 'work task', status: 'open' }),
-      task({ rawText: '- [ ] personal #personal', text: 'personal', status: 'open' }),
+      task({
+        title: 'work task',
+        status: 'open',
+        tags: ['#work'],
+        source: {
+          originalMarkdown: '- [ ] work task #work',
+          originalBlock: '- [ ] work task #work',
+        },
+      }),
+      task({
+        title: 'personal',
+        status: 'open',
+        tags: ['#personal'],
+        source: {
+          originalMarkdown: '- [ ] personal #personal',
+          originalBlock: '- [ ] personal #personal',
+        },
+      }),
     ]);
     state.set('centerListViewState', {
       groupBy: 'none',
@@ -610,8 +811,21 @@ describe('getFilteredTasks respects property filters', () => {
 
   it('tag filter does not match partial tags (#work does not match #work/deep)', () => {
     const { panel, state } = makePanel([
-      task({ rawText: '- [ ] task #work', text: 'exact', status: 'open' }),
-      task({ rawText: '- [ ] task #work/deep', text: 'sub', status: 'open' }),
+      task({
+        title: 'exact',
+        status: 'open',
+        tags: ['#work'],
+        source: { originalMarkdown: '- [ ] task #work', originalBlock: '- [ ] task #work' },
+      }),
+      task({
+        title: 'sub',
+        status: 'open',
+        tags: ['#work/deep'],
+        source: {
+          originalMarkdown: '- [ ] task #work/deep',
+          originalBlock: '- [ ] task #work/deep',
+        },
+      }),
     ]);
     state.set('centerListViewState', {
       groupBy: 'none',
@@ -630,8 +844,8 @@ describe('getFilteredTasks respects property filters', () => {
 
   it('file filter keeps only tasks from that file', () => {
     const { panel, state } = makePanel([
-      task({ filePath: 'notes/a.md', text: 'from a', status: 'open' }),
-      task({ filePath: 'notes/b.md', text: 'from b', status: 'open' }),
+      task({ title: 'from a', status: 'open', source: { filePath: 'notes/a.md' } }),
+      task({ title: 'from b', status: 'open', source: { filePath: 'notes/b.md' } }),
     ]);
     state.set('centerListViewState', {
       groupBy: 'none',
@@ -649,9 +863,9 @@ describe('getFilteredTasks respects property filters', () => {
 
   it('time filter keeps only tasks with matching time', () => {
     const { panel, state } = makePanel([
-      task({ text: 'morning', status: 'open', time: '09:00' }),
-      task({ text: 'afternoon', status: 'open', time: '14:00' }),
-      task({ text: 'no time', status: 'open' }),
+      task({ title: 'morning', status: 'open', planning: { time: '09:00' } }),
+      task({ title: 'afternoon', status: 'open', planning: { time: '14:00' } }),
+      task({ title: 'no time', status: 'open' }),
     ]);
     state.set('centerListViewState', {
       groupBy: 'none',
@@ -669,8 +883,8 @@ describe('getFilteredTasks respects property filters', () => {
 
   it('priority filter keeps only tasks with matching priority', () => {
     const { panel, state } = makePanel([
-      task({ text: 'high', status: 'open', priority: 'B' }),
-      task({ text: 'normal', status: 'open', priority: 'D' }),
+      task({ title: 'high', status: 'open', priority: 'B' }),
+      task({ title: 'normal', status: 'open', priority: 'D' }),
     ]);
     state.set('centerListViewState', {
       groupBy: 'none',
@@ -688,8 +902,8 @@ describe('getFilteredTasks respects property filters', () => {
 
   it('status filter keeps only tasks with matching statusSymbol', () => {
     const { panel, state } = makePanel([
-      task({ text: 'inProgress', status: 'in-progress', statusSymbol: '/' }),
-      task({ text: 'todo', status: 'open', statusSymbol: ' ' }),
+      task({ title: 'inProgress', status: 'in-progress', statusSymbol: '/' }),
+      task({ title: 'todo', status: 'open', statusSymbol: ' ' }),
     ]);
     state.set('centerListViewState', {
       groupBy: 'none',
@@ -707,10 +921,10 @@ describe('getFilteredTasks respects property filters', () => {
 
   it('date filter matches due, scheduled, or dailyNoteDate', () => {
     const { panel, state } = makePanel([
-      task({ text: 'due', status: 'open', due: '2026-01-10' }),
-      task({ text: 'sched', status: 'open', scheduled: '2026-01-10' }),
-      task({ text: 'daily', status: 'open', dailyNoteDate: '2026-01-10' }),
-      task({ text: 'other', status: 'open', due: '2026-01-11' }),
+      task({ title: 'due', status: 'open', planning: { due: '2026-01-10' } }),
+      task({ title: 'sched', status: 'open', planning: { scheduled: '2026-01-10' } }),
+      task({ title: 'daily', status: 'open', presentation: { dailyNoteDate: '2026-01-10' } }),
+      task({ title: 'other', status: 'open', planning: { due: '2026-01-11' } }),
     ]);
     state.set('centerListViewState', {
       groupBy: 'none',
@@ -728,13 +942,26 @@ describe('getFilteredTasks respects property filters', () => {
 
   it('multiple property filters are combined with AND', () => {
     const { panel, state } = makePanel([
-      task({ rawText: '- [ ] t #work', text: 'work morning', status: 'open', time: '09:00' }),
-      task({ rawText: '- [ ] t #work', text: 'work afternoon', status: 'open', time: '14:00' }),
       task({
-        rawText: '- [ ] t #personal',
-        text: 'personal morning',
+        title: 'work morning',
         status: 'open',
-        time: '09:00',
+        tags: ['#work'],
+        planning: { time: '09:00' },
+        source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+      }),
+      task({
+        title: 'work afternoon',
+        status: 'open',
+        tags: ['#work'],
+        planning: { time: '14:00' },
+        source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+      }),
+      task({
+        title: 'personal morning',
+        status: 'open',
+        tags: ['#personal'],
+        planning: { time: '09:00' },
+        source: { originalMarkdown: '- [ ] t #personal', originalBlock: '- [ ] t #personal' },
       }),
     ]);
     state.set('centerListViewState', {

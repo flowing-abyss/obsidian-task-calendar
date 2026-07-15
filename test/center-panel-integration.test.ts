@@ -411,10 +411,26 @@ describe('CenterPanel.renderWithGrouping (date grouping)', () => {
 
   it('buckets tasks into Overdue/Today/Tomorrow/Upcoming with counts', () => {
     const tasks = [
-      task({ text: 'overdue', due: '2026-06-20', filePath: 't.md', line: 0 }),
-      task({ text: 'today', due: '2026-06-25', filePath: 't.md', line: 1 }),
-      task({ text: 'tomorrow', due: '2026-06-26', filePath: 't.md', line: 2 }),
-      task({ text: 'upcoming', due: '2026-07-05', filePath: 't.md', line: 3 }),
+      task({
+        title: 'overdue',
+        planning: { due: '2026-06-20' },
+        source: { filePath: 't.md', line: 0 },
+      }),
+      task({
+        title: 'today',
+        planning: { due: '2026-06-25' },
+        source: { filePath: 't.md', line: 1 },
+      }),
+      task({
+        title: 'tomorrow',
+        planning: { due: '2026-06-26' },
+        source: { filePath: 't.md', line: 2 },
+      }),
+      task({
+        title: 'upcoming',
+        planning: { due: '2026-07-05' },
+        source: { filePath: 't.md', line: 3 },
+      }),
     ];
     const container = renderWithGroupingByDate(tasks);
     const headers = container.querySelectorAll('.tc-group-header');
@@ -426,7 +442,13 @@ describe('CenterPanel.renderWithGrouping (date grouping)', () => {
   });
 
   it('empty groups are skipped (only non-empty groups render)', () => {
-    const tasks = [task({ text: 'today only', due: '2026-06-25', filePath: 't.md', line: 0 })];
+    const tasks = [
+      task({
+        title: 'today only',
+        planning: { due: '2026-06-25' },
+        source: { filePath: 't.md', line: 0 },
+      }),
+    ];
     const container = renderWithGroupingByDate(tasks);
     const headers = container.querySelectorAll('.tc-group-header');
     const labels = Array.from(headers).map((h) => h.textContent?.trim());
@@ -434,7 +456,7 @@ describe('CenterPanel.renderWithGrouping (date grouping)', () => {
   });
 
   it('no-date task falls into "No date" bucket (not Overdue)', () => {
-    const tasks = [task({ text: 'no date', filePath: 't.md', line: 0 })];
+    const tasks = [task({ title: 'no date', source: { filePath: 't.md', line: 0 } })];
     const container = renderWithGroupingByDate(tasks);
     const headers = container.querySelectorAll('.tc-group-header');
     const labels = Array.from(headers).map((h) => h.textContent?.trim());
@@ -447,8 +469,8 @@ describe('CenterPanel.renderSearch', () => {
 
   it('renders matching task cards for a query', () => {
     const tasks = [
-      task({ text: 'buy milk', filePath: 'a.md', line: 0 }),
-      task({ text: 'walk dog', filePath: 'b.md', line: 0 }),
+      task({ title: 'buy milk', source: { filePath: 'a.md', line: 0 } }),
+      task({ title: 'walk dog', source: { filePath: 'b.md', line: 0 } }),
     ];
     const state = new AppState();
     state.set('mode', 'search');
@@ -466,7 +488,11 @@ describe('CenterPanel.renderSearch', () => {
   });
 
   it('clicking a result sets selectedList + mode + taskStack on state', () => {
-    const t = task({ text: 'buy milk', due: '2026-06-25', filePath: 'a.md', line: 0 });
+    const t = task({
+      title: 'buy milk',
+      planning: { due: '2026-06-25' },
+      source: { filePath: 'a.md', line: 0 },
+    });
     const state = new AppState();
     state.set('mode', 'search');
     state.set('searchQuery', 'milk');
@@ -506,10 +532,10 @@ describe('CenterPanel source note chip', () => {
 
   it('sourceNoteDisplay always → chip shown for daily note task', () => {
     const t = task({
-      text: 'daily task',
-      filePath: 'periodic/daily/2026-06-25.md',
-      dailyNoteDate: '2026-06-25',
-      due: '2026-06-25',
+      title: 'daily task',
+      planning: { due: '2026-06-25' },
+      source: { filePath: 'periodic/daily/2026-06-25.md' },
+      presentation: { dailyNoteDate: '2026-06-25' },
     });
     const panel = makeSearchPanel([t], { sourceNoteDisplay: 'always' });
     expect(panel['el'].querySelector('.tc-task-source-note')).not.toBeNull();
@@ -517,14 +543,23 @@ describe('CenterPanel source note chip', () => {
   });
 
   it('sourceNoteDisplay never → no chip', () => {
-    const t = task({ text: 'project task', filePath: 'Projects/alpha.md', due: '2026-06-25' });
+    const t = task({
+      title: 'project task',
+      tags: ['#work'],
+      planning: { due: '2026-06-25' },
+      source: { filePath: 'Projects/alpha.md' },
+    });
     const panel = makeSearchPanel([t], { sourceNoteDisplay: 'never' });
     expect(panel['el'].querySelector('.tc-task-source-note')).toBeNull();
     panel.destroy();
   });
 
   it('sourceNoteDisplay non-default → chip for project note', () => {
-    const t = task({ text: 'project task', filePath: 'Projects/alpha.md', due: '2026-06-25' });
+    const t = task({
+      title: 'project task',
+      planning: { due: '2026-06-25' },
+      source: { filePath: 'Projects/alpha.md' },
+    });
     const panel = makeSearchPanel([t], { sourceNoteDisplay: 'non-default' });
     const chip = panel['el'].querySelector('.tc-task-source-note');
     expect(chip).not.toBeNull();
@@ -534,10 +569,10 @@ describe('CenterPanel source note chip', () => {
 
   it('sourceNoteDisplay non-default → no chip for daily note task', () => {
     const t = task({
-      text: 'daily task',
-      filePath: 'periodic/daily/2026-06-25.md',
-      dailyNoteDate: '2026-06-25',
-      due: '2026-06-25',
+      title: 'daily task',
+      planning: { due: '2026-06-25' },
+      source: { filePath: 'periodic/daily/2026-06-25.md' },
+      presentation: { dailyNoteDate: '2026-06-25' },
     });
     const panel = makeSearchPanel([t], { sourceNoteDisplay: 'non-default' });
     expect(panel['el'].querySelector('.tc-task-source-note')).toBeNull();
@@ -546,10 +581,14 @@ describe('CenterPanel source note chip', () => {
 
   it('chip appears before tag in tc-task-meta-right', () => {
     const t = task({
-      text: 'project task',
-      filePath: 'Projects/alpha.md',
-      rawText: '- [ ] project task #work',
-      due: '2026-06-25',
+      title: 'project task',
+      tags: ['#work'],
+      planning: { due: '2026-06-25' },
+      source: {
+        filePath: 'Projects/alpha.md',
+        originalMarkdown: '- [ ] project task #work',
+        originalBlock: '- [ ] project task #work',
+      },
     });
     const panel = makeSearchPanel([t], { sourceNoteDisplay: 'always' });
     const meta = panel['el'].querySelector('.tc-task-meta-right');

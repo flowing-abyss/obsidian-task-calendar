@@ -5,7 +5,6 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import type { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
 import { LeftPanel } from '../src/panels/LeftPanel';
-import type { SubTask, Task, TaskComment } from '../src/parser/types';
 import type { ProjectManager } from '../src/projects/ProjectManager';
 import type { ProjectStore } from '../src/projects/ProjectStore';
 import { DailyNoteResolver } from '../src/resolvers/DailyNoteResolver';
@@ -15,7 +14,6 @@ import type { CalendarSettings, ResolvedConfig } from '../src/settings/types';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import type { TagManager } from '../src/tags/TagManager';
 import type {
-  LocalDate,
   SubtaskSnapshot,
   TaskApplicationApi,
   TaskCommentSnapshot,
@@ -34,78 +32,44 @@ import { TaskMarkdownCodec } from '../src/tasks/infrastructure/markdown/TaskMark
 import { ObsidianTaskDestinationProvider } from '../src/tasks/infrastructure/obsidian/ObsidianTaskDestinationProvider';
 import { ObsidianTaskRepository } from '../src/tasks/infrastructure/obsidian/ObsidianTaskRepository';
 
-export function taskSnapshotOf(value: Task): TaskSnapshot {
-  const explicitTags = (value as Task & { readonly tags?: readonly string[] }).tags;
-  const tags = explicitTags
-    ? [...explicitTags]
-    : [...value.rawText.matchAll(/#[\w/-]+/gu)].map((match) => match[0]);
-  return {
-    ref: {
-      filePath: value.filePath,
-      line: value.line,
-      revision: `test:${value.filePath}:${value.line}:${value.rawText}`,
-    },
-    title: value.text,
-    markdownTitle: value.markdownText,
-    status: value.status,
-    statusSymbol: value.statusSymbol,
-    priority: value.priority,
-    planning: {
-      ...(value.due && { due: value.due as LocalDate }),
-      ...(value.scheduled && { scheduled: value.scheduled as LocalDate }),
-      ...(value.start && { start: value.start as LocalDate }),
-      ...(value.completion && { completion: value.completion as LocalDate }),
-      ...(value.cancelledDate && { cancelled: value.cancelledDate as LocalDate }),
-      ...(value.time && { time: value.time as TaskSnapshot['planning']['time'] }),
-      ...(value.duration && { duration: value.duration as TaskSnapshot['planning']['duration'] }),
-    },
-    tags,
-    recurrence: value.recurrence,
-    subtasks: [],
-    comments: [],
-    description: value.description,
-    source: {
-      filePath: value.filePath,
-      line: value.line,
-      originalMarkdown: value.rawText,
-      originalBlock: value.rawText,
-    },
-    presentation: {
-      linkCount: value.linkCount ?? 0,
-      ...(value.dailyNoteDate && { dailyNoteDate: value.dailyNoteDate as LocalDate }),
-      ...(value.noteColor && { noteColor: value.noteColor }),
-      ...(value.noteTextColor && { noteTextColor: value.noteTextColor }),
-      ...(value.noteIcon && { noteIcon: value.noteIcon }),
-    },
-  };
-}
-
 export function queryApiForTasks(
-  getTasks: () => readonly Task[],
+  getTasks: () => readonly TaskSnapshot[],
   onSubscribe?: (listener: (event: TaskIndexEvent) => void) => () => void,
 ): TaskQueryApi {
   return {
     list: (query) =>
       getTasks()
-        .filter((task) => query?.filePath === undefined || task.filePath === query.filePath)
-        .filter((task) => query?.tag === undefined || taskSnapshotOf(task).tags.includes(query.tag))
+        .filter((task) => query?.filePath === undefined || task.source.filePath === query.filePath)
+        .filter(
+          (task) => query?.folder === undefined || task.source.filePath.startsWith(query.folder),
+        )
+        .filter((task) => query?.tag === undefined || task.tags.includes(query.tag))
         .filter((task) => query?.statuses === undefined || query.statuses.includes(task.status))
-        .map(taskSnapshotOf),
+        .filter((task) => {
+          if (!query?.dateRange) return true;
+          const date =
+            task.planning.due ??
+            task.planning.scheduled ??
+            task.planning.start ??
+            task.presentation.dailyNoteDate;
+          return date !== undefined && date >= query.dateRange.from && date <= query.dateRange.to;
+        }),
     forCalendarDates: (dates) => {
       const wanted = new Set<string>(dates);
-      return getTasks()
-        .filter((task) =>
-          [task.due, task.scheduled, task.start, task.dailyNoteDate].some(
-            (date) => date !== undefined && wanted.has(date),
-          ),
-        )
-        .map(taskSnapshotOf);
+      return getTasks().filter((task) =>
+        [
+          task.planning.due,
+          task.planning.scheduled,
+          task.planning.start,
+          task.presentation.dailyNoteDate,
+        ].some((date) => date !== undefined && wanted.has(date)),
+      );
     },
     resolve: (ref) => {
       const found = getTasks().find(
-        (task) => task.filePath === ref.filePath && task.line === ref.line,
+        (task) => task.ref.filePath === ref.filePath && task.ref.line === ref.line,
       );
-      return found ? { type: 'exact', task: taskSnapshotOf(found) } : { type: 'not-found', ref };
+      return found ? { type: 'exact', task: found } : { type: 'not-found', ref };
     },
     subscribe: onSubscribe ?? (() => () => {}),
   };
@@ -202,101 +166,146 @@ export function withMobile(value: boolean): void {
   });
 }
 
-export type TaskFixture = Task & TaskSnapshot;
-export type SubtaskFixture = SubTask & SubtaskSnapshot;
-export type TaskCommentFixture = TaskComment & TaskCommentSnapshot;
+export type TaskFixture = TaskSnapshot;
+export type SubtaskFixture = SubtaskSnapshot;
+export type TaskCommentFixture = TaskCommentSnapshot;
 
-function commentFixture(
-  comment: TaskComment | TaskCommentSnapshot,
-  parent: TaskNodeRef,
-  parentLine: number,
-): TaskCommentFixture {
-  if ('ref' in comment && !('line' in comment)) return comment as TaskCommentFixture;
-  const legacy = comment as TaskComment;
-  return {
-    ...legacy,
-    ref: {
-      parent,
-      relativeLine: legacy.line - parentLine,
-      originalMarkdown: legacy.text,
-    },
-    ...(legacy.date && { date: legacy.date as LocalDate }),
-  } as TaskCommentFixture;
-}
+export type TaskFixtureInput = Omit<
+  Partial<TaskSnapshot>,
+  'planning' | 'presentation' | 'ref' | 'source'
+> & {
+  readonly planning?: {
+    readonly due?: string;
+    readonly scheduled?: string;
+    readonly start?: string;
+    readonly completion?: string;
+    readonly cancelled?: string;
+    readonly time?: string;
+    readonly duration?: number;
+  };
+  readonly presentation?: Omit<Partial<TaskSnapshot['presentation']>, 'dailyNoteDate'> & {
+    readonly dailyNoteDate?: string;
+  };
+  readonly ref?: Partial<TaskSnapshot['ref']>;
+  readonly source?: Partial<TaskSnapshot['source']>;
+};
 
-function subtaskFixture(
-  subtask: SubTask | SubtaskSnapshot,
-  parent: TaskNodeRef,
-  parentLine: number,
-): SubtaskFixture {
-  if ('ref' in subtask && !('filePath' in subtask)) return subtask as SubtaskFixture;
-  const legacy = subtask as SubTask & { readonly ref?: SubtaskSnapshot['ref'] };
-  const ref = legacy.ref
-    ? legacy.ref
-    : {
-        parent,
-        relativeLine: legacy.line - parentLine,
-        originalBlock: legacy.rawText,
-      };
-  const nodeRef: TaskNodeRef = { type: 'subtask', ref };
-  const subtasks = (legacy.subtasks ?? []).map((child) =>
-    subtaskFixture(child, nodeRef, legacy.line),
-  );
-  const comments = (legacy.comments ?? []).map((comment) =>
-    commentFixture(comment, nodeRef, legacy.line),
-  );
-  return {
-    ...legacy,
-    ref,
-    title: legacy.text,
-    markdownTitle: legacy.markdownText,
-    planning: {
-      ...(legacy.due && { due: legacy.due as LocalDate }),
-      ...(legacy.scheduled && { scheduled: legacy.scheduled as LocalDate }),
-      ...(legacy.start && { start: legacy.start as LocalDate }),
-      ...(legacy.time && { time: legacy.time as SubtaskSnapshot['planning']['time'] }),
-    },
-    tags: legacy.tags ?? [],
-    subtasks,
-    comments,
-  } as SubtaskFixture;
-}
-
-/** Build one detached snapshot with legacy fixture fields for still-unmigrated parser tests. */
-export function task(
-  overrides: Partial<Task> | Partial<TaskSnapshot> | Record<string, unknown> = {},
-): TaskFixture {
-  const legacyOverrides = overrides as Partial<Task>;
-  const snapshotOverrides = overrides as Partial<TaskSnapshot>;
-  const text = legacyOverrides.text ?? snapshotOverrides.title ?? 't';
-  const rawText = legacyOverrides.rawText ?? '- [ ] t';
-  const legacy: Task = {
+/** Build one detached final-contract snapshot without legacy parser fields. */
+export function task(overrides: TaskFixtureInput = {}): TaskSnapshot {
+  const title = overrides.title ?? 't';
+  const source = {
     filePath: 'f.md',
     line: 0,
-    rawText,
-    tags: rawText.match(/#[\w/-]+/gu) ?? [],
-    text,
-    markdownText: text,
+    originalMarkdown: `- [ ] ${title}`,
+    originalBlock: `- [ ] ${title}`,
+    ...overrides.source,
+  };
+  const ref = {
+    filePath: source.filePath,
+    line: source.line,
+    revision: `test:${source.filePath}:${source.line}:${source.originalBlock}`,
+    ...overrides.ref,
+  };
+  const base: TaskSnapshot = {
+    ref,
+    title,
+    markdownTitle: overrides.markdownTitle ?? title,
     status: 'open',
     statusSymbol: ' ',
     priority: 'D',
-    ...legacyOverrides,
+    planning: {},
+    tags: [],
+    subtasks: [],
+    comments: [],
+    source,
+    presentation: { linkCount: 0 },
   };
-  const snapshot = taskSnapshotOf(legacy);
-  const rootRef: TaskNodeRef = { type: 'task', ref: snapshot.ref };
-  const subtasks = (legacy.subtasks ?? []).map((subtask) =>
-    subtaskFixture(subtask, rootRef, legacy.line),
-  );
-  const comments = (legacy.comments ?? []).map((comment) =>
-    commentFixture(comment, rootRef, legacy.line),
-  );
   return {
-    ...legacy,
-    ...snapshot,
-    ...snapshotOverrides,
-    subtasks: subtasks as TaskFixture['subtasks'],
-    comments: comments as TaskFixture['comments'],
-  } as TaskFixture;
+    ...base,
+    ...overrides,
+    ref,
+    source,
+    planning: { ...overrides.planning } as TaskSnapshot['planning'],
+    presentation: { linkCount: 0, ...overrides.presentation } as TaskSnapshot['presentation'],
+    tags: [...(overrides.tags ?? [])],
+    subtasks: [...(overrides.subtasks ?? [])],
+    comments: [...(overrides.comments ?? [])],
+  };
+}
+
+export type SubtaskFixtureInput = Omit<Partial<SubtaskSnapshot>, 'planning' | 'ref'> & {
+  readonly planning?: {
+    readonly due?: string;
+    readonly scheduled?: string;
+    readonly start?: string;
+    readonly time?: string;
+  };
+  readonly ref?: Partial<Omit<SubtaskSnapshot['ref'], 'parent'>> & {
+    readonly parent?: TaskNodeRef;
+  };
+  readonly root?: Partial<TaskSnapshot['ref']>;
+};
+
+/** Build one detached final-contract subtask snapshot. */
+export function subtask(overrides: SubtaskFixtureInput = {}): SubtaskSnapshot {
+  const title = overrides.title ?? 'subtask';
+  const originalBlock = overrides.ref?.originalBlock ?? `  - [ ] ${title}`;
+  const baseRoot = task({
+    source: {
+      filePath: overrides.root?.filePath ?? 'f.md',
+      line: overrides.root?.line ?? 0,
+      originalBlock,
+    },
+  }).ref;
+  const parent =
+    overrides.ref?.parent ??
+    ({ type: 'task', ref: { ...baseRoot, ...overrides.root } } satisfies TaskNodeRef);
+  return {
+    ref: {
+      parent,
+      relativeLine: overrides.ref?.relativeLine ?? 1,
+      originalBlock,
+    },
+    title,
+    markdownTitle: overrides.markdownTitle ?? title,
+    status: overrides.status ?? 'open',
+    statusSymbol: overrides.statusSymbol ?? ' ',
+    priority: overrides.priority ?? 'D',
+    planning: { ...overrides.planning } as SubtaskSnapshot['planning'],
+    tags: [...(overrides.tags ?? [])],
+    recurrence: overrides.recurrence,
+    subtasks: [...(overrides.subtasks ?? [])],
+    comments: [...(overrides.comments ?? [])],
+    description: overrides.description,
+  };
+}
+
+export type TaskCommentFixtureInput = Omit<Partial<TaskCommentSnapshot>, 'date' | 'ref'> & {
+  readonly date?: string;
+  readonly ref?: Partial<Omit<TaskCommentSnapshot['ref'], 'parent'>> & {
+    readonly parent?: TaskNodeRef;
+  };
+};
+
+/** Build one detached final-contract comment snapshot. */
+export function taskComment(overrides: TaskCommentFixtureInput = {}): TaskCommentSnapshot {
+  const text = overrides.text ?? 'comment';
+  const originalMarkdown = overrides.ref?.originalMarkdown ?? `  - ${text}`;
+  const parent =
+    overrides.ref?.parent ??
+    ({
+      type: 'task',
+      ref: task({ source: { originalBlock: originalMarkdown } }).ref,
+    } satisfies TaskNodeRef);
+  return {
+    ref: {
+      parent,
+      relativeLine: overrides.ref?.relativeLine ?? 1,
+      originalMarkdown,
+    },
+    date: overrides.date as TaskCommentSnapshot['date'],
+    text,
+  };
 }
 
 /** Create a fresh App with pre-populated files and flushed async metadata parsing. */
@@ -446,7 +455,7 @@ export function freshContainer(): HTMLElement {
  *
  * Command methods are inert spies; mutation integrations inject TaskApplicationApi separately.
  */
-export function makeStubStore(tasks: Task[], _app?: ObsidianApp): TestTaskHarness {
+export function makeStubStore(tasks: TaskSnapshot[], _app?: ObsidianApp): TestTaskHarness {
   const registry = new StatusRegistry(buildDefaultTaskStatuses());
   const queries = queryApiForTasks(() => tasks);
   return {

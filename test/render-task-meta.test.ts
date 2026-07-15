@@ -5,7 +5,7 @@ import {
   renderCountBadges,
   renderTagChips,
 } from '../src/views/timegrid/renderTaskMeta';
-import { freshContainer, task } from './helpers';
+import { freshContainer, subtask, task, taskComment } from './helpers';
 
 describe('renderTaskMeta', () => {
   describe('hasMeta', () => {
@@ -13,42 +13,56 @@ describe('renderTaskMeta', () => {
       expect(hasMeta(task())).toBe(false);
     });
     it('is true when the task has a tag', () => {
-      expect(hasMeta(task({ rawText: '- [ ] t #work' }))).toBe(true);
+      expect(
+        hasMeta(
+          task({
+            tags: ['#work'],
+            source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+          }),
+        ),
+      ).toBe(true);
     });
     it('is true when the task has subtasks', () => {
       expect(
         hasMeta(
           task({
-            subtasks: [
-              {
-                filePath: 'f.md',
-                line: 1,
-                rawText: '  - [ ] sub',
-                text: 'sub',
-                markdownText: 'sub',
-                status: 'open',
-                statusSymbol: ' ',
-                priority: 'D',
-              },
-            ],
+            subtasks: [subtask({ title: 'sub' })],
           }),
         ),
       ).toBe(true);
     });
     it('is true when the task has comments', () => {
-      expect(hasMeta(task({ comments: [{ line: 1, text: 'note' }] }))).toBe(true);
+      expect(hasMeta(task({ comments: [taskComment({ text: 'note' })] }))).toBe(true);
     });
     it('is true when the task has a precomputed linkCount', () => {
-      expect(hasMeta(task({ linkCount: 2 }))).toBe(true);
+      expect(hasMeta(task({ presentation: { linkCount: 2 } }))).toBe(true);
     });
   });
 
   describe('extractTags', () => {
     it('extracts hashtags from rawText', () => {
-      expect(extractTags(task({ rawText: '- [ ] t #work #urgent' }))).toEqual(['#work', '#urgent']);
+      expect(
+        extractTags(
+          task({
+            tags: ['#work', '#urgent'],
+            source: {
+              originalMarkdown: '- [ ] t #work #urgent',
+              originalBlock: '- [ ] t #work #urgent',
+            },
+          }),
+        ),
+      ).toEqual(['#work', '#urgent']);
     });
     it('caps at max', () => {
-      expect(extractTags(task({ rawText: '- [ ] t #a #b #c' }), 2)).toEqual(['#a', '#b']);
+      expect(
+        extractTags(
+          task({
+            tags: ['#a', '#b', '#c'],
+            source: { originalMarkdown: '- [ ] t #a #b #c', originalBlock: '- [ ] t #a #b #c' },
+          }),
+          2,
+        ),
+      ).toEqual(['#a', '#b']);
     });
     it('returns an empty array when there are no tags', () => {
       expect(extractTags(task())).toEqual([]);
@@ -66,26 +80,8 @@ describe('renderTaskMeta', () => {
       const container = freshContainer();
       const t = task({
         subtasks: [
-          {
-            filePath: 'f.md',
-            line: 1,
-            rawText: '  - [x] a',
-            text: 'a',
-            markdownText: 'a',
-            status: 'done',
-            statusSymbol: 'x',
-            priority: 'D',
-          },
-          {
-            filePath: 'f.md',
-            line: 2,
-            rawText: '  - [ ] b',
-            text: 'b',
-            markdownText: 'b',
-            status: 'open',
-            statusSymbol: ' ',
-            priority: 'D',
-          },
+          subtask({ title: 'a', status: 'done', statusSymbol: 'x' }),
+          subtask({ title: 'b', ref: { relativeLine: 2 } }),
         ],
       });
       renderCountBadges(container, t);
@@ -98,8 +94,8 @@ describe('renderTaskMeta', () => {
       const container = freshContainer();
       const t = task({
         comments: [
-          { line: 1, text: 'a' },
-          { line: 2, text: 'b' },
+          taskComment({ text: 'a' }),
+          taskComment({ text: 'b', ref: { relativeLine: 2 } }),
         ],
       });
       renderCountBadges(container, t);
@@ -110,7 +106,7 @@ describe('renderTaskMeta', () => {
 
     it('renders a link count badge from the precomputed linkCount field', () => {
       const container = freshContainer();
-      renderCountBadges(container, task({ linkCount: 3 }));
+      renderCountBadges(container, task({ presentation: { linkCount: 3 } }));
       const badges = container.querySelectorAll('.tc-task-count-badge');
       expect(badges).toHaveLength(1);
       expect(badges[0]!.textContent).toContain('3');
@@ -119,20 +115,9 @@ describe('renderTaskMeta', () => {
     it('renders all three badges together, in subtask/comment/link order', () => {
       const container = freshContainer();
       const t = task({
-        subtasks: [
-          {
-            filePath: 'f.md',
-            line: 1,
-            rawText: '  - [ ] a',
-            text: 'a',
-            markdownText: 'a',
-            status: 'open',
-            statusSymbol: ' ',
-            priority: 'D',
-          },
-        ],
-        comments: [{ line: 2, text: 'c' }],
-        linkCount: 1,
+        subtasks: [subtask({ title: 'a' })],
+        comments: [taskComment({ text: 'c', ref: { relativeLine: 2 } })],
+        presentation: { linkCount: 1 },
       });
       renderCountBadges(container, t);
       const badges = container.querySelectorAll('.tc-task-count-badge');
@@ -143,7 +128,14 @@ describe('renderTaskMeta', () => {
   describe('renderTagChips', () => {
     it('renders a chip per tag, uncolored when no tag group matches', () => {
       const container = freshContainer();
-      renderTagChips(container, task({ rawText: '- [ ] t #misc' }), []);
+      renderTagChips(
+        container,
+        task({
+          tags: ['#misc'],
+          source: { originalMarkdown: '- [ ] t #misc', originalBlock: '- [ ] t #misc' },
+        }),
+        [],
+      );
       const chip = container.querySelector('.tc-task-tag') as HTMLElement;
       expect(chip).not.toBeNull();
       expect(chip.textContent).toBe('#misc');
@@ -152,9 +144,14 @@ describe('renderTaskMeta', () => {
 
     it('colors the chip when the tag matches a configured tag group', () => {
       const container = freshContainer();
-      renderTagChips(container, task({ rawText: '- [ ] t #work' }), [
-        { id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' },
-      ]);
+      renderTagChips(
+        container,
+        task({
+          tags: ['#work'],
+          source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+        }),
+        [{ id: '1', name: 'Work', mode: 'prefix', prefix: 'work', color: '#3498db' }],
+      );
       const chip = container.querySelector('.tc-task-tag') as HTMLElement;
       expect(chip.classList.contains('tc-task-tag--colored')).toBe(true);
       expect(chip.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
@@ -162,13 +159,28 @@ describe('renderTaskMeta', () => {
 
     it('caps the number of chips at max', () => {
       const container = freshContainer();
-      renderTagChips(container, task({ rawText: '- [ ] t #a #b #c' }), [], 2);
+      renderTagChips(
+        container,
+        task({
+          tags: ['#a', '#b', '#c'],
+          source: { originalMarkdown: '- [ ] t #a #b #c', originalBlock: '- [ ] t #a #b #c' },
+        }),
+        [],
+        2,
+      );
       expect(container.querySelectorAll('.tc-task-tag')).toHaveLength(2);
     });
 
     it('renders no click handlers (presentational-only, safe inside drag surfaces)', () => {
       const container = freshContainer();
-      renderTagChips(container, task({ rawText: '- [ ] t #work' }), []);
+      renderTagChips(
+        container,
+        task({
+          tags: ['#work'],
+          source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+        }),
+        [],
+      );
       const chip = container.querySelector('.tc-task-tag') as HTMLElement;
       // jsdom doesn't expose a listener-count API; the contract this test protects is
       // "clicking the chip does nothing and does not throw" — no filter/drag wiring.

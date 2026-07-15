@@ -2,9 +2,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { CenterPanel } from '../src/panels/CenterPanel';
-import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TagManager } from '../src/tags/TagManager';
+import type { TaskSnapshot } from '../src/tasks';
 import {
   freshContainer,
   makeCenterPanelForTest,
@@ -15,7 +15,11 @@ import {
 
 useRealMoment();
 
-function makeCenter(tasks: Task[]): { el: HTMLElement; state: AppState; panel: CenterPanel } {
+function makeCenter(tasks: TaskSnapshot[]): {
+  el: HTMLElement;
+  state: AppState;
+  panel: CenterPanel;
+} {
   const state = new AppState();
   state.set('selectedList', 'inbox');
   const save = vi.fn().mockResolvedValue(undefined);
@@ -29,22 +33,34 @@ function makeCenter(tasks: Task[]): { el: HTMLElement; state: AppState; panel: C
 
 describe('CenterPanel multi-selection', () => {
   const t1 = task({
-    filePath: 'a.md',
-    line: 0,
-    rawText: '- [ ] Task 1 #task/inbox',
     status: 'open',
+    tags: ['#task/inbox'],
+    source: {
+      filePath: 'a.md',
+      line: 0,
+      originalMarkdown: '- [ ] Task 1 #task/inbox',
+      originalBlock: '- [ ] Task 1 #task/inbox',
+    },
   });
   const t2 = task({
-    filePath: 'a.md',
-    line: 1,
-    rawText: '- [ ] Task 2 #task/inbox',
     status: 'open',
+    tags: ['#task/inbox'],
+    source: {
+      filePath: 'a.md',
+      line: 1,
+      originalMarkdown: '- [ ] Task 2 #task/inbox',
+      originalBlock: '- [ ] Task 2 #task/inbox',
+    },
   });
   const t3 = task({
-    filePath: 'a.md',
-    line: 2,
-    rawText: '- [ ] Task 3 #task/inbox',
     status: 'open',
+    tags: ['#task/inbox'],
+    source: {
+      filePath: 'a.md',
+      line: 2,
+      originalMarkdown: '- [ ] Task 3 #task/inbox',
+      originalBlock: '- [ ] Task 3 #task/inbox',
+    },
   });
 
   it('plain click selects only one card (no tc-multi-selected)', () => {

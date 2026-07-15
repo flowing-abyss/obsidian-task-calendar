@@ -10,7 +10,9 @@ describe('getTaskDateCategory', () => {
   // ── Completed / Cancelled ────────────────────────────────────────────────
 
   it('done task is "completed" regardless of due date', () => {
-    expect(getTaskDateCategory(task({ status: 'done', due: YESTERDAY }), TODAY)).toBe('completed');
+    expect(getTaskDateCategory(task({ status: 'done', planning: { due: YESTERDAY } }), TODAY)).toBe(
+      'completed',
+    );
   });
 
   it('done task with no date is "completed" (not noDate)', () => {
@@ -18,21 +20,21 @@ describe('getTaskDateCategory', () => {
   });
 
   it('cancelled task is "cancelled" regardless of due date', () => {
-    expect(getTaskDateCategory(task({ status: 'cancelled', due: YESTERDAY }), TODAY)).toBe(
-      'cancelled',
-    );
+    expect(
+      getTaskDateCategory(task({ status: 'cancelled', planning: { due: YESTERDAY } }), TODAY),
+    ).toBe('cancelled');
   });
 
   it('cancelled overdue task is "cancelled" (not overdue)', () => {
-    expect(getTaskDateCategory(task({ status: 'cancelled', due: '2020-01-01' }), TODAY)).toBe(
-      'cancelled',
-    );
+    expect(
+      getTaskDateCategory(task({ status: 'cancelled', planning: { due: '2020-01-01' } }), TODAY),
+    ).toBe('cancelled');
   });
 
   it('completed task with past due date is "completed" (not overdue)', () => {
-    expect(getTaskDateCategory(task({ status: 'done', due: '2020-01-01' }), TODAY)).toBe(
-      'completed',
-    );
+    expect(
+      getTaskDateCategory(task({ status: 'done', planning: { due: '2020-01-01' } }), TODAY),
+    ).toBe('completed');
   });
 
   // ── noDate ───────────────────────────────────────────────────────────────
@@ -50,57 +52,65 @@ describe('getTaskDateCategory', () => {
   // ── overdue ──────────────────────────────────────────────────────────────
 
   it('open task with due yesterday is "overdue"', () => {
-    expect(getTaskDateCategory(task({ due: YESTERDAY }), TODAY)).toBe('overdue');
+    expect(getTaskDateCategory(task({ planning: { due: YESTERDAY } }), TODAY)).toBe('overdue');
   });
 
   it('open task with due date in the past is "overdue"', () => {
-    expect(getTaskDateCategory(task({ due: '2020-01-01' }), TODAY)).toBe('overdue');
+    expect(getTaskDateCategory(task({ planning: { due: '2020-01-01' } }), TODAY)).toBe('overdue');
   });
 
   // ── today ────────────────────────────────────────────────────────────────
 
   it('open task with due today is "today"', () => {
-    expect(getTaskDateCategory(task({ due: TODAY }), TODAY)).toBe('today');
+    expect(getTaskDateCategory(task({ planning: { due: TODAY } }), TODAY)).toBe('today');
   });
 
   // ── upcoming ─────────────────────────────────────────────────────────────
 
   it('open task with future due date is "upcoming"', () => {
-    expect(getTaskDateCategory(task({ due: TOMORROW }), TODAY)).toBe('upcoming');
+    expect(getTaskDateCategory(task({ planning: { due: TOMORROW } }), TODAY)).toBe('upcoming');
   });
 
   it('open task with due far in future is "upcoming"', () => {
-    expect(getTaskDateCategory(task({ due: '2030-12-31' }), TODAY)).toBe('upcoming');
+    expect(getTaskDateCategory(task({ planning: { due: '2030-12-31' } }), TODAY)).toBe('upcoming');
   });
 
   // ── Date priority: due > scheduled > start > dailyNoteDate ──────────────
 
   it('uses due when both due and scheduled are present', () => {
     // due is today, scheduled is yesterday → today (due wins)
-    expect(getTaskDateCategory(task({ due: TODAY, scheduled: YESTERDAY }), TODAY)).toBe('today');
+    expect(
+      getTaskDateCategory(task({ planning: { due: TODAY, scheduled: YESTERDAY } }), TODAY),
+    ).toBe('today');
   });
 
   it('uses scheduled when due is absent', () => {
-    expect(getTaskDateCategory(task({ scheduled: YESTERDAY }), TODAY)).toBe('overdue');
+    expect(getTaskDateCategory(task({ planning: { scheduled: YESTERDAY } }), TODAY)).toBe(
+      'overdue',
+    );
   });
 
   it('uses start when due and scheduled are absent', () => {
-    expect(getTaskDateCategory(task({ start: TOMORROW }), TODAY)).toBe('upcoming');
+    expect(getTaskDateCategory(task({ planning: { start: TOMORROW } }), TODAY)).toBe('upcoming');
   });
 
   it('uses dailyNoteDate as last fallback', () => {
-    expect(getTaskDateCategory(task({ dailyNoteDate: YESTERDAY }), TODAY)).toBe('overdue');
+    expect(getTaskDateCategory(task({ presentation: { dailyNoteDate: YESTERDAY } }), TODAY)).toBe(
+      'overdue',
+    );
   });
 
   // ── Date boundary (midnight crossover) ──────────────────────────────────
 
   it('task due exactly on today is "today" (not overdue, not upcoming)', () => {
-    expect(getTaskDateCategory(task({ due: TODAY }), TODAY)).toBe('today');
+    expect(getTaskDateCategory(task({ planning: { due: TODAY } }), TODAY)).toBe('today');
   });
 
   it('task due on boundary day (today) is not overdue even at any time', () => {
     // Pure string comparison: '2026-06-26' === '2026-06-26' → today
-    expect(getTaskDateCategory(task({ due: '2026-06-26' }), '2026-06-26')).toBe('today');
+    expect(getTaskDateCategory(task({ planning: { due: '2026-06-26' } }), '2026-06-26')).toBe(
+      'today',
+    );
   });
 });
 
@@ -118,7 +128,7 @@ describe('groupTasksByDate – noDate bucket fix', () => {
   });
 
   it('overdue task (due yesterday) goes into Overdue, not No date', () => {
-    const overdueTask = task({ due: YESTERDAY });
+    const overdueTask = task({ planning: { due: YESTERDAY } });
     const groups = groupTasksByDate([overdueTask], TODAY, TOMORROW);
     const overdue = groups.find((g) => g.label === 'Overdue');
     expect(overdue?.tasks).toHaveLength(1);
@@ -128,10 +138,10 @@ describe('groupTasksByDate – noDate bucket fix', () => {
 
   it('mix of overdue, today, upcoming, and noDate all land in correct buckets', () => {
     const tasks = [
-      task({ text: 'overdue', due: YESTERDAY }),
-      task({ text: 'today', due: TODAY }),
-      task({ text: 'upcoming', due: TOMORROW }),
-      task({ text: 'noDate' }),
+      task({ title: 'overdue', planning: { due: YESTERDAY } }),
+      task({ title: 'today', planning: { due: TODAY } }),
+      task({ title: 'upcoming', planning: { due: TOMORROW } }),
+      task({ title: 'noDate' }),
     ];
     const groups = groupTasksByDate(tasks, TODAY, TOMORROW);
     const byLabel = Object.fromEntries(groups.map((g) => [g.label, g.tasks.map((t) => t.title)]));
@@ -145,7 +155,7 @@ describe('groupTasksByDate – noDate bucket fix', () => {
     // getTasksForDate handles done/cancelled exclusion; groupTasksByDate operates on open tasks.
     // Confirm that a task passed to groupTasksByDate with a past due ends up in Overdue only
     // when it is actually open (the view layer is responsible for pre-filtering by status).
-    const doneOverdue = task({ status: 'done', due: YESTERDAY });
+    const doneOverdue = task({ status: 'done', planning: { due: YESTERDAY } });
     const groups = groupTasksByDate([doneOverdue], TODAY, TOMORROW);
     const overdue = groups.find((g) => g.label === 'Overdue');
     // Done tasks are passed through; groupTasksByDate only looks at dates, not status.

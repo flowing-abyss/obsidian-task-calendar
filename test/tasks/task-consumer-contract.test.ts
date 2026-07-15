@@ -34,6 +34,16 @@ const RETAINED_COMPATIBILITY_FILES = new Set([
   'src/tasks/compat/legacyTaskView.ts',
 ]);
 
+const PARSER_GRAMMAR_TESTS = new Set([
+  'test/blockquote-tasks.test.ts',
+  'test/duration-field.test.ts',
+  'test/parser.test.ts',
+  'test/status-symbol-validation.test.ts',
+  'test/subitem-parser-deep.test.ts',
+  'test/subitem-parser.test.ts',
+  'test/task-parser-deep.test.ts',
+]);
+
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), 'utf8');
 }
@@ -74,6 +84,16 @@ describe('final task consumer contract', () => {
     expect(matchingFiles(productionConsumers, forbidden)).toEqual([]);
   });
 
+  it('keeps the final read model independent of legacy parser projections and task shapes', () => {
+    const finalReadModel = productionFiles.filter((path) =>
+      /^src\/tasks\/(?:application|domain|infrastructure)\//u.test(path),
+    );
+    const forbidden =
+      /(?:parser\/legacyTaskProjection|parser\/SubItemParser|from ['"][^'"]*parser\/types['"])/u;
+
+    expect(matchingFiles(finalReadModel, forbidden)).toEqual([]);
+  });
+
   it('keeps applicable presentation consumers independent of legacy parser task views', () => {
     expect(matchingFiles(presentationConsumers, /from ['"][^'"]*parser\/types['"]/u)).toEqual([]);
     expect(FINAL_CONSUMERS.every((path) => presentationConsumers.includes(path))).toBe(true);
@@ -92,6 +112,17 @@ describe('final task consumer contract', () => {
     );
     const forbidden =
       /(?:src\/store\/TaskStore|src\/store\/TaskDateIndex|src\/tasks\/compat\/legacyTaskView|configuredTaskStore)/u;
+
+    expect(matchingFiles(testConsumers, forbidden)).toEqual([]);
+  });
+
+  it('keeps non-parser tests and shared fixtures on final snapshot shapes only', () => {
+    const testConsumers = typeScriptFiles('test').filter(
+      (path) =>
+        path !== 'test/tasks/task-consumer-contract.test.ts' && !PARSER_GRAMMAR_TESTS.has(path),
+    );
+    const forbidden =
+      /(?:from ['"][^'"]*parser\/types['"]|\bTask\s*&\s*TaskSnapshot\b|\bSubTask\s*&\s*SubtaskSnapshot\b|\bTaskComment\s*&\s*TaskCommentSnapshot\b)/u;
 
     expect(matchingFiles(testConsumers, forbidden)).toEqual([]);
   });

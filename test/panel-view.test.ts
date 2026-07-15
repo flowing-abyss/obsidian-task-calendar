@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import { TagManager } from '../src/tags/TagManager';
-import type { TaskIndexEvent, TaskQueryApi } from '../src/tasks';
+import type { TaskCommandResult, TaskIndexEvent, TaskQueryApi, TaskRef } from '../src/tasks';
 import { taskNodeLine } from '../src/ui/taskSelection';
 import { PANEL_VIEW_TYPE, PanelView } from '../src/views/PanelView';
 import {
@@ -256,6 +256,96 @@ describe('PanelView', () => {
       ).applyResolution({ type: 'conflict', current: external });
       expect(state.get('taskStack')[0]).toBe(firstView);
       expect(view.contentEl.querySelector('.tc-task-selection-stale')).not.toBeNull();
+    });
+
+    it('converges a selected Center or Left command immediately and accepts the next index event', () => {
+      const state = (view as unknown as { state: AppState }).state;
+      const observed = taskApplication.index.list()[0]!;
+      const updated = {
+        ...observed,
+        ref: { ...observed.ref, revision: 'owned-update' },
+        title: 'Owned update',
+        markdownTitle: 'Owned update',
+      };
+      const result: TaskCommandResult = {
+        type: 'ok',
+        outcome: { type: 'task', task: updated },
+        changed: true,
+      };
+      state.set('taskStack', [observed]);
+
+      (
+        view as unknown as {
+          convergeOwnCommand(initiatingRef: TaskRef, result: TaskCommandResult): void;
+        }
+      ).convergeOwnCommand(observed.ref, result);
+
+      expect(state.get('taskStack')[0]).toMatchObject({ title: 'Owned update', ref: updated.ref });
+      (
+        view as unknown as {
+          applyResolution(resolution: { type: 'exact'; task: typeof updated }): void;
+        }
+      ).applyResolution({ type: 'exact', task: updated });
+      expect(view.contentEl.querySelector('.tc-task-selection-stale')).toBeNull();
+    });
+
+    it('clears an index-conflict banner when the matching command result wins the race', () => {
+      const state = (view as unknown as { state: AppState }).state;
+      const observed = taskApplication.index.list()[0]!;
+      const updated = {
+        ...observed,
+        ref: { ...observed.ref, revision: 'owned-after-conflict' },
+        title: 'Owned after conflict',
+      };
+      state.set('taskStack', [observed]);
+      (
+        view as unknown as {
+          applyResolution(resolution: { type: 'conflict'; current: typeof updated }): void;
+        }
+      ).applyResolution({ type: 'conflict', current: updated });
+      expect(view.contentEl.querySelector('.tc-task-selection-stale')).not.toBeNull();
+
+      (
+        view as unknown as {
+          convergeOwnCommand(initiatingRef: TaskRef, result: TaskCommandResult): void;
+        }
+      ).convergeOwnCommand(observed.ref, {
+        type: 'ok',
+        outcome: { type: 'task', task: updated },
+        changed: true,
+      });
+
+      expect(state.get('taskStack')[0]).toMatchObject({ title: 'Owned after conflict' });
+      expect(view.contentEl.querySelector('.tc-task-selection-stale')).toBeNull();
+    });
+
+    it('does not let a late Center or Left result replace a different selection', () => {
+      const state = (view as unknown as { state: AppState }).state;
+      const first = taskApplication.index.list()[0]!;
+      const second = {
+        ...first,
+        ref: { filePath: 'other.md', line: 0, revision: 'second' },
+        source: { ...first.source, filePath: 'other.md', line: 0 },
+      };
+      const updated = {
+        ...first,
+        ref: { ...first.ref, revision: 'late-update' },
+        title: 'Late update',
+      };
+      state.set('taskStack', [first]);
+      state.set('taskStack', [second]);
+
+      (
+        view as unknown as {
+          convergeOwnCommand(initiatingRef: TaskRef, result: TaskCommandResult): void;
+        }
+      ).convergeOwnCommand(first.ref, {
+        type: 'ok',
+        outcome: { type: 'task', task: updated },
+        changed: true,
+      });
+
+      expect(state.get('taskStack')[0]).toBe(second);
     });
 
     it('refresh updates left panel count badges after index change (DOM assertion)', async () => {

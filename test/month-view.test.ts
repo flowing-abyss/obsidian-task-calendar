@@ -224,7 +224,7 @@ describe('MonthView', () => {
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: '2026-06-20', status: 'open' });
+      const t = task({ status: 'open', planning: { due: '2026-06-20' } });
       view.render(c, [t], resolvedConfig());
       expect(c.querySelectorAll('.task')).toHaveLength(1);
       vi.useRealTimers();
@@ -235,7 +235,7 @@ describe('MonthView', () => {
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: '2026-06-20', status: 'open' });
+      const t = task({ status: 'open', planning: { due: '2026-06-20' } });
       view.render(c, [t], resolvedConfig());
       const card = c.querySelector('.task') as HTMLElement;
       expect(card.getAttribute('draggable')).toBe('true');
@@ -247,7 +247,11 @@ describe('MonthView', () => {
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: '2026-06-20', status: 'open', filePath: 'a.md', line: 3 });
+      const t = task({
+        status: 'open',
+        planning: { due: '2026-06-20' },
+        source: { filePath: 'a.md', line: 3 },
+      });
       view.render(c, [t], resolvedConfig());
       const card = c.querySelector('.task') as HTMLElement;
       const dt = new (class {
@@ -274,7 +278,7 @@ describe('MonthView', () => {
       vi.setSystemTime(new Date('2026-06-15T12:00:00'));
       const { view } = makeView();
       const c = freshContainer();
-      const t = task({ due: '2026-06-20', status: 'open' });
+      const t = task({ status: 'open', planning: { due: '2026-06-20' } });
       view.render(c, [t], resolvedConfig());
       const card = c.querySelector('.task') as HTMLElement;
       const startEv = new MouseEvent('dragstart', { bubbles: true });

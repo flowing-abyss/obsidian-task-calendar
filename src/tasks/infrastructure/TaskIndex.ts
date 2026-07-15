@@ -6,10 +6,6 @@ import {
   type EventRef,
   type TAbstractFile,
 } from 'obsidian';
-import { legacyTaskFromParsed } from '../../parser/legacyTaskProjection';
-import { countLinksIn } from '../../parser/links';
-import { parseSubItems } from '../../parser/SubItemParser';
-import type { SubTask, TaskComment } from '../../parser/types';
 import type {
   TaskIndexEvent,
   TaskQuery,
@@ -20,22 +16,17 @@ import { cloneTaskSnapshot } from '../domain/cloneTaskSnapshot';
 import type { TaskResolutionCandidate } from '../domain/commands';
 import type { StatusCatalog } from '../domain/StatusCatalog';
 import type {
-  CommentRef,
-  DurationMinutes,
   LocalDate,
-  LocalTime,
-  SubtaskPlanning,
   SubtaskSnapshot,
-  TaskCommentSnapshot,
   TaskNodeRef,
-  TaskPlanning,
   TaskRef,
   TaskSnapshot,
 } from '../domain/types';
-import { durationMinutes, localDate, localTime } from '../domain/validation';
+import { localDate } from '../domain/validation';
 import { TaskBlockEditor } from './markdown/TaskBlockEditor';
 import { TaskLocator } from './markdown/TaskLocator';
 import { TaskMarkdownCodec } from './markdown/TaskMarkdownCodec';
+import { projectTaskSnapshot } from './markdown/TaskSnapshotProjector';
 import { calendarDatesForPlanning, TaskDateIndex } from './TaskDateIndex';
 
 export interface TaskIndexOptions {
@@ -56,8 +47,6 @@ interface FileObservation {
   readonly path: string;
   readonly generation: number;
 }
-
-const TAG_RE = /#[\w/-]+/gu;
 
 function momentToRegex(format: string): RegExp {
   const escaped = format
@@ -89,68 +78,6 @@ function asLocalDate(value: string | undefined): LocalDate | undefined {
   }
 }
 
-function asLocalTime(value: string | undefined): LocalTime | undefined {
-  if (value === undefined) return undefined;
-  try {
-    return localTime(value);
-  } catch {
-    return undefined;
-  }
-}
-
-function asDuration(value: number | undefined): DurationMinutes | undefined {
-  if (value === undefined) return undefined;
-  try {
-    return durationMinutes(value);
-  } catch {
-    return undefined;
-  }
-}
-
-function taskPlanning(task: {
-  readonly due?: string;
-  readonly scheduled?: string;
-  readonly start?: string;
-  readonly completion?: string;
-  readonly cancelledDate?: string;
-  readonly time?: string;
-  readonly duration?: number;
-}): TaskPlanning {
-  const due = asLocalDate(task.due);
-  const scheduled = asLocalDate(task.scheduled);
-  const start = asLocalDate(task.start);
-  const completion = asLocalDate(task.completion);
-  const cancelled = asLocalDate(task.cancelledDate);
-  const time = asLocalTime(task.time);
-  const duration = asDuration(task.duration);
-  return {
-    ...(due && { due }),
-    ...(scheduled && { scheduled }),
-    ...(start && { start }),
-    ...(completion && { completion }),
-    ...(cancelled && { cancelled }),
-    ...(time && { time }),
-    ...(duration && { duration }),
-  };
-}
-
-function subtaskPlanning(task: SubTask): SubtaskPlanning {
-  const due = asLocalDate(task.due);
-  const scheduled = asLocalDate(task.scheduled);
-  const start = asLocalDate(task.start);
-  const time = asLocalTime(task.time);
-  return {
-    ...(due && { due }),
-    ...(scheduled && { scheduled }),
-    ...(start && { start }),
-    ...(time && { time }),
-  };
-}
-
-function tagsIn(markdown: string): readonly string[] {
-  return [...markdown.matchAll(TAG_RE)].map((match) => match[0]);
-}
-
 function cloneCandidate(task: TaskSnapshot): TaskResolutionCandidate {
   const root = cloneTaskSnapshot(task);
   return {
@@ -171,10 +98,6 @@ function immutableEvent(event: TaskIndexEvent): TaskIndexEvent {
     return Object.freeze({ type: 'changed', files: Object.freeze([...event.files]) });
   }
   return Object.freeze({ ...event });
-}
-
-function blockFor(lines: readonly string[], line: number, rangeTo: number | undefined): string {
-  return lines.slice(line, (rangeTo ?? line) + 1).join('\n');
 }
 
 interface FallbackListItem {
@@ -382,57 +305,6 @@ function dailyNoteDateForPath(filePath: string, format: string): LocalDate | und
   return momentToRegex(format).test(filename)
     ? asLocalDate(window.moment(filename, format).format('YYYY-MM-DD'))
     : undefined;
-}
-
-function commentSnapshot(
-  comment: TaskComment,
-  parent: TaskNodeRef,
-  parentLine: number,
-  lines: readonly string[],
-): TaskCommentSnapshot {
-  const date = asLocalDate(comment.date);
-  const ref: CommentRef = {
-    parent,
-    relativeLine: comment.line - parentLine,
-    originalMarkdown: lines[comment.line] ?? '',
-  };
-  return { ref, ...(date && { date }), text: comment.text };
-}
-
-function subtaskSnapshot(
-  task: SubTask,
-  parent: TaskNodeRef,
-  parentLine: number,
-  lines: readonly string[],
-  codec: TaskMarkdownCodec,
-): SubtaskSnapshot {
-  const ref = {
-    parent,
-    relativeLine: task.line - parentLine,
-    originalBlock: blockFor(lines, task.line, task.subtaskRange?.to),
-  };
-  const node: TaskNodeRef = { type: 'subtask', ref };
-  return {
-    ref,
-    title: task.text,
-    markdownTitle: task.markdownText,
-    status: task.status,
-    statusSymbol: task.statusSymbol,
-    priority: task.priority,
-    planning: subtaskPlanning(task),
-    tags: [
-      ...(codec.parseLine(task.rawText, { filePath: task.filePath, line: task.line })?.tags ??
-        tagsIn(task.rawText)),
-    ],
-    ...(task.recurrence !== undefined && { recurrence: task.recurrence }),
-    subtasks: (task.subtasks ?? []).map((child) =>
-      subtaskSnapshot(child, node, task.line, lines, codec),
-    ),
-    comments: (task.comments ?? []).map((comment) =>
-      commentSnapshot(comment, node, task.line, lines),
-    ),
-    ...(task.description !== undefined && { description: task.description }),
-  };
 }
 
 function relocateSubtask(task: SubtaskSnapshot, parent: TaskNodeRef): SubtaskSnapshot {
@@ -689,50 +561,26 @@ export class TaskIndex implements TaskQueryApi {
       const originalMarkdown = lines[line] ?? '';
       const parsed = codec.parseLine(originalMarkdown, { filePath, line });
       if (!parsed) continue;
-      const parseContext = {
-        filePath,
-        line,
-        ...(dailyNoteDate && { dailyNoteDate }),
-        ...(this.options.globalTaskFilter && { globalTaskFilter: this.options.globalTaskFilter }),
-        statusCatalog: this.statusCatalog,
-      };
-      const task = legacyTaskFromParsed(parsed, parseContext, (symbol) =>
-        codec.statusForSymbol(symbol),
-      );
-      const subitems = parseSubItems(lines, line, filePath, this.statusCatalog);
-      const exactBlock =
-        blockByLine.get(line)?.source ?? blockFor(lines, line, subitems.subtaskRange?.to);
+      const exactBlock = blockByLine.get(line)?.source ?? originalMarkdown;
       const ref: TaskRef = { filePath, line, revision: this.locator.revision(exactBlock) };
-      const node: TaskNodeRef = { type: 'task', ref };
       const presentation = {
-        linkCount: countLinksIn([
-          task.markdownText,
-          subitems.description,
-          ...subitems.comments.map((comment) => comment.text),
-        ]),
+        linkCount: 0,
         ...(dailyNoteDate && { dailyNoteDate }),
         ...(noteColor && { noteColor }),
         ...(noteTextColor && { noteTextColor }),
         ...(noteIcon && { noteIcon }),
       };
-      snapshots.push({
+      const snapshot = projectTaskSnapshot({
+        codec,
+        statusCatalog: this.statusCatalog,
+        filePath,
+        lines,
+        line,
+        exactBlock,
         ref,
-        title: task.text,
-        markdownTitle: task.markdownText,
-        status: task.status,
-        statusSymbol: task.statusSymbol,
-        priority: task.priority,
-        planning: taskPlanning(task),
-        tags: [...parsed.tags],
-        ...(task.recurrence !== undefined && { recurrence: task.recurrence }),
-        subtasks: subitems.subtasks.map((subtask) =>
-          subtaskSnapshot(subtask, node, line, lines, codec),
-        ),
-        comments: subitems.comments.map((comment) => commentSnapshot(comment, node, line, lines)),
-        ...(subitems.description && { description: subitems.description }),
-        source: { filePath, line, originalMarkdown, originalBlock: exactBlock },
         presentation,
       });
+      if (snapshot) snapshots.push(snapshot);
     }
     return snapshots.sort(stableTaskOrder);
   }

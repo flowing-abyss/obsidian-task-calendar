@@ -123,7 +123,7 @@ describe('registerCodeBlock processor', () => {
       },
     };
     const today = window.moment().format('YYYY-MM-DD');
-    const queries = queryApiForTasks(() => [task({ due: today })]);
+    const queries = queryApiForTasks(() => [task({ planning: { due: today } })]);
     const execute = vi.fn<TaskApplicationApi['execute']>().mockResolvedValue({
       type: 'invalid',
       issues: [{ code: 'invalid-target' }],

@@ -5,7 +5,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildDefaultTaskStatuses } from '../src/settings/defaults';
 import { StatusRegistry } from '../src/status/StatusRegistry';
 import { MonthGridView } from '../src/views/MonthGridView';
-import { DataTransferStub, freshContainer, resolvedConfig, task, useRealMoment } from './helpers';
+import {
+  DataTransferStub,
+  freshContainer,
+  resolvedConfig,
+  subtask,
+  task,
+  taskComment,
+  useRealMoment,
+} from './helpers';
 
 useRealMoment();
 const fakeApp = {} as App;
@@ -74,7 +82,7 @@ describe('MonthGridView', () => {
   it('a plain task on a given day renders a compact row in that cell', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());
-    const t = task({ due: '2026-07-15', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-15' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const cell = container.querySelector('[data-mg-date="2026-07-15"]');
     expect(cell?.querySelector('.tc-mg-plain')?.textContent).toContain('Plain');
@@ -83,14 +91,14 @@ describe('MonthGridView', () => {
   it('never sets data-priority on compact items, even for a prioritized task (calendar items no longer render a priority border)', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());
-    const t = task({ due: '2026-07-15', priority: 'C', text: 'Plain' });
+    const t = task({ priority: 'C', title: 'Plain', planning: { due: '2026-07-15' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
     expect(row.hasAttribute('data-priority')).toBe(false);
 
     const container2 = freshContainer();
     const view2 = new MonthGridView(callbacks());
-    const none = task({ due: '2026-07-15', priority: 'D', text: 'Plain' });
+    const none = task({ priority: 'D', title: 'Plain', planning: { due: '2026-07-15' } });
     view2.render(container2, [none], resolvedConfig({ startPosition: '2026-07' }));
     const row2 = container2.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-plain',
@@ -107,7 +115,12 @@ describe('MonthGridView', () => {
       ],
     };
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', rawText: '- [ ] t #work', text: 'Plain' });
+    const t = task({
+      title: 'Plain',
+      tags: ['#work'],
+      planning: { due: '2026-07-15' },
+      source: { originalMarkdown: '- [ ] t #work', originalBlock: '- [ ] t #work' },
+    });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
     expect(row.style.getPropertyValue('--tc-tag-color')).toBe('#3498db');
@@ -157,7 +170,11 @@ describe('MonthGridView', () => {
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
     const tasks = Array.from({ length: 8 }, (_, n) =>
-      task({ due: '2026-07-15', text: `Task ${n}`, filePath: `f${n}.md`, line: n }),
+      task({
+        title: `Task ${n}`,
+        planning: { due: '2026-07-15' },
+        source: { filePath: `f${n}.md`, line: n },
+      }),
     );
     view.render(container, tasks, resolvedConfig({ startPosition: '2026-07' }));
     const cell = container.querySelector('[data-mg-date="2026-07-15"]') as HTMLElement;
@@ -182,7 +199,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-15' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
     row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -193,7 +210,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-15' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
     row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -204,7 +221,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+    const t = task({ title: 'Timed', planning: { due: '2026-07-15', time: '09:00' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const dot = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-block-dot',
@@ -217,7 +234,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+    const t = task({ title: 'Timed', planning: { due: '2026-07-15', time: '09:00' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const dot = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-block-dot',
@@ -230,7 +247,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-14', due: '2026-07-16' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const bar = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
@@ -243,7 +260,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-14', due: '2026-07-16' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const bar = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
@@ -256,7 +273,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-15', scheduled: '2026-07-10' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const marker = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker',
@@ -269,7 +286,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-15', scheduled: '2026-07-10' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const marker = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker',
@@ -282,7 +299,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-15' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
     const marker = row.querySelector('.tc-status-marker');
@@ -297,7 +314,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+    const t = task({ title: 'Timed', planning: { due: '2026-07-15', time: '09:00' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const dot = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-block-dot',
@@ -314,7 +331,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-14', due: '2026-07-16' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const bar = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
@@ -331,7 +348,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-15', scheduled: '2026-07-10' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const markerEl = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker',
@@ -348,7 +365,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-15' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
     const marker = row.querySelector('.tc-status-marker');
@@ -362,7 +379,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+    const t = task({ title: 'Timed', planning: { due: '2026-07-15', time: '09:00' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const dot = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-block-dot',
@@ -381,7 +398,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+    const t = task({ title: 'Trip', planning: { start: '2026-07-14', due: '2026-07-16' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const bar = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
@@ -397,7 +414,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+    const t = task({ title: 'Deadline', planning: { due: '2026-07-15', scheduled: '2026-07-10' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const markerEl = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-deadline-marker',
@@ -410,7 +427,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-15' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const marker = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-plain .tc-status-marker',
@@ -424,7 +441,7 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', text: 'Plain' });
+    const t = task({ title: 'Plain', planning: { due: '2026-07-15' } });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const marker = container.querySelector(
       '[data-mg-date="2026-07-15"] .tc-mg-plain .tc-status-marker',
@@ -451,7 +468,11 @@ describe('MonthGridView', () => {
   it('renders a compact plain-row title via renderTaskText (markdown-link-aware) for a task with a [[wikilink]]', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());
-    const t = task({ due: '2026-07-15', text: 'see [[Note]]', markdownText: 'see [[Note]]' });
+    const t = task({
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { due: '2026-07-15' },
+    });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
     // MarkdownRenderer is a noop in this test harness (see test/center-panel-integration.test.ts
@@ -464,7 +485,11 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', text: 'see [[Note]]', markdownText: 'see [[Note]]' });
+    const t = task({
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { due: '2026-07-15' },
+    });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('[data-mg-date="2026-07-15"] .tc-mg-plain') as HTMLElement;
     const titleEl = row.querySelector('.tc-md') as HTMLElement;
@@ -508,7 +533,11 @@ describe('MonthGridView', () => {
   it('a plain-task item is draggable with the filePath:::line payload', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());
-    const t = task({ due: '2026-07-15', filePath: 'f.md', line: 3, text: 'Plain' });
+    const t = task({
+      title: 'Plain',
+      planning: { due: '2026-07-15' },
+      source: { filePath: 'f.md', line: 3 },
+    });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const item = container.querySelector('.tc-mg-plain') as HTMLElement;
     expect(item.getAttribute('draggable')).toBe('true');
@@ -523,7 +552,11 @@ describe('MonthGridView', () => {
   it('a block-dot (timed) item is draggable with the filePath:::line payload', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());
-    const t = task({ due: '2026-07-15', time: '09:00', filePath: 'f.md', line: 7, text: 'Timed' });
+    const t = task({
+      title: 'Timed',
+      planning: { due: '2026-07-15', time: '09:00' },
+      source: { filePath: 'f.md', line: 7 },
+    });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const item = container.querySelector('.tc-mg-block-dot') as HTMLElement;
     expect(item.getAttribute('draggable')).toBe('true');
@@ -538,11 +571,9 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());
     const t = task({
-      start: '2026-07-14',
-      due: '2026-07-16',
-      filePath: 'f.md',
-      line: 9,
-      text: 'Trip',
+      title: 'Trip',
+      planning: { start: '2026-07-14', due: '2026-07-16' },
+      source: { filePath: 'f.md', line: 9 },
     });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const item = container.querySelector('.tc-mg-span-segment') as HTMLElement;
@@ -558,11 +589,9 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const view = new MonthGridView(callbacks());
     const t = task({
-      due: '2026-07-15',
-      scheduled: '2026-07-10',
-      filePath: 'f.md',
-      line: 11,
-      text: 'Deadline',
+      title: 'Deadline',
+      planning: { due: '2026-07-15', scheduled: '2026-07-10' },
+      source: { filePath: 'f.md', line: 11 },
     });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const marker = container.querySelector('.tc-mg-deadline-marker') as HTMLElement;
@@ -573,7 +602,11 @@ describe('MonthGridView', () => {
     const container = freshContainer();
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
-    const t = task({ due: '2026-07-15', filePath: 'f.md', line: 3, text: 'Plain' });
+    const t = task({
+      title: 'Plain',
+      planning: { due: '2026-07-15' },
+      source: { filePath: 'f.md', line: 3 },
+    });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('.tc-mg-plain') as HTMLElement;
     const marker = row.querySelector('.tc-status-marker') as HTMLElement;
@@ -587,11 +620,10 @@ describe('MonthGridView', () => {
     const cbs = callbacks();
     const view = new MonthGridView(cbs);
     const t = task({
-      due: '2026-07-15',
-      filePath: 'f.md',
-      line: 3,
-      text: 'see [[Note]]',
-      markdownText: 'see [[Note]]',
+      title: 'see [[Note]]',
+      markdownTitle: 'see [[Note]]',
+      planning: { due: '2026-07-15' },
+      source: { filePath: 'f.md', line: 3 },
     });
     view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
     const row = container.querySelector('.tc-mg-plain') as HTMLElement;
@@ -609,7 +641,14 @@ describe('MonthGridView', () => {
   // Task 13 added — it's removed from all of Month's compact item types (Day/Week's timed
   // blocks and all-day items keep it; this task only touches Month).
   describe('no tag-chip/count-badge meta row on Month compact items (Task 32)', () => {
-    const busyOverrides = { rawText: '- [ ] t #work #urgent', linkCount: 2 };
+    const busyOverrides = {
+      source: {
+        originalMarkdown: '- [ ] t #work #urgent',
+        originalBlock: '- [ ] t #work #urgent',
+      },
+      presentation: { linkCount: 2 },
+      tags: ['#work', '#urgent'],
+    };
     const tagGroups = [
       { id: '1', name: 'Work', mode: 'prefix' as const, prefix: 'work', color: '#3498db' },
     ];
@@ -618,26 +657,15 @@ describe('MonthGridView', () => {
       return task({
         ...busyOverrides,
         ...overrides,
-        subtasks: [
-          {
-            filePath: 'f.md',
-            line: 1,
-            rawText: '  - [ ] sub',
-            text: 'sub',
-            markdownText: 'sub',
-            status: 'open',
-            statusSymbol: ' ',
-            priority: 'D',
-          },
-        ],
-        comments: [{ line: 2, text: 'a note' }],
+        subtasks: [subtask({ title: 'sub', ref: { originalBlock: '  - [ ] sub' } })],
+        comments: [taskComment({ text: 'a note', ref: { relativeLine: 2 } })],
       });
     }
 
     it('omits .tc-mg-item-meta on a plain row, even with tags/subtasks/comments/links', () => {
       const container = freshContainer();
       const view = new MonthGridView({ ...callbacks(), tagGroups });
-      const t = busyTask({ due: '2026-07-15', text: 'Plain' });
+      const t = busyTask({ title: 'Plain', planning: { due: '2026-07-15' } });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const row = container.querySelector('.tc-mg-plain') as HTMLElement;
       expect(row.querySelector('.tc-mg-item-meta')).toBeNull();
@@ -648,7 +676,7 @@ describe('MonthGridView', () => {
     it('omits .tc-mg-item-meta on a timed block-dot, keeping the time prefix', () => {
       const container = freshContainer();
       const view = new MonthGridView({ ...callbacks(), tagGroups });
-      const t = busyTask({ due: '2026-07-15', time: '09:00', text: 'Timed' });
+      const t = busyTask({ title: 'Timed', planning: { due: '2026-07-15', time: '09:00' } });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const dot = container.querySelector('.tc-mg-block-dot') as HTMLElement;
       expect(dot.querySelector('.tc-mg-item-meta')).toBeNull();
@@ -658,7 +686,10 @@ describe('MonthGridView', () => {
     it('omits .tc-mg-item-meta on an untimed span-segment', () => {
       const container = freshContainer();
       const view = new MonthGridView({ ...callbacks(), tagGroups });
-      const t = busyTask({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+      const t = busyTask({
+        title: 'Trip',
+        planning: { start: '2026-07-14', due: '2026-07-16' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const bar = container.querySelector(
         '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
@@ -670,10 +701,8 @@ describe('MonthGridView', () => {
       const container = freshContainer();
       const view = new MonthGridView({ ...callbacks(), tagGroups });
       const t = busyTask({
-        start: '2026-07-14',
-        due: '2026-07-16',
-        time: '09:00',
-        text: 'Conf',
+        title: 'Conf',
+        planning: { start: '2026-07-14', due: '2026-07-16', time: '09:00' },
       });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const anchorBar = container.querySelector(
@@ -686,7 +715,10 @@ describe('MonthGridView', () => {
     it('omits .tc-mg-item-meta on a deadline marker', () => {
       const container = freshContainer();
       const view = new MonthGridView({ ...callbacks(), tagGroups });
-      const t = busyTask({ due: '2026-07-15', scheduled: '2026-07-10', text: 'Deadline' });
+      const t = busyTask({
+        title: 'Deadline',
+        planning: { due: '2026-07-15', scheduled: '2026-07-10' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const marker = container.querySelector('.tc-mg-deadline-marker') as HTMLElement;
       expect(marker.querySelector('.tc-mg-item-meta')).toBeNull();
@@ -697,7 +729,10 @@ describe('MonthGridView', () => {
     it('renders a start+due+time task as a span-segment on every spanned day', () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
-      const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
+      const t = task({
+        title: 'Conf',
+        planning: { start: '2026-07-14', due: '2026-07-16', time: '09:00' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       for (const date of ['2026-07-14', '2026-07-15', '2026-07-16']) {
         const bar = container.querySelector(`[data-mg-date="${date}"] .tc-mg-span-segment`);
@@ -708,7 +743,10 @@ describe('MonthGridView', () => {
     it("prefixes the anchor (due) day's segment with the time, distinguishing it from an untimed span", () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
-      const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
+      const t = task({
+        title: 'Conf',
+        planning: { start: '2026-07-14', due: '2026-07-16', time: '09:00' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const anchorBar = container.querySelector(
         '[data-mg-date="2026-07-16"] .tc-mg-span-segment',
@@ -719,7 +757,10 @@ describe('MonthGridView', () => {
     it('does not show a time prefix on non-anchor days of the same timed span', () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
-      const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
+      const t = task({
+        title: 'Conf',
+        planning: { start: '2026-07-14', due: '2026-07-16', time: '09:00' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const midBar = container.querySelector(
         '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
@@ -730,7 +771,7 @@ describe('MonthGridView', () => {
     it('an untimed start+due span still renders with no time prefix (unchanged existing behavior)', () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
-      const t = task({ start: '2026-07-14', due: '2026-07-16', text: 'Trip' });
+      const t = task({ title: 'Trip', planning: { start: '2026-07-14', due: '2026-07-16' } });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const bar = container.querySelector(
         '[data-mg-date="2026-07-15"] .tc-mg-span-segment',
@@ -742,7 +783,10 @@ describe('MonthGridView', () => {
       const container = freshContainer();
       const cbs = callbacks();
       const view = new MonthGridView(cbs);
-      const t = task({ start: '2026-07-14', due: '2026-07-16', time: '09:00', text: 'Conf' });
+      const t = task({
+        title: 'Conf',
+        planning: { start: '2026-07-14', due: '2026-07-16', time: '09:00' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const bar = container.querySelector(
         '[data-mg-date="2026-07-16"] .tc-mg-span-segment',
@@ -755,11 +799,8 @@ describe('MonthGridView', () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
       const t = task({
-        start: '2026-07-14',
-        due: '2026-07-16',
-        time: '09:00',
-        filePath: 'a.md',
-        line: 2,
+        planning: { start: '2026-07-14', due: '2026-07-16', time: '09:00' },
+        source: { filePath: 'a.md', line: 2 },
       });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const bar = container.querySelector(
@@ -773,7 +814,12 @@ describe('MonthGridView', () => {
     it('marks a done plain item title is-done', () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
-      const t = task({ due: '2026-07-15', status: 'done', statusSymbol: 'x', text: 'Plain' });
+      const t = task({
+        status: 'done',
+        statusSymbol: 'x',
+        title: 'Plain',
+        planning: { due: '2026-07-15' },
+      });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const title = container.querySelector(
         '[data-mg-date="2026-07-15"] .tc-mg-item-title',
@@ -785,11 +831,10 @@ describe('MonthGridView', () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
       const t = task({
-        due: '2026-07-15',
-        time: '09:00',
         status: 'cancelled',
         statusSymbol: '-',
-        text: 'Timed',
+        title: 'Timed',
+        planning: { due: '2026-07-15', time: '09:00' },
       });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const title = container.querySelector(
@@ -801,7 +846,7 @@ describe('MonthGridView', () => {
     it('an open item gets neither is-done nor is-cancelled on its title', () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
-      const t = task({ due: '2026-07-15', text: 'Plain' });
+      const t = task({ title: 'Plain', planning: { due: '2026-07-15' } });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const title = container.querySelector(
         '[data-mg-date="2026-07-15"] .tc-mg-item-title',
@@ -814,11 +859,10 @@ describe('MonthGridView', () => {
       const container = freshContainer();
       const view = new MonthGridView(callbacks());
       const t = task({
-        due: '2026-07-15',
-        scheduled: '2026-07-10',
         status: 'done',
         statusSymbol: 'x',
-        text: 'Deadline',
+        title: 'Deadline',
+        planning: { due: '2026-07-15', scheduled: '2026-07-10' },
       });
       view.render(container, [t], resolvedConfig({ startPosition: '2026-07' }));
       const title = container.querySelector(

@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppState } from '../src/app/AppState';
-import type { Task } from '../src/parser/types';
 import { DEFAULT_SETTINGS } from '../src/settings/defaults';
 import type { CalendarSettings } from '../src/settings/types';
 import { TagManager } from '../src/tags/TagManager';
-import type { TaskApplicationApi } from '../src/tasks';
+import type { TaskApplicationApi, TaskSnapshot } from '../src/tasks';
 import {
   freshContainer,
   makeLeftPanelForTest,
@@ -16,7 +15,7 @@ import {
 useRealMoment();
 
 function makePanel(
-  tasks: Task[] = [],
+  tasks: TaskSnapshot[] = [],
   settings: Partial<CalendarSettings> = {},
   pinnedTags: string[] = [],
   archivedTags: string[] = [],
@@ -77,9 +76,21 @@ describe('LeftPanel smart lists', () => {
 
   it('countInbox tag mode counts open tasks with inboxTag', () => {
     const tasks = [
-      task({ rawText: '- [ ] t #inbox', status: 'open' }),
-      task({ rawText: '- [ ] t2 #inbox', status: 'open' }),
-      task({ rawText: '- [x] done #inbox', status: 'done' }),
+      task({
+        status: 'open',
+        tags: ['#inbox'],
+        source: { originalMarkdown: '- [ ] t #inbox', originalBlock: '- [ ] t #inbox' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#inbox'],
+        source: { originalMarkdown: '- [ ] t2 #inbox', originalBlock: '- [ ] t2 #inbox' },
+      }),
+      task({
+        status: 'done',
+        tags: ['#inbox'],
+        source: { originalMarkdown: '- [x] done #inbox', originalBlock: '- [x] done #inbox' },
+      }),
     ];
     const { el } = makePanel(tasks, {
       inbox: { mode: 'tag', tag: '#inbox', removeTagOnAssign: true },
@@ -90,9 +101,19 @@ describe('LeftPanel smart lists', () => {
 
   it('countInbox untagged mode counts open tasks with no #tag', () => {
     const tasks = [
-      task({ rawText: '- [ ] no tag', status: 'open' }),
-      task({ rawText: '- [ ] #work tagged', status: 'open' }),
-      task({ rawText: '- [x] done no tag', status: 'done' }),
+      task({
+        status: 'open',
+        source: { originalMarkdown: '- [ ] no tag', originalBlock: '- [ ] no tag' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#work'],
+        source: { originalMarkdown: '- [ ] #work tagged', originalBlock: '- [ ] #work tagged' },
+      }),
+      task({
+        status: 'done',
+        source: { originalMarkdown: '- [x] done no tag', originalBlock: '- [x] done no tag' },
+      }),
     ];
     const { el } = makePanel(tasks, {
       inbox: { mode: 'untagged', tag: '', removeTagOnAssign: true },
@@ -104,11 +125,11 @@ describe('LeftPanel smart lists', () => {
   it('countToday matches due/scheduled/dailyNoteDate === today', () => {
     const t = today();
     const tasks = [
-      task({ due: t, status: 'open' }),
-      task({ scheduled: t, status: 'open' }),
-      task({ dailyNoteDate: t, status: 'open' }),
-      task({ due: '2020-01-01', status: 'open' }),
-      task({ due: t, status: 'done' }),
+      task({ status: 'open', planning: { due: t } }),
+      task({ status: 'open', planning: { scheduled: t } }),
+      task({ status: 'open', presentation: { dailyNoteDate: t } }),
+      task({ status: 'open', planning: { due: '2020-01-01' } }),
+      task({ status: 'done', planning: { due: t } }),
     ];
     const { el } = makePanel(tasks);
     const rows = el.querySelectorAll('.tc-left-item');
@@ -118,11 +139,11 @@ describe('LeftPanel smart lists', () => {
 
   it('countUpcoming matches due ?? scheduled ?? dailyNoteDate > today', () => {
     const tasks = [
-      task({ due: '2099-12-31', status: 'open' }),
-      task({ scheduled: '2099-01-01', status: 'open' }),
-      task({ dailyNoteDate: '2099-06-01', status: 'open' }),
-      task({ due: '2020-01-01', status: 'open' }),
-      task({ due: '2099-12-31', status: 'done' }),
+      task({ status: 'open', planning: { due: '2099-12-31' } }),
+      task({ status: 'open', planning: { scheduled: '2099-01-01' } }),
+      task({ status: 'open', presentation: { dailyNoteDate: '2099-06-01' } }),
+      task({ status: 'open', planning: { due: '2020-01-01' } }),
+      task({ status: 'done', planning: { due: '2099-12-31' } }),
     ];
     const { el } = makePanel(tasks);
     const rows = el.querySelectorAll('.tc-left-item');
@@ -196,9 +217,21 @@ describe('LeftPanel tag groups (prefix mode)', () => {
 
   it('group count includes root prefix and subtags (open tasks only)', () => {
     const tasks = [
-      task({ rawText: '- [ ] #work task', status: 'open' }),
-      task({ rawText: '- [ ] #work/dev task', status: 'open' }),
-      task({ rawText: '- [x] #work done', status: 'done' }),
+      task({
+        status: 'open',
+        tags: ['#work'],
+        source: { originalMarkdown: '- [ ] #work task', originalBlock: '- [ ] #work task' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] #work/dev task', originalBlock: '- [ ] #work/dev task' },
+      }),
+      task({
+        status: 'done',
+        tags: ['#work'],
+        source: { originalMarkdown: '- [x] #work done', originalBlock: '- [x] #work done' },
+      }),
     ];
     const { el } = makePanel(tasks, {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -244,7 +277,12 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('chevron click collapses expanded group', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
-    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]);
+    const store = makeStubStore([
+      task({
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] #work/dev task', originalBlock: '- [ ] #work/dev task' },
+      }),
+    ]);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -263,7 +301,12 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('auto-expand when child tag is active (unless explicitly collapsed)', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
-    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]);
+    const store = makeStubStore([
+      task({
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] #work/dev task', originalBlock: '- [ ] #work/dev task' },
+      }),
+    ]);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -279,7 +322,12 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('explicit collapse prevents auto-expand even with active child', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
-    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]);
+    const store = makeStubStore([
+      task({
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] #work/dev task', originalBlock: '- [ ] #work/dev task' },
+      }),
+    ]);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -297,7 +345,13 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   });
 
   it('expanded group renders child tags with label stripping', () => {
-    const tasks = [task({ rawText: '- [ ] #work/dev task', status: 'open' })];
+    const tasks = [
+      task({
+        status: 'open',
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] #work/dev task', originalBlock: '- [ ] #work/dev task' },
+      }),
+    ];
     const { el } = makePanel(tasks, {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
     });
@@ -308,9 +362,21 @@ describe('LeftPanel tag groups (prefix mode)', () => {
 
   it('child tag count badge shows open task count', () => {
     const tasks = [
-      task({ rawText: '- [ ] #work/dev a', status: 'open' }),
-      task({ rawText: '- [ ] #work/dev b', status: 'open' }),
-      task({ rawText: '- [x] #work/dev done', status: 'done' }),
+      task({
+        status: 'open',
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] #work/dev a', originalBlock: '- [ ] #work/dev a' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] #work/dev b', originalBlock: '- [ ] #work/dev b' },
+      }),
+      task({
+        status: 'done',
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [x] #work/dev done', originalBlock: '- [x] #work/dev done' },
+      }),
     ];
     const { el } = makePanel(tasks, {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -322,7 +388,12 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   it('child tag is-active when selectedList is that tag', () => {
     const state = new AppState();
     state.set('selectedList', { type: 'tag', tag: '#work/dev' });
-    const store = makeStubStore([task({ rawText: '- [ ] #work/dev task' })]);
+    const store = makeStubStore([
+      task({
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] #work/dev task', originalBlock: '- [ ] #work/dev task' },
+      }),
+    ]);
     const settings: CalendarSettings = {
       ...DEFAULT_SETTINGS,
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -336,9 +407,20 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   });
 
   it('click child tag sets selectedList and mode with stopPropagation', () => {
-    const { el, state } = makePanel([task({ rawText: '- [ ] #work/dev task' })], {
-      tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
-    });
+    const { el, state } = makePanel(
+      [
+        task({
+          tags: ['#work/dev'],
+          source: {
+            originalMarkdown: '- [ ] #work/dev task',
+            originalBlock: '- [ ] #work/dev task',
+          },
+        }),
+      ],
+      {
+        tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
+      },
+    );
     (el.querySelector('.tc-group-arrow') as HTMLElement).click();
     const child = el.querySelector('.tc-tag-child') as HTMLElement;
     child.click();
@@ -348,8 +430,17 @@ describe('LeftPanel tag groups (prefix mode)', () => {
 
   it('resolveGroupTags prefix mode: finds subtags, excludes root, sorted', () => {
     const tasks = [
-      task({ rawText: '- [ ] #work/dev and #work/alpha task' }),
-      task({ rawText: '- [ ] #work task' }),
+      task({
+        tags: ['#work/dev', '#work/alpha'],
+        source: {
+          originalMarkdown: '- [ ] #work/dev and #work/alpha task',
+          originalBlock: '- [ ] #work/dev and #work/alpha task',
+        },
+      }),
+      task({
+        tags: ['#work'],
+        source: { originalMarkdown: '- [ ] #work task', originalBlock: '- [ ] #work task' },
+      }),
     ];
     const { el } = makePanel(tasks, {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
@@ -363,7 +454,15 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   });
 
   it('resolveGroupTags prefix mode: #work does not match #workplace', () => {
-    const tasks = [task({ rawText: '- [ ] #workplace task' })];
+    const tasks = [
+      task({
+        tags: ['#workplace'],
+        source: {
+          originalMarkdown: '- [ ] #workplace task',
+          originalBlock: '- [ ] #workplace task',
+        },
+      }),
+    ];
     const { el } = makePanel(tasks, {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
     });
@@ -372,7 +471,16 @@ describe('LeftPanel tag groups (prefix mode)', () => {
   });
 
   it('group count does not treat #workplace as the exact #work tag', () => {
-    const tasks = [task({ rawText: '- [ ] #workplace task', status: 'open' })];
+    const tasks = [
+      task({
+        status: 'open',
+        tags: ['#workplace'],
+        source: {
+          originalMarkdown: '- [ ] #workplace task',
+          originalBlock: '- [ ] #workplace task',
+        },
+      }),
+    ];
     const { el } = makePanel(tasks, {
       tagGroups: [{ id: 'g1', name: 'Work', mode: 'prefix', prefix: 'work' }],
     });
@@ -403,9 +511,21 @@ describe('LeftPanel tag groups (manual mode)', () => {
 
   it('manual group count counts open tasks matching any tag in group.tags', () => {
     const tasks = [
-      task({ rawText: '- [ ] #foo task', status: 'open' }),
-      task({ rawText: '- [ ] #bar task', status: 'open' }),
-      task({ rawText: '- [x] #foo done', status: 'done' }),
+      task({
+        status: 'open',
+        tags: ['#foo'],
+        source: { originalMarkdown: '- [ ] #foo task', originalBlock: '- [ ] #foo task' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#bar'],
+        source: { originalMarkdown: '- [ ] #bar task', originalBlock: '- [ ] #bar task' },
+      }),
+      task({
+        status: 'done',
+        tags: ['#foo'],
+        source: { originalMarkdown: '- [x] #foo done', originalBlock: '- [x] #foo done' },
+      }),
     ];
     const { el } = makePanel(tasks, {
       tagGroups: [{ id: 'g1', name: 'Manual', mode: 'manual', tags: ['#foo', '#bar'] }],
@@ -534,7 +654,13 @@ describe('LeftPanel Pinned section', () => {
 
 describe('LeftPanel archived tags are hidden', () => {
   it('does not render archived tags in Tags section', () => {
-    const tasks = [task({ rawText: '- [ ] t #work/dev', status: 'open' })];
+    const tasks = [
+      task({
+        status: 'open',
+        tags: ['#work/dev'],
+        source: { originalMarkdown: '- [ ] t #work/dev', originalBlock: '- [ ] t #work/dev' },
+      }),
+    ];
     const settings: Partial<CalendarSettings> = {
       tagGroups: [{ id: 'g1', name: 'work', mode: 'prefix', prefix: 'work' }],
     };
@@ -549,8 +675,16 @@ describe('LeftPanel archived tags are hidden', () => {
 describe('LeftPanel inbox logic (new inbox object)', () => {
   it('countInbox tag mode uses inbox.tag', () => {
     const tasks = [
-      task({ rawText: '- [ ] t #task/inbox', status: 'open' }),
-      task({ rawText: '- [ ] t2 #other', status: 'open' }),
+      task({
+        status: 'open',
+        tags: ['#task/inbox'],
+        source: { originalMarkdown: '- [ ] t #task/inbox', originalBlock: '- [ ] t #task/inbox' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#other'],
+        source: { originalMarkdown: '- [ ] t2 #other', originalBlock: '- [ ] t2 #other' },
+      }),
     ];
     const { el } = makePanel(tasks, {
       inbox: { mode: 'tag', tag: '#task/inbox', removeTagOnAssign: true },
@@ -560,9 +694,18 @@ describe('LeftPanel inbox logic (new inbox object)', () => {
   });
 
   it('does not count an inline-code tag lookalike as an inbox task', () => {
-    const inlineOnly = Object.assign(task({ rawText: '- [ ] t `#task/inbox`', status: 'open' }), {
-      tags: [],
-    });
+    const inlineOnly = Object.assign(
+      task({
+        status: 'open',
+        source: {
+          originalMarkdown: '- [ ] t `#task/inbox`',
+          originalBlock: '- [ ] t `#task/inbox`',
+        },
+      }),
+      {
+        tags: [],
+      },
+    );
     const { el } = makePanel([inlineOnly], {
       inbox: { mode: 'tag', tag: '#task/inbox', removeTagOnAssign: true },
     });
@@ -573,8 +716,15 @@ describe('LeftPanel inbox logic (new inbox object)', () => {
 
   it('countInbox untagged mode counts tasks without any tag', () => {
     const tasks = [
-      task({ rawText: '- [ ] no tag', status: 'open' }),
-      task({ rawText: '- [ ] has tag #work', status: 'open' }),
+      task({
+        status: 'open',
+        source: { originalMarkdown: '- [ ] no tag', originalBlock: '- [ ] no tag' },
+      }),
+      task({
+        status: 'open',
+        tags: ['#work'],
+        source: { originalMarkdown: '- [ ] has tag #work', originalBlock: '- [ ] has tag #work' },
+      }),
     ];
     const { el } = makePanel(tasks, {
       inbox: { mode: 'untagged', tag: '#task/inbox', removeTagOnAssign: true },
@@ -585,9 +735,28 @@ describe('LeftPanel inbox logic (new inbox object)', () => {
 
   it('countInbox both mode counts union', () => {
     const tasks = [
-      task({ rawText: '- [ ] no tag', status: 'open', line: 0 }),
-      task({ rawText: '- [ ] has inbox #task/inbox', status: 'open', line: 1 }),
-      task({ rawText: '- [ ] has other #work', status: 'open', line: 2 }),
+      task({
+        status: 'open',
+        source: { originalMarkdown: '- [ ] no tag', originalBlock: '- [ ] no tag', line: 0 },
+      }),
+      task({
+        status: 'open',
+        tags: ['#task/inbox'],
+        source: {
+          originalMarkdown: '- [ ] has inbox #task/inbox',
+          originalBlock: '- [ ] has inbox #task/inbox',
+          line: 1,
+        },
+      }),
+      task({
+        status: 'open',
+        tags: ['#work'],
+        source: {
+          originalMarkdown: '- [ ] has other #work',
+          originalBlock: '- [ ] has other #work',
+          line: 2,
+        },
+      }),
     ];
     const { el } = makePanel(tasks, {
       inbox: { mode: 'both', tag: '#task/inbox', removeTagOnAssign: true },
@@ -599,7 +768,10 @@ describe('LeftPanel inbox logic (new inbox object)', () => {
 
 describe('LeftPanel drop zones', () => {
   it('adds tc-drop-target class on dragover when draggingTask is set', () => {
-    const t = task({ rawText: '- [ ] t', status: 'open' });
+    const t = task({
+      status: 'open',
+      source: { originalMarkdown: '- [ ] t', originalBlock: '- [ ] t' },
+    });
     const { el, state } = makePanel([], {}, ['#task/next']);
     state.set('draggingTask', t);
     const pinned = el.querySelector('.tc-pinned-tag') as HTMLElement;
@@ -617,9 +789,16 @@ describe('LeftPanel drop zones', () => {
   });
 
   it('assigns a dropped inbox task through one combined API patch', () => {
-    const t = Object.assign(task({ rawText: '- [ ] t #task/inbox', status: 'open' }), {
-      ref: { filePath: 'f.md', line: 0, revision: 'test-ref' },
-    });
+    const t = Object.assign(
+      task({
+        status: 'open',
+        tags: ['#task/inbox'],
+        source: { originalMarkdown: '- [ ] t #task/inbox', originalBlock: '- [ ] t #task/inbox' },
+      }),
+      {
+        ref: { filePath: 'f.md', line: 0, revision: 'test-ref' },
+      },
+    );
     const { el, state, execute } = makePanel(
       [t],
       { inbox: { mode: 'tag', tag: '#task/inbox', removeTagOnAssign: true } },
@@ -634,7 +813,7 @@ describe('LeftPanel drop zones', () => {
       type: 'patch',
       target: {
         type: 'task',
-        ref: expect.objectContaining({ filePath: t.filePath, line: t.line }),
+        ref: expect.objectContaining({ filePath: t.ref.filePath, line: t.ref.line }),
       },
       patch: { tags: { add: ['#task/next'], remove: ['#task/inbox'] } },
     });
@@ -643,7 +822,7 @@ describe('LeftPanel drop zones', () => {
 
 describe('LeftPanel collapsible sections, projects, and tags +', () => {
   function makeFull(opts: {
-    tasks?: import('../src/parser/types').Task[];
+    tasks?: TaskSnapshot[];
     settings?: Partial<CalendarSettings>;
     projects?: Array<{
       path: string;

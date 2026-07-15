@@ -62,7 +62,10 @@ describe('task link rewrite delegation', () => {
       undefined,
       tasks,
     );
-    const current = Object.assign(task({ filePath: 't.md', markdownText: '[[Old]]' }), { ref });
+    const current = Object.assign(
+      task({ markdownTitle: '[[Old]]', source: { filePath: 't.md' } }),
+      { ref },
+    );
     saveImmediately('[[Changed]]');
 
     call<void>(panel, 'editLink', current, 0, {
@@ -99,7 +102,10 @@ describe('task link rewrite delegation', () => {
       null,
       tasks,
     );
-    const current = Object.assign(task({ filePath: 't.md', markdownText: '[[Old]]' }), { ref });
+    const current = Object.assign(
+      task({ markdownTitle: '[[Old]]', source: { filePath: 't.md' } }),
+      { ref },
+    );
     saveImmediately('[[Changed]]');
 
     call<void>(panel, 'editTaskLink', current, 0, {
@@ -203,7 +209,7 @@ describe('task link rewrite delegation', () => {
     const tasks: TaskApplicationApi = { ...taskApi(staleRef).tasks, execute };
     const state = new AppState();
     state.set('taskStack', [
-      Object.assign(task({ filePath: 't.md', text: 'Old' }), { ref: staleRef }),
+      Object.assign(task({ title: 'Old', source: { filePath: 't.md' } }), { ref: staleRef }),
     ]);
     const acknowledged = vi.fn();
     const panel = new RightPanel(

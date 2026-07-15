@@ -17,7 +17,7 @@ import { task } from './helpers';
 // Shared by packOverlaps/capMinHeightsPx/capContinuationMinHeightsPx below — they all just need a
 // TimedBlockInput with a distinguishable task (line doubles as a cheap unique id for assertions).
 const timedBlockInput = (start: number, duration: number): TimedBlockInput => ({
-  task: task({ line: start }),
+  task: task({ source: { line: start } }),
   startMinutes: start,
   durationMinutes: duration,
 });
