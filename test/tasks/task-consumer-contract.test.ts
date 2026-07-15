@@ -120,11 +120,17 @@ function declarationBinds(node: ts.NamedDeclaration, expected: string): boolean 
 }
 
 function isExportedCanonicalTaskDateIndex(path: string, node: ts.NamedDeclaration): boolean {
+  if (path !== CANONICAL_TASK_DATE_INDEX || !ts.isClassDeclaration(node)) return false;
+  const [typeParameter] = node.typeParameters ?? [];
   return (
-    path === CANONICAL_TASK_DATE_INDEX &&
-    ts.isClassDeclaration(node) &&
+    node.name?.text === 'TaskDateIndex' &&
     node.parent.kind === ts.SyntaxKind.SourceFile &&
-    node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true
+    node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true &&
+    node.modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.DefaultKeyword) === false &&
+    node.typeParameters?.length === 1 &&
+    typeParameter?.name.text === 'T' &&
+    typeParameter.constraint === undefined &&
+    typeParameter.default === undefined
   );
 }
 
@@ -350,6 +356,23 @@ describe('final task consumer contract', () => {
         'export class TaskDateIndex<T> {}\ninterface TaskDateIndex {}',
       ),
     ).toBe(true);
+  });
+
+  it('pins the canonical TaskDateIndex declaration modifiers and generic shape', () => {
+    const nearMisses = [
+      'export default class TaskDateIndex<T> {}',
+      'export class TaskDateIndex {}',
+      'export class TaskDateIndex<T, U> {}',
+      'export class TaskDateIndex<U> {}',
+      'export class TaskDateIndex<T extends object> {}',
+      'export class TaskDateIndex<T = unknown> {}',
+    ];
+
+    expect(
+      nearMisses.filter((candidate) =>
+        hasForbiddenProductionCompatibility(CANONICAL_TASK_DATE_INDEX, candidate),
+      ),
+    ).toEqual(nearMisses);
   });
 
   it('rejects canonical TaskDateIndex declaration merging and export aliases', () => {
