@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -28,11 +28,11 @@ const LEGACY_TESTS = [
   'test/center-panel-integration.test.ts',
 ] as const;
 
-const RETAINED_COMPATIBILITY_FILES = new Set([
+const REMOVED_COMPATIBILITY_FILES = [
   'src/store/TaskStore.ts',
   'src/store/TaskDateIndex.ts',
   'src/tasks/compat/legacyTaskView.ts',
-]);
+] as const;
 
 const PARSER_GRAMMAR_TESTS = new Set([
   'test/blockquote-tasks.test.ts',
@@ -43,6 +43,9 @@ const PARSER_GRAMMAR_TESTS = new Set([
   'test/subitem-parser.test.ts',
   'test/task-parser-deep.test.ts',
 ]);
+
+const FORBIDDEN_TEST_COMPATIBILITY =
+  /(?:store\/TaskStore(?:\.ts)?(?=['"])|store\/TaskDateIndex(?:\.ts)?(?=['"])|tasks\/compat\/legacyTaskView(?:\.ts)?(?=['"])|\bTaskStore\b|\b(?:LegacyTaskCommentView|LegacySubtaskView|LegacyTaskView|legacyTaskView|legacyTaskViews|taskRefOf|rebuildLegacyTaskStack)\b|\b(?:class|interface|type|const|let|var|function)\s+TaskDateIndex\b|configuredTaskStore)/u;
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), 'utf8');
@@ -62,9 +65,7 @@ function typeScriptFiles(directory: string): string[] {
 
 describe('final task consumer contract', () => {
   const productionFiles = typeScriptFiles('src');
-  const productionConsumers = productionFiles.filter(
-    (path) => !RETAINED_COMPATIBILITY_FILES.has(path),
-  );
+  const productionConsumers = productionFiles;
   const presentationConsumers = productionConsumers.filter((path) =>
     /^(?:src\/main\.ts|src\/(?:app|code-block|domain|panels|projects|settings|ui|views)\/)/u.test(
       path,
@@ -77,7 +78,19 @@ describe('final task consumer contract', () => {
       path === 'src/projects/ProjectStore.ts',
   );
 
-  it('routes every production source outside the retained compatibility boundary through final task contracts', () => {
+  it('permanently removes compatibility read stores, views, and their Knip ignores', () => {
+    const existingCompatibilityFiles = REMOVED_COMPATIBILITY_FILES.filter((path) =>
+      existsSync(resolve(ROOT, path)),
+    );
+    const knipIgnores = (JSON.parse(source('knip.json')).ignore ?? []) as string[];
+
+    expect({ existingCompatibilityFiles, knipIgnores }).toEqual({
+      existingCompatibilityFiles: [],
+      knipIgnores: [],
+    });
+  });
+
+  it('routes every production source through final task contracts', () => {
     const forbidden =
       /(?:store\/TaskStore|store\/TaskDateIndex|tasks\/compat\/legacyTaskView|plugin\.store|\bTaskStore\b)/u;
 
@@ -106,14 +119,27 @@ describe('final task consumer contract', () => {
     expect(matchingFiles(LEGACY_TESTS, forbidden)).toEqual([]);
   });
 
+  it('recognizes aliased compatibility imports and local compatibility stubs', () => {
+    const straightforwardReintroductions = [
+      "import { createStore as oldStore } from '@/store/TaskStore';",
+      "import { taskRefOf as oldRef } from '@/tasks/compat/legacyTaskView';",
+      'const TaskStore = vi.fn();',
+      'class TaskDateIndex {}',
+      'interface LegacyTaskView {}',
+    ];
+
+    expect(
+      straightforwardReintroductions.filter((candidate) =>
+        FORBIDDEN_TEST_COMPATIBILITY.test(candidate),
+      ),
+    ).toEqual(straightforwardReintroductions);
+  });
+
   it('keeps every test consumer independent of compatibility stores and views', () => {
     const testConsumers = typeScriptFiles('test').filter(
       (path) => path !== 'test/tasks/task-consumer-contract.test.ts',
     );
-    const forbidden =
-      /(?:src\/store\/TaskStore|src\/store\/TaskDateIndex|src\/tasks\/compat\/legacyTaskView|configuredTaskStore)/u;
-
-    expect(matchingFiles(testConsumers, forbidden)).toEqual([]);
+    expect(matchingFiles(testConsumers, FORBIDDEN_TEST_COMPATIBILITY)).toEqual([]);
   });
 
   it('keeps non-parser tests and shared fixtures on final snapshot shapes only', () => {

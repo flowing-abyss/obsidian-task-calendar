@@ -155,49 +155,6 @@ function writerSites(): string[] {
 }
 
 describe('task architecture migration writer guardrail', () => {
-  it('keeps TaskStore command-only with no read bridge or index subscription', () => {
-    const path = resolve(SRC_ROOT, 'store', 'TaskStore.ts');
-    const source = ts.createSourceFile(
-      path,
-      readFileSync(path, 'utf8'),
-      ts.ScriptTarget.Latest,
-      true,
-    );
-    const taskStore = source.statements.find(
-      (statement): statement is ts.ClassDeclaration =>
-        ts.isClassDeclaration(statement) && statement.name?.text === 'TaskStore',
-    );
-    expect(taskStore).toBeDefined();
-    const members = new Set(
-      taskStore?.members.flatMap((member) => {
-        if (!('name' in member) || !member.name) return [];
-        return [member.name.getText(source)];
-      }),
-    );
-    expect(members).not.toContain('getTasks');
-    expect(members).not.toContain('getTasksForDate');
-    expect(members).not.toContain('getTasksForDateRange');
-    expect(members).not.toContain('taskQueries');
-    expect(members).not.toContain('queries');
-    expect(members).not.toContain('onUpdate');
-    expect(members).not.toContain('listeners');
-    expect(members).not.toContain('pendingFiles');
-
-    let subscribes = false;
-    const visit = (node: ts.Node): void => {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text === 'subscribe'
-      ) {
-        subscribes = true;
-      }
-      ts.forEachChild(node, visit);
-    };
-    if (taskStore) visit(taskStore);
-    expect(subscribes).toBe(false);
-  });
-
   it('matches the named, reasoned writer allowlist exactly', () => {
     const allowlisted = [
       ...Object.keys(LEGACY_TASK_WRITERS),
