@@ -11,25 +11,22 @@ import {
   durationMinutes,
   localDate,
   localTime,
+  type CommentRef,
   type PlanningTarget,
   type SubtaskPatch,
+  type SubtaskRef,
   type SubtaskSnapshot,
   type TaskApplicationApi,
+  type TaskCommand,
   type TaskCommandResult,
   type TaskCommentSnapshot,
+  type TaskNodeRef,
   type TaskPatch,
+  type TaskPriority,
+  type TaskRef,
   type TaskSnapshot,
   type TaskTextTarget,
 } from '../tasks';
-
-import type { TaskCommand } from '../tasks/domain/commands';
-import type {
-  CommentRef,
-  SubtaskRef,
-  TaskNodeRef,
-  TaskPriority,
-  TaskRef,
-} from '../tasks/domain/types';
 import {
   enableAttachmentDrop,
   enableAttachmentPaste,

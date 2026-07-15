@@ -33,6 +33,32 @@ function expectLosslessPartition(parsed: ParsedTaskLine): void {
 }
 
 describe('TaskMarkdownCodec', () => {
+  describe('full-line validation used by task creation', () => {
+    it.each([
+      ['ordinary metadata', '- [ ] Gym ⏰ 10:00 ⏱️ 1h 📅 2026-07-11'],
+      ['plain task', '- [ ] Buy milk'],
+      ['boundary time', '- [ ] t ⏰ 23:59 📅 2026-07-11'],
+      ['valid start/due span', '- [ ] t 🛫 2026-07-01 📅 2026-07-05'],
+      ['same-day start/due span', '- [ ] t 🛫 2026-07-15 📅 2026-07-15'],
+    ])('accepts a well-formed %s line', (_case, source) => {
+      expect(codec.validateLine(source)).toEqual([]);
+    });
+
+    it.each([
+      ['out-of-grammar hour', '- [ ] t ⏰ 2093:15 📅 2026-07-11'],
+      ['out-of-range hour', '- [ ] t ⏰ 25:00 📅 2026-07-11'],
+      ['out-of-range minute', '- [ ] t ⏰ 10:75 📅 2026-07-11'],
+      ['zero duration', '- [ ] t ⏱️ 0m 📅 2026-07-11'],
+      ['impossible day', '- [ ] t 📅 2026-07-32'],
+      ['impossible month', '- [ ] t 📅 2026-13-01'],
+      ['non-task syntax', 'not a task line'],
+      ['impossible start date', '- [ ] t 🛫 2026-02-30 📅 2026-07-05'],
+      ['inverted start/due span', '- [ ] t 🛫 2026-07-16 📅 2026-07-15'],
+    ])('rejects a malformed %s line without authorizing a write', (_case, source) => {
+      expect(codec.validateLine(source)).not.toEqual([]);
+    });
+  });
+
   describe('lossless line edits', () => {
     it.each([
       ['set-title', { type: 'set-title', markdownTitle: 'Changed\n- [ ] injected' }, 'title'],

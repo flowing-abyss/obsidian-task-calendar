@@ -48,6 +48,137 @@ export default tseslint.config(
     },
   },
   {
+    files: ['src/tasks/domain/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^(?!\\./)',
+              message: 'Task domain may import only sibling domain modules.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='Date']",
+          message: 'Task domain receives time through explicit values or a Clock port.',
+        },
+        {
+          selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']",
+          message: 'Task domain receives time through explicit values or a Clock port.',
+        },
+        {
+          selector: "CallExpression[callee.name='Date']",
+          message: 'Task domain receives time through explicit values or a Clock port.',
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        { name: 'window', message: 'Task domain cannot depend on browser ambient state.' },
+        { name: 'document', message: 'Task domain cannot depend on browser ambient state.' },
+      ],
+    },
+  },
+  {
+    files: ['src/tasks/application/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^(?!\\./|\\.\\./domain/)',
+              message:
+                'Task application may depend only on domain contracts and application ports.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='Date']",
+          message: 'Task application receives time through its Clock port.',
+        },
+        {
+          selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']",
+          message: 'Task application receives time through its Clock port.',
+        },
+        {
+          selector: "CallExpression[callee.name='Date']",
+          message: 'Task application receives time through its Clock port.',
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        { name: 'window', message: 'Task application cannot depend on browser ambient state.' },
+        { name: 'document', message: 'Task application cannot depend on browser ambient state.' },
+      ],
+    },
+  },
+  {
+    files: ['src/tasks/infrastructure/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'obsidian',
+              importNames: ['Notice'],
+              message: 'Task infrastructure returns structured results; presentation owns Notice.',
+            },
+          ],
+          patterns: [
+            {
+              regex: '^(?:\\.\\.?/)+(?:panels|ui|views)(?:/|$)',
+              message: 'Task infrastructure must not depend on presentation modules.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      'src/code-block/**/*.ts',
+      'src/panels/**/*.ts',
+      'src/ui/**/*.ts',
+      'src/views/**/*.ts',
+      'src/settings/SettingsTab.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^(?:\\.\\.?/)+tasks/(?:application|domain|infrastructure)(?:/|$)',
+              message: 'Presentation imports task contracts only through src/tasks/index.ts.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[property.name='process']",
+          message:
+            'Presentation sends task commands through TaskApplicationApi; it does not write.',
+        },
+        {
+          selector: "MemberExpression[computed=true][property.value='process']",
+          message:
+            'Presentation sends task commands through TaskApplicationApi; it does not write.',
+        },
+      ],
+    },
+  },
+  {
     ignores: ['dist/', 'node_modules/', 'main.js', 'esbuild.config.mjs', 'version-bump.mjs'],
   },
 );

@@ -4,6 +4,79 @@ import { TaskBlockEditor } from '../../src/tasks/infrastructure/markdown/TaskBlo
 import { TaskLocator } from '../../src/tasks/infrastructure/markdown/TaskLocator';
 
 describe('TaskBlockEditor', () => {
+  it.each([
+    [
+      'append mode',
+      '# Note\n\nbody',
+      '- [ ] task',
+      { type: 'append' } as const,
+      '# Note\n\nbody\n- [ ] task',
+    ],
+    [
+      'an existing section',
+      '# Note\n## Tasks\n- [ ] existing\n## Notes\nblah',
+      '- [ ] task',
+      { type: 'section', heading: '## Tasks' } as const,
+      '# Note\n## Tasks\n- [ ] task\n- [ ] existing\n## Notes\nblah',
+    ],
+    [
+      'a newly-created section',
+      '# Note\nbody',
+      '- [ ] task',
+      { type: 'section', heading: '## Tasks' } as const,
+      '# Note\nbody\n\n## Tasks\n- [ ] task',
+    ],
+    [
+      'a blank section name falling back to append',
+      'body',
+      '- [ ] task',
+      { type: 'section', heading: '   ' } as const,
+      'body\n- [ ] task',
+    ],
+    [
+      'a contiguous task aggregate',
+      '## Tasks\nexisting',
+      '- [ ] parent\n\t- [ ] child',
+      { type: 'section', heading: '## Tasks' } as const,
+      '## Tasks\n- [ ] parent\n\t- [ ] child\nexisting',
+    ],
+  ])('inserts a root block through %s', (_case, source, block, insertion, expected) => {
+    expect(new TaskBlockEditor().insertRootBlock(source, block, insertion)?.content).toBe(expected);
+  });
+
+  it.each([
+    [
+      'a parent and its complete nested range without touching the following root',
+      '- [ ] parent\n  - [ ] child\n- [ ] sibling',
+      0,
+      '- [ ] sibling',
+    ],
+    [
+      'a blockquote parent and its quoted descendants',
+      '> - [ ] parent\n> \t- [ ] child\n> \t- [ ] child2\n> - [ ] sibling',
+      0,
+      '> - [ ] sibling',
+    ],
+    [
+      'one flat blockquote task while preserving its siblings',
+      '> - [ ] A\n> - [ ] B\n> - [ ] C',
+      1,
+      '> - [ ] A\n> - [ ] C',
+    ],
+    [
+      'a quoted task without consuming the following plain-list aggregate',
+      '> - [ ] quoted\n- [ ] plain next\n  - [ ] plain sub',
+      0,
+      '- [ ] plain next\n  - [ ] plain sub',
+    ],
+  ])('deletes %s', (_case, source, rootIndex, expected) => {
+    const editor = new TaskBlockEditor();
+    const block = editor.rootBlocks(source)[rootIndex];
+
+    expect(block).toBeDefined();
+    expect(editor.deleteRoot(source, block!)).toBe(expected);
+  });
+
   it('keeps the complete root aggregate and CRLF when replacing its task line', () => {
     const editor = new TaskBlockEditor();
     const source = '- [ ] root\r\n  - description\r\n  - [ ] child\r\n- [ ] next\r\n';

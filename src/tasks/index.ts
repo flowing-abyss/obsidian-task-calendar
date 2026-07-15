@@ -8,17 +8,21 @@ export type {
   MoveRecovery,
   PlanningTarget,
   SubtaskPatch,
+  TaskCommand,
   TaskCommandResult,
   TaskPatch,
 } from './domain/commands';
 export type {
+  CommentRef,
   LocalDate,
   SubtaskRef,
   SubtaskSnapshot,
   TaskCommentSnapshot,
   TaskNodeRef,
+  TaskPriority,
   TaskRef,
   TaskSnapshot,
+  TaskStatusType,
   TaskTextTarget,
 } from './domain/types';
 export { durationMinutes, localDate, localTime } from './domain/validation';

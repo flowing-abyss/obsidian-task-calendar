@@ -462,7 +462,7 @@ export class TaskMarkdownCodec {
     };
   }
 
-  /** Full-candidate validation used only by the temporary legacy write safety net. */
+  /** Validates a complete candidate line before task creation writes it to the vault. */
   validateLine(original: string): readonly TaskIssue[] {
     const parsed = this.parseLine(original, { filePath: '', line: 0 });
     if (!parsed) return [{ code: 'invalid-task-syntax' }];

@@ -4,8 +4,7 @@ import type { TagGroup } from '../../settings/types';
 import type { StatusRegistry } from '../../status/StatusRegistry';
 import { tagColorFor } from '../../tags/tagColor';
 import { tagFillTextColorVar } from '../../tags/tagFillContrast';
-import type { TaskSnapshot } from '../../tasks';
-import type { TaskPriority } from '../../tasks/domain/types';
+import type { TaskPriority, TaskSnapshot } from '../../tasks';
 import { renderStatusMarker } from '../../ui/StatusMarker';
 import { renderTaskText } from '../../ui/renderTaskText';
 import { showStatusMenuAt } from '../../ui/statusMenu';
@@ -724,16 +723,15 @@ function attachHorizontalResize(
   hourColumnEl: HTMLElement,
   task: TaskSnapshot,
   onResolve: (task: TaskSnapshot, newDate: string) => void,
-  // Task 51: live-clamp bound (UX nice-to-have layered on top of the mandatory
-  // `validateMutatedTaskLine` start<=due safety net — see that file's own doc comment for the
-  // data-safety root cause). Without this, `elementFromPoint`'s absolute "day under the cursor"
+  // Task 51: live-clamp bound (UX nice-to-have layered on top of the application command
+  // validation safety net). Without this, `elementFromPoint`'s absolute "day under the cursor"
   // resolution let the left edge get dragged arbitrarily far past the block's own `due` day (or
   // the right edge past the anchor that would freeze as `start`), producing an inverted span
   // that the validator now rejects wholesale — correct, but the user only discovers the failed
   // drag AFTER release, with no live feedback that they'd crossed a limit. Clamping the resolved
   // date here, on every pointermove AND at commit, means the drag visually stops at the boundary
   // day column instead of continuing to track the cursor past it, and the committed value is
-  // never invalid in the first place (the validator remains the safety net for every OTHER path
+  // never invalid in the first place (command validation remains the safety net for every other path
   // that can touch these fields, this is purely presentational/UX for this one gesture).
   bound?: { date: string; kind: 'max' | 'min' },
 ): void {

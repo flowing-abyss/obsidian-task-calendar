@@ -133,7 +133,7 @@ describe('getTasksForDate', () => {
       DATE,
       TODAY,
     );
-    expect(g.process).toHaveLength(1);
+    expect(g.inProcess).toHaveLength(1);
   });
 
   it('places an open task with dailyNoteDate on date into dailyNote', () => {
@@ -174,7 +174,7 @@ describe('getTasksForDate', () => {
     expect(g.overdue).toHaveLength(0);
     expect(g.start).toHaveLength(0);
     expect(g.scheduled).toHaveLength(0);
-    expect(g.process).toHaveLength(0);
+    expect(g.inProcess).toHaveLength(0);
     expect(g.dailyNote).toHaveLength(0);
   });
 
@@ -438,7 +438,7 @@ describe('renderTaskGroup', () => {
       overdue: [],
       start: [task({ title: 's', planning: { start: '2026-06-24', due: '2026-06-28' } })],
       scheduled: [task({ title: 'sc', planning: { scheduled: '2026-06-24' } })],
-      process: [],
+      inProcess: [],
       dailyNote: [task({ title: 'dn', presentation: { dailyNoteDate: '2026-06-24' } })],
       allDone: [task({ title: 'ad', status: 'done', planning: { due: '2026-06-24' } })],
       cancelled: [task({ title: 'ca', status: 'cancelled', planning: { due: '2026-06-24' } })],
@@ -468,7 +468,7 @@ describe('renderTaskGroup', () => {
       overdue: [],
       start: [],
       scheduled: [],
-      process: [],
+      inProcess: [],
       dailyNote: [],
       allDone: [],
       cancelled: [],

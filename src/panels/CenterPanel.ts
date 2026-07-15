@@ -27,10 +27,12 @@ import {
   type LocalDate,
   type TaskApplicationApi,
   type TaskCommandResult,
+  type TaskPriority,
   type TaskQueryApi,
+  type TaskRef,
   type TaskSnapshot,
+  type TaskStatusType,
 } from '../tasks';
-import type { TaskPriority, TaskStatusType } from '../tasks/domain/types';
 import { LinkEditModal } from '../ui/LinkEditModal';
 import { renderStatusMarker } from '../ui/StatusMarker';
 import { TagPickerModal } from '../ui/TagPickerModal';
@@ -2096,10 +2098,7 @@ export class CenterPanel {
     return markdownFile instanceof TFile ? markdownFile.path : withExtension;
   }
 
-  private sameTaskRef(
-    left: import('../tasks/domain/types').TaskRef,
-    right: import('../tasks/domain/types').TaskRef,
-  ): boolean {
+  private sameTaskRef(left: TaskRef, right: TaskRef): boolean {
     return (
       left.filePath === right.filePath &&
       left.line === right.line &&

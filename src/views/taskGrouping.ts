@@ -1,6 +1,5 @@
 import type { StatusRegistry } from '../status/StatusRegistry';
-import type { TaskSnapshot } from '../tasks';
-import type { TaskStatusType } from '../tasks/domain/types';
+import type { TaskSnapshot, TaskStatusType } from '../tasks';
 
 export interface TaskGroup {
   due: TaskSnapshot[];
@@ -8,7 +7,7 @@ export interface TaskGroup {
   overdue: TaskSnapshot[];
   start: TaskSnapshot[];
   scheduled: TaskSnapshot[];
-  process: TaskSnapshot[];
+  inProcess: TaskSnapshot[];
   dailyNote: TaskSnapshot[];
   allDone: TaskSnapshot[];
   cancelled: TaskSnapshot[];
@@ -31,7 +30,7 @@ export function getTasksForDate(tasks: TaskSnapshot[], date: string, today: stri
     overdue: tasks.filter((t) => open(t) && isBefore(t.planning.due)),
     start: tasks.filter((t) => open(t) && isSame(t.planning.start) && !isSame(t.planning.due)),
     scheduled: tasks.filter((t) => open(t) && isSame(t.planning.scheduled)),
-    process: tasks.filter(
+    inProcess: tasks.filter(
       (t) =>
         open(t) &&
         t.planning.due &&
@@ -270,7 +269,7 @@ export function renderTaskGroup(
   show(groups.recurrence, 'recurrence');
   show(groups.start, 'start');
   show(groups.scheduled, 'scheduled');
-  show(groups.process, 'process');
+  show(groups.inProcess, 'process');
   show(groups.dailyNote, 'dailyNote');
   show(groups.allDone, 'done');
   show(groups.cancelled, 'cancelled');

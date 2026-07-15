@@ -63,8 +63,8 @@ describe('TaskApplicationApi toggle-completion', () => {
   });
 
   it('out-of-bounds task.line falls back to rawText scan and toggles the task', async () => {
-    // The mutation service uses rawText as a fingerprint: even if the line hint (999) is wrong,
-    // findTaskLine scans all lines and finds the unique match at line 0, so the toggle succeeds.
+    // The repository treats the line as a hint: even when 999 is stale, its revision scan finds
+    // the unique matching root block at line 0, so the toggle succeeds.
     const app = await createAppWithFiles({ 't.md': '- [ ] task' });
     seedTaskCache(app, 't.md', [{ task: ' ', parent: -1, line: 0 }]);
     const stack = configuredTaskApplication(app, DEFAULT_SETTINGS);

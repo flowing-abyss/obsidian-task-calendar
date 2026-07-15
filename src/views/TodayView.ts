@@ -1,8 +1,7 @@
 import { Component, type App } from 'obsidian';
 import type { ResolvedConfig, TagGroup } from '../settings/types';
 import type { StatusRegistry } from '../status/StatusRegistry';
-import type { TaskSnapshot } from '../tasks';
-import type { TaskPriority } from '../tasks/domain/types';
+import type { TaskPriority, TaskSnapshot } from '../tasks';
 import { BaseView } from './BaseView';
 import { renderHourGrid, repositionNowLine } from './timegrid/HourGrid';
 import { minutesToPixels } from './timegrid/layout';

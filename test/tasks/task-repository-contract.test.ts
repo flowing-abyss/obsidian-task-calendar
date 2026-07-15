@@ -228,6 +228,22 @@ describe('ObsidianTaskRepository planning contract', () => {
     });
   });
 
+  it('deletes the complete root aggregate after unique line drift', async () => {
+    const original = '- [ ] task\n  - [ ] subtask\n- [ ] after\n';
+    const h = await harness({ 'tasks.md': original });
+    const ref = refFor(h, 'tasks.md', original);
+    const file = h.app.vault.getAbstractFileByPath('tasks.md');
+    if (!(file instanceof TFile)) throw new Error('missing file');
+    await h.app.vault.modify(file, `inserted\n${original}`);
+
+    await expect(h.repository.edit({ type: 'delete', ref })).resolves.toMatchObject({
+      type: 'committed',
+      changed: true,
+      outcome: { type: 'deleted' },
+    });
+    expect(await read(h.app, 'tasks.md')).toBe('inserted\n- [ ] after\n');
+  });
+
   it('maps process rejection to an unknown content-state io error', async () => {
     const source = '- [ ] task\n';
     const h = await harness({ 'tasks.md': source });
