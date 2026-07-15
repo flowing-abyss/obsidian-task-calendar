@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -47,13 +48,21 @@ const PARSER_GRAMMAR_TESTS = new Set([
 const FORBIDDEN_TEST_COMPATIBILITY =
   /(?:store\/TaskStore(?:\.ts)?(?=['"])|store\/TaskDateIndex(?:\.ts)?(?=['"])|tasks\/compat\/legacyTaskView(?:\.ts)?(?=['"])|\bTaskStore\b|\b(?:LegacyTaskCommentView|LegacySubtaskView|LegacyTaskView|legacyTaskView|legacyTaskViews|taskRefOf|rebuildLegacyTaskStack)\b|\b(?:class|interface|type|const|let|var|function)\s+TaskDateIndex\b|configuredTaskStore)/u;
 
-const FORBIDDEN_PRODUCTION_COMPATIBILITY =
-  /(?:store\/TaskStore(?:\.[cm]?[jt]s)?(?=['"])|store\/TaskDateIndex(?:\.[cm]?[jt]s)?(?=['"])|tasks\/compat\/legacyTaskView(?:\.[cm]?[jt]s)?(?=['"])|plugin\.store|\b(?:TaskStore|LegacyTaskCommentView|LegacySubtaskView|LegacyTaskView|legacyTaskView|legacyTaskViews|taskRefOf|rebuildLegacyTaskStack|configuredTaskStore)\b)/u;
-
-const TASK_DATE_INDEX_DECLARATION =
-  /\b(?:export\s+)?(?:class|interface|type|const|let|var|function)\s+TaskDateIndex\b/gu;
 const CANONICAL_TASK_DATE_INDEX = 'src/tasks/infrastructure/TaskDateIndex.ts';
-const CANONICAL_TASK_DATE_INDEX_DECLARATION = 'export class TaskDateIndex';
+const TASK_DATE_INDEX_CONSUMER = 'src/tasks/infrastructure/TaskIndex.ts';
+const FORBIDDEN_PRODUCTION_IDENTIFIERS = new Set([
+  'TaskStore',
+  'LegacyTaskCommentView',
+  'LegacySubtaskView',
+  'LegacyTaskView',
+  'legacyTaskView',
+  'legacyTaskViews',
+  'taskRefOf',
+  'rebuildLegacyTaskStack',
+  'configuredTaskStore',
+]);
+const FORBIDDEN_PRODUCTION_MODULE =
+  /(?:^|\/)(?:store\/TaskStore|store\/TaskDateIndex|tasks\/compat\/legacyTaskView)(?:\.[cm]?[jt]sx?)?$/u;
 
 function source(path: string): string {
   return readFileSync(resolve(ROOT, path), 'utf8');
@@ -63,17 +72,183 @@ function matchingFiles(paths: readonly string[], pattern: RegExp): string[] {
   return paths.filter((path) => pattern.test(source(path)));
 }
 
-function hasForbiddenProductionCompatibility(path: string, candidate: string): boolean {
-  if (FORBIDDEN_PRODUCTION_COMPATIBILITY.test(candidate)) return true;
+function isForbiddenModuleSpecifier(moduleSpecifier: ts.Expression | undefined): boolean {
+  return moduleSpecifier && ts.isStringLiteralLike(moduleSpecifier)
+    ? FORBIDDEN_PRODUCTION_MODULE.test(moduleSpecifier.text)
+    : false;
+}
 
-  const taskDateIndexDeclarations = candidate.match(TASK_DATE_INDEX_DECLARATION) ?? [];
-  if (taskDateIndexDeclarations.length === 0) return false;
-
+function isDeclarationWithName(node: ts.Node): node is ts.NamedDeclaration {
   return (
-    path !== CANONICAL_TASK_DATE_INDEX ||
-    taskDateIndexDeclarations.length !== 1 ||
-    taskDateIndexDeclarations[0] !== CANONICAL_TASK_DATE_INDEX_DECLARATION
+    ts.isBindingElement(node) ||
+    ts.isClassDeclaration(node) ||
+    ts.isClassExpression(node) ||
+    ts.isEnumDeclaration(node) ||
+    ts.isExportSpecifier(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isImportClause(node) ||
+    ts.isImportEqualsDeclaration(node) ||
+    ts.isImportSpecifier(node) ||
+    ts.isInterfaceDeclaration(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isMethodSignature(node) ||
+    ts.isModuleDeclaration(node) ||
+    ts.isNamespaceExport(node) ||
+    ts.isNamespaceImport(node) ||
+    ts.isParameter(node) ||
+    ts.isPropertyDeclaration(node) ||
+    ts.isPropertySignature(node) ||
+    ts.isSetAccessorDeclaration(node) ||
+    ts.isTypeAliasDeclaration(node) ||
+    ts.isTypeParameterDeclaration(node) ||
+    ts.isVariableDeclaration(node)
   );
+}
+
+function declarationBinds(node: ts.NamedDeclaration, expected: string): boolean {
+  const name = ts.getNameOfDeclaration(node);
+  if (!name) return false;
+  if (ts.isIdentifier(name)) return name.text === expected;
+  if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    return name.elements.some(
+      (element) => ts.isBindingElement(element) && declarationBinds(element, expected),
+    );
+  }
+  return false;
+}
+
+function isExportedCanonicalTaskDateIndex(path: string, node: ts.NamedDeclaration): boolean {
+  return (
+    path === CANONICAL_TASK_DATE_INDEX &&
+    ts.isClassDeclaration(node) &&
+    node.parent.kind === ts.SyntaxKind.SourceFile &&
+    node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true
+  );
+}
+
+function resolvesCanonicalTaskDateIndex(path: string, moduleSpecifier: string): boolean {
+  if (!moduleSpecifier.startsWith('.')) return false;
+  const withoutSourceSuffix = (value: string): string => value.replace(/\.[cm]?[jt]sx?$/u, '');
+  const imported = withoutSourceSuffix(resolve(dirname(resolve(ROOT, path)), moduleSpecifier));
+  const canonical = withoutSourceSuffix(resolve(ROOT, CANONICAL_TASK_DATE_INDEX));
+  return imported === canonical;
+}
+
+function isCanonicalTaskDateIndexImport(path: string, node: ts.NamedDeclaration): boolean {
+  if (!ts.isImportSpecifier(node) || node.name.text !== 'TaskDateIndex') return false;
+  if (path !== TASK_DATE_INDEX_CONSUMER) return false;
+  if ((node.propertyName ?? node.name).text !== 'TaskDateIndex') return false;
+  const importDeclaration = node.parent.parent.parent;
+  return (
+    ts.isImportDeclaration(importDeclaration) &&
+    ts.isStringLiteralLike(importDeclaration.moduleSpecifier) &&
+    resolvesCanonicalTaskDateIndex(
+      importDeclaration.getSourceFile().fileName,
+      importDeclaration.moduleSpecifier.text,
+    )
+  );
+}
+
+function isAllowedTaskDateIndexIdentifier(path: string, node: ts.Identifier): boolean {
+  if (
+    path === CANONICAL_TASK_DATE_INDEX &&
+    ts.isClassDeclaration(node.parent) &&
+    node.parent.name === node
+  ) {
+    return isExportedCanonicalTaskDateIndex(path, node.parent);
+  }
+  if (path !== TASK_DATE_INDEX_CONSUMER) return false;
+  if (ts.isImportSpecifier(node.parent) && node.parent.name === node) {
+    return isCanonicalTaskDateIndexImport(path, node.parent);
+  }
+  return ts.isNewExpression(node.parent) && node.parent.expression === node;
+}
+
+function hasForbiddenProductionCompatibility(path: string, candidate: string): boolean {
+  const syntax = ts.createSourceFile(
+    path,
+    candidate,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  let forbidden = false;
+  let canonicalTaskDateIndexClasses = 0;
+
+  const visit = (node: ts.Node): void => {
+    if (forbidden) return;
+
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      isForbiddenModuleSpecifier(node.moduleSpecifier)
+    ) {
+      forbidden = true;
+      return;
+    }
+    if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      isForbiddenModuleSpecifier(node.moduleReference.expression)
+    ) {
+      forbidden = true;
+      return;
+    }
+    if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      isForbiddenModuleSpecifier(node.argument.literal)
+    ) {
+      forbidden = true;
+      return;
+    }
+    if (
+      ts.isModuleDeclaration(node) &&
+      ts.isStringLiteral(node.name) &&
+      isForbiddenModuleSpecifier(node.name)
+    ) {
+      forbidden = true;
+      return;
+    }
+    if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === 'require')) &&
+      isForbiddenModuleSpecifier(node.arguments[0])
+    ) {
+      forbidden = true;
+      return;
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'plugin' &&
+      node.name.text === 'store'
+    ) {
+      forbidden = true;
+      return;
+    }
+    if (ts.isIdentifier(node)) {
+      if (FORBIDDEN_PRODUCTION_IDENTIFIERS.has(node.text)) {
+        forbidden = true;
+        return;
+      }
+      if (node.text === 'TaskDateIndex' && !isAllowedTaskDateIndexIdentifier(path, node)) {
+        forbidden = true;
+        return;
+      }
+    }
+    if (isDeclarationWithName(node) && declarationBinds(node, 'TaskDateIndex')) {
+      if (isExportedCanonicalTaskDateIndex(path, node)) canonicalTaskDateIndexClasses++;
+      else if (!isCanonicalTaskDateIndexImport(path, node)) forbidden = true;
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(syntax);
+  return forbidden || (path === CANONICAL_TASK_DATE_INDEX && canonicalTaskDateIndexClasses !== 1);
 }
 
 function typeScriptFiles(directory: string): string[] {
@@ -120,6 +295,9 @@ describe('final task consumer contract', () => {
   it('rejects local compatibility declarations from production sources', () => {
     const compatibilityDeclarations = [
       'class TaskDateIndex {}',
+      'new TaskDateIndex();',
+      "import { TaskDateIndex } from './tasks/infrastructure/TaskDateIndex';\nnew TaskDateIndex();",
+      'enum Compatibility { TaskDateIndex }',
       'interface LegacyTaskView {}',
       'const legacyTaskView = {};',
     ];
@@ -136,6 +314,8 @@ describe('final task consumer contract', () => {
       "import { createStore as oldStore } from '@/store/TaskStore';",
       "import { TaskDateIndex as OldIndex } from '@/store/TaskDateIndex.ts';",
       "import { taskRefOf as oldRef } from '@/tasks/compat/legacyTaskView.js';",
+      "type OldStore = import('@/store/TaskStore.mts').Store;",
+      "declare module '@/tasks/compat/legacyTaskView.cjs' {}",
     ];
 
     expect(
@@ -160,8 +340,51 @@ describe('final task consumer contract', () => {
     ).toBe(true);
     expect(
       hasForbiddenProductionCompatibility(
+        TASK_DATE_INDEX_CONSUMER,
+        "import { TaskDateIndex } from './TaskDateIndex';\nnew TaskDateIndex(() => []);",
+      ),
+    ).toBe(false);
+    expect(
+      hasForbiddenProductionCompatibility(
         CANONICAL_TASK_DATE_INDEX,
         'export class TaskDateIndex<T> {}\ninterface TaskDateIndex {}',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects canonical TaskDateIndex declaration merging and export aliases', () => {
+    const disguisedReintroductions = [
+      'export class TaskDateIndex<T> {}\nexport namespace TaskDateIndex {}',
+      '// export class TaskDateIndex\nconst Replacement = class {};\nexport { Replacement as TaskDateIndex };',
+      "const signature = 'export class TaskDateIndex';\nconst Replacement = class {};\nexport { Replacement as TaskDateIndex };",
+      'export class TaskDateIndex<T> {}\nexport class TaskDateIndex<U> {}',
+      "export class TaskDateIndex<T> {}\nimport { TaskDateIndex } from './TaskDateIndex';",
+      'export class TaskDateIndex<T> {}\nexport default TaskDateIndex;',
+    ];
+
+    expect(
+      disguisedReintroductions.filter((candidate) =>
+        hasForbiddenProductionCompatibility(CANONICAL_TASK_DATE_INDEX, candidate),
+      ),
+    ).toEqual(disguisedReintroductions);
+  });
+
+  it('ignores compatibility-looking comments, strings, and ordinary module path values', () => {
+    const harmlessText = [
+      '// class TaskDateIndex {}',
+      "const documentation = 'interface LegacyTaskView {}';",
+      "const removedModuleExample = '@/store/TaskStore';",
+    ];
+
+    expect(
+      harmlessText.filter((candidate) =>
+        hasForbiddenProductionCompatibility('src/example.ts', candidate),
+      ),
+    ).toEqual([]);
+    expect(
+      hasForbiddenProductionCompatibility(
+        CANONICAL_TASK_DATE_INDEX,
+        "const documentation = 'export class TaskDateIndex';",
       ),
     ).toBe(true);
   });
