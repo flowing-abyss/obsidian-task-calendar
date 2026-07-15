@@ -146,14 +146,30 @@ function isCanonicalTaskDateIndexImport(path: string, node: ts.NamedDeclaration)
   if (!ts.isImportSpecifier(node) || node.name.text !== 'TaskDateIndex') return false;
   if (path !== TASK_DATE_INDEX_CONSUMER) return false;
   if ((node.propertyName ?? node.name).text !== 'TaskDateIndex') return false;
+  const importClause = node.parent.parent;
   const importDeclaration = node.parent.parent.parent;
   return (
+    ts.isImportClause(importClause) &&
+    !importClause.isTypeOnly &&
+    !node.isTypeOnly &&
     ts.isImportDeclaration(importDeclaration) &&
     ts.isStringLiteralLike(importDeclaration.moduleSpecifier) &&
     resolvesCanonicalTaskDateIndex(
       importDeclaration.getSourceFile().fileName,
       importDeclaration.moduleSpecifier.text,
     )
+  );
+}
+
+function hasStringLiteralTaskDateIndexAlias(node: ts.Node): boolean {
+  const names =
+    ts.isImportSpecifier(node) || ts.isExportSpecifier(node)
+      ? [node.propertyName, node.name]
+      : ts.isNamespaceExport(node)
+        ? [node.name]
+        : [];
+  return names.some(
+    (name) => name !== undefined && ts.isStringLiteralLike(name) && name.text === 'TaskDateIndex',
   );
 }
 
@@ -245,6 +261,10 @@ function hasForbiddenProductionCompatibility(path: string, candidate: string): b
       node.expression.text === 'plugin' &&
       node.name.text === 'store'
     ) {
+      forbidden = true;
+      return;
+    }
+    if (hasStringLiteralTaskDateIndexAlias(node)) {
       forbidden = true;
       return;
     }
@@ -405,6 +425,35 @@ describe('final task consumer contract', () => {
         'export class TaskDateIndex<T> { method() { const TaskDateIndex = class {}; } }',
       ),
     ).toBe(true);
+  });
+
+  it('requires the live value import and rejects string-literal TaskDateIndex aliases', () => {
+    const disguisedImportsAndExports = [
+      {
+        path: TASK_DATE_INDEX_CONSUMER,
+        candidate: "import type { TaskDateIndex } from './TaskDateIndex';",
+      },
+      {
+        path: TASK_DATE_INDEX_CONSUMER,
+        candidate: "import { type TaskDateIndex } from './TaskDateIndex';",
+      },
+      {
+        path: 'src/example.ts',
+        candidate:
+          'import { "TaskDateIndex" as OldIndex } from \'./tasks/infrastructure/TaskDateIndex\';',
+      },
+      {
+        path: CANONICAL_TASK_DATE_INDEX,
+        candidate:
+          'export class TaskDateIndex<T> {}\nconst Replacement = class {};\nexport { Replacement as "TaskDateIndex" };',
+      },
+    ];
+
+    expect(
+      disguisedImportsAndExports.filter(({ path, candidate }) =>
+        hasForbiddenProductionCompatibility(path, candidate),
+      ),
+    ).toEqual(disguisedImportsAndExports);
   });
 
   it('rejects canonical TaskDateIndex declaration merging and export aliases', () => {
