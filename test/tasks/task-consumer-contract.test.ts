@@ -157,6 +157,18 @@ function isCanonicalTaskDateIndexImport(path: string, node: ts.NamedDeclaration)
   );
 }
 
+function isInsideCanonicalTaskDateIndex(path: string, node: ts.Node): boolean {
+  if (path !== CANONICAL_TASK_DATE_INDEX) return false;
+  let ancestor: ts.Node | undefined = node.parent;
+  while (ancestor && !ts.isSourceFile(ancestor)) {
+    if (ts.isClassDeclaration(ancestor) && isExportedCanonicalTaskDateIndex(path, ancestor)) {
+      return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+}
+
 function isAllowedTaskDateIndexIdentifier(path: string, node: ts.Identifier): boolean {
   if (
     path === CANONICAL_TASK_DATE_INDEX &&
@@ -165,6 +177,7 @@ function isAllowedTaskDateIndexIdentifier(path: string, node: ts.Identifier): bo
   ) {
     return isExportedCanonicalTaskDateIndex(path, node.parent);
   }
+  if (isInsideCanonicalTaskDateIndex(path, node)) return true;
   if (path !== TASK_DATE_INDEX_CONSUMER) return false;
   if (ts.isImportSpecifier(node.parent) && node.parent.name === node) {
     return isCanonicalTaskDateIndexImport(path, node.parent);
@@ -373,6 +386,25 @@ describe('final task consumer contract', () => {
         hasForbiddenProductionCompatibility(CANONICAL_TASK_DATE_INDEX, candidate),
       ),
     ).toEqual(nearMisses);
+  });
+
+  it('allows the canonical TaskDateIndex body to evolve without allowing nested redeclarations', () => {
+    const bodyEvolutions = [
+      'export class TaskDateIndex<T> { clone(): TaskDateIndex<T> { return new TaskDateIndex<T>(() => []); } }',
+      'export class TaskDateIndex<T> { static empty<T>(): TaskDateIndex<T> { return null as unknown as TaskDateIndex<T>; } }',
+    ];
+
+    expect(
+      bodyEvolutions.filter((candidate) =>
+        hasForbiddenProductionCompatibility(CANONICAL_TASK_DATE_INDEX, candidate),
+      ),
+    ).toEqual([]);
+    expect(
+      hasForbiddenProductionCompatibility(
+        CANONICAL_TASK_DATE_INDEX,
+        'export class TaskDateIndex<T> { method() { const TaskDateIndex = class {}; } }',
+      ),
+    ).toBe(true);
   });
 
   it('rejects canonical TaskDateIndex declaration merging and export aliases', () => {
