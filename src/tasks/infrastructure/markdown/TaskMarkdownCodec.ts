@@ -559,18 +559,45 @@ export class TaskMarkdownCodec {
     return fragments;
   }
 
-  private titleFragmentText(parsed: ParsedTaskLine, fragment: SourceSpan): string {
-    return parsed.original
-      .slice(fragment.from, fragment.to)
-      .replace(/\s{2,}/gu, ' ')
-      .trim();
+  private protectedFragmentTokens(
+    parsed: ParsedTaskLine,
+    fragment: SourceSpan,
+  ): readonly SourceSpan[] {
+    return parsed.spans.filter(
+      (span) => span.kind !== 'separator' && span.from >= fragment.from && span.to <= fragment.to,
+    );
+  }
+
+  private matchingProtectedPrefix(
+    source: ParsedTaskLine,
+    sourceFragment: SourceSpan,
+    candidate: ParsedTaskLine,
+    candidateFragment: SourceSpan,
+  ): SourceSpan | undefined {
+    const sourceTokens = this.protectedFragmentTokens(source, sourceFragment);
+    const candidateTokens = this.protectedFragmentTokens(candidate, candidateFragment);
+    if (sourceTokens.length === 0 || candidateTokens.length < sourceTokens.length) return undefined;
+
+    const matches = sourceTokens.every((sourceToken, index) => {
+      const candidateToken = candidateTokens[index];
+      return (
+        candidateToken?.kind === sourceToken.kind &&
+        candidate.original.slice(candidateToken.from, candidateToken.to) ===
+          source.original.slice(sourceToken.from, sourceToken.to)
+      );
+    });
+    if (!matches) return undefined;
+
+    return {
+      kind: 'unknown',
+      from: candidateTokens[0]!.from,
+      to: candidateTokens[sourceTokens.length - 1]!.to,
+    };
   }
 
   private editableTitleReplacement(parsed: ParsedTaskLine, markdownTitle: string): string {
-    const protectedText = this.protectedTitleFragments(parsed).map((fragment) =>
-      this.titleFragmentText(parsed, fragment),
-    );
-    if (protectedText.length === 0) return markdownTitle;
+    const protectedFragments = this.protectedTitleFragments(parsed);
+    if (protectedFragments.length === 0) return markdownTitle;
 
     const prefix = '- [ ] ';
     const candidate = this.parseLine(`${prefix}${markdownTitle}`, { filePath: '', line: 0 });
@@ -578,14 +605,21 @@ export class TaskMarkdownCodec {
     const candidateFragments = this.protectedTitleFragments(candidate);
     const used = new Set<number>();
     const removals: SourceSpan[] = [];
-    for (const expected of protectedText) {
+    for (const sourceFragment of protectedFragments) {
       const matchIndex = candidateFragments.findIndex(
-        (fragment, index) =>
-          !used.has(index) && this.titleFragmentText(candidate, fragment) === expected,
+        (candidateFragment, index) =>
+          !used.has(index) &&
+          this.matchingProtectedPrefix(parsed, sourceFragment, candidate, candidateFragment) !==
+            undefined,
       );
       if (matchIndex < 0) continue;
       used.add(matchIndex);
-      const match = candidateFragments[matchIndex]!;
+      const match = this.matchingProtectedPrefix(
+        parsed,
+        sourceFragment,
+        candidate,
+        candidateFragments[matchIndex]!,
+      )!;
       removals.push({
         kind: 'unknown',
         from: match.from - prefix.length,

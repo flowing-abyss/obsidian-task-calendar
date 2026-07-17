@@ -570,6 +570,88 @@ describe('TaskMarkdownCodec', () => {
       });
     });
 
+    it('removes only the source-owned marker from a longer displayed protected group', () => {
+      const source = '- [ ] 🧭';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content: '- [ ] 🧭 TEMP',
+      });
+    });
+
+    it('keeps ordinary payload after hidden carriers without duplicating source-owned spans', () => {
+      const source = '- [ ] Old 🧭 #tag payload 🆔 id ⛔ dep ^block';
+
+      expect(parse(source).markdownTitle).toBe('Old 🧭 payload');
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content: '- [ ] Old payload TEMP 🧭 #tag 🆔 id ⛔ dep ^block',
+      });
+    });
+
+    it.each([
+      [
+        '- [ ] Old 🧭 📅 2026-07-20 payload',
+        '- [ ] Old payload TEMP 🧭 📅 2026-07-20',
+        '- [ ] Old payload TEMP AGAIN 🧭 📅 2026-07-20',
+      ],
+      [
+        '- [ ] Old 🧭 🆔 id payload',
+        '- [ ] Old payload TEMP 🧭 🆔 id',
+        '- [ ] Old payload TEMP AGAIN 🧭 🆔 id',
+      ],
+      [
+        '- [ ] Old 🧭 ^block payload ^terminal',
+        '- [ ] Old payload TEMP 🧭 ^block ^terminal',
+        '- [ ] Old payload TEMP AGAIN 🧭 ^block ^terminal',
+      ],
+    ])(
+      'keeps hidden recognized carriers once across repeated displayed-title edits: %s',
+      (source, firstExpected, secondExpected) => {
+        const first = codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        });
+        expect(first).toEqual({ type: 'changed', content: firstExpected });
+
+        const firstContent = (first as Extract<typeof first, { type: 'changed' }>).content;
+        expect(
+          codec.applyLineEdit(firstContent, {
+            type: 'set-title',
+            markdownTitle: `${parse(firstContent).markdownTitle} AGAIN`,
+          }),
+        ).toEqual({ type: 'changed', content: secondExpected });
+      },
+    );
+
+    it('matches protected groups by span and occurrence across reorder and deletion edits', () => {
+      const source = '- [ ] Old 🧭 same Middle 🧭 same End 🧪 other';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: '🧪 other New 🧭 same 🧭 same',
+        }),
+      ).toEqual({
+        type: 'changed',
+        content: '- [ ] New 🧭 same 🧭 same 🧪 other',
+      });
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New 🧭 same 🧭 same 🧪 other',
+      });
+    });
+
     it('returns unchanged for semantic no-op edits without normalizing bytes', () => {
       const source = '- [ ] Task  📅   2026-07-20 ^block\r\n';
 
