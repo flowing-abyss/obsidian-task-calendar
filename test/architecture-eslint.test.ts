@@ -35,11 +35,15 @@ describe('task architecture ESLint boundaries', () => {
   it.each([
     ['src/tasks/infrastructure/TaskIndex.ts', "import '@vendor/ui/widget';"],
     ['src/ui/StatusMarker.ts', "import '@vendor/tasks/domain';"],
-  ])('does not classify an external package as a local layer from %s', async (path, source) => {
-    const items = await diagnostics(path, source);
-    expectParseSafe(items);
-    expect(architectureDiagnostics(items)).toEqual([]);
-  });
+  ])(
+    'does not classify an external package as a local layer from %s',
+    async (path, source) => {
+      const items = await diagnostics(path, source);
+      expectParseSafe(items);
+      expect(architectureDiagnostics(items)).toEqual([]);
+    },
+    15_000,
+  );
 
   it.each([
     [

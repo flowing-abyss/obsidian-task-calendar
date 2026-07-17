@@ -102,23 +102,25 @@ interface ScenarioMetrics {
 }
 
 interface PerformanceBudget {
-  initialIndexMs: number;
-  queryAllMs: number;
-  queryByTagMs: number;
-  queryByListDateMs: number;
-  queryByCalendarDateMs: number;
-  queryByFileMs: number;
+  readonly initialIndexMs: number;
+  readonly queryAllMs: number;
+  readonly queryByTagMs: number;
+  readonly queryByListDateMs: number;
+  readonly queryByCalendarDateMs: number;
+  readonly queryByFileMs: number;
 }
+
+type ScenarioId = '1k' | '5k' | '10k' | 'dense';
 
 interface Scenario {
-  label: string;
-  fileCount: number;
-  tasksPerFile: number;
-  budget: PerformanceBudget;
+  readonly label: string;
+  readonly fileCount: number;
+  readonly tasksPerFile: number;
+  readonly budget: PerformanceBudget;
 }
 
-const SCENARIOS: Scenario[] = [
-  {
+const SCENARIOS = {
+  '1k': {
     label: '1,000 files × 10 tasks/file',
     fileCount: 1_000,
     tasksPerFile: DENSITY,
@@ -131,7 +133,7 @@ const SCENARIOS: Scenario[] = [
       queryByFileMs: 5,
     },
   },
-  {
+  '5k': {
     label: '5,000 files × 10 tasks/file',
     fileCount: 5_000,
     tasksPerFile: DENSITY,
@@ -144,7 +146,7 @@ const SCENARIOS: Scenario[] = [
       queryByFileMs: 5,
     },
   },
-  {
+  '10k': {
     label: '10,000 files × 10 tasks/file',
     fileCount: 10_000,
     tasksPerFile: DENSITY,
@@ -157,7 +159,7 @@ const SCENARIOS: Scenario[] = [
       queryByFileMs: 10,
     },
   },
-  {
+  dense: {
     label: 'dense: 100 files × 100 tasks/file',
     fileCount: 100,
     tasksPerFile: 100,
@@ -170,7 +172,7 @@ const SCENARIOS: Scenario[] = [
       queryByFileMs: 5,
     },
   },
-];
+} as const satisfies Readonly<Record<ScenarioId, Scenario>>;
 
 async function runScenario(fileCount: number, tasksPerFile: number): Promise<ScenarioMetrics> {
   const files = buildFiles(fileCount, tasksPerFile);
@@ -254,13 +256,75 @@ function expectWithinBudget(metrics: ScenarioMetrics, budget: PerformanceBudget)
 // ---------------------------------------------------------------------------
 
 describe('TaskIndex performance benchmark', () => {
-  for (const scenario of SCENARIOS) {
+  it('uses the exact fixed workload and absolute budget matrix', () => {
+    expect(SCENARIOS).toEqual({
+      '1k': {
+        label: '1,000 files × 10 tasks/file',
+        fileCount: 1_000,
+        tasksPerFile: 10,
+        budget: {
+          initialIndexMs: 2_000,
+          queryAllMs: 25,
+          queryByTagMs: 50,
+          queryByListDateMs: 50,
+          queryByCalendarDateMs: 50,
+          queryByFileMs: 5,
+        },
+      },
+      '5k': {
+        label: '5,000 files × 10 tasks/file',
+        fileCount: 5_000,
+        tasksPerFile: 10,
+        budget: {
+          initialIndexMs: 5_000,
+          queryAllMs: 50,
+          queryByTagMs: 100,
+          queryByListDateMs: 100,
+          queryByCalendarDateMs: 100,
+          queryByFileMs: 5,
+        },
+      },
+      '10k': {
+        label: '10,000 files × 10 tasks/file',
+        fileCount: 10_000,
+        tasksPerFile: 10,
+        budget: {
+          initialIndexMs: 10_000,
+          queryAllMs: 100,
+          queryByTagMs: 200,
+          queryByListDateMs: 200,
+          queryByCalendarDateMs: 200,
+          queryByFileMs: 10,
+        },
+      },
+      dense: {
+        label: 'dense: 100 files × 100 tasks/file',
+        fileCount: 100,
+        tasksPerFile: 100,
+        budget: {
+          initialIndexMs: 2_000,
+          queryAllMs: 25,
+          queryByTagMs: 50,
+          queryByListDateMs: 50,
+          queryByCalendarDateMs: 50,
+          queryByFileMs: 5,
+        },
+      },
+    });
+  });
+
+  /*
+   * Deliberately kept below the executable matrix contract so changing a
+   * workload cannot silently retain the budget for a different dataset.
+   */
+  for (const scenario of Object.values(SCENARIOS)) {
     it(
       scenario.label,
       async () => {
         const metrics = await runScenario(scenario.fileCount, scenario.tasksPerFile);
 
         printMetrics(scenario.label, metrics);
+        expect(metrics.totalTasks).toBe(scenario.fileCount * scenario.tasksPerFile);
         expectWithinBudget(metrics, scenario.budget);
       },
       120_000,

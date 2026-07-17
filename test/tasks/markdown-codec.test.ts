@@ -33,6 +33,29 @@ function expectLosslessPartition(parsed: ParsedTaskLine): void {
 }
 
 describe('TaskMarkdownCodec', () => {
+  it('inserts a title before metadata when the source has no editable title fragment', () => {
+    expect(
+      codec.applyLineEdit('- [ ] 📅 2026-07-20', {
+        type: 'set-title',
+        markdownTitle: 'New title',
+      }),
+    ).toEqual({ type: 'changed', content: '- [ ] New title 📅 2026-07-20' });
+  });
+
+  it.each([-1, 0.5])('rejects invalid text-link occurrence %s', (occurrence) => {
+    expect(codec.editTextLink('before [[Link]] after', occurrence, '[[Changed]]')).toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-target', field: 'link' }],
+    });
+  });
+
+  it('rejects a missing text-link occurrence', () => {
+    expect(codec.editTextLink('plain text', 0, '[[Changed]]')).toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-target', field: 'link' }],
+    });
+  });
+
   describe('full-line validation used by task creation', () => {
     it.each([
       ['ordinary metadata', '- [ ] Gym ⏰ 10:00 ⏱️ 1h 📅 2026-07-11'],

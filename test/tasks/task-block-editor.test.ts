@@ -4,6 +4,41 @@ import { TaskBlockEditor } from '../../src/tasks/infrastructure/markdown/TaskBlo
 import { TaskLocator } from '../../src/tasks/infrastructure/markdown/TaskLocator';
 
 describe('TaskBlockEditor', () => {
+  it('rejects multiline roots and malformed aggregates without changing a destination', () => {
+    const editor = new TaskBlockEditor();
+
+    expect(editor.insertRoot('', '- [ ] root\n- [ ] second', { type: 'append' })).toBeUndefined();
+    expect(
+      editor.insertRootBlock('', '- [ ] root\nplain sibling', { type: 'append' }),
+    ).toBeUndefined();
+  });
+
+  it('rejects deletion when the referenced root range is outside current content', () => {
+    expect(
+      new TaskBlockEditor().deleteRoot('- [ ] current', {
+        line: 3,
+        toLine: 4,
+        source: '- [ ] stale',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('creates a missing section after blank content without adding a second spacer', () => {
+    expect(
+      new TaskBlockEditor().insertRootBlock('\n', '- [ ] task', {
+        type: 'section',
+        heading: '## Tasks',
+      })?.content,
+    ).toBe('\n## Tasks\n- [ ] task\n');
+  });
+
+  it('removes the preceding line ending with a final root that has no ending', () => {
+    const editor = new TaskBlockEditor();
+    const source = 'note\n- [ ] final';
+
+    expect(editor.deleteRoot(source, editor.rootBlocks(source)[0]!)).toBe('note');
+  });
+
   it.each([
     [
       'append mode',
@@ -247,6 +282,13 @@ describe('TaskBlockEditor', () => {
 });
 
 describe('TaskLocator', () => {
+  it('decodes legacy separator-free revisions and rejects non-string JSON payloads', () => {
+    const locator = new TaskLocator();
+
+    expect(locator.exactSource('block:"legacy source"')).toBe('legacy source');
+    expect(locator.exactSource('block:fingerprint:42')).toBeUndefined();
+  });
+
   it('uses the line hint, recovers unique drift, and reports duplicate exact blocks as ambiguous', () => {
     const locator = new TaskLocator(() => 'same-fingerprint');
     const editor = new TaskBlockEditor();

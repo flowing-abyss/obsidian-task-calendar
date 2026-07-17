@@ -66,6 +66,42 @@ function service(
 }
 
 describe('TaskApplicationService planning commands', () => {
+  it('rejects an empty create body before destination resolution or repository access', async () => {
+    const edit = vi.fn<TaskRepository['edit']>();
+    const create = vi.fn<TaskRepository['create']>();
+
+    await expect(
+      service({ edit, create }).execute({
+        type: 'create',
+        markdownBody: '   ',
+        destination: {
+          type: 'explicit',
+          destination: { filePath: 'tasks.md', insertion: { type: 'append' } },
+        },
+      }),
+    ).resolves.toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-title', field: 'title' }],
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a bare carriage return in description text before repository access', async () => {
+    const edit = vi.fn<TaskRepository['edit']>();
+
+    await expect(
+      service({ edit }).execute({
+        type: 'set-description',
+        target: { type: 'task', ref },
+        text: 'first\rsecond',
+      }),
+    ).resolves.toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-target', field: 'description' }],
+    });
+    expect(edit).not.toHaveBeenCalled();
+  });
+
   it('stamps add-comment with the injected local day before repository delegation', async () => {
     const committed: TaskRepositoryResult = {
       type: 'committed',

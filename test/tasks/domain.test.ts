@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { StatusCatalog } from '../../src/tasks/domain/StatusCatalog';
+import { sameTaskNodeRef, type TaskNodeRef } from '../../src/tasks/domain/types';
 import { durationMinutes, localDate, localTime } from '../../src/tasks/domain/validation';
 
 describe('task domain values', () => {
+  it('rejects an unknown runtime node kind instead of treating it as the same node', () => {
+    const injected = { type: 'external', ref: {} } as unknown as TaskNodeRef;
+
+    expect(sameTaskNodeRef(injected, injected)).toBe(false);
+  });
+
   it('accepts real dates and rejects rollover dates', () => {
     expect(localDate('2026-07-13')).toBe('2026-07-13');
     expect(() => localDate('2026-02-30')).toThrow('invalid-date');

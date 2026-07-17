@@ -24,7 +24,10 @@ interface Harness {
   ) => readonly import('../../src/tasks/domain/types').TaskSnapshot[];
 }
 
-async function harness(files: Record<string, string>): Promise<Harness> {
+async function harness(
+  files: Record<string, string>,
+  snapshotsOverride?: Harness['snapshotsFromContent'],
+): Promise<Harness> {
   const app = await createAppWithFiles(files);
   const statusCatalog = new StatusCatalog(toStatusRules(DEFAULT_SETTINGS.taskStatuses));
   const codec = new TaskMarkdownCodec(statusCatalog);
@@ -34,8 +37,9 @@ async function harness(files: Record<string, string>): Promise<Harness> {
     statusCatalog,
     dailyNoteFormat: DEFAULT_SETTINGS.desktop.dailyNoteFormat,
   });
-  const snapshotsFromContent = (path: string, content: string) =>
-    index.snapshotsFromContent(path, content);
+  const snapshotsFromContent =
+    snapshotsOverride ??
+    ((path: string, content: string) => index.snapshotsFromContent(path, content));
   const repository = new ObsidianTaskRepository(app, {
     codec,
     editor,
@@ -257,6 +261,70 @@ describe('ObsidianTaskRepository planning contract', () => {
       path: 'tasks.md',
       contentState: 'unknown',
     });
+  });
+
+  it('rejects unavailable create and move paths before starting a vault transaction', async () => {
+    const h = await harness({ 'tasks.md': '- [ ] task\n' });
+
+    await expect(
+      h.repository.create(
+        { filePath: 'missing.md', insertion: { type: 'append' } },
+        { markdownBody: 'new task' },
+      ),
+    ).resolves.toEqual({
+      type: 'invalid',
+      issues: [{ code: 'destination-unavailable', field: 'destination' }],
+    });
+    await expect(
+      h.repository.move(
+        { filePath: 'missing.md', line: 0, revision: 'missing' },
+        { filePath: 'tasks.md', insertion: { type: 'append' } },
+      ),
+    ).resolves.toMatchObject({ type: 'not-found' });
+  });
+
+  it('fails closed when an exact block cannot be projected before or after a mutation', async () => {
+    const source = '- [ ] task\n';
+    const h = await harness({ 'tasks.md': source, 'target.md': '' }, () => []);
+    const ref = refFor(h, 'tasks.md', source);
+
+    await expect(h.repository.edit({ type: 'delete', ref })).resolves.toMatchObject({
+      type: 'not-found',
+    });
+    await expect(h.repository.edit(patch(ref, 'due', '2026-07-20'))).resolves.toEqual({
+      type: 'invalid',
+      issues: [{ code: 'invalid-task-syntax' }],
+    });
+    await expect(
+      h.repository.move(ref, {
+        filePath: 'target.md',
+        insertion: { type: 'append' },
+      }),
+    ).resolves.toMatchObject({ type: 'not-found' });
+    expect(await read(h.app, 'tasks.md')).toBe(source);
+  });
+
+  it('maps a process implementation that skips its callback to a fail-closed I/O result', async () => {
+    const source = '- [ ] task\n';
+    const h = await harness({ 'tasks.md': source });
+    vi.spyOn(h.app.vault, 'process').mockResolvedValue(source);
+
+    await expect(
+      h.repository.edit(patch(refFor(h, 'tasks.md', source), 'due', '2026-07-20')),
+    ).resolves.toEqual({
+      type: 'io-error',
+      cause: 'process-error',
+      path: 'tasks.md',
+      contentState: 'unknown',
+    });
+  });
+
+  it('throws for an impossible runtime edit command without a task reference', async () => {
+    const h = await harness({ 'tasks.md': '- [ ] task\n' });
+
+    await expect(
+      h.repository.edit({ type: 'external-command' } as unknown as TaskEditCommand),
+    ).rejects.toThrow('Task edit command has no root reference');
   });
 
   it('confirms every child block before editing and never adopts a same-line replacement', async () => {

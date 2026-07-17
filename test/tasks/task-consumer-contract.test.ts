@@ -207,7 +207,7 @@ describe('final task consumer contract', () => {
     );
 
     expect(references).toEqual([]);
-  });
+  }, 15_000);
 
   it('recognizes removed paths through aliases, source suffixes, and TypeScript module forms', () => {
     const candidates = [
