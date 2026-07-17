@@ -511,6 +511,52 @@ describe('TaskMarkdownCodec', () => {
       },
     );
 
+    it.each([
+      ['wiki link', '^bad[[Doc]]'],
+      ['Markdown link', '^bad[x](u)'],
+      ['inline code', '^bad`code`'],
+      ['nested carrier before a Markdown link', '^📅[x](u)'],
+    ])(
+      'protects a complete malformed terminal caret token that ends with %s',
+      (_case, terminal) => {
+        const source = `- [ ] Old ${terminal}\r\n`;
+        const parsed = parse(source);
+
+        expect(parsed.markdownTitle).toBe('Old');
+        expect(spanText(parsed, 'malformed-known')).toEqual([terminal]);
+        expectLosslessPartition(parsed);
+
+        const changed = codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: 'New',
+        });
+        expect(changed).toEqual({ type: 'changed', content: `- [ ] New ${terminal}\r\n` });
+        expect(
+          codec.applyLineEdit((changed as Extract<typeof changed, { type: 'changed' }>).content, {
+            type: 'set-title',
+            markdownTitle: 'New',
+          }),
+        ).toEqual({ type: 'unchanged', content: `- [ ] New ${terminal}\r\n` });
+      },
+    );
+
+    it('keeps valid terminal blocks protected and ordinary nonterminal carets editable', () => {
+      const valid = parse('- [ ] Old ^valid\r\n');
+      expect(spanText(valid, 'block-id')).toEqual(['^valid']);
+      expect(valid.markdownTitle).toBe('Old');
+      expect(
+        codec.applyLineEdit(valid.original, { type: 'set-title', markdownTitle: 'New' }),
+      ).toEqual({ type: 'changed', content: '- [ ] New ^valid\r\n' });
+
+      const ordinary = parse('- [ ] Old ^middle text\r\n');
+      expect(spanText(ordinary, 'block-id')).toEqual([]);
+      expect(spanText(ordinary, 'malformed-known')).toEqual([]);
+      expect(ordinary.markdownTitle).toBe('Old ^middle text');
+      expect(
+        codec.applyLineEdit(ordinary.original, { type: 'set-title', markdownTitle: 'New' }),
+      ).toEqual({ type: 'changed', content: '- [ ] New\r\n' });
+    });
+
     it('sweeps thousands of marker candidates across merged code and link exclusions', () => {
       const segmentCount = 1_024;
       const segments = Array.from(
@@ -528,6 +574,47 @@ describe('TaskMarkdownCodec', () => {
       expect(parsed.markdownTitle).toContain('[date0 📅 nope](https://example.test/0)');
       expect(parsed.markdownTitle).toContain('`time1023 ⏰ 9:5`');
       expectLosslessPartition(parsed);
+    });
+
+    it('preserves dense malformed ID/dependency grammar and carrier adjacency', () => {
+      const segmentCount = 512;
+      const segments = Array.from(
+        { length: segmentCount },
+        (_, index) =>
+          ` 🆔 good_${index}` +
+          ` 🆔️ bad.${index}` +
+          ` ⛔ dep_${index}, next-${index}` +
+          ` ⛔️ one,,two${index}` +
+          ` 🆔adjacent${index}📅 2026-07-20`,
+      );
+      const parsed = parse(`- [ ] Head${segments.join('')}`);
+
+      expect(spanText(parsed, 'task-id')).toHaveLength(segmentCount);
+      expect(spanText(parsed, 'depends-on')).toHaveLength(segmentCount);
+      expect(spanText(parsed, 'malformed-known')).toHaveLength(segmentCount * 3);
+      expect(spanText(parsed, 'due')).toHaveLength(segmentCount);
+      expectLosslessPartition(parsed);
+    });
+
+    it('avoids quadratic growth for dense ID/dependency markers', () => {
+      const denseSource = (count: number): string =>
+        `- [ ] Head${Array.from({ length: count }, () => ' 🆔 . ⛔ .').join('')}`;
+      const bestOfThreeBatches = (source: string): number => {
+        codec.parseLine(source, location);
+        let best = Number.POSITIVE_INFINITY;
+        for (let run = 0; run < 3; run++) {
+          const startedAt = performance.now();
+          for (let iteration = 0; iteration < 5; iteration++) {
+            codec.parseLine(source, location);
+          }
+          best = Math.min(best, performance.now() - startedAt);
+        }
+        return best;
+      };
+      const smallMs = bestOfThreeBatches(denseSource(1_000));
+      const largeMs = bestOfThreeBatches(denseSource(2_000));
+
+      expect(largeMs / smallMs).toBeLessThan(3.6);
     });
 
     it('preserves all valid source-owned carriers and CRLF byte-exactly', () => {

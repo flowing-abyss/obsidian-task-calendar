@@ -178,8 +178,8 @@ const TOKEN_RANK: Readonly<Partial<Record<TaskSpanKind, number>>> = {
 
 const TASK_ID = '[A-Za-z0-9_-]+';
 const TASK_ID_SEQUENCE = `${TASK_ID}( *, *${TASK_ID} *)*`;
-const TASK_ID_RE = new RegExp(`🆔\\uFE0F? *(${TASK_ID})(?=$|\\s)`, 'u');
-const DEPENDS_ON_RE = new RegExp(`⛔\\uFE0F? *(${TASK_ID_SEQUENCE})(?=$|\\s)`, 'u');
+const TASK_ID_RE = new RegExp(`🆔\\uFE0F? *(${TASK_ID})(?=$|\\s)`, 'uy');
+const DEPENDS_ON_RE = new RegExp(`⛔\\uFE0F? *(${TASK_ID_SEQUENCE})(?=$|\\s)`, 'uy');
 
 const KNOWN_CARRIER_MARKERS = [
   { marker: '➕', kind: 'created' },
@@ -304,13 +304,10 @@ function excludeOverlappingRanges<T extends SourceRange>(
   return accepted;
 }
 
-function overlapsSortedRange(
-  candidate: SourceRange,
-  sortedRanges: readonly SourceRange[],
-): boolean {
+function containsSortedPoint(at: number, sortedRanges: readonly SourceRange[]): boolean {
   for (const range of sortedRanges) {
-    if (range.to <= candidate.from) continue;
-    return candidate.from < range.to && candidate.to > range.from;
+    if (range.to <= at) continue;
+    return range.from <= at && at < range.to;
   }
   return false;
 }
@@ -341,8 +338,9 @@ function pushPinnedCarrierCandidates(
   while (searchFrom < body.length) {
     const markerAt = body.indexOf(marker, searchFrom);
     if (markerAt < 0) break;
-    const match = regex.exec(body.slice(markerAt));
-    if (match?.index === 0) {
+    regex.lastIndex = markerAt;
+    const match = regex.exec(body);
+    if (match?.index === markerAt) {
       candidates.push({
         kind,
         from: bodyFrom + markerAt,
@@ -1146,7 +1144,7 @@ export class TaskMarkdownCodec {
         from: prefixEnd + terminalCaret.from,
         to: prefixEnd + terminalCaret.to,
       };
-      const isAtomicTitle = overlapsSortedRange(terminalRange, atomicTitleRanges);
+      const isAtomicTitle = containsSortedPoint(terminalRange.from, atomicTitleRanges);
       const isValidBlock = includesExactCandidate(candidates, terminalRange, 'block-id');
       if (!isAtomicTitle && !isValidBlock) {
         malformedTerminal = {

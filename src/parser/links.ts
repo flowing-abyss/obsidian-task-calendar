@@ -29,8 +29,14 @@ function isEscaped(input: string, index: number): boolean {
   return slashCount % 2 === 1;
 }
 
-function insideAnyRange(at: number, ranges: readonly SourceRange[]): boolean {
-  return ranges.some((range) => at >= range.from && at < range.to);
+function insideOrderedRange(
+  at: number,
+  ranges: readonly SourceRange[],
+  cursor: { index: number },
+): boolean {
+  while (cursor.index < ranges.length && ranges[cursor.index]!.to <= at) cursor.index++;
+  const range = ranges[cursor.index];
+  return range !== undefined && at >= range.from && at < range.to;
 }
 
 /** Parse [[wiki]], [[wiki|alias]] and [md](url) links in document order. */
@@ -40,8 +46,9 @@ export function parseLinks(input: string): LinkToken[] {
   const wiki = /(?<!!)\[\[((?:\\.|[^|[\]])+)(?:\|((?:\\.|[^[\]])+))?\]\]/gu;
   const markdown = /(?<!!)\[((?:\\.|[^[\]])+)\]\(((?:\\.|[^)])+)\)/gu;
   let m: RegExpExecArray | null;
+  const wikiRangeCursor = { index: 0 };
   while ((m = wiki.exec(input)) !== null) {
-    if (isEscaped(input, m.index) || insideAnyRange(m.index, inlineCode)) {
+    if (isEscaped(input, m.index) || insideOrderedRange(m.index, inlineCode, wikiRangeCursor)) {
       continue;
     }
     const target = m[1] ?? '';
@@ -54,8 +61,9 @@ export function parseLinks(input: string): LinkToken[] {
       index: m.index,
     });
   }
+  const markdownRangeCursor = { index: 0 };
   while ((m = markdown.exec(input)) !== null) {
-    if (isEscaped(input, m.index) || insideAnyRange(m.index, inlineCode)) {
+    if (isEscaped(input, m.index) || insideOrderedRange(m.index, inlineCode, markdownRangeCursor)) {
       continue;
     }
     tokens.push({

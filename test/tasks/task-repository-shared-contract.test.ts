@@ -547,6 +547,36 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
       expect(await h.read()).toBe('- [ ] New\r\n');
     });
 
+    it.each(['^bad[[Doc]]', '^bad[x](u)', '^bad`code`', '^📅[x](u)'])(
+      'preserves the complete malformed terminal token %s through repository title edits',
+      async (terminal) => {
+        const source = `- [ ] Old ${terminal}\r\n`;
+        const h = await makeHarness(adapter, source);
+        const root = h.snapshots(source)[0]!;
+
+        expect(root.markdownTitle).toBe('Old');
+        await expect(
+          h.repository.edit({
+            type: 'patch',
+            target: { type: 'task', ref: root.ref },
+            patch: { markdownTitle: { type: 'set', value: 'New' } },
+          }),
+        ).resolves.toMatchObject({ type: 'committed', changed: true });
+        expect(await h.read()).toBe(`- [ ] New ${terminal}\r\n`);
+
+        const changed = await h.read();
+        const reparsed = h.snapshots(changed)[0]!;
+        await expect(
+          h.repository.edit({
+            type: 'patch',
+            target: { type: 'task', ref: reparsed.ref },
+            patch: { markdownTitle: { type: 'set', value: 'New' } },
+          }),
+        ).resolves.toMatchObject({ type: 'committed', changed: false });
+        expect(await h.read()).toBe(changed);
+      },
+    );
+
     it('edits links only inside the confirmed title, description, or revisioned comment target', async () => {
       const source =
         '- [ ] [[TitleA|same]] and [[TitleB|same]] #tag 🆔 keep ⛔ dep ^block\r\n' +

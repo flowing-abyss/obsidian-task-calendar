@@ -98,6 +98,53 @@ describe('parseLinks', () => {
   ] as const)('keeps a %s link whose label contains inline code', (source, type) => {
     expect(parseLinks(source)).toEqual([expect.objectContaining({ raw: source, type, index: 0 })]);
   });
+
+  it('keeps dense mixed link candidates ordered while excluding closed inline code', () => {
+    const segmentCount = 2_048;
+    const segments = Array.from(
+      { length: segmentCount },
+      (_, index) =>
+        ` \`[[hidden-${index}]] [hidden-${index}](hidden-${index})\`` +
+        ` [[wiki-${index}]] [md-${index}](target-${index})`,
+    );
+    const tokens = parseLinks(segments.join(''));
+
+    expect(tokens).toHaveLength(segmentCount * 2);
+    expect(tokens[0]).toMatchObject({ raw: '[[wiki-0]]', type: 'wiki' });
+    expect(tokens[1]).toMatchObject({ raw: '[md-0](target-0)', type: 'md' });
+    expect(tokens[tokens.length - 2]).toMatchObject({ raw: '[[wiki-2047]]', type: 'wiki' });
+    expect(tokens[tokens.length - 1]).toMatchObject({
+      raw: '[md-2047](target-2047)',
+      type: 'md',
+    });
+    for (let index = 1; index < tokens.length; index++) {
+      expect(tokens[index]!.index).toBeGreaterThan(tokens[index - 1]!.index);
+    }
+  });
+
+  it('avoids quadratic growth for dense code/link candidates', () => {
+    const denseSource = (count: number): string =>
+      Array.from(
+        { length: count },
+        (_, index) =>
+          ` \`[[hidden-${index}]] [hidden-${index}](hidden-${index})\`` +
+          ` [[wiki-${index}]] [md-${index}](target-${index})`,
+      ).join('');
+    const bestOfThreeBatches = (source: string): number => {
+      parseLinks(source);
+      let best = Number.POSITIVE_INFINITY;
+      for (let run = 0; run < 3; run++) {
+        const startedAt = performance.now();
+        for (let iteration = 0; iteration < 5; iteration++) parseLinks(source);
+        best = Math.min(best, performance.now() - startedAt);
+      }
+      return best;
+    };
+    const smallMs = bestOfThreeBatches(denseSource(1_000));
+    const largeMs = bestOfThreeBatches(denseSource(2_000));
+
+    expect(largeMs / smallMs).toBeLessThan(3.6);
+  });
 });
 
 describe('buildLinkRaw', () => {
