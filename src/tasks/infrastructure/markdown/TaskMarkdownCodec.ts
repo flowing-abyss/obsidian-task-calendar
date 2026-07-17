@@ -268,12 +268,65 @@ function pushTagCandidates(candidates: Candidate[], body: string, bodyFrom: numb
   }
 }
 
-function overlapsRange(candidate: SourceRange, ranges: readonly SourceRange[]): boolean {
-  return ranges.some((range) => candidate.from < range.to && candidate.to > range.from);
+function mergedRanges(ranges: readonly SourceRange[]): readonly SourceRange[] {
+  const sorted = [...ranges].sort((left, right) => left.from - right.from || left.to - right.to);
+  const merged: SourceRange[] = [];
+  for (const range of sorted) {
+    const previous = merged[merged.length - 1];
+    if (!previous || range.from > previous.to) {
+      merged.push(range);
+      continue;
+    }
+    if (range.to > previous.to) {
+      merged[merged.length - 1] = { from: previous.from, to: range.to };
+    }
+  }
+  return merged;
 }
 
-function outsideRanges(candidate: SourceRange, ranges: readonly SourceRange[]): boolean {
-  return !overlapsRange(candidate, ranges);
+function excludeOverlappingRanges<T extends SourceRange>(
+  sortedCandidates: readonly T[],
+  sortedExclusions: readonly SourceRange[],
+): T[] {
+  const accepted: T[] = [];
+  let exclusionIndex = 0;
+  for (const candidate of sortedCandidates) {
+    while (
+      exclusionIndex < sortedExclusions.length &&
+      sortedExclusions[exclusionIndex]!.to <= candidate.from
+    ) {
+      exclusionIndex++;
+    }
+    const exclusion = sortedExclusions[exclusionIndex];
+    if (exclusion && candidate.from < exclusion.to && candidate.to > exclusion.from) continue;
+    accepted.push(candidate);
+  }
+  return accepted;
+}
+
+function overlapsSortedRange(
+  candidate: SourceRange,
+  sortedRanges: readonly SourceRange[],
+): boolean {
+  for (const range of sortedRanges) {
+    if (range.to <= candidate.from) continue;
+    return candidate.from < range.to && candidate.to > range.from;
+  }
+  return false;
+}
+
+function includesExactCandidate(
+  sortedCandidates: readonly Candidate[],
+  range: SourceRange,
+  kind: TaskSpanKind,
+): boolean {
+  for (const candidate of sortedCandidates) {
+    if (candidate.from > range.from) return false;
+    if (candidate.kind === kind && candidate.from === range.from && candidate.to === range.to) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function pushPinnedCarrierCandidates(
@@ -381,9 +434,7 @@ function pushMalformedKnownCandidates(
   markers: ReturnType<typeof markerPositions>,
   boundaries: readonly number[],
 ): void {
-  const protectedRanges = candidates
-    .map(({ from, to }) => ({ from, to }))
-    .sort((left, right) => left.from - right.from || left.to - right.to);
+  const protectedRanges = mergedRanges(candidates);
   let protectedIndex = 0;
   let boundaryIndex = 0;
   const overlapsProtected = (from: number, to: number): boolean => {
@@ -1081,13 +1132,13 @@ export class TaskMarkdownCodec {
       });
     }
 
-    candidates = candidates.filter(
-      (candidate) => outsideRanges(candidate, inlineCode) && outsideRanges(candidate, linkRanges),
-    );
-    candidates.push(
+    const atomicTitleCandidates: Candidate[] = [
       ...inlineCode.map((range) => ({ kind: 'title' as const, ...range })),
       ...linkRanges.map((range) => ({ kind: 'title' as const, ...range })),
-    );
+    ].sort((left, right) => left.from - right.from || left.to - right.to);
+    const atomicTitleRanges = mergedRanges(atomicTitleCandidates);
+    candidates.sort((left, right) => left.from - right.from || left.to - right.to);
+    candidates = excludeOverlappingRanges(candidates, atomicTitleRanges);
     const terminalCaret = terminalCaretRange(body);
     let malformedTerminal: Candidate | undefined;
     if (terminalCaret) {
@@ -1095,35 +1146,32 @@ export class TaskMarkdownCodec {
         from: prefixEnd + terminalCaret.from,
         to: prefixEnd + terminalCaret.to,
       };
-      const isValidBlock = candidates.some(
-        (candidate) =>
-          candidate.kind === 'block-id' &&
-          candidate.from === terminalRange.from &&
-          candidate.to === terminalRange.to,
-      );
-      if (!isValidBlock) {
+      const isAtomicTitle = overlapsSortedRange(terminalRange, atomicTitleRanges);
+      const isValidBlock = includesExactCandidate(candidates, terminalRange, 'block-id');
+      if (!isAtomicTitle && !isValidBlock) {
         malformedTerminal = {
           kind: 'malformed-known',
           malformedKind: 'block-id',
           ...terminalRange,
         };
-        candidates = candidates.filter((candidate) => outsideRanges(candidate, [terminalRange]));
+        candidates = excludeOverlappingRanges(candidates, [terminalRange]);
         candidates.push(malformedTerminal);
       }
     }
-    const recurrenceExcluded = [
-      ...inlineCode,
-      ...linkRanges,
+    candidates.push(...atomicTitleCandidates);
+    const recurrenceExcluded = mergedRanges([
+      ...atomicTitleRanges,
       ...(malformedTerminal ? [malformedTerminal] : []),
-    ];
-    const recurrenceMarkers = matches(RECURRENCE_MARKER_RE, body)
-      .map((match) => match.index)
-      .filter((from) =>
-        outsideRanges(
-          { from: prefixEnd + from, to: prefixEnd + from + '🔁'.length },
-          recurrenceExcluded,
-        ),
-      );
+    ]);
+    const recurrenceMarkerRanges = matches(RECURRENCE_MARKER_RE, body).map((match) => ({
+      at: match.index,
+      from: prefixEnd + match.index,
+      to: prefixEnd + match.index + '🔁'.length,
+    }));
+    const recurrenceMarkers = excludeOverlappingRanges(
+      recurrenceMarkerRanges,
+      recurrenceExcluded,
+    ).map(({ at }) => at);
     const knownMarkers = markerPositions(body);
     const boundaries = sortedUnique([
       ...candidates.map((candidate) => candidate.from - prefixEnd),

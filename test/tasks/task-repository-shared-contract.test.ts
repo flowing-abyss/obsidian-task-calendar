@@ -528,6 +528,25 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
       );
     });
 
+    it.each([
+      ['inline code', '- [ ] Old `x ^bad`\r\n'],
+      ['wiki alias', '- [ ] Old [[Doc|x ^bad]]\r\n'],
+      ['Markdown link', '- [ ] Old [x ^bad](https://example.test)\r\n'],
+    ])('replaces a terminal caret-bearing %s as one semantic title', async (_case, source) => {
+      const h = await makeHarness(adapter, source);
+      const root = h.snapshots(source)[0]!;
+
+      expect(root.markdownTitle).toBe(source.slice('- [ ] '.length, -2));
+      await expect(
+        h.repository.edit({
+          type: 'patch',
+          target: { type: 'task', ref: root.ref },
+          patch: { markdownTitle: { type: 'set', value: 'New' } },
+        }),
+      ).resolves.toMatchObject({ type: 'committed', changed: true });
+      expect(await h.read()).toBe('- [ ] New\r\n');
+    });
+
     it('edits links only inside the confirmed title, description, or revisioned comment target', async () => {
       const source =
         '- [ ] [[TitleA|same]] and [[TitleB|same]] #tag 🆔 keep ⛔ dep ^block\r\n' +

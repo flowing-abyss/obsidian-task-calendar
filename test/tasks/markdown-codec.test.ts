@@ -480,6 +480,56 @@ describe('TaskMarkdownCodec', () => {
       });
     });
 
+    it.each([
+      ['inline code', '- [ ] Old `x ^bad`', 'Old `x ^bad`', '- [ ] New'],
+      ['wiki alias', '- [ ] Old [[Doc|x ^bad]]', 'Old [[Doc|x ^bad]]', '- [ ] New'],
+      [
+        'Markdown link',
+        '- [ ] Old [x ^bad](https://example.test)',
+        'Old [x ^bad](https://example.test)',
+        '- [ ] New',
+      ],
+      ['valid-looking caret in code', '- [ ] `x ^valid`\r\n', '`x ^valid`', '- [ ] New\r\n'],
+      [
+        'malformed caret in a leading alias',
+        '- [ ] [[Doc|x ^bad/value]]\r\n',
+        '[[Doc|x ^bad/value]]',
+        '- [ ] New\r\n',
+      ],
+    ])(
+      'keeps a terminal %s atom whole in the snapshot and semantic replacement',
+      (_case, source, markdownTitle, changed) => {
+        const parsed = parse(source);
+
+        expect(parsed.markdownTitle).toBe(markdownTitle);
+        expect(spanText(parsed, 'malformed-known')).toEqual([]);
+        expectLosslessPartition(parsed);
+        expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+          type: 'changed',
+          content: changed,
+        });
+      },
+    );
+
+    it('sweeps thousands of marker candidates across merged code and link exclusions', () => {
+      const segmentCount = 1_024;
+      const segments = Array.from(
+        { length: segmentCount },
+        (_, index) =>
+          ` [date${index} 📅 nope](https://example.test/${index})` +
+          ` \`time${index} ⏰ 9:5\`` +
+          ` 📅 nope${index}`,
+      );
+      const source = `- [ ] Head${segments.join('')}`;
+      const parsed = parse(source);
+
+      expect(spanText(parsed, 'malformed-known')).toHaveLength(segmentCount);
+      expect(spanText(parsed, 'title')).toHaveLength(segmentCount * 2 + 1);
+      expect(parsed.markdownTitle).toContain('[date0 📅 nope](https://example.test/0)');
+      expect(parsed.markdownTitle).toContain('`time1023 ⏰ 9:5`');
+      expectLosslessPartition(parsed);
+    });
+
     it('preserves all valid source-owned carriers and CRLF byte-exactly', () => {
       const suffix =
         '⏰ 09:05 ⏱️ 1h30m 🔁 every week ➕ 2026-07-01 🛫 2026-07-02 ⏳ 2026-07-03 📅 2026-07-04 ❌ 2026-07-05 ✅ 2026-07-06 🆔 keep-id ⛔ dep-1, dep_2 ^block';
