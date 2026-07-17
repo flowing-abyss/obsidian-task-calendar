@@ -63,6 +63,7 @@ export type TaskSpanKind =
   | 'task-id'
   | 'depends-on'
   | 'block-id'
+  | 'malformed-known'
   | 'separator'
   | 'unknown';
 
@@ -70,6 +71,10 @@ export interface SourceSpan {
   readonly kind: TaskSpanKind;
   readonly from: number;
   readonly to: number;
+  readonly malformedKind?: Exclude<
+    TaskSpanKind,
+    'prefix' | 'title' | 'tag' | 'malformed-known' | 'separator' | 'unknown'
+  >;
 }
 
 export interface ParsedTaskLine {
@@ -176,6 +181,22 @@ const TASK_ID_SEQUENCE = `${TASK_ID}( *, *${TASK_ID} *)*`;
 const TASK_ID_RE = new RegExp(`🆔\\uFE0F? *(${TASK_ID})(?=$|\\s)`, 'u');
 const DEPENDS_ON_RE = new RegExp(`⛔\\uFE0F? *(${TASK_ID_SEQUENCE})(?=$|\\s)`, 'u');
 
+const KNOWN_CARRIER_MARKERS = [
+  { marker: '➕', kind: 'created' },
+  { marker: '🛫', kind: 'start' },
+  { marker: '⏳', kind: 'scheduled' },
+  { marker: '📅', kind: 'due' },
+  { marker: '✅', kind: 'completion' },
+  { marker: '❌', kind: 'cancelled' },
+  { marker: '⏰', kind: 'time' },
+  { marker: '⏱️', kind: 'duration' },
+  { marker: '🆔', kind: 'task-id' },
+  { marker: '⛔', kind: 'depends-on' },
+] as const satisfies ReadonlyArray<{
+  readonly marker: string;
+  readonly kind: NonNullable<SourceSpan['malformedKind']>;
+}>;
+
 const METADATA_KINDS = new Set<TaskSpanKind>([
   'priority',
   'recurrence',
@@ -190,10 +211,10 @@ const METADATA_KINDS = new Set<TaskSpanKind>([
   'task-id',
   'depends-on',
   'block-id',
+  'malformed-known',
 ]);
 
 const TITLE_SEMANTIC_KINDS = new Set<TaskSpanKind>([...METADATA_KINDS, 'tag']);
-const TITLE_RESERVED_MARKERS = ['🆔', '⛔', '🔁', '➕', '🔺', '⏫', '🔼', '🔽', '⏬'] as const;
 
 const PRIORITY_BY_MARKER: Readonly<Record<string, TaskPriority>> = {
   '🔺': 'A',
@@ -280,11 +301,126 @@ function pushPinnedCarrierCandidates(
   }
 }
 
+function markerPositions(body: string): ReadonlyArray<{
+  readonly at: number;
+  readonly marker: string;
+  readonly kind: NonNullable<SourceSpan['malformedKind']>;
+}> {
+  return KNOWN_CARRIER_MARKERS.flatMap(({ marker, kind }) => {
+    const positions: Array<{ at: number; marker: string; kind: typeof kind }> = [];
+    let from = 0;
+    while (from < body.length) {
+      const at = body.indexOf(marker, from);
+      if (at < 0) break;
+      positions.push({ at, marker, kind });
+      from = at + marker.length;
+    }
+    return positions;
+  }).sort((left, right) => left.at - right.at);
+}
+
+function terminalCaretRange(body: string): SourceRange | undefined {
+  let to = body.length;
+  while (to > 0 && /\s/u.test(body[to - 1]!)) to--;
+  let from = to;
+  while (from > 0 && !/\s/u.test(body[from - 1]!)) from--;
+  return body[from] === '^' ? { from, to } : undefined;
+}
+
+function sortedUnique(values: readonly number[]): readonly number[] {
+  return [...new Set(values)].sort((left, right) => left - right);
+}
+
+function malformedValueEnd(
+  body: string,
+  valueFrom: number,
+  boundary: number,
+  kind: NonNullable<SourceSpan['malformedKind']>,
+): number {
+  let to = valueFrom;
+  while (to < boundary && !/\s/u.test(body[to]!)) to++;
+  if (kind !== 'depends-on') return to;
+
+  while (to < boundary) {
+    let next = to;
+    while (next < boundary && /\s/u.test(body[next]!)) next++;
+    if (next >= boundary || (body[to - 1] !== ',' && body[next] !== ',')) break;
+    to = next;
+    while (to < boundary && !/\s/u.test(body[to]!)) to++;
+  }
+  return to;
+}
+
+function pushRecurrenceCandidates(
+  candidates: Candidate[],
+  body: string,
+  bodyFrom: number,
+  recurrenceMarkers: readonly number[],
+  boundaries: readonly number[],
+): void {
+  let boundaryIndex = 0;
+  for (const recurrenceAt of recurrenceMarkers) {
+    while (boundaryIndex < boundaries.length && boundaries[boundaryIndex]! <= recurrenceAt) {
+      boundaryIndex++;
+    }
+    const recurrenceTo = boundaries[boundaryIndex] ?? body.length;
+    const rawValue = body.slice(recurrenceAt + '🔁'.length, recurrenceTo).trim();
+    candidates.push({
+      kind: 'recurrence',
+      from: bodyFrom + recurrenceAt,
+      to: bodyFrom + recurrenceTo,
+      ...(rawValue ? { value: rawValue } : {}),
+    });
+  }
+}
+
+function pushMalformedKnownCandidates(
+  candidates: Candidate[],
+  body: string,
+  bodyFrom: number,
+  markers: ReturnType<typeof markerPositions>,
+  boundaries: readonly number[],
+): void {
+  const protectedRanges = candidates
+    .map(({ from, to }) => ({ from, to }))
+    .sort((left, right) => left.from - right.from || left.to - right.to);
+  let protectedIndex = 0;
+  let boundaryIndex = 0;
+  const overlapsProtected = (from: number, to: number): boolean => {
+    while (protectedIndex < protectedRanges.length && protectedRanges[protectedIndex]!.to <= from) {
+      protectedIndex++;
+    }
+    const protectedRange = protectedRanges[protectedIndex];
+    return protectedRange !== undefined && from < protectedRange.to && to > protectedRange.from;
+  };
+
+  for (const { at, marker, kind } of markers) {
+    const absoluteFrom = bodyFrom + at;
+    if (overlapsProtected(absoluteFrom, absoluteFrom + marker.length)) continue;
+
+    let markerEnd = at + marker.length;
+    if ((kind === 'task-id' || kind === 'depends-on') && body[markerEnd] === '\ufe0f') markerEnd++;
+    let valueFrom = markerEnd;
+    while (/\s/u.test(body[valueFrom] ?? '')) valueFrom++;
+    while (boundaryIndex < boundaries.length && boundaries[boundaryIndex]! < valueFrom) {
+      boundaryIndex++;
+    }
+    const boundary = boundaries[boundaryIndex] ?? body.length;
+    const valueTo = malformedValueEnd(body, valueFrom, boundary, kind);
+    const to = valueTo > valueFrom ? valueTo : markerEnd;
+    candidates.push({
+      kind: 'malformed-known',
+      malformedKind: kind,
+      from: bodyFrom + at,
+      to: bodyFrom + to,
+    });
+  }
+}
+
 function durationMinutes(
   hours: string | undefined,
   minutes: string | undefined,
 ): number | undefined {
-  if (hours === undefined && minutes === undefined) return undefined;
   const total = Number(hours ?? 0) * 60 + Number(minutes ?? 0);
   return total > 0 ? total : undefined;
 }
@@ -346,25 +482,43 @@ function spliceSource(source: string, from: number, to: number, replacement: str
   return source.slice(0, from) + replacement + source.slice(to);
 }
 
-function markerCount(source: string, marker: string): number {
-  if (marker.length === 0) return 0;
-  let count = 0;
-  let from = 0;
-  while (from < source.length) {
-    const at = source.indexOf(marker, from);
-    if (at < 0) break;
-    count++;
-    from = at + marker.length;
-  }
-  return count;
-}
-
 function removeSpan(source: string, span: SourceSpan): string {
   let from = span.from;
   let to = span.to;
   if (source[from - 1] === ' ') from--;
   else if (source[to] === ' ') to++;
   return spliceSource(source, from, to, '');
+}
+
+function isSemanticTitleSpan(span: SourceSpan): boolean {
+  return span.kind === 'title' || span.kind === 'unknown';
+}
+
+function semanticTitleFragments(
+  spans: readonly SourceSpan[],
+  contentEnd: number,
+): readonly SourceSpan[] {
+  const fragments: SourceSpan[] = [];
+  let fragmentFrom: number | undefined;
+  let fragmentTo: number | undefined;
+  for (const span of spans) {
+    if (span.kind === 'prefix' || (span.kind === 'separator' && span.from === contentEnd)) continue;
+    if (isSemanticTitleSpan(span)) {
+      fragmentFrom ??= span.from;
+      fragmentTo = span.to;
+      continue;
+    }
+    if (span.kind === 'separator' && fragmentFrom !== undefined) continue;
+    if (fragmentFrom !== undefined && fragmentTo !== undefined) {
+      fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
+      fragmentFrom = undefined;
+      fragmentTo = undefined;
+    }
+  }
+  if (fragmentFrom !== undefined && fragmentTo !== undefined) {
+    fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
+  }
+  return fragments;
 }
 
 function insertionPoint(parsed: ParsedTaskLine, kind: TaskSpanKind): number {
@@ -438,8 +592,9 @@ export class TaskMarkdownCodec {
     for (const [field, kind] of Object.entries(SPAN_KIND_BY_FIELD) as Array<
       [TaskValidationField, TaskSpanKind]
     >) {
-      const occurrences = parsed.occurrences.get(kind)?.length ?? 0;
-      if (markerCount(parsed.original, MARKER_BY_FIELD[field]) > occurrences) {
+      if (
+        parsed.spans.some((span) => span.kind === 'malformed-known' && span.malformedKind === kind)
+      ) {
         malformed.add(field);
       }
     }
@@ -509,181 +664,34 @@ export class TaskMarkdownCodec {
 
   private editableTitleFragments(parsed: ParsedTaskLine): readonly SourceSpan[] {
     const contentEnd = parsed.original.length - parsed.lineEnding.length;
-    const protectedFragments = this.protectedTitleFragments(parsed);
-    const bodySpans = parsed.spans.filter(
-      (span) => span.kind !== 'prefix' && !(span.kind === 'separator' && span.from === contentEnd),
-    );
-    const fragments: SourceSpan[] = [];
-    let fragmentFrom: number | undefined;
-    let fragmentTo: number | undefined;
-    for (const span of bodySpans) {
-      const isProtected = protectedFragments.some(
-        (fragment) => span.from >= fragment.from && span.to <= fragment.to,
-      );
-      if (span.kind === 'title' && !isProtected) {
-        fragmentFrom ??= span.from;
-        fragmentTo = span.to;
-        continue;
-      }
-      if (span.kind === 'separator') continue;
-      if (fragmentFrom !== undefined && fragmentTo !== undefined) {
-        fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
-        fragmentFrom = undefined;
-        fragmentTo = undefined;
-      }
-    }
-    if (fragmentFrom !== undefined && fragmentTo !== undefined) {
-      fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
-    }
-    return fragments;
-  }
-
-  private protectedTitleFragments(parsed: ParsedTaskLine): readonly SourceSpan[] {
-    const contentEnd = parsed.original.length - parsed.lineEnding.length;
-    const fragments: SourceSpan[] = [];
-    for (let index = 0; index < parsed.spans.length; index++) {
-      const span = parsed.spans[index];
-      if (!span || span.kind !== 'unknown') continue;
-      let to = span.to;
-      let nextIndex = index + 1;
-      while (
-        parsed.spans[nextIndex]?.kind === 'separator' &&
-        parsed.spans[nextIndex]?.from !== contentEnd
-      ) {
-        nextIndex++;
-      }
-      const payload = parsed.spans[nextIndex];
-      if (payload?.kind === 'title') to = payload.to;
-      fragments.push({ kind: 'unknown', from: span.from, to });
-    }
-    return fragments;
-  }
-
-  private protectedFragmentTokens(
-    parsed: ParsedTaskLine,
-    fragment: SourceSpan,
-  ): readonly SourceSpan[] {
-    return parsed.spans.filter(
-      (span) => span.kind !== 'separator' && span.from >= fragment.from && span.to <= fragment.to,
-    );
-  }
-
-  private matchingProtectedPrefix(
-    source: ParsedTaskLine,
-    sourceFragment: SourceSpan,
-    candidate: ParsedTaskLine,
-    candidateFragment: SourceSpan,
-  ): SourceSpan | undefined {
-    const sourceTokens = this.protectedFragmentTokens(source, sourceFragment);
-    const candidateTokens = this.protectedFragmentTokens(candidate, candidateFragment);
-    if (sourceTokens.length === 0 || candidateTokens.length < sourceTokens.length) return undefined;
-
-    const matches = sourceTokens.every((sourceToken, index) => {
-      const candidateToken = candidateTokens[index];
-      return (
-        candidateToken?.kind === sourceToken.kind &&
-        candidate.original.slice(candidateToken.from, candidateToken.to) ===
-          source.original.slice(sourceToken.from, sourceToken.to)
-      );
-    });
-    if (!matches) return undefined;
-
-    return {
-      kind: 'unknown',
-      from: candidateTokens[0]!.from,
-      to: candidateTokens[sourceTokens.length - 1]!.to,
-    };
-  }
-
-  private editableTitleReplacement(parsed: ParsedTaskLine, markdownTitle: string): string {
-    const protectedFragments = this.protectedTitleFragments(parsed);
-    if (protectedFragments.length === 0) return markdownTitle;
-
-    const prefix = '- [ ] ';
-    const candidate = this.parseLine(`${prefix}${markdownTitle}`, { filePath: '', line: 0 });
-    if (!candidate) return markdownTitle;
-    const candidateFragments = this.protectedTitleFragments(candidate);
-    const used = new Set<number>();
-    const removals: SourceSpan[] = [];
-    for (const sourceFragment of protectedFragments) {
-      const matchIndex = candidateFragments.findIndex(
-        (candidateFragment, index) =>
-          !used.has(index) &&
-          this.matchingProtectedPrefix(parsed, sourceFragment, candidate, candidateFragment) !==
-            undefined,
-      );
-      if (matchIndex < 0) continue;
-      used.add(matchIndex);
-      const match = this.matchingProtectedPrefix(
-        parsed,
-        sourceFragment,
-        candidate,
-        candidateFragments[matchIndex]!,
-      )!;
-      removals.push({
-        kind: 'unknown',
-        from: match.from - prefix.length,
-        to: match.to - prefix.length,
-      });
-    }
-
-    let replacement = markdownTitle;
-    removals.sort((left, right) => right.from - left.from);
-    for (const removal of removals) {
-      replacement = removeSpan(replacement, removal);
-    }
-    return replacement;
+    return semanticTitleFragments(parsed.spans, contentEnd);
   }
 
   private linkTitleFragments(parsed: ParsedTaskLine): readonly SourceSpan[] {
     const contentEnd = parsed.original.length - parsed.lineEnding.length;
-    const bodySpans = parsed.spans.filter(
-      (span) => span.kind !== 'prefix' && !(span.kind === 'separator' && span.from === contentEnd),
-    );
-    const fragments: SourceSpan[] = [];
-    let fragmentFrom: number | undefined;
-    let fragmentTo: number | undefined;
-    for (const span of bodySpans) {
-      if (span.kind === 'title') {
-        fragmentFrom ??= span.from;
-        fragmentTo = span.to;
-        continue;
-      }
-      if (span.kind === 'separator' && fragmentFrom !== undefined) continue;
-      if (fragmentFrom !== undefined && fragmentTo !== undefined) {
-        fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
-        fragmentFrom = undefined;
-        fragmentTo = undefined;
-      }
-    }
-    if (fragmentFrom !== undefined && fragmentTo !== undefined) {
-      fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
-    }
-    return fragments;
+    return semanticTitleFragments(parsed.spans, contentEnd);
   }
 
   private replaceTitle(parsed: ParsedTaskLine, markdownTitle: string): string {
-    const replacement = this.editableTitleReplacement(parsed, markdownTitle);
     const fragments = this.editableTitleFragments(parsed);
     const first = fragments[0];
     if (first) {
       let content = parsed.original;
-      for (const fragment of fragments.slice(1).reverse()) {
+      const removals = markdownTitle ? fragments.slice(1) : fragments;
+      for (const fragment of [...removals].reverse()) {
         content = removeSpan(content, fragment);
       }
-      return spliceSource(content, first.from, first.to, replacement);
+      return markdownTitle ? spliceSource(content, first.from, first.to, markdownTitle) : content;
     }
 
-    const protectedFragments = this.protectedTitleFragments(parsed);
     const contentEnd = parsed.original.length - parsed.lineEnding.length;
-    const lastProtected = protectedFragments[protectedFragments.length - 1];
     const firstProtected = parsed.spans.find(
       (span) => span.kind !== 'prefix' && span.kind !== 'separator',
     );
-    const at = lastProtected?.to ?? firstProtected?.from ?? contentEnd;
+    const at = firstProtected?.from ?? contentEnd;
     const left = /\s/u.test(parsed.original[at - 1] ?? '') ? '' : ' ';
     const right = /\s/u.test(parsed.original[at] ?? '') || at === contentEnd ? '' : ' ';
-    return spliceSource(parsed.original, at, at, `${left}${replacement}${right}`);
+    return spliceSource(parsed.original, at, at, `${left}${markdownTitle}${right}`);
   }
 
   private appendTitle(parsed: ParsedTaskLine, markdown: string): string {
@@ -732,12 +740,14 @@ export class TaskMarkdownCodec {
     for (const [field, kind] of Object.entries(SPAN_KIND_BY_FIELD) as Array<
       [TaskValidationField, TaskSpanKind]
     >) {
-      const beforeOccurrences = before.occurrences.get(kind)?.length ?? 0;
-      const afterOccurrences = after.occurrences.get(kind)?.length ?? 0;
-      const introducedMarker =
-        markerCount(after.original, MARKER_BY_FIELD[field]) >
-        markerCount(before.original, MARKER_BY_FIELD[field]);
-      if (afterOccurrences > beforeOccurrences || introducedMarker) introducedFields.add(field);
+      const carrierCount = (parsed: ParsedTaskLine): number =>
+        (parsed.occurrences.get(kind)?.length ?? 0) +
+        parsed.spans.filter(
+          (span) => span.kind === 'malformed-known' && span.malformedKind === kind,
+        ).length;
+      const beforeOccurrences = carrierCount(before);
+      const afterOccurrences = carrierCount(after);
+      if (afterOccurrences > beforeOccurrences) introducedFields.add(field);
       if (afterOccurrences > beforeOccurrences && afterOccurrences > 1) {
         duplicateIssues.push({ code: 'duplicate-field', field });
       }
@@ -748,10 +758,7 @@ export class TaskMarkdownCodec {
       (kind) =>
         (after.occurrences.get(kind)?.length ?? 0) > (before.occurrences.get(kind)?.length ?? 0),
     );
-    const introducedReservedMarker = TITLE_RESERVED_MARKERS.some(
-      (marker) => markerCount(after.original, marker) > markerCount(before.original, marker),
-    );
-    if (introducedFields.size === 0 && !introducedSemanticSpan && !introducedReservedMarker) {
+    if (introducedFields.size === 0 && !introducedSemanticSpan) {
       return [];
     }
 
@@ -1081,33 +1088,50 @@ export class TaskMarkdownCodec {
       ...inlineCode.map((range) => ({ kind: 'title' as const, ...range })),
       ...linkRanges.map((range) => ({ kind: 'title' as const, ...range })),
     );
-
-    const recurrenceMarkers = matches(RECURRENCE_MARKER_RE, body)
-      .map((match) => prefixEnd + match.index)
-      .filter(
-        (from) =>
-          outsideRanges({ from, to: from + '🔁'.length }, inlineCode) &&
-          outsideRanges({ from, to: from + '🔁'.length }, linkRanges),
+    const terminalCaret = terminalCaretRange(body);
+    let malformedTerminal: Candidate | undefined;
+    if (terminalCaret) {
+      const terminalRange = {
+        from: prefixEnd + terminalCaret.from,
+        to: prefixEnd + terminalCaret.to,
+      };
+      const isValidBlock = candidates.some(
+        (candidate) =>
+          candidate.kind === 'block-id' &&
+          candidate.from === terminalRange.from &&
+          candidate.to === terminalRange.to,
       );
-    for (let i = recurrenceMarkers.length - 1; i >= 0; i--) {
-      const from = recurrenceMarkers[i];
-      if (from === undefined) continue;
-      const nextBoundary = [
-        ...candidates,
-        ...recurrenceMarkers.slice(i + 1).map((at) => ({ from: at })),
-      ]
-        .map((candidate) => candidate.from)
-        .filter((candidateFrom) => candidateFrom > from)
-        .sort((a, b) => a - b)[0];
-      const to = nextBoundary ?? contentEnd;
-      const rawValue = original.slice(from + '🔁'.length, to).trim();
-      candidates.push({
-        kind: 'recurrence',
-        from,
-        to,
-        ...(rawValue ? { value: rawValue } : {}),
-      });
+      if (!isValidBlock) {
+        malformedTerminal = {
+          kind: 'malformed-known',
+          malformedKind: 'block-id',
+          ...terminalRange,
+        };
+        candidates = candidates.filter((candidate) => outsideRanges(candidate, [terminalRange]));
+        candidates.push(malformedTerminal);
+      }
     }
+    const recurrenceExcluded = [
+      ...inlineCode,
+      ...linkRanges,
+      ...(malformedTerminal ? [malformedTerminal] : []),
+    ];
+    const recurrenceMarkers = matches(RECURRENCE_MARKER_RE, body)
+      .map((match) => match.index)
+      .filter((from) =>
+        outsideRanges(
+          { from: prefixEnd + from, to: prefixEnd + from + '🔁'.length },
+          recurrenceExcluded,
+        ),
+      );
+    const knownMarkers = markerPositions(body);
+    const boundaries = sortedUnique([
+      ...candidates.map((candidate) => candidate.from - prefixEnd),
+      ...knownMarkers.map(({ at }) => at),
+      ...recurrenceMarkers,
+    ]);
+    pushRecurrenceCandidates(candidates, body, prefixEnd, recurrenceMarkers, boundaries);
+    pushMalformedKnownCandidates(candidates, body, prefixEnd, knownMarkers, boundaries);
 
     candidates.sort((left, right) => left.from - right.from || left.to - right.to);
     const accepted: Candidate[] = [];
@@ -1122,7 +1146,14 @@ export class TaskMarkdownCodec {
     let cursor = prefixEnd;
     for (const candidate of accepted) {
       addGapSpans(spans, original, cursor, candidate.from);
-      spans.push({ kind: candidate.kind, from: candidate.from, to: candidate.to });
+      spans.push({
+        kind: candidate.kind,
+        from: candidate.from,
+        to: candidate.to,
+        ...(candidate.malformedKind !== undefined && {
+          malformedKind: candidate.malformedKind,
+        }),
+      });
       cursor = candidate.to;
     }
     addGapSpans(spans, original, cursor, contentEnd);
@@ -1135,14 +1166,9 @@ export class TaskMarkdownCodec {
       occurrences.set(span.kind, group);
     }
 
-    const markdownTitle = spans
-      .map((span) => {
-        if (span.kind === 'prefix' || span.kind === 'tag' || METADATA_KINDS.has(span.kind))
-          return '';
-        if (lineEnding && span.from === contentEnd) return '';
-        return original.slice(span.from, span.to);
-      })
-      .join('')
+    const markdownTitle = semanticTitleFragments(spans, contentEnd)
+      .map((fragment) => original.slice(fragment.from, fragment.to))
+      .join(' ')
       .replace(/\s{2,}/gu, ' ')
       .trim();
 

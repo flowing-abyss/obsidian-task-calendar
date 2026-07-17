@@ -496,20 +496,22 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
       expect(await h.read()).toBe(source);
     });
 
-    it('replaces and appends root and nested Markdown titles losslessly', async () => {
+    it('submits the full snapshot title through the repository contract exactly once', async () => {
       const source =
-        '> - [ ] Old [[Root]] #tag 🧭 opaque 🆔 keep-id ⛔ dep ^block\r\n>   - [ ] Old [[Child]] #child custom\r\n';
+        '> - [ ] Old [[Root]] 🧭 future #tag 📅 nope 🆔 bad.id 🆔 keep-id ⛔ dep ^block\r\n>   - [ ] Old [[Child]] #child custom\r\n';
       const h = await makeHarness(adapter, source);
       const root = h.snapshots(source)[0]!;
+      const editedTitle = `${root.markdownTitle} TEMP`;
+      expect(root.markdownTitle).toBe('Old [[Root]] 🧭 future');
       await expect(
         h.repository.edit({
           type: 'patch',
           target: { type: 'task', ref: root.ref },
-          patch: { markdownTitle: { type: 'set', value: 'New [root](https://root.test)' } },
+          patch: { markdownTitle: { type: 'set', value: editedTitle } },
         }),
       ).resolves.toMatchObject({ type: 'committed', changed: true });
       expect(await h.read()).toBe(
-        '> - [ ] New [root](https://root.test) #tag 🧭 opaque 🆔 keep-id ⛔ dep ^block\r\n>   - [ ] Old [[Child]] #child custom\r\n',
+        '> - [ ] Old [[Root]] 🧭 future TEMP #tag 📅 nope 🆔 bad.id 🆔 keep-id ⛔ dep ^block\r\n>   - [ ] Old [[Child]] #child custom\r\n',
       );
 
       const changed = await h.read();

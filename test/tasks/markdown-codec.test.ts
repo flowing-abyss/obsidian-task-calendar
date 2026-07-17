@@ -15,7 +15,7 @@ function parse(source: string): ParsedTaskLine {
   return parsed!;
 }
 
-function spanText(parsed: ParsedTaskLine, kind: TaskSpanKind): string[] {
+function spanText(parsed: ParsedTaskLine, kind: TaskSpanKind | 'malformed-known'): string[] {
   return parsed.spans
     .filter((span) => span.kind === kind)
     .map((span) => parsed.original.slice(span.from, span.to));
@@ -419,236 +419,273 @@ describe('TaskMarkdownCodec', () => {
       });
     });
 
-    it('replaces only the editable title and preserves unrelated malformed and unknown spans', () => {
-      const source =
-        '- [ ] Old title 🧭 north 🆔 bad.id ⛔ one,,two 📅 nope ⏰ 9:5 ⏱️ nope #work 🆔 keep-id ⛔ dep-1 ^block';
-
-      expect(
-        codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New title' }),
-      ).toEqual({
-        type: 'changed',
-        content:
-          '- [ ] New title 🧭 north 🆔 bad.id ⛔ one,,two 📅 nope ⏰ 9:5 ⏱️ nope #work 🆔 keep-id ⛔ dep-1 ^block',
-      });
-    });
-
-    it('does not duplicate a protected unknown suffix when editing the displayed markdown title', () => {
-      const source =
-        '- [ ] Old [[Title]] 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 📅 2026-07-20';
-      const displayedTitle = parse(source).markdownTitle;
-
-      const edited = codec.applyLineEdit(source, {
-        type: 'set-title',
-        markdownTitle: `${displayedTitle} TEMP`,
-      });
-
-      expect(edited).toEqual({
-        type: 'changed',
-        content:
-          '- [ ] Old [[Title]] TEMP 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 📅 2026-07-20',
-      });
-      const editedContent = (edited as Extract<typeof edited, { type: 'changed' }>).content;
-      expect(parse(editedContent).markdownTitle).toBe('Old [[Title]] TEMP 🧭 preserve-unknown');
-    });
-
-    it('keeps an identical protected value inside a wiki-link alias byte-correct', () => {
-      const source =
-        '- [ ] Old [[Note|🧭 preserve-unknown]] 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 ^block';
-
-      expect(
-        codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content:
-          '- [ ] Old [[Note|🧭 preserve-unknown]] TEMP 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 ^block',
-      });
-    });
-
-    it('keeps an identical protected value inside a Markdown-link label byte-correct', () => {
-      const source =
-        '- [ ] Old [🧭 preserve-unknown](https://example.test) 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 ^block';
-
-      expect(
-        codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content:
-          '- [ ] Old [🧭 preserve-unknown](https://example.test) TEMP 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 ^block',
-      });
-    });
-
-    it('keeps two identical link-label occurrences while preserving one source-owned value', () => {
-      const source =
-        '- [ ] [[One|🧭 same]] [🧭 same](https://example.test) 🧭 same 🆔 keep-id ⛔ dep-1 ^block';
-
-      expect(
-        codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content:
-          '- [ ] [[One|🧭 same]] [🧭 same](https://example.test) TEMP 🧭 same 🆔 keep-id ⛔ dep-1 ^block',
-      });
-    });
-
-    it('edits a title after a protected-leading range without duplicating either range', () => {
-      const source = '- [ ] 🧭 preserve-unknown Old [[Title]] #work 🆔 keep-id ⛔ dep-1 ^block';
-
-      expect(
-        codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content: '- [ ] 🧭 preserve-unknown Old [[Title]] TEMP #work 🆔 keep-id ⛔ dep-1 ^block',
-      });
-    });
-
-    it('keeps adjacent protected ranges once while editing all ordinary title fragments', () => {
-      const source = '- [ ] Old 🧭 opaque 📅 not-a-date [[Title]] #work 🆔 keep-id ⛔ dep-1 ^block';
-
-      expect(
-        codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content:
-          '- [ ] Old [[Title]] TEMP 🧭 opaque 📅 not-a-date #work 🆔 keep-id ⛔ dep-1 ^block',
-      });
-    });
-
-    it('treats inline code as editable title text rather than a protected unknown range', () => {
-      const source =
-        '- [ ] Old `🧭 preserve-unknown` 🧭 preserve-unknown End 🆔 keep-id ⛔ dep-1 ^block';
-
-      expect(
-        codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content:
-          '- [ ] Old `🧭 preserve-unknown` End TEMP 🧭 preserve-unknown 🆔 keep-id ⛔ dep-1 ^block',
-      });
-    });
-
-    it('preserves CRLF and remains idempotent across repeated protected-leading edits', () => {
-      const source =
-        '> - [ ] 🧭 preserve-unknown Old [[Title]] #work 🆔 keep-id ⛔ dep-1 ^block\r\n';
-      const first = codec.applyLineEdit(source, {
-        type: 'set-title',
-        markdownTitle: `${parse(source).markdownTitle} FIRST`,
-      });
-      expect(first).toEqual({
-        type: 'changed',
-        content:
-          '> - [ ] 🧭 preserve-unknown Old [[Title]] FIRST #work 🆔 keep-id ⛔ dep-1 ^block\r\n',
-      });
-
-      const firstContent = (first as Extract<typeof first, { type: 'changed' }>).content;
-      expect(
-        codec.applyLineEdit(firstContent, {
-          type: 'set-title',
-          markdownTitle: `${parse(firstContent).markdownTitle} SECOND`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content:
-          '> - [ ] 🧭 preserve-unknown Old [[Title]] FIRST SECOND #work 🆔 keep-id ⛔ dep-1 ^block\r\n',
-      });
-    });
-
-    it('removes only the source-owned marker from a longer displayed protected group', () => {
-      const source = '- [ ] 🧭';
-
-      expect(
-        codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content: '- [ ] 🧭 TEMP',
-      });
-    });
-
-    it('keeps ordinary payload after hidden carriers without duplicating source-owned spans', () => {
-      const source = '- [ ] Old 🧭 #tag payload 🆔 id ⛔ dep ^block';
-
-      expect(parse(source).markdownTitle).toBe('Old 🧭 payload');
-      expect(
-        codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        }),
-      ).toEqual({
-        type: 'changed',
-        content: '- [ ] Old payload TEMP 🧭 #tag 🆔 id ⛔ dep ^block',
-      });
-    });
-
     it.each([
-      [
-        '- [ ] Old 🧭 📅 2026-07-20 payload',
-        '- [ ] Old payload TEMP 🧭 📅 2026-07-20',
-        '- [ ] Old payload TEMP AGAIN 🧭 📅 2026-07-20',
-      ],
-      [
-        '- [ ] Old 🧭 🆔 id payload',
-        '- [ ] Old payload TEMP 🧭 🆔 id',
-        '- [ ] Old payload TEMP AGAIN 🧭 🆔 id',
-      ],
-      [
-        '- [ ] Old 🧭 ^block payload ^terminal',
-        '- [ ] Old payload TEMP 🧭 ^block ^terminal',
-        '- [ ] Old payload TEMP AGAIN 🧭 ^block ^terminal',
-      ],
-    ])(
-      'keeps hidden recognized carriers once across repeated displayed-title edits: %s',
-      (source, firstExpected, secondExpected) => {
-        const first = codec.applyLineEdit(source, {
-          type: 'set-title',
-          markdownTitle: `${parse(source).markdownTitle} TEMP`,
-        });
-        expect(first).toEqual({ type: 'changed', content: firstExpected });
+      '- [ ] 🧭 leading Old',
+      '- [ ] Old 🧪 middle End',
+      '- [ ] Old trailing 🛰️',
+      '- [ ] 🧭 leading Old 🧪 middle End 🛰️',
+      '- [ ] 🔥 urgent',
+    ])('treats arbitrary emoji syntax as replaceable title content in %j', (source) => {
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New',
+      });
+    });
 
-        const firstContent = (first as Extract<typeof first, { type: 'changed' }>).content;
-        expect(
-          codec.applyLineEdit(firstContent, {
-            type: 'set-title',
-            markdownTitle: `${parse(firstContent).markdownTitle} AGAIN`,
-          }),
-        ).toEqual({ type: 'changed', content: secondExpected });
-      },
-    );
-
-    it('matches protected groups by span and occurrence across reorder and deletion edits', () => {
+    it('inserts the supplied full title exactly once across reorder and deletion', () => {
       const source = '- [ ] Old 🧭 same Middle 🧭 same End 🧪 other';
 
       expect(
         codec.applyLineEdit(source, {
           type: 'set-title',
-          markdownTitle: '🧪 other New 🧭 same 🧭 same',
+          markdownTitle: '🧪 other New 🧭 same',
+        }),
+      ).toEqual({ type: 'changed', content: '- [ ] 🧪 other New 🧭 same' });
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New',
+      });
+    });
+
+    it('accepts the UI-shaped snapshot title plus an edit exactly once', () => {
+      const source =
+        '- [ ] Old 🧭 future #work 📅 nope 🆔 bad.id ⛔ one,,two 📅 2026-07-20 🆔 keep ⛔ dep ^block';
+      const snapshotTitle = parse(source).markdownTitle;
+
+      expect(snapshotTitle).toBe('Old 🧭 future');
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${snapshotTitle} TEMP`,
         }),
       ).toEqual({
         type: 'changed',
-        content: '- [ ] New 🧭 same 🧭 same 🧪 other',
+        content:
+          '- [ ] Old 🧭 future TEMP #work 📅 nope 🆔 bad.id ⛔ one,,two 📅 2026-07-20 🆔 keep ⛔ dep ^block',
       });
+    });
+
+    it('treats links, aliases, and inline code containing marker text as title content', () => {
+      const source =
+        '- [ ] Old [[Doc|📅 nope]] [⏰ 9:5](https://example.test) `⏱️ nope 🆔 bad.id ^bad/value` 📅 2026-07-20 ^block';
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe(
+        'Old [[Doc|📅 nope]] [⏰ 9:5](https://example.test) `⏱️ nope 🆔 bad.id ^bad/value`',
+      );
+      expect(spanText(parsed, 'malformed-known')).toEqual([]);
       expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
         type: 'changed',
-        content: '- [ ] New 🧭 same 🧭 same 🧪 other',
+        content: '- [ ] New 📅 2026-07-20 ^block',
+      });
+    });
+
+    it('preserves all valid source-owned carriers and CRLF byte-exactly', () => {
+      const suffix =
+        '⏰ 09:05 ⏱️ 1h30m 🔁 every week ➕ 2026-07-01 🛫 2026-07-02 ⏳ 2026-07-03 📅 2026-07-04 ❌ 2026-07-05 ✅ 2026-07-06 🆔 keep-id ⛔ dep-1, dep_2 ^block';
+      const source = `> - [ ] Old ${suffix}\r\n`;
+
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: `> - [ ] New ${suffix}\r\n`,
+      });
+    });
+
+    it.each([
+      ['lexical date', '📅 nope'],
+      ['lexical time', '⏰ 9:5'],
+      ['lexical duration', '⏱️ nope'],
+      ['invalid ID', '🆔 bad.id'],
+      ['invalid ID with variation selector', '🆔️ bad.id'],
+      ['invalid dependency', '⛔ one,,two'],
+      ['invalid terminal block', '^bad/value'],
+    ])('hides and preserves a malformed known %s carrier', (_case, carrier) => {
+      const source = `- [ ] Old ${carrier}`;
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe('Old');
+      expect(spanText(parsed, 'malformed-known')).toEqual([carrier]);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: `- [ ] New ${carrier}`,
+      });
+      expectLosslessPartition(parsed);
+    });
+
+    it.each([
+      ['semantic date', '📅 2026-02-30', 'due'],
+      ['semantic time', '⏰ 25:00', 'time'],
+      ['semantic duration', '⏱️ 0m', 'duration'],
+    ] as const)('keeps a %s carrier dedicated and protected', (_case, carrier, kind) => {
+      const source = `- [ ] Old ${carrier}`;
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe('Old');
+      expect(spanText(parsed, kind)).toEqual([carrier]);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: `- [ ] New ${carrier}`,
+      });
+    });
+
+    it('distinguishes valid and malformed IDs, dependencies, and terminal blocks', () => {
+      const source =
+        '- [ ] Old 🆔 bad.id 🆔 keep-id ⛔ one,,two ⛔ dep-1, dep_2 ^middle text ^bad/value';
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe('Old ^middle text');
+      expect(spanText(parsed, 'task-id')).toEqual(['🆔 keep-id']);
+      expect(spanText(parsed, 'depends-on')).toEqual(['⛔ dep-1, dep_2']);
+      expect(spanText(parsed, 'block-id')).toEqual([]);
+      expect(spanText(parsed, 'malformed-known')).toEqual([
+        '🆔 bad.id',
+        '⛔ one,,two',
+        '^bad/value',
+      ]);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New 🆔 bad.id 🆔 keep-id ⛔ one,,two ⛔ dep-1, dep_2 ^bad/value',
+      });
+    });
+
+    it('bounds a spaced malformed dependency to its comma-separated sequence', () => {
+      const source = '- [ ] Old ⛔ one, two! tail';
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe('Old tail');
+      expect(spanText(parsed, 'malformed-known')).toEqual(['⛔ one, two!']);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New ⛔ one, two!',
+      });
+    });
+
+    it('retains duplicate valid and malformed carriers in source order', () => {
+      const source = '- [ ] Old 📅 nope Middle 📅 nope 📅 2026-02-30 📅 2026-02-30';
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe('Old Middle');
+      expect(spanText(parsed, 'malformed-known')).toEqual(['📅 nope', '📅 nope']);
+      expect(spanText(parsed, 'due')).toEqual(['📅 2026-02-30', '📅 2026-02-30']);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New 📅 nope 📅 nope 📅 2026-02-30 📅 2026-02-30',
+      });
+    });
+
+    it('bounds adjacent malformed markers without swallowing another carrier', () => {
+      const source = '- [ ] 📅 📅 nope';
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe('');
+      expect(spanText(parsed, 'malformed-known')).toEqual(['📅', '📅 nope']);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New 📅 📅 nope',
+      });
+    });
+
+    it.each(['#tag', '🔺', '📅 2026-07-20', '🆔 keep-id', '⛔ dep', '^block'])(
+      'stops a malformed carrier before protected %s',
+      (protectedToken) => {
+        const source = `- [ ] Old 📅 ${protectedToken}`;
+        const parsed = parse(source);
+
+        expect(parsed.markdownTitle).toBe('Old');
+        expect(spanText(parsed, 'malformed-known')).toEqual(['📅']);
+        expectLosslessPartition(parsed);
+      },
+    );
+
+    it('losslessly sweeps a long alternating malformed/protected/title corpus', () => {
+      const segments = Array.from(
+        { length: 256 },
+        (_, index) => ` 📅 nope #tag/${index} word${index}`,
+      );
+      const source = `- [ ] Head${segments.join('')}`;
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe(
+        ['Head', ...segments.map((_, index) => `word${index}`)].join(' '),
+      );
+      expect(spanText(parsed, 'malformed-known')).toHaveLength(256);
+      expect(spanText(parsed, 'tag')).toHaveLength(256);
+      expectLosslessPartition(parsed);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: `- [ ] New${segments.map((segment) => segment.replace(/ word\d+$/u, '')).join('')}`,
+      });
+    });
+
+    it.each(['📅', '🆔', '⛔'])('stops a malformed %s carrier before recurrence', (carrier) => {
+      const source = `- [ ] Old ${carrier} 🔁 every week`;
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe('Old');
+      expect(parsed.recurrence).toBe('every week');
+      expect(spanText(parsed, 'malformed-known')).toEqual([carrier]);
+      expect(spanText(parsed, 'recurrence')).toEqual(['🔁 every week']);
+      expectLosslessPartition(parsed);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: `- [ ] New ${carrier} 🔁 every week`,
+      });
+    });
+
+    it.each(['^🔁', '^📅2026-07-20', '^🆔abc', '^⛔dep', '^📅nope', '^🆔bad.id', '^⛔one,,two'])(
+      'gives the complete terminal malformed block %s precedence over nested carriers',
+      (block) => {
+        const source = `- [ ] Old ${block}\r\n`;
+        const parsed = parse(source);
+
+        expect(parsed.markdownTitle).toBe('Old');
+        expect(parsed.recurrence).toBeUndefined();
+        expect(spanText(parsed, 'due')).toEqual([]);
+        expect(spanText(parsed, 'task-id')).toEqual([]);
+        expect(spanText(parsed, 'depends-on')).toEqual([]);
+        expect(spanText(parsed, 'malformed-known')).toEqual([block]);
+        expectLosslessPartition(parsed);
+
+        const changed = codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' });
+        expect(changed).toEqual({ type: 'changed', content: `- [ ] New ${block}\r\n` });
+        expect(
+          codec.applyLineEdit((changed as Extract<typeof changed, { type: 'changed' }>).content, {
+            type: 'set-title',
+            markdownTitle: 'New',
+          }),
+        ).toEqual({ type: 'unchanged', content: `- [ ] New ${block}\r\n` });
+      },
+    );
+
+    it('keeps protected-only empty replacement idempotent with zero whitespace growth', () => {
+      const source = '- [ ] #tag 📅 nope 🆔 bad.id ^bad/value\r\n';
+      expect(parse(source).markdownTitle).toBe('');
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: '' })).toEqual({
+        type: 'unchanged',
+        content: source,
+      });
+
+      const added = codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' });
+      expect(added).toEqual({
+        type: 'changed',
+        content: '- [ ] New #tag 📅 nope 🆔 bad.id ^bad/value\r\n',
+      });
+      expect(
+        codec.applyLineEdit((added as Extract<typeof added, { type: 'changed' }>).content, {
+          type: 'set-title',
+          markdownTitle: 'New',
+        }),
+      ).toEqual({
+        type: 'unchanged',
+        content: '- [ ] New #tag 📅 nope 🆔 bad.id ^bad/value\r\n',
+      });
+    });
+
+    it('appends after the last semantic fragment across unknown syntax and tags', () => {
+      const source = '- [ ] Old 🧭 future #tag tail 📅 nope';
+      expect(codec.applyLineEdit(source, { type: 'append-title', markdown: 'later' })).toEqual({
+        type: 'changed',
+        content: '- [ ] Old 🧭 future #tag tail later 📅 nope',
       });
     });
 
@@ -805,26 +842,32 @@ describe('TaskMarkdownCodec', () => {
   });
 
   it.each(['🆔 id!', '🆔 id.dot', '🆔 id/next', '⛔ one,two!', '⛔ one,,two', '⛔ one,two/three'])(
-    'rejects partial ID/dependency matches with adjacent invalid characters in %j',
+    'retains partial ID/dependency matches as malformed-known spans in %j',
     (carrier) => {
       const parsed = parse(`- [ ] Task ${carrier}`);
       expect(parsed.occurrences.get('task-id') ?? []).toHaveLength(0);
       expect(parsed.occurrences.get('depends-on') ?? []).toHaveLength(0);
-      expect(parsed.markdownTitle).toContain(carrier);
-      expect(spanText(parsed, 'unknown').join('')).toContain(carrier.split(' ')[0]);
+      expect(parsed.markdownTitle).toBe('Task');
+      expect(spanText(parsed, 'malformed-known')).toEqual([carrier]);
       expectLosslessPartition(parsed);
     },
   );
 
-  it('retains malformed recognized-looking values and unknown emoji in the semantic title', () => {
+  it('separates malformed recognized-looking carriers from unknown semantic emoji', () => {
     const source =
       '- [ ] Keep 🧭 north 📅 not-a-date ⏰ 9:5 ⏱️ nope ➕ 2026-7-1 🆔 bad.value ^bad/value';
     const parsed = parse(source);
 
     expect(parsed.planning).toEqual({});
-    expect(parsed.markdownTitle).toBe(
-      'Keep 🧭 north 📅 not-a-date ⏰ 9:5 ⏱️ nope ➕ 2026-7-1 🆔 bad.value ^bad/value',
-    );
+    expect(parsed.markdownTitle).toBe('Keep 🧭 north');
+    expect(spanText(parsed, 'malformed-known')).toEqual([
+      '📅 not-a-date',
+      '⏰ 9:5',
+      '⏱️ nope',
+      '➕ 2026-7-1',
+      '🆔 bad.value',
+      '^bad/value',
+    ]);
     expect(spanText(parsed, 'unknown').length).toBeGreaterThan(0);
     expectLosslessPartition(parsed);
   });
