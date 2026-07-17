@@ -566,11 +566,31 @@ export class TaskMarkdownCodec {
     const fragments = this.editableTitleFragments(parsed);
     const first = fragments[0];
     if (first) {
+      const editableTitle = fragments
+        .map((fragment) => parsed.original.slice(fragment.from, fragment.to).trim())
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s{2,}/gu, ' ');
+      const protectedSuffix = parsed.markdownTitle.startsWith(editableTitle)
+        ? parsed.markdownTitle.slice(editableTitle.length).trim()
+        : '';
+      let replacement = markdownTitle;
+      if (protectedSuffix) {
+        const protectedAt = replacement.indexOf(protectedSuffix);
+        if (protectedAt >= 0) {
+          replacement = [
+            replacement.slice(0, protectedAt).trimEnd(),
+            replacement.slice(protectedAt + protectedSuffix.length).trimStart(),
+          ]
+            .filter(Boolean)
+            .join(' ');
+        }
+      }
       let content = parsed.original;
       for (const fragment of fragments.slice(1).reverse()) {
         content = removeSpan(content, fragment);
       }
-      return spliceSource(content, first.from, first.to, markdownTitle);
+      return spliceSource(content, first.from, first.to, replacement);
     }
 
     const contentEnd = parsed.original.length - parsed.lineEnding.length;

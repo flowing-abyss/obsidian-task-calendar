@@ -432,6 +432,25 @@ describe('TaskMarkdownCodec', () => {
       });
     });
 
+    it('does not duplicate a protected unknown suffix when editing the displayed markdown title', () => {
+      const source =
+        '- [ ] Old [[Title]] 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 📅 2026-07-20';
+      const displayedTitle = parse(source).markdownTitle;
+
+      const edited = codec.applyLineEdit(source, {
+        type: 'set-title',
+        markdownTitle: `${displayedTitle} TEMP`,
+      });
+
+      expect(edited).toEqual({
+        type: 'changed',
+        content:
+          '- [ ] Old [[Title]] TEMP 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 📅 2026-07-20',
+      });
+      const editedContent = (edited as Extract<typeof edited, { type: 'changed' }>).content;
+      expect(parse(editedContent).markdownTitle).toBe('Old [[Title]] TEMP 🧭 preserve-unknown');
+    });
+
     it('returns unchanged for semantic no-op edits without normalizing bytes', () => {
       const source = '- [ ] Task  📅   2026-07-20 ^block\r\n';
 
