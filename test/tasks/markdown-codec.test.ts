@@ -633,22 +633,37 @@ describe('TaskMarkdownCodec', () => {
     it('avoids quadratic growth for dense ID/dependency markers', () => {
       const denseSource = (count: number): string =>
         `- [ ] Head${Array.from({ length: count }, () => ' 🆔 . ⛔ .').join('')}`;
-      const bestOfThreeBatches = (source: string): number => {
-        codec.parseLine(source, location);
-        let best = Number.POSITIVE_INFINITY;
-        for (let run = 0; run < 3; run++) {
-          const startedAt = performance.now();
-          for (let iteration = 0; iteration < 5; iteration++) {
-            codec.parseLine(source, location);
-          }
-          best = Math.min(best, performance.now() - startedAt);
-        }
-        return best;
+      const perIterationMs = (source: string): number => {
+        const startedAt = performance.now();
+        let iterations = 0;
+        let elapsedMs = 0;
+        do {
+          codec.parseLine(source, location);
+          iterations++;
+          elapsedMs = performance.now() - startedAt;
+        } while (elapsedMs < 50);
+        return elapsedMs / iterations;
       };
-      const smallMs = bestOfThreeBatches(denseSource(1_000));
-      const largeMs = bestOfThreeBatches(denseSource(2_000));
+      const small = denseSource(1_000);
+      const large = denseSource(2_000);
+      codec.parseLine(small, location);
+      codec.parseLine(large, location);
 
-      expect(largeMs / smallMs).toBeLessThan(3.6);
+      const pairedRatio = (largeFirst: boolean): number => {
+        if (largeFirst) {
+          const largeMs = perIterationMs(large);
+          const smallMs = perIterationMs(small);
+          return largeMs / smallMs;
+        }
+        const smallMs = perIterationMs(small);
+        const largeMs = perIterationMs(large);
+        return largeMs / smallMs;
+      };
+      const ratios = Array.from({ length: 5 }, (_, run) => pairedRatio(run % 2 === 1)).sort(
+        (left, right) => left - right,
+      );
+
+      expect(ratios[2]).toBeLessThan(3.6);
     });
 
     it('preserves all valid source-owned carriers and CRLF byte-exactly', () => {
