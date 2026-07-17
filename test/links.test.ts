@@ -22,6 +22,10 @@ describe('countLinksIn', () => {
     expect(countLinksIn([])).toBe(0);
     expect(countLinksIn([undefined, ''])).toBe(0);
   });
+
+  it('counts each outer link once when wiki and Markdown candidates overlap', () => {
+    expect(countLinksIn(['[x]([[Doc]])', String.raw`[[Doc|\[x\](u)]]`])).toBe(2);
+  });
 });
 
 describe('parseLinks', () => {
@@ -97,6 +101,24 @@ describe('parseLinks', () => {
     ['[[Doc|before `code` after]]', 'wiki'],
   ] as const)('keeps a %s link whose label contains inline code', (source, type) => {
     expect(parseLinks(source)).toEqual([expect.objectContaining({ raw: source, type, index: 0 })]);
+  });
+
+  it.each([
+    ['Markdown link around a wiki-like destination', '[x]([[Doc]])', 'md'],
+    ['wiki alias around escaped Markdown-like bytes', String.raw`[[Doc|\[x\](u)]]`, 'wiki'],
+  ] as const)('keeps only the outer %s candidate', (_case, source, type) => {
+    expect(parseLinks(source)).toEqual([expect.objectContaining({ raw: source, type, index: 0 })]);
+  });
+
+  it('retains touching and separated non-overlapping links in source order', () => {
+    const source = '[[A]][b](c) gap [d](e)[[F]]';
+
+    expect(parseLinks(source).map(({ raw, index }) => ({ raw, index }))).toEqual([
+      { raw: '[[A]]', index: 0 },
+      { raw: '[b](c)', index: 5 },
+      { raw: '[d](e)', index: 16 },
+      { raw: '[[F]]', index: 22 },
+    ]);
   });
 
   it('keeps dense mixed link candidates ordered while excluding closed inline code', () => {

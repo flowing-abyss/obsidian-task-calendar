@@ -547,7 +547,16 @@ for (const adapter of ['in-memory', 'obsidian'] as const) {
       expect(await h.read()).toBe('- [ ] New\r\n');
     });
 
-    it.each(['^bad[[Doc]]', '^bad[x](u)', '^bad`code`', '^📅[x](u)'])(
+    it.each([
+      '^bad[[Doc]]',
+      '^bad[x](u)',
+      '^bad`code`',
+      '^bad[[Doc|x y]]',
+      '^bad[x y](u)',
+      '^bad`x y`',
+      '^bad[x y]([[Doc]])',
+      '^📅[x](u)',
+    ])(
       'preserves the complete malformed terminal token %s through repository title edits',
       async (terminal) => {
         const source = `- [ ] Old ${terminal}\r\n`;

@@ -111,6 +111,23 @@ describe('TaskMarkdownCodec', () => {
       },
     );
 
+    it('edits only top-level non-overlapping link occurrences', () => {
+      const source = String.raw`before [x]([[Doc]]) then [[Alias|\[y\](u)]] after`;
+
+      expect(codec.editTextLink(source, 0, '[changed](target)')).toEqual({
+        type: 'changed',
+        content: String.raw`before [changed](target) then [[Alias|\[y\](u)]] after`,
+      });
+      expect(codec.editTextLink(source, 1, '[[Changed]]')).toEqual({
+        type: 'changed',
+        content: 'before [x]([[Doc]]) then [[Changed]] after',
+      });
+      expect(codec.editTextLink(source, 2, '[[Invalid]]')).toEqual({
+        type: 'invalid',
+        issues: [{ code: 'invalid-target', field: 'link' }],
+      });
+    });
+
     it.each([
       ['set-title', { type: 'set-title', markdownTitle: 'Changed 📅 nope' }, 'due', 'invalid-date'],
       ['append-title', { type: 'append-title', markdown: '📅 nope' }, 'due', 'invalid-date'],
@@ -515,6 +532,10 @@ describe('TaskMarkdownCodec', () => {
       ['wiki link', '^bad[[Doc]]'],
       ['Markdown link', '^bad[x](u)'],
       ['inline code', '^bad`code`'],
+      ['wiki link containing spaces', '^bad[[Doc|x y]]'],
+      ['Markdown link containing spaces', '^bad[x y](u)'],
+      ['inline code containing spaces', '^bad`x y`'],
+      ['overlapping outer link containing spaces', '^bad[x y]([[Doc]])'],
       ['nested carrier before a Markdown link', '^📅[x](u)'],
     ])(
       'protects a complete malformed terminal caret token that ends with %s',
@@ -539,6 +560,19 @@ describe('TaskMarkdownCodec', () => {
         ).toEqual({ type: 'unchanged', content: `- [ ] New ${terminal}\r\n` });
       },
     );
+
+    it('protects a leading terminal caret token through a byte-exact title replacement', () => {
+      const source = '- [ ] ^bad[x y](u)  \r\n';
+      const parsed = parse(source);
+
+      expect(parsed.markdownTitle).toBe('');
+      expect(spanText(parsed, 'malformed-known')).toEqual(['^bad[x y](u)']);
+      expectLosslessPartition(parsed);
+      expect(codec.applyLineEdit(source, { type: 'set-title', markdownTitle: 'New' })).toEqual({
+        type: 'changed',
+        content: '- [ ] New ^bad[x y](u)  \r\n',
+      });
+    });
 
     it('keeps valid terminal blocks protected and ordinary nonterminal carets editable', () => {
       const valid = parse('- [ ] Old ^valid\r\n');

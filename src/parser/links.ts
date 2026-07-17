@@ -39,9 +39,26 @@ function insideOrderedRange(
   return range !== undefined && at >= range.from && at < range.to;
 }
 
+function nonOverlappingTokens(candidates: readonly LinkToken[]): LinkToken[] {
+  const ordered = [...candidates].sort(
+    (left, right) =>
+      left.index - right.index ||
+      right.raw.length - left.raw.length ||
+      left.type.localeCompare(right.type),
+  );
+  const accepted: LinkToken[] = [];
+  let acceptedTo = 0;
+  for (const candidate of ordered) {
+    if (candidate.index < acceptedTo) continue;
+    accepted.push(candidate);
+    acceptedTo = candidate.index + candidate.raw.length;
+  }
+  return accepted;
+}
+
 /** Parse [[wiki]], [[wiki|alias]] and [md](url) links in document order. */
 export function parseLinks(input: string): LinkToken[] {
-  const tokens: LinkToken[] = [];
+  const candidates: LinkToken[] = [];
   const inlineCode = inlineCodeRanges(input);
   const wiki = /(?<!!)\[\[((?:\\.|[^|[\]])+)(?:\|((?:\\.|[^[\]])+))?\]\]/gu;
   const markdown = /(?<!!)\[((?:\\.|[^[\]])+)\]\(((?:\\.|[^)])+)\)/gu;
@@ -53,7 +70,7 @@ export function parseLinks(input: string): LinkToken[] {
     }
     const target = m[1] ?? '';
     const alias = m[2];
-    tokens.push({
+    candidates.push({
       raw: m[0],
       type: 'wiki',
       target,
@@ -66,7 +83,7 @@ export function parseLinks(input: string): LinkToken[] {
     if (isEscaped(input, m.index) || insideOrderedRange(m.index, inlineCode, markdownRangeCursor)) {
       continue;
     }
-    tokens.push({
+    candidates.push({
       raw: m[0],
       type: 'md',
       target: m[2] ?? '',
@@ -74,7 +91,7 @@ export function parseLinks(input: string): LinkToken[] {
       index: m.index,
     });
   }
-  return tokens.sort((left, right) => left.index - right.index);
+  return nonOverlappingTokens(candidates);
 }
 
 /** Total number of links (wiki + markdown) across the given texts. */

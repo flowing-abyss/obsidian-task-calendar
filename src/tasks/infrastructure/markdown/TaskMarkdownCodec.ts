@@ -370,11 +370,25 @@ function markerPositions(body: string): ReadonlyArray<{
   }).sort((left, right) => left.at - right.at);
 }
 
-function terminalCaretRange(body: string): SourceRange | undefined {
+function terminalCaretRange(
+  body: string,
+  sortedAtomicRanges: readonly SourceRange[],
+): SourceRange | undefined {
   let to = body.length;
   while (to > 0 && /\s/u.test(body[to - 1]!)) to--;
   let from = to;
-  while (from > 0 && !/\s/u.test(body[from - 1]!)) from--;
+  let atomicIndex = sortedAtomicRanges.length - 1;
+  while (from > 0) {
+    while (atomicIndex >= 0 && sortedAtomicRanges[atomicIndex]!.to > from) atomicIndex--;
+    const atomic = sortedAtomicRanges[atomicIndex];
+    if (atomic?.to === from) {
+      from = atomic.from;
+      atomicIndex--;
+      continue;
+    }
+    if (/\s/u.test(body[from - 1]!)) break;
+    from--;
+  }
   return body[from] === '^' ? { from, to } : undefined;
 }
 
@@ -1098,14 +1112,20 @@ export class TaskMarkdownCodec {
     const statusSymbol = taskMatch[1] ?? '';
     const prefixEnd = taskMatch[0].length;
     const body = content.slice(prefixEnd);
-    const inlineCode = inlineCodeRanges(body).map((range) => ({
+    const inlineCodeInBody = inlineCodeRanges(body);
+    const links = parseLinks(body);
+    const inlineCode = inlineCodeInBody.map((range) => ({
       from: prefixEnd + range.from,
       to: prefixEnd + range.to,
     }));
-    const linkRanges = parseLinks(body).map((link) => ({
+    const linkRanges = links.map((link) => ({
       from: prefixEnd + link.index,
       to: prefixEnd + link.index + link.raw.length,
     }));
+    const atomicBodyRanges = mergedRanges([
+      ...inlineCodeInBody,
+      ...links.map((link) => ({ from: link.index, to: link.index + link.raw.length })),
+    ]);
     let candidates: Candidate[] = [];
 
     for (const pattern of DATE_PATTERNS) {
@@ -1134,10 +1154,13 @@ export class TaskMarkdownCodec {
       ...inlineCode.map((range) => ({ kind: 'title' as const, ...range })),
       ...linkRanges.map((range) => ({ kind: 'title' as const, ...range })),
     ].sort((left, right) => left.from - right.from || left.to - right.to);
-    const atomicTitleRanges = mergedRanges(atomicTitleCandidates);
+    const atomicTitleRanges = atomicBodyRanges.map((range) => ({
+      from: prefixEnd + range.from,
+      to: prefixEnd + range.to,
+    }));
     candidates.sort((left, right) => left.from - right.from || left.to - right.to);
     candidates = excludeOverlappingRanges(candidates, atomicTitleRanges);
-    const terminalCaret = terminalCaretRange(body);
+    const terminalCaret = terminalCaretRange(body, atomicBodyRanges);
     let malformedTerminal: Candidate | undefined;
     if (terminalCaret) {
       const terminalRange = {
