@@ -451,6 +451,125 @@ describe('TaskMarkdownCodec', () => {
       expect(parse(editedContent).markdownTitle).toBe('Old [[Title]] TEMP 🧭 preserve-unknown');
     });
 
+    it('keeps an identical protected value inside a wiki-link alias byte-correct', () => {
+      const source =
+        '- [ ] Old [[Note|🧭 preserve-unknown]] 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 ^block';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '- [ ] Old [[Note|🧭 preserve-unknown]] TEMP 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 ^block',
+      });
+    });
+
+    it('keeps an identical protected value inside a Markdown-link label byte-correct', () => {
+      const source =
+        '- [ ] Old [🧭 preserve-unknown](https://example.test) 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 ^block';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '- [ ] Old [🧭 preserve-unknown](https://example.test) TEMP 🧭 preserve-unknown #work 🆔 keep-id ⛔ dep-1 ^block',
+      });
+    });
+
+    it('keeps two identical link-label occurrences while preserving one source-owned value', () => {
+      const source =
+        '- [ ] [[One|🧭 same]] [🧭 same](https://example.test) 🧭 same 🆔 keep-id ⛔ dep-1 ^block';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '- [ ] [[One|🧭 same]] [🧭 same](https://example.test) TEMP 🧭 same 🆔 keep-id ⛔ dep-1 ^block',
+      });
+    });
+
+    it('edits a title after a protected-leading range without duplicating either range', () => {
+      const source = '- [ ] 🧭 preserve-unknown Old [[Title]] #work 🆔 keep-id ⛔ dep-1 ^block';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content: '- [ ] 🧭 preserve-unknown Old [[Title]] TEMP #work 🆔 keep-id ⛔ dep-1 ^block',
+      });
+    });
+
+    it('keeps adjacent protected ranges once while editing all ordinary title fragments', () => {
+      const source = '- [ ] Old 🧭 opaque 📅 not-a-date [[Title]] #work 🆔 keep-id ⛔ dep-1 ^block';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '- [ ] Old [[Title]] TEMP 🧭 opaque 📅 not-a-date #work 🆔 keep-id ⛔ dep-1 ^block',
+      });
+    });
+
+    it('treats inline code as editable title text rather than a protected unknown range', () => {
+      const source =
+        '- [ ] Old `🧭 preserve-unknown` 🧭 preserve-unknown End 🆔 keep-id ⛔ dep-1 ^block';
+
+      expect(
+        codec.applyLineEdit(source, {
+          type: 'set-title',
+          markdownTitle: `${parse(source).markdownTitle} TEMP`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '- [ ] Old `🧭 preserve-unknown` End TEMP 🧭 preserve-unknown 🆔 keep-id ⛔ dep-1 ^block',
+      });
+    });
+
+    it('preserves CRLF and remains idempotent across repeated protected-leading edits', () => {
+      const source =
+        '> - [ ] 🧭 preserve-unknown Old [[Title]] #work 🆔 keep-id ⛔ dep-1 ^block\r\n';
+      const first = codec.applyLineEdit(source, {
+        type: 'set-title',
+        markdownTitle: `${parse(source).markdownTitle} FIRST`,
+      });
+      expect(first).toEqual({
+        type: 'changed',
+        content:
+          '> - [ ] 🧭 preserve-unknown Old [[Title]] FIRST #work 🆔 keep-id ⛔ dep-1 ^block\r\n',
+      });
+
+      const firstContent = (first as Extract<typeof first, { type: 'changed' }>).content;
+      expect(
+        codec.applyLineEdit(firstContent, {
+          type: 'set-title',
+          markdownTitle: `${parse(firstContent).markdownTitle} SECOND`,
+        }),
+      ).toEqual({
+        type: 'changed',
+        content:
+          '> - [ ] 🧭 preserve-unknown Old [[Title]] FIRST SECOND #work 🆔 keep-id ⛔ dep-1 ^block\r\n',
+      });
+    });
+
     it('returns unchanged for semantic no-op edits without normalizing bytes', () => {
       const source = '- [ ] Task  📅   2026-07-20 ^block\r\n';
 

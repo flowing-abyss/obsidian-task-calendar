@@ -509,6 +509,7 @@ export class TaskMarkdownCodec {
 
   private editableTitleFragments(parsed: ParsedTaskLine): readonly SourceSpan[] {
     const contentEnd = parsed.original.length - parsed.lineEnding.length;
+    const protectedFragments = this.protectedTitleFragments(parsed);
     const bodySpans = parsed.spans.filter(
       (span) => span.kind !== 'prefix' && !(span.kind === 'separator' && span.from === contentEnd),
     );
@@ -516,7 +517,10 @@ export class TaskMarkdownCodec {
     let fragmentFrom: number | undefined;
     let fragmentTo: number | undefined;
     for (const span of bodySpans) {
-      if (span.kind === 'title') {
+      const isProtected = protectedFragments.some(
+        (fragment) => span.from >= fragment.from && span.to <= fragment.to,
+      );
+      if (span.kind === 'title' && !isProtected) {
         fragmentFrom ??= span.from;
         fragmentTo = span.to;
         continue;
@@ -527,12 +531,74 @@ export class TaskMarkdownCodec {
         fragmentFrom = undefined;
         fragmentTo = undefined;
       }
-      if (span.kind === 'unknown') break;
     }
     if (fragmentFrom !== undefined && fragmentTo !== undefined) {
       fragments.push({ kind: 'title', from: fragmentFrom, to: fragmentTo });
     }
     return fragments;
+  }
+
+  private protectedTitleFragments(parsed: ParsedTaskLine): readonly SourceSpan[] {
+    const contentEnd = parsed.original.length - parsed.lineEnding.length;
+    const fragments: SourceSpan[] = [];
+    for (let index = 0; index < parsed.spans.length; index++) {
+      const span = parsed.spans[index];
+      if (!span || span.kind !== 'unknown') continue;
+      let to = span.to;
+      let nextIndex = index + 1;
+      while (
+        parsed.spans[nextIndex]?.kind === 'separator' &&
+        parsed.spans[nextIndex]?.from !== contentEnd
+      ) {
+        nextIndex++;
+      }
+      const payload = parsed.spans[nextIndex];
+      if (payload?.kind === 'title') to = payload.to;
+      fragments.push({ kind: 'unknown', from: span.from, to });
+    }
+    return fragments;
+  }
+
+  private titleFragmentText(parsed: ParsedTaskLine, fragment: SourceSpan): string {
+    return parsed.original
+      .slice(fragment.from, fragment.to)
+      .replace(/\s{2,}/gu, ' ')
+      .trim();
+  }
+
+  private editableTitleReplacement(parsed: ParsedTaskLine, markdownTitle: string): string {
+    const protectedText = this.protectedTitleFragments(parsed).map((fragment) =>
+      this.titleFragmentText(parsed, fragment),
+    );
+    if (protectedText.length === 0) return markdownTitle;
+
+    const prefix = '- [ ] ';
+    const candidate = this.parseLine(`${prefix}${markdownTitle}`, { filePath: '', line: 0 });
+    if (!candidate) return markdownTitle;
+    const candidateFragments = this.protectedTitleFragments(candidate);
+    const used = new Set<number>();
+    const removals: SourceSpan[] = [];
+    for (const expected of protectedText) {
+      const matchIndex = candidateFragments.findIndex(
+        (fragment, index) =>
+          !used.has(index) && this.titleFragmentText(candidate, fragment) === expected,
+      );
+      if (matchIndex < 0) continue;
+      used.add(matchIndex);
+      const match = candidateFragments[matchIndex]!;
+      removals.push({
+        kind: 'unknown',
+        from: match.from - prefix.length,
+        to: match.to - prefix.length,
+      });
+    }
+
+    let replacement = markdownTitle;
+    removals.sort((left, right) => right.from - left.from);
+    for (const removal of removals) {
+      replacement = removeSpan(replacement, removal);
+    }
+    return replacement;
   }
 
   private linkTitleFragments(parsed: ParsedTaskLine): readonly SourceSpan[] {
@@ -563,29 +629,10 @@ export class TaskMarkdownCodec {
   }
 
   private replaceTitle(parsed: ParsedTaskLine, markdownTitle: string): string {
+    const replacement = this.editableTitleReplacement(parsed, markdownTitle);
     const fragments = this.editableTitleFragments(parsed);
     const first = fragments[0];
     if (first) {
-      const editableTitle = fragments
-        .map((fragment) => parsed.original.slice(fragment.from, fragment.to).trim())
-        .filter(Boolean)
-        .join(' ')
-        .replace(/\s{2,}/gu, ' ');
-      const protectedSuffix = parsed.markdownTitle.startsWith(editableTitle)
-        ? parsed.markdownTitle.slice(editableTitle.length).trim()
-        : '';
-      let replacement = markdownTitle;
-      if (protectedSuffix) {
-        const protectedAt = replacement.indexOf(protectedSuffix);
-        if (protectedAt >= 0) {
-          replacement = [
-            replacement.slice(0, protectedAt).trimEnd(),
-            replacement.slice(protectedAt + protectedSuffix.length).trimStart(),
-          ]
-            .filter(Boolean)
-            .join(' ');
-        }
-      }
       let content = parsed.original;
       for (const fragment of fragments.slice(1).reverse()) {
         content = removeSpan(content, fragment);
@@ -593,14 +640,16 @@ export class TaskMarkdownCodec {
       return spliceSource(content, first.from, first.to, replacement);
     }
 
+    const protectedFragments = this.protectedTitleFragments(parsed);
     const contentEnd = parsed.original.length - parsed.lineEnding.length;
+    const lastProtected = protectedFragments[protectedFragments.length - 1];
     const firstProtected = parsed.spans.find(
       (span) => span.kind !== 'prefix' && span.kind !== 'separator',
     );
-    const at = firstProtected?.from ?? contentEnd;
+    const at = lastProtected?.to ?? firstProtected?.from ?? contentEnd;
     const left = /\s/u.test(parsed.original[at - 1] ?? '') ? '' : ' ';
     const right = /\s/u.test(parsed.original[at] ?? '') || at === contentEnd ? '' : ' ';
-    return spliceSource(parsed.original, at, at, `${left}${markdownTitle}${right}`);
+    return spliceSource(parsed.original, at, at, `${left}${replacement}${right}`);
   }
 
   private appendTitle(parsed: ParsedTaskLine, markdown: string): string {
@@ -994,7 +1043,10 @@ export class TaskMarkdownCodec {
     candidates = candidates.filter(
       (candidate) => outsideRanges(candidate, inlineCode) && outsideRanges(candidate, linkRanges),
     );
-    candidates.push(...linkRanges.map((range) => ({ kind: 'title' as const, ...range })));
+    candidates.push(
+      ...inlineCode.map((range) => ({ kind: 'title' as const, ...range })),
+      ...linkRanges.map((range) => ({ kind: 'title' as const, ...range })),
+    );
 
     const recurrenceMarkers = matches(RECURRENCE_MARKER_RE, body)
       .map((match) => prefixEnd + match.index)
